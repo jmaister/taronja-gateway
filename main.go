@@ -139,7 +139,6 @@ func (g *Gateway) configureManagementRoutes() {
 	// Health Endpoint
 	if g.config.Management.Health.Enabled {
 		healthPath := prefix + "/health"
-		// No authentication needed for health check
 		g.mux.HandleFunc(healthPath, handleHealth)
 		log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
 	}
@@ -147,21 +146,60 @@ func (g *Gateway) configureManagementRoutes() {
 	// Me Endpoint
 	if g.config.Management.Me.Enabled {
 		mePath := prefix + "/me"
-		// Get the specific auth config for the /me endpoint
 		meAuthConfig := g.config.Management.Me.Authentication
 		if !meAuthConfig.Enabled {
-			log.Printf("Warning: Management '/me' endpoint is enabled but its authentication is disabled. This is unusual. Endpoint will require auth based on method '%s'.", meAuthConfig.Method)
-			// Force enabled true if endpoint is enabled? Or allow this state?
-			// For safety, let's ensure auth is considered enabled if the endpoint is.
 			meAuthConfig.Enabled = true
 		}
-		// Wrap the handler with the specified authentication method ("any" by default)
 		authWrappedMeHandler := g.wrapWithAuth(handleMe, meAuthConfig)
 		g.mux.HandleFunc(mePath, authWrappedMeHandler)
 		log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t (Method: %s)", "User Info", mePath, true, meAuthConfig.Method)
 	}
 
-	// Register other management endpoints here...
+	// Login Routes for Basic and OAuth2 Authentication
+	g.registerLoginRoutes(prefix)
+}
+
+// registerLoginRoutes adds login routes for basic and OAuth2 authentication.
+func (g *Gateway) registerLoginRoutes(prefix string) {
+	// Basic Auth Login Route
+	basicLoginPath := prefix + "/auth/basic/login"
+	g.mux.HandleFunc(basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Validate username and password (replace with your own logic)
+		// TODO: handle users on a database
+		if username == "admin" && password == "password" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Login successful"))
+		} else {
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		}
+	})
+	log.Printf("main.go: Registered Login Route: %-25s | Path: %s", "Basic Auth Login", basicLoginPath)
+
+	// OAuth2 Login and Callback Routes
+	for provider, authenticator := range g.authManager.authenticators {
+		if oauthAuthenticator, ok := authenticator.(*OAuth2Authenticator); ok {
+			// Login Route
+			loginPath := fmt.Sprintf("%s/auth/%s/login", prefix, provider)
+			g.mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
+				oauthAuthenticator.Authenticate(w, r)
+			})
+			log.Printf("main.go: Registered Login Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Login", provider), loginPath)
+
+			// Callback Route
+			callbackPath := fmt.Sprintf("%s/auth/%s/callback", prefix, provider)
+			g.mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
+				g.authManager.HandleOAuthCallback(provider, w, r)
+			})
+			log.Printf("main.go: Registered Callback Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Callback", provider), callbackPath)
+		}
+	}
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
