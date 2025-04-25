@@ -1,3 +1,5 @@
+.PHONY: jmeter
+
 # Project name and executable name
 PROJECT_NAME := taronja-gateway
 BINARY_NAME := tg # This is the name of the executable for Linux

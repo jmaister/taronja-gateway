@@ -1,2 +1,8 @@
 
+# JMeter result files
 jmeter/
+jmeter.log
+
+# Executable files
+tg
+tg.exe
