@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Sample web</title>
+</head>
+<body>
+    <h1>This is the home of the application</h1>
+    <p>Some paragraph</p>
+
+    <a href="/_/login">Login</a>
+    <a href="/_/logout">Logout</a>
+    <a href="/_/plans">Pricing</a>
+
+    <p id="logged">No logged user</p>
+    <p id="logged-all">No logged user</p>
+
+    <script>
+        // load user from /_api/me
+        fetch('/_api/me')
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                document.getElementById('logged').innerText = `Logged user: ${data.username} (${data.email})`;
+                document.getElementById('logged-all').innerText = JSON.stringify(data);
+            })
+            .catch(error => {
+                // redirect to login page
+                // window.location.href = '/_/login?redirect=/';
+                document.getElementById('logged').innerText = `No logged user`;
+            });
+    </script>
+</body>
+</html>
