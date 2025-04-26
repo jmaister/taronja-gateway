@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -14,83 +17,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
-
-// --- Configuration Structs ---
-
-type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
-	URL  string `yaml:"url"`
-}
-type AuthenticationConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Method   string `yaml:"method"`   // "basic", "oauth2", "any", or ""
-	Provider string `yaml:"provider"` // "google", "github", etc. (for oauth2)
-}
-type RouteConfig struct {
-	Name           string               `yaml:"name"`
-	From           string               `yaml:"from"`
-	To             string               `yaml:"to"`
-	ToFolder       string               `yaml:"toFolder"`
-	Static         bool                 `yaml:"static"`
-	RemoveFromPath string               `yaml:"removeFromPath"`
-	Authentication AuthenticationConfig `yaml:"authentication"`
-}
-type AuthProviderCredentials struct {
-	ClientId     string `yaml:"clientId"`
-	ClientSecret string `yaml:"clientSecret"`
-}
-type AuthenticationProviders struct {
-	Google AuthProviderCredentials `yaml:"google"`
-	Github AuthProviderCredentials `yaml:"github"`
-}
-type NotificationConfig struct {
-	Email struct {
-		Enabled bool `yaml:"enabled"`
-		SMTP    struct {
-			Host     string `yaml:"host"`
-			Port     int    `yaml:"port"`
-			Username string `yaml:"username"`
-			Password string `yaml:"password"`
-			From     string `yaml:"from"`
-			FromName string `yaml:"fromName"`
-		} `yaml:"smtp"`
-	} `yaml:"email"`
-}
-
-// New: Management API Configuration Structs
-type ManagementEndpointToggle struct {
-	Enabled bool `yaml:"enabled"`
-}
-type ManagementEndpointAuth struct {
-	Enabled        bool                 `yaml:"enabled"`
-	Authentication AuthenticationConfig `yaml:"authentication"` // Auth config for this specific endpoint
-}
-type ManagementConfig struct {
-	Prefix string                   `yaml:"prefix"` // e.g., "/_"
-	Health ManagementEndpointToggle `yaml:"health"` // Simple enable/disable
-	Me     ManagementEndpointAuth   `yaml:"me"`     // Endpoint with its own auth config
-	// Add more management endpoints here
-}
-
-// Main Config Struct including Management API config
-type Config struct {
-	Name                    string                  `yaml:"name"`
-	Server                  ServerConfig            `yaml:"server"`
-	Management              ManagementConfig        `yaml:"management"` // Add management config
-	Routes                  []RouteConfig           `yaml:"routes"`
-	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"`
-	Notification            NotificationConfig      `yaml:"notification"`
-}
-
-// --- Gateway Struct ---
-
-type Gateway struct {
-	server      *http.Server
-	config      *Config
-	mux         *http.ServeMux
-	authManager *AuthManager
-}
 
 // --- NewGateway Function ---
 
@@ -172,8 +98,26 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 		}
 
 		// Validate username and password (replace with your own logic)
-		// TODO: handle users on a database
 		if username == "admin" && password == "password" {
+			// Generate session token
+			token, err := generateSessionToken()
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			// Store session
+			storeSession(token, username)
+
+			// Set session token in a cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:     "session_token",
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   r.TLS != nil,
+			})
+
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("Login successful"))
 		} else {
@@ -200,6 +144,10 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 			log.Printf("main.go: Registered Callback Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Callback", provider), callbackPath)
 		}
 	}
+
+	g.mux.HandleFunc(prefix+"/login", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./static/login.html")
+	})
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
@@ -236,13 +184,12 @@ func (g *Gateway) configureUserRoutes() error {
 
 		// Wrap the handler with authentication if enabled for this route
 		if routeConfig.Authentication.Enabled {
-			handler = g.wrapWithAuth(handler, routeConfig.Authentication)
+			handler = sessionMiddleware(handler)
 		}
 
 		// Register the final handler
 		pattern := routeConfig.From
 		// Handle wildcard prefix matching for ServeMux
-		// Ensure the pattern ends with "/" if it's meant to be a prefix match
 		if strings.HasSuffix(pattern, "/*") {
 			pattern = strings.TrimSuffix(pattern, "*") // Keep the trailing slash: /api/v1/
 		}
@@ -256,13 +203,6 @@ func (g *Gateway) configureUserRoutes() error {
 			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (Method: %s)", routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, routeConfig.Authentication.Method)
 		}
 	}
-	// Add a final catch-all 404 handler? ServeMux does this by default.
-	// If you want a custom 404 page, register "/" *last* with a specific handler
-	// ONLY if no other "/" route is defined in the user config.
-	// Example: Check if "/" is already registered before adding:
-	// if _, exists := g.mux.Handler(&http.Request{URL: &url.URL{Path: "/"}}); !exists {
-	//    g.mux.HandleFunc("/", handleCustomNotFound)
-	// }
 	return nil
 }
 
@@ -285,36 +225,32 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, authConfig AuthenticationConfig) http.HandlerFunc {
-	authenticator, err := g.authManager.GetAuthenticator(authConfig)
-	if err != nil {
-		log.Printf("FATAL CONFIG ERROR for route auth (%s/%s): %v. Blocking route.", authConfig.Method, authConfig.Provider, err)
-		return func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "Internal Server Error - Misconfigured Authentication", http.StatusInternalServerError)
-		}
-	}
+	return sessionMiddleware(next)
+}
 
-	if authenticator == nil {
-		// This case should ideally not happen if authConfig.Enabled is true,
-		// as GetAuthenticator should have returned an error or a specific authenticator.
-		// If Enabled is false, this is expected.
-		if authConfig.Enabled {
-			log.Printf("Warning: Authentication enabled for route but no authenticator resolved (Method: '%s', Provider: '%s'). Allowing access.", authConfig.Method, authConfig.Provider)
-		}
-		return next // Pass through if no authenticator needed/found
-	}
-
-	// Return the middleware handler
+// sessionMiddleware checks for a valid session and handles unauthorized requests.
+func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Call the authenticator's Authenticate method
-		// It now returns the potentially modified request (with context)
-		isAuthenticated, reqWithCtx := authenticator.Authenticate(w, r)
-
-		if isAuthenticated {
-			// If authenticated, call the next handler with the request
-			// that potentially has the user context added.
-			next.ServeHTTP(w, reqWithCtx)
+		username, valid := validateSession(r)
+		if !valid {
+			// Check if the request is an API request or a browser request
+			acceptHeader := r.Header.Get("Accept")
+			if strings.Contains(acceptHeader, "application/json") {
+				// API request: return 401 Unauthorized
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			} else {
+				// Browser request: redirect to the login page
+				http.Redirect(w, r, "/_/login", http.StatusFound)
+			}
+			return
 		}
-		// If !isAuthenticated, the authenticator handled the response (401/redirect)
+
+		// Add user info to context
+		ctx := context.WithValue(r.Context(), userContextKey, &AuthenticatedUser{
+			ID:     username,
+			Source: "basic",
+		})
+		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
 
@@ -596,6 +532,31 @@ func singleJoiningSlash(a, b string) string {
 		return a + b
 	}
 	return a + b
+}
+
+func generateSessionToken() (string, error) {
+	tokenBytes := make([]byte, 32)
+	_, err := rand.Read(tokenBytes)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(tokenBytes), nil
+}
+
+var sessionStore = make(map[string]string) // Example: map[token]username
+
+func storeSession(token, username string) {
+	sessionStore[token] = username
+}
+
+func validateSession(r *http.Request) (string, bool) {
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		return "", false
+	}
+
+	username, exists := sessionStore[cookie.Value]
+	return username, exists
 }
 
 // --- Main Function ---

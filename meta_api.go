@@ -44,11 +44,9 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	// User found, return their information
 	response := map[string]interface{}{
 		"authenticated": true,
-		"user": map[string]string{
-			"id":     user.ID,     // e.g., username for basic, provider ID for oauth
-			"source": user.Source, // e.g., "basic", "google", "github"
-			// Add more fields as needed (e.g., email, name if fetched during OAuth)
-		},
+		"username":      user.ID,     // e.g., username for basic, provider ID for oauth
+		"source":        user.Source, // e.g., "basic", "google", "github"
+		// Add more fields as needed (e.g., email, name if fetched during OAuth)
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
