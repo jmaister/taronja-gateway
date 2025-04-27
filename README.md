@@ -14,9 +14,11 @@ Features table, shows what is implemented and what is planned.
 | Gateway                      | ✅       |
 | Authentication               | ✅       |
 | Authentication: Basic        | ✅       |
-| Authentication: OAuth2       | ✅       |
+| Authentication: OAuth2       | 🚧       |
 | Authentication: JWT          | 🚧       |
 | Authorization using RBAC     | 🚧       |
+| Sessions                     | 🚧       |
+| User management              | 🚧       |
 | Rate Limiting                | 🚧       |
 | Circuit breaker              | 🚧       |
 | Caching                      | 🚧       |
