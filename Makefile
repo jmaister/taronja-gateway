@@ -33,6 +33,13 @@ jmeter:
 	@echo "Running JMeter..."
 	jmeter -t test/test-plan.jmx
 
+# Target to run all k6 tests with a 5-second duration, each test runs only once
+k6-test:
+	@echo "Running all K6 tests for 5 seconds each, only once..."
+	@for file in $(shell find tests -name '*.js' -o -name '*.ts'); do \
+		echo "Running $$file..."; \
+		k6 run --quiet --duration 5s --iterations 1 $$file; \
+	done
 
 # Clean target
 clean:
