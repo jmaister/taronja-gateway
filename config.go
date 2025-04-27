@@ -46,18 +46,8 @@ type NotificationConfig struct {
 }
 
 // New: Management API Configuration Structs
-type ManagementEndpointToggle struct {
-	Enabled bool `yaml:"enabled"`
-}
-type ManagementEndpointAuth struct {
-	Enabled        bool                 `yaml:"enabled"`
-	Authentication AuthenticationConfig `yaml:"authentication"` // Auth config for this specific endpoint
-}
 type ManagementConfig struct {
-	Prefix string                   `yaml:"prefix"` // e.g., "/_"
-	Health ManagementEndpointToggle `yaml:"health"` // Simple enable/disable
-	Me     ManagementEndpointAuth   `yaml:"me"`     // Endpoint with its own auth config
-	// Add more management endpoints here
+	Prefix string `yaml:"prefix"` // e.g., "/_"
 }
 
 // Main Config Struct including Management API config

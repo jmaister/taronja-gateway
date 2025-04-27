@@ -63,23 +63,15 @@ func (g *Gateway) configureManagementRoutes() {
 	log.Printf("main.go: Registering management API routes under prefix: %s", prefix)
 
 	// Health Endpoint
-	if g.config.Management.Health.Enabled {
-		healthPath := prefix + "/health"
-		g.mux.HandleFunc(healthPath, handleHealth)
-		log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
-	}
+	healthPath := prefix + "/health"
+	g.mux.HandleFunc(healthPath, handleHealth)
+	log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
 
 	// Me Endpoint
-	if g.config.Management.Me.Enabled {
-		mePath := prefix + "/me"
-		meAuthConfig := g.config.Management.Me.Authentication
-		if !meAuthConfig.Enabled {
-			meAuthConfig.Enabled = true
-		}
-		authWrappedMeHandler := g.wrapWithAuth(handleMe, meAuthConfig)
-		g.mux.HandleFunc(mePath, authWrappedMeHandler)
-		log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t (Method: %s)", "User Info", mePath, true, meAuthConfig.Method)
-	}
+	mePath := prefix + "/me"
+	authWrappedMeHandler := g.wrapWithAuth(handleMe)
+	g.mux.HandleFunc(mePath, authWrappedMeHandler)
+	log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
 
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes(prefix)
@@ -224,7 +216,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 // --- Authentication Middleware ---
 
 // wrapWithAuth applies the authentication check based on config.
-func (g *Gateway) wrapWithAuth(next http.HandlerFunc, authConfig AuthenticationConfig) http.HandlerFunc {
+func (g *Gateway) wrapWithAuth(next http.HandlerFunc) http.HandlerFunc {
 	return sessionMiddleware(next)
 }
 
@@ -440,11 +432,7 @@ func loadConfig(filename string) (*Config, error) {
 	config := &Config{}
 
 	// Set defaults *before* unmarshalling
-	config.Management.Prefix = "/_"                    // Default prefix
-	config.Management.Health.Enabled = true            // Default enabled
-	config.Management.Me.Enabled = true                // Default enabled
-	config.Management.Me.Authentication.Enabled = true // Default auth enabled for /me
-	config.Management.Me.Authentication.Method = "any" // Default auth method for /me
+	config.Management.Prefix = "/_" // Default prefix
 
 	err = yaml.Unmarshal([]byte(expandedData), config)
 	if err != nil {
@@ -466,15 +454,6 @@ func loadConfig(filename string) (*Config, error) {
 		config.Management.Prefix = "/_"
 	}
 	config.Management.Prefix = "/" + strings.Trim(config.Management.Prefix, "/") // Ensure leading/no trailing slash
-
-	if config.Management.Me.Enabled && !config.Management.Me.Authentication.Enabled {
-		log.Printf("Warning: management.me.enabled is true, but management.me.authentication.enabled is false. Forcing authentication enabled for /me.")
-		config.Management.Me.Authentication.Enabled = true
-	}
-	if config.Management.Me.Enabled && config.Management.Me.Authentication.Method == "" {
-		log.Printf("Warning: management.me.authentication.method is empty. Defaulting to 'any'.")
-		config.Management.Me.Authentication.Method = "any"
-	}
 
 	// Resolve static route paths
 	exePath, err := os.Executable()
