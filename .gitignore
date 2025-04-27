@@ -6,3 +6,7 @@ jmeter.log
 # Executable files
 tg
 tg.exe
+
+
+# Environment files
+.env

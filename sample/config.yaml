@@ -1,0 +1,85 @@
+name: Example Gateway Configuration
+server:
+  host: 127.0.0.1
+  port: 8080
+  url: http://localhost:8080
+management:
+  prefix: _
+routes:
+  - name: Favicon
+    from: /favicon.ico
+    toFolder: ./sample/webfiles/favicon.ico
+    static: true
+  - name: V1 of the API
+    from: /api/v1/*
+    removeFromPath: "/api/v1/"
+    to: https://jsonplaceholder.typicode.com
+  - name: V2 of the API (authenticated)
+    from: /api/v2/*
+    removeFromPath: "/api/v2/"
+    to: https://jsonplaceholder.typicode.com
+    authentication:
+      enabled: true
+  - name: httpbin
+    from: /api/httpbin/*
+    removeFromPath: "/api/httpbin/"
+    to: http://localhost:8081
+  - name: httpbin-auth
+    from: /api/httpbin-auth/*
+    removeFromPath: "/api/httpbin-auth/"
+    to: http://localhost:8081
+    authentication:
+      enabled: true
+  - name: FrontEnd Auth User-Password
+    from: /a/userpass
+    toFolder: ./sample/userpass
+    static: true
+    authentication:
+      enabled: true
+  - name: FrontEnd
+    from: /static
+    toFolder: ./sample/webfiles
+    static: true
+  - name: FrontEnd Auth Google
+    from: /a/google
+    toFolder: ./sample/webfiles
+    static: true
+    authentication:
+      enabled: true
+  - name: FrontEnd Auth Github
+    from: /a/github
+    toFolder: ./sample/github
+    static: true
+    authentication:
+      enabled: true
+  - name: FrontEnd Auth Basic
+    from: /a/basic
+    toFolder: ./sample/basic
+    static: true
+    authentication:
+      enabled: true
+  - name: FE
+    from: /
+    removeFromPath: /
+    toFolder: ./sample/webfiles
+    static: true
+
+
+authenticationProviders:
+  google:
+    clientId: ${GOOGLE_CLIENT_ID}
+    clientSecret: ${GOOGLE_CLIENT_SECRET}
+  github:
+    clientId: ${GITHUB_CLIENT_ID}
+    clientSecret: ${GITHUB_CLIENT_SECRET}
+
+notification:
+  email:
+    enabled: true
+    smtp:
+      host: 127.0.0.1
+      port: 1025
+      username: ${SMTP_USERNAME}
+      password: ${SMTP_PASSWORD}
+      from: ${SMTP_FROM}
+      fromName: ${SMTP_FROM_NAME}

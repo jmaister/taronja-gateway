@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -534,6 +535,11 @@ func validateSession(r *http.Request) (string, bool) {
 // --- Main Function ---
 
 func main() {
+	err := godotenv.Load() // 👈 load .env file
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile) // Include file/line number
 	log.Println("main.go: Starting API Gateway...")
 
