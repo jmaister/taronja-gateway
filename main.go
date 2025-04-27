@@ -69,7 +69,7 @@ func (g *Gateway) configureManagementRoutes() {
 
 	// Me Endpoint
 	mePath := prefix + "/me"
-	authWrappedMeHandler := g.wrapWithAuth(handleMe)
+	authWrappedMeHandler := g.wrapWithAuth(handleMe, false)
 	g.mux.HandleFunc(mePath, authWrappedMeHandler)
 	log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
 
@@ -176,7 +176,7 @@ func (g *Gateway) configureUserRoutes() error {
 
 		// Wrap the handler with authentication if enabled for this route
 		if routeConfig.Authentication.Enabled {
-			handler = sessionMiddleware(handler)
+			handler = g.wrapWithAuth(handler, routeConfig.Static)
 		}
 
 		// Register the final handler
@@ -216,23 +216,16 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 // --- Authentication Middleware ---
 
 // wrapWithAuth applies the authentication check based on config.
-func (g *Gateway) wrapWithAuth(next http.HandlerFunc) http.HandlerFunc {
-	return sessionMiddleware(next)
-}
-
-// sessionMiddleware checks for a valid session and handles unauthorized requests.
-func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, valid := validateSession(r)
 		if !valid {
-			// Check if the request is an API request or a browser request
-			acceptHeader := r.Header.Get("Accept")
-			if strings.Contains(acceptHeader, "application/json") {
-				// API request: return 401 Unauthorized
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			} else {
-				// Browser request: redirect to the login page
+			if isStatic {
+				// Redirect to login page for static files
 				http.Redirect(w, r, "/_/login", http.StatusFound)
+			} else {
+				// Return 401 Unauthorized for API requests
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			}
 			return
 		}
