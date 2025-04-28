@@ -2,8 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
+
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
@@ -33,11 +33,14 @@ func NewGateway(config *Config) (*Gateway, error) {
 		Handler:      mux, // Mux will be populated later
 	}
 
+	sessionStore := session.NewMemorySessionStore()
+
 	gateway := &Gateway{
-		server:      server,
-		config:      config,
-		mux:         mux,
-		authManager: authManager,
+		server:       server,
+		config:       config,
+		mux:          mux,
+		authManager:  authManager,
+		sessionStore: sessionStore,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -93,18 +96,22 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 		// Validate username and password (replace with your own logic)
 		if username == "admin" && password == "password" {
 			// Generate session token
-			token, err := generateSessionToken()
+			token, err := g.sessionStore.GenerateKey()
 			if err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 
 			// Store session
-			storeSession(token, username)
+			so := session.SessionObject{
+				Username: username,
+				// TODO: add all fields
+			}
+			g.sessionStore.Set(token, so)
 
 			// Set session token in a cookie
 			http.SetCookie(w, &http.Cookie{
-				Name:     "session_token",
+				Name:     session.SessionCookieName,
 				Value:    token,
 				Path:     "/",
 				HttpOnly: true,
@@ -144,7 +151,6 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
-// Renamed from configureRoutes to distinguish from management routes.
 func (g *Gateway) configureUserRoutes() error {
 	log.Printf("main.go: Registering user-defined routes...")
 	for _, routeConfig := range g.config.Routes {
@@ -219,11 +225,11 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		username, valid := validateSession(r)
+		sessionObject, valid := g.sessionStore.Validate(r)
 		if !valid {
 			if isStatic {
 				// Redirect to login page for static files
-				http.Redirect(w, r, "/_/login", http.StatusFound)
+				http.Redirect(w, r, g.config.Management.Prefix+"/login", http.StatusFound)
 			} else {
 				// Return 401 Unauthorized for API requests
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -233,7 +239,8 @@ func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.Handle
 
 		// Add user info to context
 		ctx := context.WithValue(r.Context(), userContextKey, &AuthenticatedUser{
-			ID:     username,
+			ID: sessionObject.Username,
+			// TODO: add all fields
 			Source: "basic",
 		})
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -505,31 +512,6 @@ func singleJoiningSlash(a, b string) string {
 		return a + b
 	}
 	return a + b
-}
-
-func generateSessionToken() (string, error) {
-	tokenBytes := make([]byte, 32)
-	_, err := rand.Read(tokenBytes)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(tokenBytes), nil
-}
-
-var sessionStore = make(map[string]string) // Example: map[token]username
-
-func storeSession(token, username string) {
-	sessionStore[token] = username
-}
-
-func validateSession(r *http.Request) (string, bool) {
-	cookie, err := r.Cookie("session_token")
-	if err != nil {
-		return "", false
-	}
-
-	username, exists := sessionStore[cookie.Value]
-	return username, exists
 }
 
 // --- Main Function ---

@@ -1,6 +1,10 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/jmaister/taronja-gateway/session"
+)
 
 // --- Configuration Structs ---
 
@@ -63,8 +67,9 @@ type Config struct {
 // --- Gateway Struct ---
 
 type Gateway struct {
-	server      *http.Server
-	config      *Config
-	mux         *http.ServeMux
-	authManager *AuthManager
+	server       *http.Server
+	config       *Config
+	mux          *http.ServeMux
+	authManager  *AuthManager
+	sessionStore session.SessionStore
 }

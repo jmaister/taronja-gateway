@@ -30,35 +30,17 @@ routes:
     to: http://localhost:8081
     authentication:
       enabled: true
-  - name: FrontEnd Auth User-Password
-    from: /a/userpass
-    toFolder: ./sample/userpass
+  - name: Static files
+    from: /static
+    toFolder: ./sample/webfiles
+    static: true
+  - name: FrontEnd Authenticated
+    from: /secret
+    toFolder: ./sample/webfiles/secret
     static: true
     authentication:
       enabled: true
   - name: FrontEnd
-    from: /static
-    toFolder: ./sample/webfiles
-    static: true
-  - name: FrontEnd Auth Google
-    from: /a/google
-    toFolder: ./sample/webfiles
-    static: true
-    authentication:
-      enabled: true
-  - name: FrontEnd Auth Github
-    from: /a/github
-    toFolder: ./sample/github
-    static: true
-    authentication:
-      enabled: true
-  - name: FrontEnd Auth Basic
-    from: /a/basic
-    toFolder: ./sample/basic
-    static: true
-    authentication:
-      enabled: true
-  - name: FE
     from: /
     removeFromPath: /
     toFolder: ./sample/webfiles
