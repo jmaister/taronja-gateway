@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -14,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
-	"gopkg.in/yaml.v3"
 )
 
 // --- NewGateway Function ---
@@ -71,11 +70,15 @@ func (g *Gateway) configureManagementRoutes() {
 	g.mux.HandleFunc(healthPath, handleHealth)
 	log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
 
-	// Me Endpoint
-	mePath := prefix + "/me"
-	authWrappedMeHandler := g.wrapWithAuth(handleMe, false)
-	g.mux.HandleFunc(mePath, authWrappedMeHandler)
-	log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
+	// Me Endpoint - only register if there are auth methods configured
+	if g.authManager.HasAuthenticators() {
+		mePath := prefix + "/me"
+		authWrappedMeHandler := g.wrapWithAuth(handleMe, false)
+		g.mux.HandleFunc(mePath, authWrappedMeHandler)
+		log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
+	} else {
+		log.Printf("main.go: Skipping Me endpoint registration as no authentication methods are configured")
+	}
 
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes(prefix)
@@ -410,87 +413,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig RouteConfig, isDir bool) h
 
 // --- Utility Functions ---
 
-// loadConfig reads, parses, and validates the YAML configuration file.
-func loadConfig(filename string) (*Config, error) {
-	configAbsPath, err := filepath.Abs(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for config file '%s': %w", filename, err)
-	}
-	log.Printf("main.go: Loading configuration from: %s", configAbsPath)
-
-	file, err := os.Open(configAbsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file '%s': %w", filename, err)
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file '%s': %w", filename, err)
-	}
-
-	expandedData := os.ExpandEnv(string(data))
-	config := &Config{}
-
-	// Set defaults *before* unmarshalling
-	config.Management.Prefix = "/_" // Default prefix
-
-	err = yaml.Unmarshal([]byte(expandedData), config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
-	}
-
-	// --- Post-Unmarshal Validation and Path Resolution ---
-	// Validate server config
-	if config.Server.Port == 0 {
-		return nil, fmt.Errorf("server.port must be specified")
-	}
-	if config.Server.URL == "" {
-		log.Printf("Warning: server.url is not set in config. OAuth redirects might not work correctly.")
-	}
-
-	// Validate management config
-	if config.Management.Prefix == "" {
-		log.Printf("Warning: management.prefix is empty, defaulting to '/_'.")
-		config.Management.Prefix = "/_"
-	}
-	config.Management.Prefix = "/" + strings.Trim(config.Management.Prefix, "/") // Ensure leading/no trailing slash
-
-	// Resolve static route paths
-	exePath, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get executable path: %w", err)
-	}
-	exeDir := filepath.Dir(exePath)
-	log.Printf("main.go: Executable directory: %s", exeDir)
-
-	for i := range config.Routes {
-		route := &config.Routes[i]
-		if route.Static {
-			if route.ToFolder == "" {
-				log.Printf("Warning: Static route '%s' has an empty 'toFolder'.", route.Name)
-				continue
-			}
-			originalPath := route.ToFolder
-			resolvedPath := originalPath
-			if !filepath.IsAbs(originalPath) {
-				resolvedPath = filepath.Join(exeDir, originalPath)
-			}
-			route.ToFolder = filepath.Clean(resolvedPath)
-			if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
-				log.Printf("main.go: Resolved relative ToFolder for route '%s' from '%s' to '%s'", route.Name, originalPath, route.ToFolder)
-			}
-		}
-		// Validate route 'From' path? Ensure it starts with '/'?
-		if !strings.HasPrefix(route.From, "/") {
-			log.Printf("Warning: Route '%s' From path '%s' does not start with '/'. Adding prefix.", route.Name, route.From)
-			route.From = "/" + route.From
-		}
-	}
-
-	return config, nil
-}
-
 // singleJoiningSlash remains unchanged
 func singleJoiningSlash(a, b string) string {
 	aslash := strings.HasSuffix(a, "/")
@@ -531,7 +453,7 @@ func main() {
 		os.Exit(1)
 	}
 	configFilePath := os.Args[1]
-	config, err := loadConfig(configFilePath)
+	config, err := config.LoadConfig(configFilePath)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}

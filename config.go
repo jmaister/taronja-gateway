@@ -1,9 +1,16 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/jmaister/taronja-gateway/session"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // --- Configuration Structs ---
@@ -31,9 +38,13 @@ type AuthProviderCredentials struct {
 	ClientId     string `yaml:"clientId"`
 	ClientSecret string `yaml:"clientSecret"`
 }
+type BasicAuthenticationConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
 type AuthenticationProviders struct {
-	Google AuthProviderCredentials `yaml:"google"`
-	Github AuthProviderCredentials `yaml:"github"`
+	Basic  BasicAuthenticationConfig `yaml:"basic"`
+	Google AuthProviderCredentials   `yaml:"google"`
+	Github AuthProviderCredentials   `yaml:"github"`
 }
 type NotificationConfig struct {
 	Email struct {
@@ -72,4 +83,85 @@ type Gateway struct {
 	mux          *http.ServeMux
 	authManager  *AuthManager
 	sessionStore session.SessionStore
+}
+
+// LoadConfig reads, parses, and validates the YAML configuration file.
+func LoadConfig(filename string) (*Config, error) {
+	configAbsPath, err := filepath.Abs(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for config file '%s': %w", filename, err)
+	}
+	log.Printf("config.go: Loading configuration from: %s", configAbsPath)
+
+	file, err := os.Open(configAbsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open config file '%s': %w", filename, err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file '%s': %w", filename, err)
+	}
+
+	expandedData := os.ExpandEnv(string(data))
+	config := &Config{}
+
+	// Set defaults *before* unmarshalling
+	config.Management.Prefix = "/_" // Default prefix
+
+	err = yaml.Unmarshal([]byte(expandedData), config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
+	}
+
+	// --- Post-Unmarshal Validation and Path Resolution ---
+	// Validate server config
+	if config.Server.Port == 0 {
+		return nil, fmt.Errorf("server.port must be specified")
+	}
+	if config.Server.URL == "" {
+		log.Printf("Warning: server.url is not set in config. OAuth redirects might not work correctly.")
+	}
+
+	// Validate management config
+	if config.Management.Prefix == "" {
+		log.Printf("Warning: management.prefix is empty, defaulting to '/_'.")
+		config.Management.Prefix = "/_"
+	}
+	config.Management.Prefix = "/" + strings.Trim(config.Management.Prefix, "/") // Ensure leading/no trailing slash
+
+	// Resolve static route paths
+	exePath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get executable path: %w", err)
+	}
+	exeDir := filepath.Dir(exePath)
+	log.Printf("config.go: Executable directory: %s", exeDir)
+
+	for i := range config.Routes {
+		route := &config.Routes[i]
+		if route.Static {
+			if route.ToFolder == "" {
+				log.Printf("Warning: Static route '%s' has an empty 'toFolder'.", route.Name)
+				continue
+			}
+			originalPath := route.ToFolder
+			resolvedPath := originalPath
+			if !filepath.IsAbs(originalPath) {
+				resolvedPath = filepath.Join(exeDir, originalPath)
+			}
+			route.ToFolder = filepath.Clean(resolvedPath)
+			if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
+				log.Printf("config.go: Resolved relative ToFolder for route '%s' from '%s' to '%s'", route.Name, originalPath, route.ToFolder)
+			}
+		}
+		// Validate route 'From' path? Ensure it starts with '/'?
+		if !strings.HasPrefix(route.From, "/") {
+			log.Printf("Warning: Route '%s' From path '%s' does not start with '/'. Adding prefix.", route.Name, route.From)
+			route.From = "/" + route.From
+		}
+	}
+
+	return config, nil
 }

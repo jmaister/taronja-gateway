@@ -28,6 +28,10 @@ type AuthManager struct {
 	globalConfig   *Config
 }
 
+func (am *AuthManager) HasAuthenticators() bool {
+	return len(am.authenticators) > 0
+}
+
 func NewAuthManager(cfg *Config) *AuthManager {
 	manager := &AuthManager{
 		authenticators: make(map[string]Authenticator),
