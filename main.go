@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
 )
@@ -453,7 +452,7 @@ func main() {
 		os.Exit(1)
 	}
 	configFilePath := os.Args[1]
-	config, err := config.LoadConfig(configFilePath)
+	config, err := LoadConfig(configFilePath)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}
