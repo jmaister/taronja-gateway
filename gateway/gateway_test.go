@@ -1,11 +1,10 @@
-package main
+package gateway
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/gateway"
 )
 
 func TestNewGateway(t *testing.T) {
@@ -31,6 +30,12 @@ func TestNewGateway(t *testing.T) {
 						From: "/",
 						To:   "http://localhost:8081",
 					},
+					{
+						Name:     "Test Route 2",
+						From:     "/static",
+						ToFolder: "./static",
+						Static:   true,
+					},
 				},
 			},
 			wantErr: false,
@@ -39,7 +44,7 @@ func TestNewGateway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := gateway.NewGateway(tt.config)
+			got, err := NewGateway(tt.config)
 
 			if tt.wantErr {
 				if err == nil {
