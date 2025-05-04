@@ -7,9 +7,6 @@ ifeq ($(OS),Windows_NT)
 	BINARY_NAME := tg.exe
 endif
 
-# Source files
-SRC_FILES := $(shell find . -name '*.go' -type f)
-
 # Build target
 build:
 	@echo "Building $(PROJECT_NAME)..."
@@ -46,7 +43,6 @@ k6-test:
 # Clean target
 clean:
 	@echo "Cleaning up..."
-	go clean
 	rm -f $(BINARY_NAME)
 
 # Update dependencies

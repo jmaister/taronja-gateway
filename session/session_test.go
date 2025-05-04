@@ -23,7 +23,6 @@ func TestSetAndGet(t *testing.T) {
 	key, _ := store.GenerateKey()
 
 	sessionObj := SessionObject{
-		UserId:          "123",
 		Username:        "testuser",
 		Email:           "test@example.com",
 		IsAuthenticated: true,
@@ -47,7 +46,6 @@ func TestValidate(t *testing.T) {
 	key, _ := store.GenerateKey()
 
 	sessionObj := SessionObject{
-		UserId:          "123",
 		Username:        "testuser",
 		Email:           "test@example.com",
 		IsAuthenticated: true,

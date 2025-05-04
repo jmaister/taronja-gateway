@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -154,4 +154,14 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	}
 
 	return config, nil
+}
+
+// --- Helper Functions ---
+
+// HasAuthentication checks if any authentication is enabled in the config.
+func (c *GatewayConfig) HasAnyAuthentication() bool {
+	return c.AuthenticationProviders.Basic.Enabled ||
+		c.AuthenticationProviders.UserPassword.Enabled ||
+		c.AuthenticationProviders.Google.ClientId != "" ||
+		c.AuthenticationProviders.Github.ClientId != ""
 }

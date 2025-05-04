@@ -4,13 +4,14 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/jmaister/taronja-gateway/gateway" // Import the gateway package instead of main
 	"github.com/jmaister/taronja-gateway/session"
 )
 
-func RegisterBasicAuthenticationCallback(g *Gateway, managementPrefix string) {
+func RegisterBasicAuthenticationCallback(g *gateway.Gateway, managementPrefix string) {
 	// Basic Auth Login Route
 	basicLoginPath := managementPrefix + "/auth/basic/login"
-	g.mux.HandleFunc(basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
+	g.Mux.HandleFunc(basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
@@ -22,7 +23,7 @@ func RegisterBasicAuthenticationCallback(g *Gateway, managementPrefix string) {
 		// TODO: load user from database
 		if username == "admin" && password == "password" {
 			// Generate session token
-			token, err := g.sessionStore.GenerateKey()
+			token, err := g.SessionStore.GenerateKey()
 			if err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
@@ -33,7 +34,7 @@ func RegisterBasicAuthenticationCallback(g *Gateway, managementPrefix string) {
 				Username: username,
 				// TODO: add all fields
 			}
-			g.sessionStore.Set(token, so)
+			g.SessionStore.Set(token, so)
 
 			// Set session token in a cookie
 			http.SetCookie(w, &http.Cookie{
@@ -51,5 +52,4 @@ func RegisterBasicAuthenticationCallback(g *Gateway, managementPrefix string) {
 		}
 	})
 	log.Printf("main.go: Registered Login Route: %-25s | Path: %s", "Basic Auth Login", basicLoginPath)
-
 }
