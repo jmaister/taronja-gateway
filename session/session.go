@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -10,6 +11,9 @@ import (
 
 const TokenLength = 32
 const SessionCookieName = "tg_session_token"
+
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
 
 type SessionStore interface {
 	GenerateKey() (string, error)
@@ -68,5 +72,36 @@ func (s MemorySessionStore) Validate(r *http.Request) (SessionObject, bool) {
 	}
 
 	sessionObject, exists := s.store[cookie.Value]
-	return sessionObject, exists
+	if !exists {
+		return SessionObject{}, false
+	}
+	if sessionObject.ValidUntil.Before(time.Now()) {
+		delete(s.store, cookie.Value)
+		return SessionObject{}, false
+	}
+	return sessionObject, true
+}
+
+// SessionKey is the key used to store session in context
+const SessionKey contextKey = "session"
+
+// SessionMiddleware validates that the session cookie is present and valid
+func SessionMiddleware(next http.HandlerFunc, store SessionStore, isStatic bool, managementPrefix string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionObject, exists := store.Validate(r)
+		if !exists {
+			if isStatic {
+				// Redirect to login page for static files
+				http.Redirect(w, r, managementPrefix+"/login", http.StatusFound)
+			} else {
+				// Return 401 Unauthorized for API requests
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			}
+			return
+		}
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, SessionKey, sessionObject)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+
 }

@@ -12,6 +12,8 @@ The authentication methods need to keep the session alive, so that the user can 
 
 ## Decision
 
+### Login workflow
+
 The login workflow for Basic authentication will be as follows:
 
 ```mermaid
@@ -36,6 +38,54 @@ The expiration date will be set to 1 hour, and the session will be renewed every
 On each request, the gateway will check if the token is valid and not expired. The user will be checked in the database, and if the user is not found, deactivated, or expired, the user will be logged out.
 
 The user will be logged out by deleting the session from the database and removing the cookie from the browser.
+
+### User is already authenticated
+
+If the user is already authenticated, the frontend will check if the cookie is set and it is valid. If the cookie is valid, the user will be logged in automatically.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Gateway
+    participant DB
+
+    User->>Frontend: Open application
+    Frontend->>Gateway: Check cookie
+    Gateway->>DB: Validate session
+    DB-->>Gateway: Session data
+    Gateway-->>Frontend: Set user data
+```
+
+### User is not authenticated
+
+If the user is not authenticated, the frontend will redirect the user to the login page. Then the user can select any of the enabled authentication methods.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Gateway
+
+    User->>Frontend: Open application
+    Frontend->>Gateway: Make request
+    activate Gateway
+    Gateway-->>Frontend: Redirect to login page
+    deactivate Gateway
+```
+
+### User login page
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Gateway
+
+    User->>Frontend: Select authentication method
+    Frontend->>Gateway: Authenticate
+    Gateway-->>Frontend: Set Token in a cookie and<br/> redirect to application
+```
 
 ### User table
 

@@ -32,7 +32,7 @@ func (am *AuthManager) HasAuthenticators() bool {
 	return len(am.authenticators) > 0
 }
 
-func NewAuthManager(cfg *GatewayConfig) *AuthManager {
+func NewAuthManager(cfg *Config) *AuthManager {
 	manager := &AuthManager{
 		authenticators: make(map[string]Authenticator),
 		globalConfig:   cfg,
@@ -78,6 +78,37 @@ func (am *AuthManager) registerAuthenticators() {
 		log.Printf("auth.go: OAuth2 provider 'github' not configured (missing clientId).")
 	}
 	// Add other providers here
+}
+
+// GetAuthenticator retrieves the appropriate authenticator.
+func (am *AuthManager) GetAuthenticator(authConfig AuthenticationConfig) (Authenticator, error) {
+	var providerKey string
+
+	switch authConfig.Method {
+	case "basic":
+		providerKey = "basic"
+	case "oauth2":
+		if authConfig.Provider == "" {
+			return nil, fmt.Errorf("oauth2 method requires a provider (e.g., google, github)")
+		}
+		providerKey = authConfig.Provider
+	case "any": // Handle the special "any" method for internal endpoints
+		providerKey = "any"
+	case "":
+		return nil, nil // No specific authenticator needed
+	default:
+		return nil, fmt.Errorf("unsupported authentication method: %s", authConfig.Method)
+	}
+
+	authenticator, exists := am.authenticators[providerKey]
+	if !exists {
+		// Provide more specific error message for OAuth providers
+		if authConfig.Method == "oauth2" {
+			return nil, fmt.Errorf("oauth2 provider '%s' not found or not configured in authenticationProviders", providerKey)
+		}
+		return nil, fmt.Errorf("authenticator for method '%s' not found or not configured", providerKey)
+	}
+	return authenticator, nil
 }
 
 // --- Basic Authenticator ---

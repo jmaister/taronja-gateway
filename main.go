@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"fmt"
 	"log"
 	"net/http"
@@ -17,9 +15,19 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// --- Gateway Struct ---
+
+type Gateway struct {
+	server       *http.Server
+	config       *GatewayConfig
+	mux          *http.ServeMux
+	authManager  *AuthManager
+	sessionStore session.SessionStore
+}
+
 // --- NewGateway Function ---
 
-func NewGateway(config *Config) (*Gateway, error) {
+func NewGateway(config *GatewayConfig) (*Gateway, error) {
 	mux := http.NewServeMux()
 	authManager := NewAuthManager(config) // Initialize Auth Manager early
 
@@ -199,9 +207,9 @@ func (g *Gateway) configureUserRoutes() error {
 
 		// Log registration details
 		if routeConfig.Static {
-			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (Method: %s)", routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.Authentication.Enabled, routeConfig.Authentication.Method)
+			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t", routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.Authentication.Enabled)
 		} else {
-			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (Method: %s)", routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, routeConfig.Authentication.Method)
+			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t", routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled)
 		}
 	}
 	return nil
@@ -226,27 +234,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sessionObject, valid := g.sessionStore.Validate(r)
-		if !valid {
-			if isStatic {
-				// Redirect to login page for static files
-				http.Redirect(w, r, g.config.Management.Prefix+"/login", http.StatusFound)
-			} else {
-				// Return 401 Unauthorized for API requests
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			}
-			return
-		}
-
-		// Add user info to context
-		ctx := context.WithValue(r.Context(), userContextKey, &AuthenticatedUser{
-			ID: sessionObject.Username,
-			// TODO: add all fields
-			Source: "basic",
-		})
-		next.ServeHTTP(w, r.WithContext(ctx))
-	}
+	return session.SessionMiddleware(next, g.sessionStore, isStatic, g.config.Management.Prefix)
 }
 
 // --- Route Handler Creation ---

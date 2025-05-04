@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/jmaister/taronja-gateway/session"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -21,9 +19,7 @@ type ServerConfig struct {
 	URL  string `yaml:"url"`
 }
 type AuthenticationConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Method   string `yaml:"method"`   // "basic", "oauth2", "any", or ""
-	Provider string `yaml:"provider"` // "google", "github", etc. (for oauth2)
+	Enabled bool `yaml:"enabled"`
 }
 type RouteConfig struct {
 	Name           string               `yaml:"name"`
@@ -41,10 +37,14 @@ type AuthProviderCredentials struct {
 type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
+type UserPasswordAuthenticationConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
 type AuthenticationProviders struct {
-	Basic  BasicAuthenticationConfig `yaml:"basic"`
-	Google AuthProviderCredentials   `yaml:"google"`
-	Github AuthProviderCredentials   `yaml:"github"`
+	Basic        BasicAuthenticationConfig        `yaml:"basic"`
+	UserPassword UserPasswordAuthenticationConfig `yaml:"userPassword"`
+	Google       AuthProviderCredentials          `yaml:"google"`
+	Github       AuthProviderCredentials          `yaml:"github"`
 }
 type NotificationConfig struct {
 	Email struct {
@@ -65,8 +65,8 @@ type ManagementConfig struct {
 	Prefix string `yaml:"prefix"` // e.g., "/_"
 }
 
-// Main Config Struct including Management API config
-type Config struct {
+// Main GatewayConfig Struct including Management API config
+type GatewayConfig struct {
 	Name                    string                  `yaml:"name"`
 	Server                  ServerConfig            `yaml:"server"`
 	Management              ManagementConfig        `yaml:"management"` // Add management config
@@ -75,18 +75,8 @@ type Config struct {
 	Notification            NotificationConfig      `yaml:"notification"`
 }
 
-// --- Gateway Struct ---
-
-type Gateway struct {
-	server       *http.Server
-	config       *Config
-	mux          *http.ServeMux
-	authManager  *AuthManager
-	sessionStore session.SessionStore
-}
-
 // LoadConfig reads, parses, and validates the YAML configuration file.
-func LoadConfig(filename string) (*Config, error) {
+func LoadConfig(filename string) (*GatewayConfig, error) {
 	configAbsPath, err := filepath.Abs(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path for config file '%s': %w", filename, err)
@@ -105,7 +95,7 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	expandedData := os.ExpandEnv(string(data))
-	config := &Config{}
+	config := &GatewayConfig{}
 
 	// Set defaults *before* unmarshalling
 	config.Management.Prefix = "/_" // Default prefix
