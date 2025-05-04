@@ -133,8 +133,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		route := &config.Routes[i]
 		if route.Static {
 			if route.ToFolder == "" {
-				log.Printf("Warning: Static route '%s' has an empty 'toFolder'.", route.Name)
-				continue
+				return nil, fmt.Errorf("static route '%s' must have a non-empty 'toFolder'", route.Name)
 			}
 			originalPath := route.ToFolder
 			resolvedPath := originalPath
@@ -143,7 +142,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 			}
 			route.ToFolder = filepath.Clean(resolvedPath)
 			if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
-				log.Printf("config.go: Resolved relative ToFolder for route '%s' from '%s' to '%s'", route.Name, originalPath, route.ToFolder)
+				return nil, fmt.Errorf("config.go: Failed to resolve relative ToFolder for route '%s'. Original: '%s', Resolved: '%s'", route.Name, originalPath, route.ToFolder)
 			}
 		}
 		// Validate route 'From' path? Ensure it starts with '/'?

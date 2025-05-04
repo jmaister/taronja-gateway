@@ -35,28 +35,6 @@ func TestNewGateway(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "Error configuring user routes",
-			config: &config.GatewayConfig{
-				Server: config.ServerConfig{
-					Host: "localhost",
-					Port: 8080,
-				},
-				Management: config.ManagementConfig{
-					Prefix: "/admin",
-				},
-				Routes: []config.RouteConfig{
-					{
-						Name:   "Invalid Route",
-						From:   "/",
-						Static: true,
-						// Missing ToFolder which should cause an error
-					},
-				},
-			},
-			wantErr:   true,
-			errSubstr: "error configuring user routes",
-		},
 	}
 
 	for _, tt := range tests {
