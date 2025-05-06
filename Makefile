@@ -18,9 +18,9 @@ build-windows:
 	GOOS=windows GOARCH=amd64 go build -o $(BINARY_NAME) .
 
 # Run target
-run: build
+run:
 	@echo "Running $(PROJECT_NAME)..."
-	./$(BINARY_NAME) sample/config.yaml
+	go run main.go sample/config.yaml
 
 # Test target
 test:
