@@ -30,12 +30,19 @@ type Gateway struct {
 func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	mux := http.NewServeMux()
 
+	// Create server handler based on logging configuration
+	var handler http.Handler = mux
+	if config.Management.Logging {
+		log.Printf("main.go: Request logging enabled")
+		handler = middleware.LoggingMiddleware(mux)
+	}
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,
-		Handler:      mux, // Mux will be populated later
+		Handler:      handler,
 	}
 
 	sessionStore := session.NewMemorySessionStore()
@@ -169,16 +176,38 @@ func (g *Gateway) configureUserRoutes() error {
 
 		// Create the base handler (proxy or static)
 		if routeConfig.Static {
-			if routeConfig.ToFolder == "" {
-				log.Printf("Warning: Empty ToFolder for static route '%s'. Skipping registration.", routeConfig.Name)
+			var fsPath string
+			var isSpecificFile bool
+
+			// Use ToFolder and ToFile as independent paths
+			if routeConfig.ToFile != "" {
+				// Use ToFile directly as an independent path
+				fsPath = routeConfig.ToFile
+
+				// Check if this is a file or directory
+				fileInfo, statErr := os.Stat(fsPath)
+				if statErr != nil {
+					log.Printf("Warning: Invalid path '%s' for static route '%s': %v. Skipping registration.", fsPath, routeConfig.Name, statErr)
+					continue
+				}
+				isSpecificFile = !fileInfo.IsDir()
+
+			} else if routeConfig.ToFolder != "" {
+				// Use ToFolder directly
+				fsPath = routeConfig.ToFolder
+
+				fileInfo, statErr := os.Stat(fsPath)
+				if statErr != nil {
+					log.Printf("Warning: Invalid path '%s' for static route '%s': %v. Skipping registration.", fsPath, routeConfig.Name, statErr)
+					continue
+				}
+				isSpecificFile = !fileInfo.IsDir()
+			} else {
+				log.Printf("Warning: No path specified for static route '%s'. Skipping registration.", routeConfig.Name)
 				continue
 			}
-			fileInfo, statErr := os.Stat(routeConfig.ToFolder)
-			if statErr != nil {
-				log.Printf("Warning: Invalid ToFolder '%s' for static route '%s': %v. Skipping registration.", routeConfig.ToFolder, routeConfig.Name, statErr)
-				continue
-			}
-			handler = g.createStaticHandlerFunc(routeConfig, fileInfo.IsDir())
+
+			handler = g.createStaticHandlerFunc(routeConfig, !isSpecificFile)
 		} else {
 			if routeConfig.To == "" {
 				log.Printf("Warning: Empty 'to' URL for proxy route '%s'. Skipping registration.", routeConfig.Name)
@@ -208,9 +237,16 @@ func (g *Gateway) configureUserRoutes() error {
 
 		// Log registration details
 		if routeConfig.Static {
-			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t", routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.Authentication.Enabled)
+			if routeConfig.ToFile != "" {
+				log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s/%s | Auth: %t",
+					routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.ToFile, routeConfig.Authentication.Enabled)
+			} else {
+				log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
+					routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.Authentication.Enabled)
+			}
 		} else {
-			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t", routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled)
+			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
+				routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled)
 		}
 	}
 	return nil
@@ -327,12 +363,18 @@ func headerWritten(w http.ResponseWriter) bool {
 
 // createStaticHandlerFunc generates the core handler function for static routes (without auth).
 func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir bool) http.HandlerFunc {
-	// routeConfig.ToFolder is already resolved/absolute here
-	targetPath := routeConfig.ToFolder
+	var fsPath string
+
+	// ToFolder and ToFile are independent and should not be joined
+	if routeConfig.ToFile != "" {
+		fsPath = routeConfig.ToFile
+	} else {
+		fsPath = routeConfig.ToFolder
+	}
 
 	if isDir {
 		// Directory serving
-		fs := http.Dir(targetPath) // Serve from the resolved directory path
+		fs := http.Dir(fsPath) // Serve from the resolved directory path
 		fileServer := http.FileServer(fs)
 		stripPrefix := routeConfig.From
 		if strings.HasSuffix(stripPrefix, "/*") {
@@ -347,9 +389,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir 
 		}
 
 		return func(w http.ResponseWriter, r *http.Request) {
-			// Log access *before* serving
-			// log.Printf("Serving Static Dir [%s]: Request '%s' from resolved path '%s' (stripping '%s')", routeConfig.Name, r.URL.Path, targetPath, stripPrefix)
-
 			// Prevent directory listing? Check for index.html.
 			if strings.HasSuffix(r.URL.Path, "/") {
 				relativePath := strings.TrimPrefix(r.URL.Path, stripPrefix)
@@ -357,12 +396,11 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir 
 					relativePath = "/" + relativePath
 				}
 				cleanRelativePath := filepath.Clean(relativePath)
-				indexPath := filepath.Join(targetPath, cleanRelativePath, "index.html")
+				indexPath := filepath.Join(fsPath, cleanRelativePath, "index.html")
 
 				_, err := os.Stat(indexPath)
 				if err != nil && os.IsNotExist(err) {
 					// index.html does not exist. Disable listing explicitly.
-					// log.Printf("Serving Static Dir [%s]: index.html not found at '%s'. Denying directory listing.", routeConfig.Name, indexPath)
 					http.NotFound(w, r) // Return 404 instead of listing
 					return
 				} else if err != nil {
@@ -375,14 +413,13 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir 
 
 	} else {
 		// Single file serving
-		filePath := targetPath // Already cleaned in loadConfig
+		filePath := fsPath // Already cleaned in loadConfig
 
 		return func(w http.ResponseWriter, r *http.Request) {
 			// Check existence/type at request time
 			fileInfo, err := os.Stat(filePath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					// log.Printf("Static file not found [%s]: %s for request %s", routeConfig.Name, filePath, r.URL.Path)
 					http.NotFound(w, r)
 				} else {
 					log.Printf("Error accessing static file [%s] (%s): %v", routeConfig.Name, filePath, err)
@@ -396,7 +433,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir 
 				return
 			}
 
-			// log.Printf("Serving Static File [%s]: %s for request %s", routeConfig.Name, filePath, r.URL.Path)
 			http.ServeFile(w, r, filePath)
 		}
 	}

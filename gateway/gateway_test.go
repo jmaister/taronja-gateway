@@ -116,7 +116,8 @@ func TestHelloEndpoint(t *testing.T) {
 			Port: 0, // Use port 0 to let the system assign an available port
 		},
 		Management: config.ManagementConfig{
-			Prefix: "/admin",
+			Prefix:  "/admin",
+			Logging: true,
 		},
 		Routes: []config.RouteConfig{
 			{

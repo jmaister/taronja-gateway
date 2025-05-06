@@ -18,6 +18,7 @@ type ServerConfig struct {
 	Port int    `yaml:"port"`
 	URL  string `yaml:"url"`
 }
+
 type AuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
@@ -25,7 +26,8 @@ type RouteConfig struct {
 	Name           string               `yaml:"name"`
 	From           string               `yaml:"from"`
 	To             string               `yaml:"to"`
-	ToFolder       string               `yaml:"toFolder"`
+	ToFolder       string               `yaml:"toFolder"` // Folder path for static content
+	ToFile         string               `yaml:"toFile"`   // Optional specific file within folder
 	Static         bool                 `yaml:"static"`
 	RemoveFromPath string               `yaml:"removeFromPath"`
 	Authentication AuthenticationConfig `yaml:"authentication"`
@@ -62,7 +64,8 @@ type NotificationConfig struct {
 
 // New: Management API Configuration Structs
 type ManagementConfig struct {
-	Prefix string `yaml:"prefix"` // e.g., "/_"
+	Prefix  string `yaml:"prefix"`  // e.g., "/_"
+	Logging bool   `yaml:"logging"` // Enable logging
 }
 
 // Main GatewayConfig Struct including Management API config
@@ -131,20 +134,27 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 
 	for i := range config.Routes {
 		route := &config.Routes[i]
+
 		if route.Static {
-			if route.ToFolder == "" {
-				return nil, fmt.Errorf("static route '%s' must have a non-empty 'toFolder'", route.Name)
+			// Validate that ToFolder and ToFile are mutually exclusive
+			if route.ToFolder != "" && route.ToFile != "" {
+				return nil, fmt.Errorf("route '%s' cannot have both 'toFolder' and 'toFile' specified, they are mutually exclusive", route.Name)
 			}
+
+			// Resolve folder path
 			originalPath := route.ToFolder
 			resolvedPath := originalPath
 			if !filepath.IsAbs(originalPath) {
 				resolvedPath = filepath.Join(exeDir, originalPath)
 			}
 			route.ToFolder = filepath.Clean(resolvedPath)
+
 			if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
-				return nil, fmt.Errorf("config.go: Failed to resolve relative ToFolder for route '%s'. Original: '%s', Resolved: '%s'", route.Name, originalPath, route.ToFolder)
+				log.Printf("config.go: Route '%s' folder path resolved. Original: '%s', Resolved: '%s'",
+					route.Name, originalPath, route.ToFolder)
 			}
 		}
+
 		// Validate route 'From' path? Ensure it starts with '/'?
 		if !strings.HasPrefix(route.From, "/") {
 			log.Printf("Warning: Route '%s' From path '%s' does not start with '/'. Adding prefix.", route.Name, route.From)

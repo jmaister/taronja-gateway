@@ -25,5 +25,4 @@ func SessionMiddleware(next http.HandlerFunc, store session.SessionStore, isStat
 		ctx = context.WithValue(ctx, session.SessionKey, sessionObject)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
-
 }
