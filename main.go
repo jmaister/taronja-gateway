@@ -20,7 +20,7 @@ func main() {
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile) // Include file/line number
-	log.Println("main.go: Starting API Gateway...")
+	log.Println("Starting API Gateway...")
 
 	// 1. Load Configuration
 	if len(os.Args) < 2 {
@@ -32,7 +32,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}
-	log.Printf("main.go: Configuration loaded successfully: %s", config.Name)
+	log.Printf("Configuration loaded successfully: %s", config.Name)
 
 	// 2. Create Gateway Instance
 	gateway, err := gateway.NewGateway(config)
@@ -41,14 +41,14 @@ func main() {
 	}
 
 	// 3. Start the HTTP Server
-	log.Printf("main.go: API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
-	log.Printf("main.go: Gateway public URL set to: %s", config.Server.URL)
-	log.Printf("main.go: Management API prefix: %s", config.Management.Prefix)
+	log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
+	log.Printf("Gateway public URL set to: %s", config.Server.URL)
+	log.Printf("Management API prefix: %s", config.Management.Prefix)
 
 	err = gateway.Server.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		log.Fatalf("FATAL: Failed to start server: %v", err)
 	}
 
-	log.Println("main.go: API Gateway shut down gracefully.")
+	log.Println("API Gateway shut down gracefully.")
 }

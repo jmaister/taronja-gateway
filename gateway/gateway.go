@@ -33,7 +33,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	// Create server handler based on logging configuration
 	var handler http.Handler = mux
 	if config.Management.Logging {
-		log.Printf("main.go: Request logging enabled")
+		log.Printf("Request logging enabled")
 		handler = middleware.LoggingMiddleware(mux)
 	}
 
@@ -75,21 +75,21 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 // configureManagementRoutes sets up internal API endpoints like /health, /me
 func (g *Gateway) configureManagementRoutes() {
 	prefix := g.GatewayConfig.Management.Prefix
-	log.Printf("main.go: Registering management API routes under prefix: %s", prefix)
+	log.Printf("Registering management API routes under prefix: %s", prefix)
 
 	// Health Endpoint
 	healthPath := prefix + "/health"
 	g.Mux.HandleFunc(healthPath, handlers.HandleHealth)
-	log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
+	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
 
 	// Me Endpoint - only register if there are auth methods configured
 	if g.GatewayConfig.HasAnyAuthentication() {
 		mePath := prefix + "/me"
 		authWrappedMeHandler := g.wrapWithAuth(handlers.HandleMe, false)
 		g.Mux.HandleFunc(mePath, authWrappedMeHandler)
-		log.Printf("main.go: Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
+		log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
 	} else {
-		log.Printf("main.go: Skipping Me endpoint registration as no authentication methods are configured")
+		log.Printf("Skipping Me endpoint registration as no authentication methods are configured")
 	}
 
 	// Login Routes for Basic and OAuth2 Authentication
@@ -139,7 +139,7 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		}
 	})
-	log.Printf("main.go: Registered Login Route: %-25s | Path: %s", "Basic Auth Login", basicLoginPath)
+	log.Printf("Registered Login Route: %-25s | Path: %s", "Basic Auth Login", basicLoginPath)
 
 	// OAuth2 Login and Callback Routes
 	// TODO: Refactor to use a loop for all providers
@@ -151,14 +151,14 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 				g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
 					oauthAuthenticator.Authenticate(w, r)
 				})
-				log.Printf("main.go: Registered Login Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Login", provider), loginPath)
+				log.Printf("Registered Login Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Login", provider), loginPath)
 
 				// Callback Route
 				callbackPath := fmt.Sprintf("%s/auth/%s/callback", prefix, provider)
 				g.Mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
 					g.authManager.HandleOAuthCallback(provider, w, r)
 				})
-				log.Printf("main.go: Registered Callback Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Callback", provider), callbackPath)
+				log.Printf("Registered Callback Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Callback", provider), callbackPath)
 			}
 		}
 	*/
@@ -170,7 +170,7 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
 func (g *Gateway) configureUserRoutes() error {
-	log.Printf("main.go: Registering user-defined routes...")
+	log.Printf("Registering user-defined routes...")
 	for _, routeConfig := range g.GatewayConfig.Routes {
 		var handler http.HandlerFunc
 
@@ -238,14 +238,14 @@ func (g *Gateway) configureUserRoutes() error {
 		// Log registration details
 		if routeConfig.Static {
 			if routeConfig.ToFile != "" {
-				log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s/%s | Auth: %t",
+				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s/%s | Auth: %t",
 					routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.ToFile, routeConfig.Authentication.Enabled)
 			} else {
-				log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
+				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
 					routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.Authentication.Enabled)
 			}
 		} else {
-			log.Printf("main.go: Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
+			log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
 				routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled)
 		}
 	}
@@ -257,7 +257,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 	g.Mux.HandleFunc("/auth/callback/", func(w http.ResponseWriter, r *http.Request) {
 		pathSegments := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		if len(pathSegments) != 3 || pathSegments[0] != "auth" || pathSegments[1] != "callback" {
-			log.Printf("main.go: OAuth Callback: Invalid callback path format: %s", r.URL.Path)
+			log.Printf("OAuth Callback: Invalid callback path format: %s", r.URL.Path)
 			http.NotFound(w, r)
 			return
 		}
@@ -267,7 +267,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 		//g.authManager.HandleOAuthCallback(provider, w, r)
 	})
-	log.Printf("main.go: Registered OAuth Callback Handler: /auth/callback/*")
+	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
 }
 
 // --- Authentication Middleware ---
