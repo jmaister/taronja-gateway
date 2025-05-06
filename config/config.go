@@ -84,7 +84,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path for config file '%s': %w", filename, err)
 	}
-	log.Printf("config.go: Loading configuration from: %s", configAbsPath)
+	log.Printf("Loading configuration from: %s", configAbsPath)
 
 	file, err := os.Open(configAbsPath)
 	if err != nil {
@@ -130,7 +130,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to get executable path: %w", err)
 	}
 	exeDir := filepath.Dir(exePath)
-	log.Printf("config.go: Executable directory: %s", exeDir)
+	log.Printf("Executable directory: %s", exeDir)
 
 	for i := range config.Routes {
 		route := &config.Routes[i]
@@ -141,17 +141,39 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 				return nil, fmt.Errorf("route '%s' cannot have both 'toFolder' and 'toFile' specified, they are mutually exclusive", route.Name)
 			}
 
-			// Resolve folder path
-			originalPath := route.ToFolder
-			resolvedPath := originalPath
-			if !filepath.IsAbs(originalPath) {
-				resolvedPath = filepath.Join(exeDir, originalPath)
+			// Validate that at least one of ToFolder or ToFile is specified
+			if route.ToFolder == "" && route.ToFile == "" {
+				return nil, fmt.Errorf("route '%s' is marked as static but neither 'toFolder' nor 'toFile' is specified", route.Name)
 			}
-			route.ToFolder = filepath.Clean(resolvedPath)
 
-			if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
-				log.Printf("config.go: Route '%s' folder path resolved. Original: '%s', Resolved: '%s'",
-					route.Name, originalPath, route.ToFolder)
+			// Resolve folder path
+			if route.ToFolder != "" {
+				originalPath := route.ToFolder
+				resolvedPath := originalPath
+				if !filepath.IsAbs(originalPath) {
+					resolvedPath = filepath.Join(exeDir, originalPath)
+				}
+				route.ToFolder = filepath.Clean(resolvedPath)
+
+				if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
+					log.Printf("Route '%s' folder path resolved. Original: '%s', Resolved: '%s'",
+						route.Name, originalPath, route.ToFolder)
+				}
+			}
+
+			// Resolve file path
+			if route.ToFile != "" {
+				originalPath := route.ToFile
+				resolvedPath := originalPath
+				if !filepath.IsAbs(originalPath) {
+					resolvedPath = filepath.Join(exeDir, originalPath)
+				}
+				route.ToFile = filepath.Clean(resolvedPath)
+
+				if originalPath != route.ToFile && !filepath.IsAbs(originalPath) {
+					log.Printf("Route '%s' file path resolved. Original: '%s', Resolved: '%s'",
+						route.Name, originalPath, route.ToFile)
+				}
 			}
 		}
 
