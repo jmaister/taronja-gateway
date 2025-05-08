@@ -30,22 +30,14 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMe returns information about the currently authenticated user.
-// It relies on the authentication middleware having populated the request context.
-func HandleMe(w http.ResponseWriter, r *http.Request) {
-	// Attempt to retrieve sessionObject information from the context
-	// The auth middleware (Basic, OAuth2) should add this upon successful authentication.
-	sessionObject, ok := r.Context().Value(session.SessionKey).(*session.SessionObject)
-
-	if !ok || sessionObject == nil {
-		// No authenticated user found in context
-		log.Println("meta_api.go: handleMe called but no authenticated user found in context.")
+// It retrieves the session from the session store using the cookie.
+func HandleMe(w http.ResponseWriter, r *http.Request, sessionStore session.SessionStore) {
+	// Retrieve the session object from the session store using the request's cookie
+	sessionObject, valid := sessionStore.Validate(r)
+	if !valid {
+		// No valid authenticated session found
+		log.Println("meta_api.go: handleMe called but no valid session found")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Check if the session is still valid
-	if sessionObject.ValidUntil.Before(time.Now()) {
-		http.Error(w, "Session expired", http.StatusUnauthorized)
 		return
 	}
 

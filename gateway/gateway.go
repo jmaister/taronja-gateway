@@ -86,7 +86,11 @@ func (g *Gateway) configureManagementRoutes() {
 	// Me Endpoint - only register if there are auth methods configured
 	if g.GatewayConfig.HasAnyAuthentication() {
 		mePath := prefix + "/me"
-		authWrappedMeHandler := g.wrapWithAuth(handlers.HandleMe, false)
+		// Create a handler that passes the session store to HandleMe
+		meHandler := func(w http.ResponseWriter, r *http.Request) {
+			handlers.HandleMe(w, r, g.SessionStore)
+		}
+		authWrappedMeHandler := g.wrapWithAuth(meHandler, false)
 		g.Mux.HandleFunc(mePath, authWrappedMeHandler)
 		log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
 	} else {
