@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f9;
@@ -17,49 +20,83 @@
         }
         .login-container {
             background: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            width: 300px;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            width: 400px;
             text-align: center;
+            overflow: hidden;
         }
         .login-container h1 {
-            margin-bottom: 20px;
-            font-size: 24px;
+            margin-bottom: 25px;
+            font-size: 28px;
+            color: #333;
         }
         .login-container form {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         .login-container input[type="text"],
         .login-container input[type="password"] {
             width: 100%;
-            padding: 10px;
-            margin: 10px 0;
+            padding: 14px;
+            margin: 12px 0;
             border: 1px solid #ccc;
-            border-radius: 4px;
+            border-radius: 6px;
+            font-size: 16px;
         }
         .login-container button {
             width: 100%;
-            padding: 10px;
+            padding: 14px;
             background-color: #007bff;
             color: #fff;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.2s;
         }
         .login-container button:hover {
             background-color: #0056b3;
         }
         .oauth-buttons {
-            margin-top: 10px;
+            margin-top: 20px;
+            width: 100%;
+        }
+        .separator {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 20px 0;
+            color: #777;
+        }
+        .separator::before,
+        .separator::after {
+            content: "";
+            flex: 1;
+            border-bottom: 1px solid #ddd;
+        }
+        .separator span {
+            margin: 0 10px;
+            font-size: 14px;
         }
         .oauth-buttons a {
             display: block;
-            margin: 5px 0;
+            margin: 12px auto;
+            width: 100%;
             text-decoration: none;
             color: #fff;
-            padding: 10px;
-            border-radius: 4px;
+            padding: 14px;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: opacity 0.2s;
+        }
+        .oauth-buttons a:hover {
+            opacity: 0.9;
         }
         .oauth-google {
             background-color: #db4437;
@@ -75,16 +112,40 @@
 <body>
     <div class="login-container">
         <h1>Login</h1>
-        <form action="/_/auth/basic/login" method="POST">
+        <form id="loginForm" action="/_/auth/basic/login" method="POST">
             <input type="text" name="username" placeholder="Username" required>
             <input type="password" name="password" placeholder="Password" required>
+            <input type="hidden" id="redirectInput" name="redirect" value="">
             <button type="submit">Login</button>
         </form>
+        <div class="separator">
+            <span>or</span>
+        </div>
         <div class="oauth-buttons">
-            <a href="/_/auth/google/login" class="oauth-google">Login with Google</a>
-            <a href="/_/auth/github/login" class="oauth-github">Login with GitHub</a>
-            <a href="/_/auth/other/login" class="oauth-other">Login with Other</a>
+            <a href="/_/auth/google/login" class="oauth-provider oauth-google">Login with Google</a>
+            <a href="/_/auth/github/login" class="oauth-provider oauth-github">Login with GitHub</a>
         </div>
     </div>
+    
+    <script>
+        // Get redirect URL from query parameters
+        function getRedirectFromQuery() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('redirect') || '';
+        }
+
+        // Set the redirect URL in the form
+        document.addEventListener('DOMContentLoaded', function() {
+            const redirectUrl = getRedirectFromQuery();
+            document.getElementById('redirectInput').value = redirectUrl;
+            
+            // Update all OAuth provider links to include the redirect parameter
+            if (redirectUrl) {
+                document.querySelectorAll('a.oauth-provider').forEach(link => {
+                    link.href += '?redirect=' + encodeURIComponent(redirectUrl);
+                });
+            }
+        });
+    </script>
 </body>
 </html>

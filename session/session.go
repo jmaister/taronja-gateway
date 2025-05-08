@@ -11,15 +11,21 @@ import (
 const TokenLength = 32
 const SessionCookieName = "tg_session_token"
 
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+// SessionKey is the key used to store session in context
+const SessionKey contextKey = "session"
+
 type SessionStore interface {
 	GenerateKey() (string, error)
 	Set(key string, value SessionObject) error
 	Get(key string) (SessionObject, error)
+	Delete(key string) error
 	Validate(r *http.Request) (SessionObject, bool)
 }
 
 type SessionObject struct {
-	UserId          string
 	Username        string
 	Email           string
 	IsAuthenticated bool
@@ -61,6 +67,11 @@ func (s MemorySessionStore) Get(key string) (SessionObject, error) {
 
 }
 
+func (s MemorySessionStore) Delete(key string) error {
+	delete(s.store, key)
+	return nil
+}
+
 func (s MemorySessionStore) Validate(r *http.Request) (SessionObject, bool) {
 	cookie, err := r.Cookie(SessionCookieName)
 	if err != nil {
@@ -68,5 +79,12 @@ func (s MemorySessionStore) Validate(r *http.Request) (SessionObject, bool) {
 	}
 
 	sessionObject, exists := s.store[cookie.Value]
-	return sessionObject, exists
+	if !exists {
+		return SessionObject{}, false
+	}
+	if sessionObject.ValidUntil.Before(time.Now()) {
+		delete(s.store, cookie.Value)
+		return SessionObject{}, false
+	}
+	return sessionObject, true
 }

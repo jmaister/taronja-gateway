@@ -5,10 +5,12 @@ server:
   url: http://localhost:8080
 management:
   prefix: _
+  logging: true
+
 routes:
   - name: Favicon
     from: /favicon.ico
-    toFolder: ./sample/webfiles/favicon.ico
+    toFile: ./sample/webfiles/favicon.ico
     static: true
   - name: V1 of the API
     from: /api/v1/*
@@ -42,7 +44,6 @@ routes:
       enabled: true
   - name: FrontEnd
     from: /
-    removeFromPath: /
     toFolder: ./sample/webfiles
     static: true
 
