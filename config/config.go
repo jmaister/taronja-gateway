@@ -125,12 +125,11 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	config.Management.Prefix = "/" + strings.Trim(config.Management.Prefix, "/") // Ensure leading/no trailing slash
 
 	// Resolve static route paths
-	exePath, err := os.Executable()
+	currentDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get executable path: %w", err)
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
-	exeDir := filepath.Dir(exePath)
-	log.Printf("Executable directory: %s", exeDir)
+	log.Printf("Current working directory: %s", currentDir)
 
 	for i := range config.Routes {
 		route := &config.Routes[i]
@@ -151,7 +150,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 				originalPath := route.ToFolder
 				resolvedPath := originalPath
 				if !filepath.IsAbs(originalPath) {
-					resolvedPath = filepath.Join(exeDir, originalPath)
+					resolvedPath = filepath.Join(currentDir, originalPath)
 				}
 				route.ToFolder = filepath.Clean(resolvedPath)
 
@@ -166,7 +165,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 				originalPath := route.ToFile
 				resolvedPath := originalPath
 				if !filepath.IsAbs(originalPath) {
-					resolvedPath = filepath.Join(exeDir, originalPath)
+					resolvedPath = filepath.Join(currentDir, originalPath)
 				}
 				route.ToFile = filepath.Clean(resolvedPath)
 
