@@ -1,4 +1,3 @@
-
 # Taronja Gateway
 
 Taronja Gateway is an API and application gateway.
@@ -14,15 +13,17 @@ Features table, shows what is implemented and what is planned.
 | Gateway                      | ✅       |
 | Authentication               | ✅       |
 | Authentication: Basic        | ✅       |
-| Authentication: OAuth2       | 🚧       |
+| Authentication: OAuth2       | ✅       |
+| - OAuth2: GitHub             | ✅       |
+| - OAuth2: Google             | ✅       |
 | Authentication: JWT          | 🚧       |
 | Authorization using RBAC     | 🚧       |
-| Sessions                     | 🚧       |
+| Sessions                     | ✅       |
 | User management              | 🚧       |
 | Rate Limiting                | 🚧       |
 | Circuit breaker              | 🚧       |
 | Caching                      | 🚧       |
-| Logging                      | 🚧       |
+| Logging                      | ✅       |
 | Monitoring                   | 🚧       |
 | Load Balancing               | 🚧       |
 | more...                      | 🚧       |
