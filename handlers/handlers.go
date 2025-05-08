@@ -25,7 +25,7 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	err := json.NewEncoder(w).Encode(response)
 	if err != nil {
 		// This error is unlikely but possible if the connection is closed
-		log.Printf("meta_api.go: Error encoding health response: %v", err)
+		log.Printf("Error encoding health response: %v", err)
 	}
 }
 
@@ -36,7 +36,6 @@ func HandleMe(w http.ResponseWriter, r *http.Request, sessionStore session.Sessi
 	sessionObject, valid := sessionStore.Validate(r)
 	if !valid {
 		// No valid authenticated session found
-		log.Println("meta_api.go: handleMe called but no valid session found")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
