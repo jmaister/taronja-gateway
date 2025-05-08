@@ -11,6 +11,11 @@ import (
 // SessionMiddleware validates that the session cookie is present and valid
 func SessionMiddleware(next http.HandlerFunc, store session.SessionStore, isStatic bool, managementPrefix string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Add cache-control headers to prevent caching of authenticated content
+		w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
 		sessionObject, exists := store.Validate(r)
 		if !exists {
 			if isStatic {

@@ -351,6 +351,11 @@ func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request)
 		MaxAge:   -1, // Delete immediately
 	})
 
+	// Add cache control headers to prevent browser caching
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
 	// Redirect to the login page or home page
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -435,6 +440,11 @@ func registerLogout(mux *http.ServeMux, sessionStore session.SessionStore, manag
 			Secure:   r.TLS != nil,
 			MaxAge:   -1, // Delete immediately
 		})
+
+		// Add cache control headers to prevent browser caching
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 
 		// Redirect to the original URL or home page
 		http.Redirect(w, r, redirectURL, http.StatusFound)
