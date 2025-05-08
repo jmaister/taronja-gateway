@@ -44,7 +44,6 @@ routes:
       enabled: true
   - name: FrontEnd
     from: /
-    removeFromPath: /
     toFolder: ./sample/webfiles
     static: true
 

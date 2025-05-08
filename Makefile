@@ -18,14 +18,14 @@ build-windows:
 	GOOS=windows GOARCH=amd64 go build -o $(BINARY_NAME) .
 
 # Run target
-run:
+run: build
 	@echo "Running $(PROJECT_NAME)..."
-	go run main.go sample/config.yaml
+	@./$(BINARY_NAME) sample/config.yaml
 
 # Test target
 test:
 	@echo "Running tests..."
-	go test ./...
+	go test -cover ./...
 
 # Run JMeter tests
 jmeter:

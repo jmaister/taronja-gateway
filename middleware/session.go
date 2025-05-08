@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"net/url"
 
 	"github.com/jmaister/taronja-gateway/session"
 )
@@ -13,8 +14,10 @@ func SessionMiddleware(next http.HandlerFunc, store session.SessionStore, isStat
 		sessionObject, exists := store.Validate(r)
 		if !exists {
 			if isStatic {
-				// Redirect to login page for static files
-				http.Redirect(w, r, managementPrefix+"/login", http.StatusFound)
+				// Redirect to login page with the original URL as the redirect parameter
+				originalURL := r.URL.RequestURI()
+				redirectURL := managementPrefix + "/login?redirect=" + url.QueryEscape(originalURL)
+				http.Redirect(w, r, redirectURL, http.StatusFound)
 			} else {
 				// Return 401 Unauthorized for API requests
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)

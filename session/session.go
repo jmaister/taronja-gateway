@@ -21,6 +21,7 @@ type SessionStore interface {
 	GenerateKey() (string, error)
 	Set(key string, value SessionObject) error
 	Get(key string) (SessionObject, error)
+	Delete(key string) error
 	Validate(r *http.Request) (SessionObject, bool)
 }
 
@@ -64,6 +65,11 @@ func (s MemorySessionStore) Get(key string) (SessionObject, error) {
 	}
 	return value, nil
 
+}
+
+func (s MemorySessionStore) Delete(key string) error {
+	delete(s.store, key)
+	return nil
 }
 
 func (s MemorySessionStore) Validate(r *http.Request) (SessionObject, bool) {

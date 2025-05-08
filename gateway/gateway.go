@@ -14,6 +14,7 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/providers"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -98,71 +99,13 @@ func (g *Gateway) configureManagementRoutes() {
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes(prefix string) {
-	// Basic Auth Login Route
-	basicLoginPath := prefix + "/auth/basic/login"
-	g.Mux.HandleFunc(basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
-		username, password, ok := r.BasicAuth()
-		if !ok {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+	// Register all providers - basic, OAuth, etc.
+	if g.GatewayConfig.HasAnyAuthentication() {
+		// Register all authentication providers based on configuration
+		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig)
+	}
 
-		// Validate username and password (replace with your own logic)
-		if username == "admin" && password == "password" {
-			// Generate session token
-			token, err := g.SessionStore.GenerateKey()
-			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-
-			// Store session
-			so := session.SessionObject{
-				Username: username,
-				// TODO: add all fields
-			}
-			g.SessionStore.Set(token, so)
-
-			// Set session token in a cookie
-			http.SetCookie(w, &http.Cookie{
-				Name:     session.SessionCookieName,
-				Value:    token,
-				Path:     "/",
-				HttpOnly: true,
-				Secure:   r.TLS != nil,
-			})
-
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Login successful"))
-		} else {
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		}
-	})
-	log.Printf("Registered Login Route: %-25s | Path: %s", "Basic Auth Login", basicLoginPath)
-
-	// OAuth2 Login and Callback Routes
-	// TODO: Refactor to use a loop for all providers
-	/*
-		for provider, authenticator := range g.authManager.authenticators {
-			if oauthAuthenticator, ok := authenticator.(*OAuth2Authenticator); ok {
-				// Login Route
-				loginPath := fmt.Sprintf("%s/auth/%s/login", prefix, provider)
-				g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-					oauthAuthenticator.Authenticate(w, r)
-				})
-				log.Printf("Registered Login Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Login", provider), loginPath)
-
-				// Callback Route
-				callbackPath := fmt.Sprintf("%s/auth/%s/callback", prefix, provider)
-				g.Mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
-					g.authManager.HandleOAuthCallback(provider, w, r)
-				})
-				log.Printf("Registered Callback Route: %-25s | Path: %s", fmt.Sprintf("%s OAuth2 Callback", provider), callbackPath)
-			}
-		}
-	*/
-
+	// Login page handler
 	g.Mux.HandleFunc(prefix+"/login", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/login.html")
 	})
@@ -176,38 +119,11 @@ func (g *Gateway) configureUserRoutes() error {
 
 		// Create the base handler (proxy or static)
 		if routeConfig.Static {
-			var fsPath string
-			var isSpecificFile bool
-
-			// Use ToFolder and ToFile as independent paths
-			if routeConfig.ToFile != "" {
-				// Use ToFile directly as an independent path
-				fsPath = routeConfig.ToFile
-
-				// Check if this is a file or directory
-				fileInfo, statErr := os.Stat(fsPath)
-				if statErr != nil {
-					log.Printf("Warning: Invalid path '%s' for static route '%s': %v. Skipping registration.", fsPath, routeConfig.Name, statErr)
-					continue
-				}
-				isSpecificFile = !fileInfo.IsDir()
-
-			} else if routeConfig.ToFolder != "" {
-				// Use ToFolder directly
-				fsPath = routeConfig.ToFolder
-
-				fileInfo, statErr := os.Stat(fsPath)
-				if statErr != nil {
-					log.Printf("Warning: Invalid path '%s' for static route '%s': %v. Skipping registration.", fsPath, routeConfig.Name, statErr)
-					continue
-				}
-				isSpecificFile = !fileInfo.IsDir()
-			} else {
-				log.Printf("Warning: No path specified for static route '%s'. Skipping registration.", routeConfig.Name)
+			handler = g.createStaticHandlerFunc(routeConfig)
+			if handler == nil {
+				// Skip to next route if handler creation failed
 				continue
 			}
-
-			handler = g.createStaticHandlerFunc(routeConfig, !isSpecificFile)
 		} else {
 			if routeConfig.To == "" {
 				log.Printf("Warning: Empty 'to' URL for proxy route '%s'. Skipping registration.", routeConfig.Name)
@@ -278,8 +194,6 @@ func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.Handle
 }
 
 // --- Route Handler Creation ---
-// createProxyHandlerFunc and createStaticHandlerFunc remain unchanged from the previous version.
-// ... (Keep the existing createProxyHandlerFunc and createStaticHandlerFunc code here) ...
 // createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
 func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
@@ -326,7 +240,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		req.Host = targetURL.Host // Set Host header to target
 
 		// Use a less verbose log level for routine proxying?
-		// log.Printf("Proxying [%s]: %s -> %s%s", routeConfig.Name, originalPath, targetURL.Scheme+"://"+targetURL.Host, req.URL.Path)
+		log.Printf("Proxying [%s]: %s -> %s%s", routeConfig.Name, req.URL.Path, targetURL.Scheme+"://"+targetURL.Host, req.URL.Path)
 	}
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
@@ -341,11 +255,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			}
 		}
 		// Check if header has been written (best effort)
-		if !headerWritten(rw) {
-			http.Error(rw, "Bad Gateway", http.StatusBadGateway)
-		} else {
-			log.Printf("Proxy error occurred after header write for route '%s'. Cannot send error status.", routeConfig.Name)
-		}
+		http.Error(rw, "Bad Gateway", http.StatusBadGateway)
 	}
 
 	// Return the raw proxy handler function
@@ -354,23 +264,31 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	}
 }
 
-// headerWritten checks if the response header has been written.
-func headerWritten(w http.ResponseWriter) bool {
-	// This remains a best-effort check. A more reliable method involves
-	// wrapping the ResponseWriter. For now, assume false in ErrorHandler.
-	return false
-}
-
 // createStaticHandlerFunc generates the core handler function for static routes (without auth).
-func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir bool) http.HandlerFunc {
+func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.HandlerFunc {
 	var fsPath string
+	var isDir bool
 
-	// ToFolder and ToFile are independent and should not be joined
+	// Determine path from configuration
 	if routeConfig.ToFile != "" {
+		// Use ToFile directly as an independent path
 		fsPath = routeConfig.ToFile
-	} else {
+	} else if routeConfig.ToFolder != "" {
+		// Use ToFolder directly
 		fsPath = routeConfig.ToFolder
+	} else {
+		log.Printf("Warning: No path specified for static route '%s'. Skipping registration.", routeConfig.Name)
+		return nil
 	}
+
+	// Validate the path exists
+	fileInfo, statErr := os.Stat(fsPath)
+	if statErr != nil {
+		log.Printf("Warning: Invalid path '%s' for static route '%s': %v. Skipping registration.", fsPath, routeConfig.Name, statErr)
+		return nil
+	}
+
+	isDir = fileInfo.IsDir()
 
 	if isDir {
 		// Directory serving
@@ -401,6 +319,7 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig, isDir 
 				_, err := os.Stat(indexPath)
 				if err != nil && os.IsNotExist(err) {
 					// index.html does not exist. Disable listing explicitly.
+					log.Printf("Static route [%s]: No index.html found at path: %s", routeConfig.Name, indexPath)
 					http.NotFound(w, r) // Return 404 instead of listing
 					return
 				} else if err != nil {
