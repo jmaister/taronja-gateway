@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/encryption" // Added
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 )
@@ -71,21 +73,93 @@ func (m *MockSessionStore) Validate(r *http.Request) (session.SessionObject, boo
 	return session, true
 }
 
+// MockUserRepository implements db.UserRepository for testing
+type MockUserRepository struct {
+	users map[string]*db.User // Key is user ID
+}
+
+func NewMockUserRepository() *MockUserRepository {
+	return &MockUserRepository{
+		users: make(map[string]*db.User),
+	}
+}
+
+func (r *MockUserRepository) FindUserByIdOrUsername(id, username, email string) (*db.User, error) {
+	if id != "" {
+		if user, found := r.users[id]; found {
+			return user, nil
+		}
+	}
+
+	if email != "" {
+		for _, user := range r.users {
+			if user.Email == email {
+				return user, nil
+			}
+		}
+	}
+
+	if username != "" {
+		for _, user := range r.users {
+			if user.Username == username {
+				return user, nil
+			}
+		}
+	}
+
+	return nil, nil // Not found but not an error
+}
+
+func (r *MockUserRepository) CreateUser(user *db.User) error {
+	if user.ID == "" {
+		user.ID = "generated-id"
+	}
+	r.users[user.ID] = user
+	return nil
+}
+
+func (r *MockUserRepository) UpdateUser(user *db.User) error {
+	if _, exists := r.users[user.ID]; !exists {
+		return errors.New("user not found")
+	}
+	r.users[user.ID] = user
+	return nil
+}
+
+func (r *MockUserRepository) DeleteUser(id string) error {
+	if _, exists := r.users[id]; !exists {
+		return errors.New("user not found")
+	}
+	delete(r.users, id)
+	return nil
+}
+
 func TestRegisterBasicAuth(t *testing.T) {
 	// Setup
 	mux := http.NewServeMux()
 	mockSessionStore := NewMockSessionStore()
+	mockUserRepo := NewMockUserRepository()
 	managementPrefix := "/_"
 
+	// Create a test user with hashed password
+	hashedPassword, _ := encryption.GeneratePasswordHash("password")
+	testUser := &db.User{
+		ID:       "user1",
+		Username: "admin",
+		Email:    "admin@example.com",
+		Password: hashedPassword,
+	}
+	mockUserRepo.CreateUser(testUser)
+
 	// Register the basic auth handler
-	RegisterBasicAuth(mux, mockSessionStore, managementPrefix)
+	RegisterBasicAuth(mux, mockSessionStore, managementPrefix, mockUserRepo)
 
 	// Test scenarios
 	t.Run("successful form authentication", func(t *testing.T) {
 		// Create a request with valid form credentials
 		formData := url.Values{
 			"username": {"admin"},
-			"password": {"password"},
+			"password": {"password"}, // This should match the hashed password above
 		}
 		req := httptest.NewRequest("POST", "/_/auth/basic/login", strings.NewReader(formData.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

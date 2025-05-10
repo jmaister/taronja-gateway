@@ -5,11 +5,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
 // RegisterBasicAuth registers a basic authentication handler
-func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string) {
+func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo db.UserRepository) {
 	// Basic Auth Login Route
 	basicLoginPath := managementPrefix + "/auth/basic/login"
 	mux.HandleFunc(basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
@@ -37,55 +39,72 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			username := r.Form.Get("username")
 			password := r.Form.Get("password")
 
-			// Validate username and password (replace with your own logic)
-			// TODO: load user from database
-			if username == "admin" && password == "password" {
-				// Generate session token
-				token, err := sessionStore.GenerateKey()
-				if err != nil {
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-					return
-				}
-
-				// Create session object with all required fields
-				so := session.SessionObject{
-					Username:        username,
-					Email:           username + "@example.com", // Default email for basic auth
-					IsAuthenticated: true,
-					ValidUntil:      time.Now().Add(24 * time.Hour), // 24-hour session
-					Provider:        "basic",
-				}
-				sessionStore.Set(token, so)
-
-				// Set session token in a cookie
-				http.SetCookie(w, &http.Cookie{
-					Name:     session.SessionCookieName,
-					Value:    token,
-					Path:     "/",
-					HttpOnly: true,
-					Secure:   r.TLS != nil,
-					MaxAge:   86400, // 24 hours in seconds
-				})
-
-				// Check if there's a redirect URL in the query parameters
-				// First check form data (for POST requests), then URL query parameters
-				redirectURL := r.Form.Get("redirect")
-				if redirectURL == "" {
-					redirectURL = r.URL.Query().Get("redirect")
-				}
-				if redirectURL != "" {
-					http.Redirect(w, r, redirectURL, http.StatusFound)
-					return
-				}
-
-				// Redirect to home page if no redirect URL
-				http.Redirect(w, r, "/", http.StatusFound)
+			// Load user from database and validate password
+			user, err := userRepo.FindUserByIdOrUsername("", username, username) // Try both username and email fields
+			if err != nil {
+				log.Printf("Error finding user: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
-			} else {
-				// If authentication fails, show the login page again with an error message
+			}
+
+			if user == nil {
 				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 				return
 			}
+
+			// Compare the provided password with the stored hash
+			matches, err := encryption.ComparePassword(password, user.Password)
+			if err != nil {
+				log.Printf("Password comparison failed: %v", err)
+				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+			if !matches {
+				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+
+			// User found and password validated, create session
+			token, err := sessionStore.GenerateKey()
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			// Create session object with all required fields
+			so := session.SessionObject{
+				Username:        user.Username,
+				Email:           user.Email,
+				IsAuthenticated: true,
+				ValidUntil:      time.Now().Add(24 * time.Hour), // 24-hour session
+				Provider:        "basic",
+			}
+			sessionStore.Set(token, so)
+
+			// Set session token in a cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:     session.SessionCookieName,
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   r.TLS != nil,
+				MaxAge:   86400, // 24 hours in seconds
+			})
+
+			// Check if there's a redirect URL in the query parameters
+			// First check form data (for POST requests), then URL query parameters
+			redirectURL := r.Form.Get("redirect")
+			if redirectURL == "" {
+				redirectURL = r.URL.Query().Get("redirect")
+			}
+			if redirectURL != "" {
+				http.Redirect(w, r, redirectURL, http.StatusFound)
+				return
+			}
+
+			// Redirect to home page if no redirect URL
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
 		} else {
 			// For GET requests, serve the login page
 			http.ServeFile(w, r, "./static/login.html")
