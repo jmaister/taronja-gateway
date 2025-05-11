@@ -12,15 +12,10 @@ build:
 	@echo "Building $(PROJECT_NAME)..."
 	go build -o $(BINARY_NAME) .
 
-# Build for Windows
-build-windows:
-	@echo "Building $(PROJECT_NAME) for Windows..."
-	GOOS=windows GOARCH=amd64 go build -o $(BINARY_NAME) .
-
 # Run target
 run: build
 	@echo "Running $(PROJECT_NAME)..."
-	@./$(BINARY_NAME) sample/config.yaml
+	@./$(BINARY_NAME) run --config sample/config.yaml
 
 # Test target
 test:

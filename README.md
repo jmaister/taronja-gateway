@@ -28,3 +28,19 @@ Features table, shows what is implemented and what is planned.
 | Load Balancing               | 🚧       |
 | more...                      | 🚧       |
 
+## Commands
+
+The Taronja Gateway CLI provides the following commands:
+
+*   **Run the Gateway:**
+    ```bash
+    ./tg run --config ./sample/config.yaml
+    ```
+    This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag.
+
+*   **Add a new user:**
+    ```bash
+    ./tg adduser <username> <email> <password>
+    ```
+    This command creates a new user in the database with the provided username, email, and password.
+

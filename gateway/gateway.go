@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/providers"
@@ -20,15 +21,16 @@ import (
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server        *http.Server
-	GatewayConfig *config.GatewayConfig
-	Mux           *http.ServeMux       // Exported (changed from mux)
-	SessionStore  session.SessionStore // Exported (changed from sessionStore)
+	Server         *http.Server
+	GatewayConfig  *config.GatewayConfig
+	Mux            *http.ServeMux       // Exported (changed from mux)
+	SessionStore   session.SessionStore // Exported (changed from sessionStore)
+	UserRepository db.UserRepository    // Added UserRepository
 }
 
 // --- NewGateway Function ---
 
-func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
+func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed userRepository parameter
 	mux := http.NewServeMux()
 
 	// Create server handler based on logging configuration
@@ -48,11 +50,15 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 
 	sessionStore := session.NewMemorySessionStore()
 
+	db.Init()                                                    // Initialize the database connection
+	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
+
 	gateway := &Gateway{
-		Server:        server,
-		GatewayConfig: config,
-		Mux:           mux,
-		SessionStore:  sessionStore,
+		Server:         server,
+		GatewayConfig:  config,
+		Mux:            mux,
+		SessionStore:   sessionStore,
+		UserRepository: userRepository, // Assign created UserRepository
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -106,7 +112,7 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig)
+		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository)
 	}
 
 	// Login page handler
