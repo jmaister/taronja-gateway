@@ -131,7 +131,12 @@ func (g *Gateway) configureManagementRoutes() {
 	}
 
 	// Login Routes for Basic and OAuth2 Authentication
-	g.registerLoginRoutes(prefix)
+	g.registerLoginRoutes()
+
+	// Logout Route
+	var sessionStore session.SessionStore = g.SessionStore
+	var _ session.SessionStore = sessionStore
+	g.registerLogout()
 
 	// Register the static content endpoint to load assets
 	staticPath := prefix + "/static/"
@@ -145,7 +150,7 @@ func (g *Gateway) configureManagementRoutes() {
 }
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
-func (g *Gateway) registerLoginRoutes(prefix string) {
+func (g *Gateway) registerLoginRoutes() {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
@@ -153,7 +158,7 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 	}
 
 	// Login page handler
-	loginPath := prefix + "/login"
+	loginPath := g.GatewayConfig.Management.Prefix + "/login"
 	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
 		// Populate data from config and request
 		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.GatewayConfig)
@@ -176,6 +181,54 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 		}
 	})
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
+}
+
+// registerLogout registers a global logout endpoint that clears the session
+func (g *Gateway) registerLogout() {
+	// Define the logout route path
+	logoutPath := g.GatewayConfig.Management.Prefix + "/logout"
+
+	g.Mux.HandleFunc(logoutPath, func(w http.ResponseWriter, r *http.Request) {
+		// Get the session cookie
+		cookie, err := r.Cookie(session.SessionCookieName)
+		if err != nil {
+			// No session cookie, redirect to home
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+
+		// Get redirect URL from query parameters, default to "/"
+		redirectURL := r.URL.Query().Get("redirect")
+		if redirectURL == "" {
+			redirectURL = "/"
+		}
+
+		// Delete the session from the store
+		if err := g.SessionStore.Delete(cookie.Value); err != nil {
+			log.Printf("Error deleting session: %v", err)
+			// Continue with logout even if there's an error
+		}
+
+		// Expire the session cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     session.SessionCookieName,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   r.TLS != nil,
+			MaxAge:   -1, // Delete immediately
+		})
+
+		// Add cache control headers to prevent browser caching
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
+		// Redirect to the original URL or home page
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+	})
+
+	log.Printf("Registered Global Logout Route: | Path: %s", logoutPath)
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
