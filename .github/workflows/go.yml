@@ -1,0 +1,30 @@
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Build Go
+      run: go build -v ./...
+
+    - name: Set environment variable
+      run: echo "RUNNING_ON_CI=true" >> $GITHUB_ENV
+
+    - name: Test
+      run: |
+        go test -v -cover ./...
+        echo "Tests completed"
