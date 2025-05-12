@@ -39,14 +39,10 @@ type AuthProviderCredentials struct {
 type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
-type UserPasswordAuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"`
-}
 type AuthenticationProviders struct {
-	Basic        BasicAuthenticationConfig        `yaml:"basic"`
-	UserPassword UserPasswordAuthenticationConfig `yaml:"userPassword"`
-	Google       AuthProviderCredentials          `yaml:"google"`
-	Github       AuthProviderCredentials          `yaml:"github"`
+	Basic  BasicAuthenticationConfig `yaml:"basic"`
+	Google AuthProviderCredentials   `yaml:"google"`
+	Github AuthProviderCredentials   `yaml:"github"`
 }
 type NotificationConfig struct {
 	Email struct {
@@ -191,7 +187,35 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 // HasAuthentication checks if any authentication is enabled in the config.
 func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
-		c.AuthenticationProviders.UserPassword.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != ""
+}
+
+// LoginPageData is the data structure for the login.html template
+type LoginPageData struct {
+	AuthenticationProviders struct {
+		Basic struct {
+			Enabled bool
+		}
+		Google struct {
+			Enabled bool
+		}
+		Github struct {
+			Enabled bool
+		}
+	}
+	RedirectURL      string
+	ManagementPrefix string
+}
+
+// NewLoginPageData creates and populates a LoginPageData struct.
+func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) LoginPageData {
+	data := LoginPageData{
+		RedirectURL:      redirectURL,
+		ManagementPrefix: gatewayConfig.Management.Prefix,
+	}
+	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled
+	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
+	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
+	return data
 }

@@ -85,67 +85,79 @@
             font-size: 14px;
         }
         .oauth-buttons a {
-            display: block;
+            display: flex; /* Changed to flex for icon and text alignment */
+            align-items: center; /* Vertically center icon and text */
+            justify-content: center; /* Horizontally center icon and text */
             margin: 12px auto;
             width: 100%;
             text-decoration: none;
-            color: #fff;
             padding: 14px;
             border-radius: 6px;
             font-size: 16px;
             transition: opacity 0.2s;
         }
+        .oauth-buttons a img { /* Changed from svg to img */
+            margin-right: 8px; /* Space between icon and text */
+            width: 20px; /* Adjust icon size as needed */
+            height: 20px; /* Adjust icon size as needed */
+            /* fill: currentColor; Removed as it's not applicable to img tags directly, SVGs in img will use their internal fill or can be controlled if they use currentColor and are embedded as object/inline */
+        }
         .oauth-buttons a:hover {
             opacity: 0.9;
         }
         .oauth-google {
-            background-color: #db4437;
+            background-color: #ffffff; /* White background for Google button */
+            color: #333333; /* Dark text for contrast on white background */
+            border: 1px solid #d1d5da; /* Subtle border */
         }
         .oauth-github {
-            background-color: #333;
+            background-color: #586069; /* Dark slate gray from image */
+            color: #ffffff; /* White text */
+            border: none; /* Remove previous border */
+        }
+        .oauth-github img {
+            filter: brightness(0) invert(1); /* Make black SVG logo white */
         }
         .oauth-other {
-            background-color: #6c757d;
+            background-color: #6c757d; /* Ensure this rule is not empty */
         }
+
     </style>
 </head>
 <body>
     <div class="login-container">
         <h1>Login</h1>
-        <form id="loginForm" action="/_/auth/basic/login" method="POST">
+
+        {{if .AuthenticationProviders.Basic.Enabled}}
+        <form id="loginForm" action="{{.ManagementPrefix}}/auth/basic/login" method="POST">
             <input type="text" name="username" placeholder="Username" required>
             <input type="password" name="password" placeholder="Password" required>
-            <input type="hidden" id="redirectInput" name="redirect" value="">
+            <input type="hidden" id="redirectInput" name="redirect" value="{{.RedirectURL}}">
             <button type="submit">Login</button>
         </form>
+        {{end}}
+
+        {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled)}}
         <div class="separator">
             <span>or</span>
         </div>
+        {{end}}
+
         <div class="oauth-buttons">
-            <a href="/_/auth/google/login" class="oauth-provider oauth-google">Login with Google</a>
-            <a href="/_/auth/github/login" class="oauth-provider oauth-github">Login with GitHub</a>
+            {{if .AuthenticationProviders.Google.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/google/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-google">
+                <img src="{{.ManagementPrefix}}/static/google_logo.svg" alt="Google logo">
+                Login with Google
+            </a>
+            {{end}}
+            {{if .AuthenticationProviders.Github.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/github/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-github">
+                <img src="{{.ManagementPrefix}}/static/github_logo.svg" alt="GitHub logo">
+                Login with GitHub
+            </a>
+            {{end}}
         </div>
     </div>
-    
-    <script>
-        // Get redirect URL from query parameters
-        function getRedirectFromQuery() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('redirect') || '';
-        }
-
-        // Set the redirect URL in the form
-        document.addEventListener('DOMContentLoaded', function() {
-            const redirectUrl = getRedirectFromQuery();
-            document.getElementById('redirectInput').value = redirectUrl;
-            
-            // Update all OAuth provider links to include the redirect parameter
-            if (redirectUrl) {
-                document.querySelectorAll('a.oauth-provider').forEach(link => {
-                    link.href += '?redirect=' + encodeURIComponent(redirectUrl);
-                });
-            }
-        });
-    </script>
 </body>
 </html>
