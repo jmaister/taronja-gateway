@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"embed"
 	"fmt"
 	"html/template" // Added for template parsing
 	"log"
@@ -8,8 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path/filepath" // Added for path manipulation
-	"runtime"       // Added to determine file paths
+	"path/filepath" // Still needed for user-defined static routes from OS filesystem
 	"strings"
 	"time"
 
@@ -19,22 +19,22 @@ import (
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/providers"
 	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/static"
 )
 
 // --- Gateway Struct ---
 type Gateway struct {
 	Server         *http.Server
 	GatewayConfig  *config.GatewayConfig
-	Mux            *http.ServeMux                // Exported (changed from mux)
-	SessionStore   session.SessionStore          // Exported (changed from sessionStore)
-	UserRepository db.UserRepository             // Added UserRepository
-	projectRoot    string                        // Added to store project root path
-	templates      map[string]*template.Template // Changed from loginTemplate to a map
+	Mux            *http.ServeMux
+	SessionStore   session.SessionStore
+	UserRepository db.UserRepository
+	templates      map[string]*template.Template
 }
 
 // --- NewGateway Function ---
 
-func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed userRepository parameter
+func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	mux := http.NewServeMux()
 
 	// Create server handler based on logging configuration
@@ -57,42 +57,31 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed use
 	db.Init()                                                    // Initialize the database connection
 	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
 
-	// Determine base path for static files relative to this source file
-	_, currentFilePath, _, ok := runtime.Caller(0)
-	if !ok {
-		return nil, fmt.Errorf("could not get current file path")
-	}
-	// gateway.go is in gateway/ directory, so project root is one level up.
-	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFilePath), ".."))
-
 	// Initialize templates map
 	templates := make(map[string]*template.Template)
 
-	// Parse the login template
-	loginTemplatePathKey := "./static/login.html" // Logical key for the template map
-	actualLoginTemplatePath := filepath.Join(projectRoot, "static", "login.html")
+	// Parse the login template from the provided embedded FS
+	loginTemplatePathKey := "login.html" // Path within the embedded FS
 
-	loginTmpl, err := template.ParseFiles(actualLoginTemplatePath)
+	loginTmpl, err := template.ParseFS(static.StaticAssetsFS, loginTemplatePathKey)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing login template '%s' (resolved to '%s'): %w", loginTemplatePathKey, actualLoginTemplatePath, err)
+		return nil, fmt.Errorf("error parsing login template '%s' from embedded FS: %w", loginTemplatePathKey, err)
 	}
-	templates[loginTemplatePathKey] = loginTmpl // Use the logical key
+	templates[loginTemplatePathKey] = loginTmpl
 
 	gateway := &Gateway{
 		Server:         server,
 		GatewayConfig:  config,
 		Mux:            mux,
 		SessionStore:   sessionStore,
-		UserRepository: userRepository, // Assign created UserRepository
-		projectRoot:    projectRoot,    // Store the calculated project root
-		templates:      templates,      // Store the map of pre-parsed templates
+		UserRepository: userRepository,
+		templates:      templates,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
-	// This ensures they take precedence over potentially broad user routes like "/"
-	gateway.configureManagementRoutes()
+	gateway.configureManagementRoutes(static.StaticAssetsFS) // Modified to pass it
 
-	// Configure the standard proxy/static routes
+	// Configure the standard proxy/static routes (user-defined routes still use OS filesystem)
 	err = gateway.configureUserRoutes()
 	if err != nil {
 		return nil, fmt.Errorf("error configuring user routes: %w", err)
@@ -107,7 +96,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed use
 // --- Route Configuration ---
 
 // configureManagementRoutes sets up internal API endpoints like /health, /me
-func (g *Gateway) configureManagementRoutes() {
+func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	prefix := g.GatewayConfig.Management.Prefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
 
@@ -138,13 +127,11 @@ func (g *Gateway) configureManagementRoutes() {
 	var _ session.SessionStore = sessionStore
 	g.registerLogout()
 
-	// Register the static content endpoint to load assets
+	// Register the static content endpoint to load assets from the provided embedded FS
 	staticPath := prefix + "/static/"
 	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
-		// Serve static files from the static directory, using projectRoot
-		staticDir := http.Dir(filepath.Join(g.projectRoot, "static"))
-		fs := http.FileServer(staticDir)
-		http.StripPrefix(staticPath, fs).ServeHTTP(w, r)
+		fileServer := http.FileServer(http.FS(staticAssetsFS))
+		http.StripPrefix(staticPath, fileServer).ServeHTTP(w, r)
 	})
 
 }
@@ -163,8 +150,8 @@ func (g *Gateway) registerLoginRoutes() {
 		// Populate data from config and request
 		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.GatewayConfig)
 
-		// Retrieve the pre-parsed template from the map
-		loginTemplatePath := "./static/login.html"
+		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
+		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root
 		tmpl, ok := g.templates[loginTemplatePath]
 		if !ok || tmpl == nil {
 			log.Printf("Error: Login template '%s' not found in cache", loginTemplatePath)
@@ -232,6 +219,7 @@ func (g *Gateway) registerLogout() {
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
+// This function continues to serve user-defined static routes from the OS filesystem.
 func (g *Gateway) configureUserRoutes() error {
 	log.Printf("Registering user-defined routes...")
 	for _, routeConfig := range g.GatewayConfig.Routes {
@@ -320,7 +308,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req) // Base setup (scheme, host)
-		// Removed unused variable originalPath
 
 		// Apply path stripping
 		if routeConfig.RemoveFromPath != "" {
@@ -385,6 +372,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 }
 
 // createStaticHandlerFunc generates the core handler function for static routes (without auth).
+// This function continues to serve user-defined static routes from the OS filesystem.
 func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.HandlerFunc {
 	var fsPath string
 	var isDir bool

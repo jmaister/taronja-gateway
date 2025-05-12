@@ -88,7 +88,7 @@ func runGateway(configFilePath string) {
 	log.Printf("Configuration loaded successfully: %s", config.Name)
 
 	// 2. Create Gateway Instance
-	gateway, err := gateway.NewGateway(config) // Pass userRepo to NewGateway - Removed userRepo
+	gateway, err := gateway.NewGateway(config)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}
