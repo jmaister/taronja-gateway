@@ -8,7 +8,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path/filepath"
+	"path/filepath" // Added for path manipulation
+	"runtime"       // Added to determine file paths
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ type Gateway struct {
 	Mux            *http.ServeMux                // Exported (changed from mux)
 	SessionStore   session.SessionStore          // Exported (changed from sessionStore)
 	UserRepository db.UserRepository             // Added UserRepository
+	projectRoot    string                        // Added to store project root path
 	templates      map[string]*template.Template // Changed from loginTemplate to a map
 }
 
@@ -55,16 +57,26 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed use
 	db.Init()                                                    // Initialize the database connection
 	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
 
+	// Determine base path for static files relative to this source file
+	_, currentFilePath, _, ok := runtime.Caller(0)
+	if !ok {
+		return nil, fmt.Errorf("could not get current file path")
+	}
+	// gateway.go is in gateway/ directory, so project root is one level up.
+	projectRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFilePath), ".."))
+
 	// Initialize templates map
 	templates := make(map[string]*template.Template)
 
 	// Parse the login template
-	loginTemplatePath := "./static/login.html"
-	loginTmpl, err := template.ParseFiles(loginTemplatePath)
+	loginTemplatePathKey := "./static/login.html" // Logical key for the template map
+	actualLoginTemplatePath := filepath.Join(projectRoot, "static", "login.html")
+
+	loginTmpl, err := template.ParseFiles(actualLoginTemplatePath)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing login template '%s': %w", loginTemplatePath, err)
+		return nil, fmt.Errorf("error parsing login template '%s' (resolved to '%s'): %w", loginTemplatePathKey, actualLoginTemplatePath, err)
 	}
-	templates[loginTemplatePath] = loginTmpl
+	templates[loginTemplatePathKey] = loginTmpl // Use the logical key
 
 	gateway := &Gateway{
 		Server:         server,
@@ -72,6 +84,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed use
 		Mux:            mux,
 		SessionStore:   sessionStore,
 		UserRepository: userRepository, // Assign created UserRepository
+		projectRoot:    projectRoot,    // Store the calculated project root
 		templates:      templates,      // Store the map of pre-parsed templates
 	}
 
@@ -123,8 +136,9 @@ func (g *Gateway) configureManagementRoutes() {
 	// Register the static content endpoint to load assets
 	staticPath := prefix + "/static/"
 	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
-		// Serve static files from the static directory
-		fs := http.FileServer(http.Dir("./static"))
+		// Serve static files from the static directory, using projectRoot
+		staticDir := http.Dir(filepath.Join(g.projectRoot, "static"))
+		fs := http.FileServer(staticDir)
 		http.StripPrefix(staticPath, fs).ServeHTTP(w, r)
 	})
 
