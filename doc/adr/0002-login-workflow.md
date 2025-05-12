@@ -100,7 +100,12 @@ CREATE TABLE user (
 );
 ```
 
-Password will be hashed using bcrypt.
+Password will be hashed using argon2id.
+
+Using the parameters recommended by the [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2).
+
+*"Use Argon2id with a minimum configuration of 19 MiB of memory, an iteration count of 2, and 1 degree of parallelism."*
+
 
 ### Session table
 

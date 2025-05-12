@@ -44,11 +44,8 @@ type AuthProvider interface {
 
 // RegisterProviders registers all enabled authentication providers in the gateway
 // Each provider is only registered if it's configured in the gateway config
-func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) {
+func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
-
-	// Create a user repository for OAuth providers
-	userRepo := db.NewMemoryUserRepository()
 
 	// Register global logout endpoint
 	log.Printf("Registering global logout endpoint")
@@ -57,7 +54,7 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	// Register Basic Authentication if enabled
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled {
 		log.Printf("Registering Basic Authentication provider")
-		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix)
+		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo)
 	}
 
 	// Register GitHub Authentication if configured
@@ -231,8 +228,6 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 			Provider:       ap.Provider.Name(),
 			ProviderId:     userInfo.ID,
 			EmailConfirmed: true,
-			// Default role
-			Roles: "user",
 		}
 
 		err = ap.UserRepo.CreateUser(user)
@@ -388,9 +383,6 @@ func generateState() (string, error) {
 
 // validateUserLogin validates if a user can log in
 func validateUserLogin(user *db.User) error {
-	if user.Roles == "" {
-		return errors.New("user does not have any roles assigned")
-	}
 	if !user.EmailConfirmed {
 		return errors.New("user email is not confirmed")
 	}

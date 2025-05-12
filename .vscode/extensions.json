@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "golang.go",
+        "github.copilot",
+        "codeandstuff.package-json-upgrade",
+        "andrejunges.handlebars",
+        "bradlc.vscode-tailwindcss",
+        "yoavbls.pretty-ts-errors",
+        "editorconfig.editorconfig",
+        "formulahendry.auto-close-tag",
+        "formulahendry.auto-rename-tag"
+    ]
+}

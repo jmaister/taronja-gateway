@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"fmt"
+	"html/template" // Added for template parsing
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/providers"
@@ -20,15 +22,17 @@ import (
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server        *http.Server
-	GatewayConfig *config.GatewayConfig
-	Mux           *http.ServeMux       // Exported (changed from mux)
-	SessionStore  session.SessionStore // Exported (changed from sessionStore)
+	Server         *http.Server
+	GatewayConfig  *config.GatewayConfig
+	Mux            *http.ServeMux                // Exported (changed from mux)
+	SessionStore   session.SessionStore          // Exported (changed from sessionStore)
+	UserRepository db.UserRepository             // Added UserRepository
+	templates      map[string]*template.Template // Changed from loginTemplate to a map
 }
 
 // --- NewGateway Function ---
 
-func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
+func NewGateway(config *config.GatewayConfig) (*Gateway, error) { // Removed userRepository parameter
 	mux := http.NewServeMux()
 
 	// Create server handler based on logging configuration
@@ -48,11 +52,27 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 
 	sessionStore := session.NewMemorySessionStore()
 
+	db.Init()                                                    // Initialize the database connection
+	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
+
+	// Initialize templates map
+	templates := make(map[string]*template.Template)
+
+	// Parse the login template
+	loginTemplatePath := "./static/login.html"
+	loginTmpl, err := template.ParseFiles(loginTemplatePath)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing login template '%s': %w", loginTemplatePath, err)
+	}
+	templates[loginTemplatePath] = loginTmpl
+
 	gateway := &Gateway{
-		Server:        server,
-		GatewayConfig: config,
-		Mux:           mux,
-		SessionStore:  sessionStore,
+		Server:         server,
+		GatewayConfig:  config,
+		Mux:            mux,
+		SessionStore:   sessionStore,
+		UserRepository: userRepository, // Assign created UserRepository
+		templates:      templates,      // Store the map of pre-parsed templates
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -60,7 +80,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	gateway.configureManagementRoutes()
 
 	// Configure the standard proxy/static routes
-	err := gateway.configureUserRoutes()
+	err = gateway.configureUserRoutes()
 	if err != nil {
 		return nil, fmt.Errorf("error configuring user routes: %w", err)
 	}
@@ -99,6 +119,15 @@ func (g *Gateway) configureManagementRoutes() {
 
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes(prefix)
+
+	// Register the static content endpoint to load assets
+	staticPath := prefix + "/static/"
+	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
+		// Serve static files from the static directory
+		fs := http.FileServer(http.Dir("./static"))
+		http.StripPrefix(staticPath, fs).ServeHTTP(w, r)
+	})
+
 }
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
@@ -106,13 +135,33 @@ func (g *Gateway) registerLoginRoutes(prefix string) {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig)
+		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository)
 	}
 
 	// Login page handler
-	g.Mux.HandleFunc(prefix+"/login", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./static/login.html")
+	loginPath := prefix + "/login"
+	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
+		// Populate data from config and request
+		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.GatewayConfig)
+
+		// Retrieve the pre-parsed template from the map
+		loginTemplatePath := "./static/login.html"
+		tmpl, ok := g.templates[loginTemplatePath]
+		if !ok || tmpl == nil {
+			log.Printf("Error: Login template '%s' not found in cache", loginTemplatePath)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Execute the template
+		err := tmpl.Execute(w, data)
+		if err != nil {
+			log.Printf("Error executing login template: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 	})
+	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
