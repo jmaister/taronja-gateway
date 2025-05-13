@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -84,4 +85,14 @@ func (r *UserRepositoryDB) DeleteUser(id string) error {
 		return errors.New("user not found")
 	}
 	return result.Error
+}
+
+// GetAllUsers retrieves all users from the database.
+func (r *UserRepositoryDB) GetAllUsers() ([]*User, error) {
+	users := []*User{}
+	result := r.db.Find(&users)
+	if result.Error != nil {
+		return nil, fmt.Errorf("error getting all users: %w", result.Error)
+	}
+	return users, nil
 }
