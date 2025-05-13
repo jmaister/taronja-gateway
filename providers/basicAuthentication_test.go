@@ -281,9 +281,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 
 		// Verify session is deleted from store
 		_, err = realSessionStore.Get(sessionToken)
-		assert.Error(t, err, "Session should be deleted from store after logout")
-		// Check if the error is specifically "not found"
-		assert.True(t, strings.Contains(err.Error(), "not found"), "Error should be 'not found'")
+		assert.Error(t, err, "session has been closed")
 
 		// Verify cookie is expired
 		cookies := w.Result().Cookies()

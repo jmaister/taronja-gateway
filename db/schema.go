@@ -64,4 +64,5 @@ type Session struct {
 	IsAuthenticated bool
 	ValidUntil      time.Time
 	Provider        string
+	ClosedOn        *time.Time
 }

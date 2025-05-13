@@ -81,6 +81,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 
 		// Create session object with all required fields
 		so := session.SessionObject{
+			UserID:          user.ID, // Add UserID to correctly link session to user
 			Username:        user.Username,
 			Email:           user.Email,
 			IsAuthenticated: true,

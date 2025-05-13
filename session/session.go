@@ -23,6 +23,7 @@ type SessionStore interface {
 	Get(key string) (SessionObject, error)
 	Delete(key string) error
 	Validate(r *http.Request) (SessionObject, bool)
+	GetSessionsByUserID(userID string) ([]SessionObject, error)
 }
 
 type SessionObject struct {
@@ -32,6 +33,7 @@ type SessionObject struct {
 	IsAuthenticated bool
 	ValidUntil      time.Time
 	Provider        string
+	ClosedOn        *time.Time
 }
 
 type MemorySessionStore struct {
@@ -64,12 +66,22 @@ func (s MemorySessionStore) Get(key string) (SessionObject, error) {
 	if !found {
 		return SessionObject{}, errors.New("not found")
 	}
-	return value, nil
 
+	// Check if session is closed
+	if value.ClosedOn != nil && !value.ClosedOn.IsZero() {
+		return SessionObject{}, errors.New("session has been closed")
+	}
+
+	return value, nil
 }
 
 func (s MemorySessionStore) Delete(key string) error {
-	delete(s.store, key)
+	session, exists := s.store[key]
+	if exists {
+		now := time.Now()
+		session.ClosedOn = &now
+		s.store[key] = session
+	}
 	return nil
 }
 
@@ -83,9 +95,31 @@ func (s MemorySessionStore) Validate(r *http.Request) (SessionObject, bool) {
 	if !exists {
 		return SessionObject{}, false
 	}
-	if sessionObject.ValidUntil.Before(time.Now()) {
-		delete(s.store, cookie.Value)
+
+	now := time.Now()
+	// Check if session is expired or closed
+	if sessionObject.ValidUntil.Before(now) || (sessionObject.ClosedOn != nil && !sessionObject.ClosedOn.IsZero()) {
+		if sessionObject.ClosedOn == nil {
+			// Mark as closed if not already
+			sessionObject.ClosedOn = &now
+			s.store[cookie.Value] = sessionObject
+		}
 		return SessionObject{}, false
 	}
+
 	return sessionObject, true
+}
+
+// GetSessionsByUserID retrieves all active sessions for a specific user from memory store
+func (s MemorySessionStore) GetSessionsByUserID(userID string) ([]SessionObject, error) {
+	var sessions []SessionObject
+
+	for _, session := range s.store {
+		// Only include sessions that belong to this user and haven't been closed
+		if session.UserID == userID && (session.ClosedOn == nil || session.ClosedOn.IsZero()) {
+			sessions = append(sessions, session)
+		}
+	}
+
+	return sessions, nil
 }

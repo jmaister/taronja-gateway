@@ -94,8 +94,8 @@ func (g *Gateway) registerGetUserAPIEndpoint() {
 	getUserAPIPath := g.GatewayConfig.Management.Prefix + "/admin/users/{user_id}"
 
 	getUserAPIHandler := func(w http.ResponseWriter, r *http.Request) {
-		// Pass g.templates and g.GatewayConfig.Management.Prefix to HandleGetUser
-		handlers.HandleGetUser(w, r, g.UserRepository, g.templates, g.GatewayConfig.Management.Prefix)
+		// Pass g.templates, g.GatewayConfig.Management.Prefix and g.SessionStore to HandleGetUser
+		handlers.HandleGetUser(w, r, g.UserRepository, g.templates, g.GatewayConfig.Management.Prefix, g.SessionStore)
 	}
 
 	authWrappedGetUserAPIHandler := g.wrapWithAuth(getUserAPIHandler, false) // false for not static

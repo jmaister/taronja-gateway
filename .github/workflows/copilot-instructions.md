@@ -9,3 +9,8 @@
 * The command line actions done from the AI chat, should use Linux shell commands.
 
 * For Go tests, use Testify (https://github.com/stretchr/testify) for the assertions. Use the Go testing package for the tests.
+
+* Use the Makefile for commands:
+    * `make test` to run the tests
+    * `make build` to build the project
+    * `make run` to run the project

@@ -41,6 +41,7 @@ func (s *SessionStoreDB) Set(key string, value SessionObject) error {
 		IsAuthenticated: value.IsAuthenticated,
 		ValidUntil:      value.ValidUntil,
 		Provider:        value.Provider,
+		ClosedOn:        value.ClosedOn,
 	}
 
 	result := s.dbConn.Create(&session)
@@ -53,6 +54,12 @@ func (s *SessionStoreDB) Get(key string) (SessionObject, error) {
 	if result.Error != nil {
 		return SessionObject{}, errors.New("session not found")
 	}
+
+	// Check if the session has been closed
+	if session.ClosedOn != nil && !session.ClosedOn.IsZero() {
+		return SessionObject{}, errors.New("session has been closed")
+	}
+
 	return SessionObject{
 		UserID:          session.UserID,
 		Username:        session.Username,
@@ -60,11 +67,13 @@ func (s *SessionStoreDB) Get(key string) (SessionObject, error) {
 		IsAuthenticated: session.IsAuthenticated,
 		ValidUntil:      session.ValidUntil,
 		Provider:        session.Provider,
+		ClosedOn:        session.ClosedOn,
 	}, nil
 }
 
 func (s *SessionStoreDB) Delete(key string) error {
-	result := s.dbConn.Where("token = ?", key).Delete(&db.Session{})
+	now := time.Now()
+	result := s.dbConn.Model(&db.Session{}).Where("token = ?", key).Update("closed_on", now)
 	return result.Error
 }
 
@@ -80,9 +89,13 @@ func (s *SessionStoreDB) Validate(r *http.Request) (SessionObject, bool) {
 		return SessionObject{}, false
 	}
 
-	if session.ValidUntil.Before(time.Now()) {
-		// Session expired, delete it
-		s.dbConn.Delete(&session)
+	// Check if session is expired or has been closed
+	now := time.Now()
+	if session.ValidUntil.Before(now) || (session.ClosedOn != nil && !session.ClosedOn.IsZero()) {
+		// Session expired or closed, mark it as closed if not already
+		if session.ClosedOn == nil {
+			s.dbConn.Model(&session).Update("closed_on", now)
+		}
 		return SessionObject{}, false
 	}
 	return SessionObject{
@@ -92,5 +105,30 @@ func (s *SessionStoreDB) Validate(r *http.Request) (SessionObject, bool) {
 		IsAuthenticated: session.IsAuthenticated,
 		ValidUntil:      session.ValidUntil,
 		Provider:        session.Provider,
+		ClosedOn:        session.ClosedOn,
 	}, true
+}
+
+// GetSessionsByUserID retrieves all sessions, open and closed, for a specific user
+func (s *SessionStoreDB) GetSessionsByUserID(userID string) ([]SessionObject, error) {
+	var dbSessions []db.Session
+	result := s.dbConn.Where("user_id = ?", userID).Find(&dbSessions)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	sessions := make([]SessionObject, 0, len(dbSessions))
+	for _, session := range dbSessions {
+		sessions = append(sessions, SessionObject{
+			UserID:          session.UserID,
+			Username:        session.Username,
+			Email:           session.Email,
+			IsAuthenticated: session.IsAuthenticated,
+			ValidUntil:      session.ValidUntil,
+			Provider:        session.Provider,
+			ClosedOn:        session.ClosedOn,
+		})
+	}
+
+	return sessions, nil
 }

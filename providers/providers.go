@@ -272,6 +272,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 
 	// Create a session object
 	sessionObj := session.SessionObject{
+		UserID:          user.ID, // Add UserID to correctly link session to user
 		Username:        user.Username,
 		Email:           user.Email,
 		IsAuthenticated: true,
