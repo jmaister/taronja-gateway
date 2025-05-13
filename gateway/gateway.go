@@ -35,6 +35,9 @@ type Gateway struct {
 // --- NewGateway Function ---
 
 func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
+	// Initialize the database connection
+	db.Init()
+
 	mux := http.NewServeMux()
 
 	// Create server handler based on logging configuration
@@ -52,9 +55,8 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		Handler:      handler,
 	}
 
-	sessionStore := session.NewMemorySessionStore()
+	sessionStore := session.NewSessionStoreDB()
 
-	db.Init()                                                    // Initialize the database connection
 	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
 
 	// Initialize and parse templates

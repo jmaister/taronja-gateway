@@ -39,7 +39,7 @@ func InitForTest() {
 
 func GetConnection() *gorm.DB {
 	if conn == nil {
-		panic("Connection not initialized")
+		panic("Connection not initialized. Call db.Init() first.")
 	}
 	return conn
 }
