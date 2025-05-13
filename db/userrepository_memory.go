@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/rand"
 	"errors"
+	"sort"
 	"sync"
 
 	"github.com/jmaister/taronja-gateway/encryption"
@@ -152,4 +153,20 @@ func (r *MemoryUserRepository) DeleteUser(id string) error {
 	// Remove user
 	delete(r.users, id)
 	return nil
+}
+
+// GetAllUsers retrieves all users from the in-memory store.
+func (r *MemoryUserRepository) GetAllUsers() ([]*User, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	users := make([]*User, 0, len(r.users))
+	for _, user := range r.users {
+		users = append(users, user)
+	}
+	// Optionally sort users, e.g., by username for consistency
+	sort.Slice(users, func(i, j int) bool {
+		return users[i].Username < users[j].Username
+	})
+	return users, nil
 }

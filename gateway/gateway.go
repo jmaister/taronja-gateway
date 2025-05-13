@@ -57,17 +57,11 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	db.Init()                                                    // Initialize the database connection
 	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
 
-	// Initialize templates map
-	templates := make(map[string]*template.Template)
-
-	// Parse the login template from the provided embedded FS
-	loginTemplatePathKey := "login.html" // Path within the embedded FS
-
-	loginTmpl, err := template.ParseFS(static.StaticAssetsFS, loginTemplatePathKey)
+	// Initialize and parse templates
+	templates, err := parseTemplates(static.StaticAssetsFS, "login.html", "create_user.html", "user_info.html", "users_list.html") // Added users_list.html
 	if err != nil {
-		return nil, fmt.Errorf("error parsing login template '%s' from embedded FS: %w", loginTemplatePathKey, err)
+		return nil, err // Propagate error from template parsing
 	}
-	templates[loginTemplatePathKey] = loginTmpl
 
 	gateway := &Gateway{
 		Server:         server,
@@ -91,6 +85,20 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	gateway.configureOAuthCallbackRoute()
 
 	return gateway, nil
+}
+
+// parseTemplates loads and parses HTML templates from an embedded FS.
+func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.Template, error) {
+	templates := make(map[string]*template.Template)
+	for _, tmplName := range templateNames {
+		t, err := template.ParseFS(fs, tmplName)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing template '%s' from embedded FS: %w", tmplName, err)
+		}
+		templates[tmplName] = t
+		log.Printf("Successfully parsed template: %s", tmplName)
+	}
+	return templates, nil
 }
 
 // --- Route Configuration ---
@@ -127,6 +135,9 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	var _ session.SessionStore = sessionStore
 	g.registerLogout()
 
+	// Register all user management routes
+	g.RegisterUserManagementRoutes()
+
 	// Register the static content endpoint to load assets from the provided embedded FS
 	staticPath := prefix + "/static/"
 	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +146,8 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	})
 
 }
+
+// Note: User management route registration functions have been moved to usermanagement.go
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes() {
@@ -424,14 +437,21 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 				cleanRelativePath := filepath.Clean(relativePath)
 				indexPath := filepath.Join(fsPath, cleanRelativePath, "index.html")
 
-				_, err := os.Stat(indexPath)
-				if err != nil && os.IsNotExist(err) {
+				_, statErr := os.Stat(indexPath) // Renamed err to statErr to avoid conflict
+				// Corrected: os.IsNotExist returns a bool, not an error.
+				// Store the boolean result in a new variable.
+				isNotExist := false
+				if statErr != nil {
+					isNotExist = os.IsNotExist(statErr)
+				}
+
+				if isNotExist { // Use the boolean variable here
 					// index.html does not exist. Disable listing explicitly.
 					log.Printf("Static route [%s]: No index.html found at path: %s", routeConfig.Name, indexPath)
 					http.NotFound(w, r) // Return 404 instead of listing
 					return
-				} else if err != nil {
-					log.Printf("Serving Static Dir [%s]: Error checking index.html at '%s': %v", routeConfig.Name, indexPath, err)
+				} else if statErr != nil { // Check original statErr for other errors
+					log.Printf("Serving Static Dir [%s]: Error checking index.html at '%s': %v", routeConfig.Name, indexPath, statErr)
 					// Fall through, maybe FileServer can handle it, maybe not.
 				}
 			}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>User Information</title>
+    <link rel="icon" href="{{.ManagementPrefix}}/static/favicon.ico" type="image/x-icon">
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
+        h1 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+        p { line-height: 1.6; }
+        strong { color: #555; }
+        .error { color: red; font-weight: bold; }
+        .user-info div { margin-bottom: 10px; }
+        .user-info span { display: inline-block; min-width: 100px; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .nav-links { margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>User Information</h1>
+
+        {{if .User}}
+            <div class="user-info">
+                <div><span><strong>ID:</strong></span> {{.User.id}}</div>
+                <div><span><strong>Username:</strong></span> {{.User.username}}</div>
+                <div><span><strong>Email:</strong></span> {{.User.email}}</div>
+                <div><span><strong>Name:</strong></span> {{.User.name}}</div>
+                <div><span><strong>Picture:</strong></span> {{if .User.picture}}<img src="{{.User.picture}}" alt="User Picture" style="max-width: 100px; max-height: 100px; vertical-align: middle;">{{else}}N/A{{end}}</div>
+                <div><span><strong>Provider:</strong></span> {{.User.provider}}</div>
+                <div><span><strong>Created At:</strong></span> {{.User.createdAt}}</div>
+                <div><span><strong>Updated At:</strong></span> {{.User.updatedAt}}</div>
+                <!-- Add any other non-sensitive fields you want to display -->
+            </div>
+        {{else if .Error}}
+            <p class="error">{{.Error}}</p>
+        {{else}}
+            <p>User not found.</p>
+        {{end}}
+
+        <div class="nav-links">
+            <p><a href="{{.ManagementPrefix}}/admin/users">Back to List</a> | <a href="{{.ManagementPrefix}}/admin/users_new">Create Another User</a> | <a href="/secret/index.html">Secret Page</a> | <a href="/">Home</a></p>
+        </div>
+    </div>
+</body>
+</html>

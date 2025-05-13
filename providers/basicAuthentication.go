@@ -107,6 +107,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			return
 		} else {
 			// For GET requests, serve the login page
+			// TODO: fix to use the embedded file system
 			http.ServeFile(w, r, "./static/login.html")
 		}
 	})
