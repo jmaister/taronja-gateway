@@ -26,6 +26,7 @@ type SessionStore interface {
 }
 
 type SessionObject struct {
+	UserID          string
 	Username        string
 	Email           string
 	IsAuthenticated bool

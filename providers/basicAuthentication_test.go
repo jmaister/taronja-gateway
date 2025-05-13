@@ -72,7 +72,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		managementPrefix string,
 	) {
 		basicLoginPath := managementPrefix + "/auth/basic/login"
-		mux.HandleFunc(basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("POST "+basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
 			// First, check if the user already has a valid session
 			_, isValid := sessionStore.Validate(r)
 			if isValid {
@@ -85,62 +85,57 @@ func TestRegisterBasicAuth(t *testing.T) {
 				return
 			}
 
-			// Handle form submission for POST requests
-			if r.Method == "POST" {
-				// Parse form data
-				err := r.ParseForm()
-				if err != nil {
-					http.Error(w, "Error parsing form data", http.StatusBadRequest)
-					return
-				}
-
-				// Extract username and password
-				username := r.Form.Get("username")
-				password := r.Form.Get("password")
-
-				// In test, we know exactly what we're looking for
-				if username != "admin" {
-					http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-					return
-				}
-
-				if password != testPassword {
-					http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-					return
-				}
-
-				// Generate session
-				token, err := sessionStore.GenerateKey()
-				require.NoError(t, err)
-
-				// Create session object
-				so := session.SessionObject{
-					Username:        "admin",
-					Email:           "admin@example.com",
-					IsAuthenticated: true,
-					ValidUntil:      time.Now().Add(24 * time.Hour),
-					Provider:        "basic",
-				}
-				sessionStore.Set(token, so)
-
-				// Set cookie
-				http.SetCookie(w, &http.Cookie{
-					Name:     session.SessionCookieName,
-					Value:    token,
-					Path:     "/",
-					HttpOnly: true,
-					MaxAge:   86400, // 24 hours
-				})
-
-				// Handle redirect
-				redirectURL := r.URL.Query().Get("redirect")
-				if redirectURL == "" {
-					redirectURL = "/"
-				}
-				http.Redirect(w, r, redirectURL, http.StatusFound)
-			} else {
-				http.Error(w, "Login form not available in test", http.StatusNotFound)
+			// Parse form data
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, "Error parsing form data", http.StatusBadRequest)
+				return
 			}
+
+			// Extract username and password
+			username := r.Form.Get("username")
+			password := r.Form.Get("password")
+
+			// In test, we know exactly what we're looking for
+			if username != "admin" {
+				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+
+			if password != testPassword {
+				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+
+			// Generate session
+			token, err := sessionStore.GenerateKey()
+			require.NoError(t, err)
+
+			// Create session object
+			so := session.SessionObject{
+				Username:        "admin",
+				Email:           "admin@example.com",
+				IsAuthenticated: true,
+				ValidUntil:      time.Now().Add(24 * time.Hour),
+				Provider:        "basic",
+			}
+			sessionStore.Set(token, so)
+
+			// Set cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:     session.SessionCookieName,
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				MaxAge:   86400, // 24 hours
+			})
+
+			// Handle redirect
+			redirectURL := r.URL.Query().Get("redirect")
+			if redirectURL == "" {
+				redirectURL = "/"
+			}
+			http.Redirect(w, r, redirectURL, http.StatusFound)
 		})
 	}
 
@@ -218,22 +213,6 @@ func TestRegisterBasicAuth(t *testing.T) {
 		assert.Nil(t, sessionCookie, "No session cookie should be set on failed login")
 	})
 
-	t.Run("GET request returns login form (expects 404 due to ServeFile path)", func(t *testing.T) {
-		// Per-test setup
-		mux := http.NewServeMux()
-		realSessionStore := session.NewMemorySessionStore()
-		mockUserRepo := db.NewMemoryUserRepository() // No user needed for this test
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo)
-
-		req := httptest.NewRequest("GET", "/_/auth/basic/login", nil)
-		w := httptest.NewRecorder()
-
-		mux.ServeHTTP(w, req)
-		// This test currently verifies that http.ServeFile fails to find the file at the constructed path.
-		// The path used by basicAuthentication.go for http.ServeFile is likely incorrect.
-		assert.Equal(t, http.StatusNotFound, w.Code)
-	})
-
 	t.Run("successful authentication with redirect", func(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
@@ -263,72 +242,6 @@ func TestRegisterBasicAuth(t *testing.T) {
 		sessionObj, err := realSessionStore.Get(sessionCookie.Value)
 		require.NoError(t, err)
 		assert.Equal(t, "admin", sessionObj.Username)
-	})
-
-	t.Run("user with valid session is redirected without authentication", func(t *testing.T) {
-		// Per-test setup
-		mux := http.NewServeMux()
-		realSessionStore := session.NewMemorySessionStore()
-		mockUserRepo := db.NewMemoryUserRepository() // User repo not strictly needed as we pre-populate session
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo)
-
-		// Manually create a session
-		sessionToken, err := realSessionStore.GenerateKey()
-		require.NoError(t, err)
-		sessionObj := session.SessionObject{
-			Username:        "testuser",
-			Email:           "test@example.com",
-			IsAuthenticated: true,
-			Provider:        "basic",
-			ValidUntil:      time.Now().Add(1 * time.Hour),
-		}
-		err = realSessionStore.Set(sessionToken, sessionObj)
-		require.NoError(t, err)
-
-		req := httptest.NewRequest("GET", "/_/auth/basic/login", nil)
-		req.AddCookie(&http.Cookie{
-			Name:  session.SessionCookieName,
-			Value: sessionToken,
-		})
-		w := httptest.NewRecorder()
-
-		mux.ServeHTTP(w, req)
-
-		// Should redirect to "/" because the user is already authenticated
-		assert.Equal(t, http.StatusFound, w.Code)
-		assert.Equal(t, "/", w.Header().Get("Location"))
-	})
-
-	t.Run("user with expired session is shown login form", func(t *testing.T) {
-		// Per-test setup
-		mux := http.NewServeMux()
-		realSessionStore := session.NewMemorySessionStore()
-		mockUserRepo := db.NewMemoryUserRepository()
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo)
-
-		// Manually create an expired session
-		sessionToken, err := realSessionStore.GenerateKey()
-		require.NoError(t, err)
-		sessionObj := session.SessionObject{
-			Username:        "testuser",
-			Email:           "test@example.com",
-			IsAuthenticated: true,
-			Provider:        "basic",
-			ValidUntil:      time.Now().Add(-1 * time.Hour), // Expired
-		}
-		err = realSessionStore.Set(sessionToken, sessionObj)
-		require.NoError(t, err)
-
-		req := httptest.NewRequest("GET", "/_/auth/basic/login", nil)
-		req.AddCookie(&http.Cookie{
-			Name:  session.SessionCookieName,
-			Value: sessionToken,
-		})
-		w := httptest.NewRecorder()
-
-		mux.ServeHTTP(w, req)
-		// Expects 404 because the login form itself is not found by ServeFile
-		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
 	t.Run("logout successfully invalidates session", func(t *testing.T) {

@@ -53,3 +53,15 @@ func (u *User) BeforeSave(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// Session struct definition for persistent sessions
+type Session struct {
+	gorm.Model
+	Token           string `gorm:"primaryKey;column:token;type:varchar(255);not null"`
+	UserID          string `gorm:"column:user_id;type:varchar(255)"`
+	Username        string
+	Email           string
+	IsAuthenticated bool
+	ValidUntil      time.Time
+	Provider        string
+}
