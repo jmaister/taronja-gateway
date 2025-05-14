@@ -280,6 +280,9 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Provider:        ap.Provider.Name(),
 	}
 
+	// Extract and add client information
+	session.ExtractClientInfo(r, &sessionObj)
+
 	// Store the session
 	if err := ap.SessionStore.Set(tokenKey, sessionObj); err != nil {
 		log.Printf("Error storing session: %v", err)

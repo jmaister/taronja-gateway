@@ -42,6 +42,17 @@ func (s *SessionStoreDB) Set(key string, value SessionObject) error {
 		ValidUntil:      value.ValidUntil,
 		Provider:        value.Provider,
 		ClosedOn:        value.ClosedOn,
+		// Client information
+		IPAddress:    value.IPAddress,
+		UserAgent:    value.UserAgent,
+		Browser:      value.Browser,
+		OS:           value.OS,
+		DeviceType:   value.DeviceType,
+		Referrer:     value.Referrer,
+		LastActivity: value.LastActivity,
+		SessionName:  value.SessionName,
+		GeoLocation:  value.GeoLocation,
+		CreatedFrom:  value.CreatedFrom,
 	}
 
 	result := s.dbConn.Create(&session)
@@ -68,6 +79,17 @@ func (s *SessionStoreDB) Get(key string) (SessionObject, error) {
 		ValidUntil:      session.ValidUntil,
 		Provider:        session.Provider,
 		ClosedOn:        session.ClosedOn,
+		// Client information
+		IPAddress:    session.IPAddress,
+		UserAgent:    session.UserAgent,
+		Browser:      session.Browser,
+		OS:           session.OS,
+		DeviceType:   session.DeviceType,
+		Referrer:     session.Referrer,
+		LastActivity: session.LastActivity,
+		SessionName:  session.SessionName,
+		GeoLocation:  session.GeoLocation,
+		CreatedFrom:  session.CreatedFrom,
 	}, nil
 }
 
@@ -98,7 +120,14 @@ func (s *SessionStoreDB) Validate(r *http.Request) (SessionObject, bool) {
 		}
 		return SessionObject{}, false
 	}
-	return SessionObject{
+
+	// Update last activity time
+	s.dbConn.Model(&session).Updates(map[string]interface{}{
+		"last_activity": now,
+		"ip_address":    r.RemoteAddr, // Or use X-Forwarded-For if available
+	})
+
+	sessionObj := SessionObject{
 		UserID:          session.UserID,
 		Username:        session.Username,
 		Email:           session.Email,
@@ -106,7 +135,19 @@ func (s *SessionStoreDB) Validate(r *http.Request) (SessionObject, bool) {
 		ValidUntil:      session.ValidUntil,
 		Provider:        session.Provider,
 		ClosedOn:        session.ClosedOn,
-	}, true
+		IPAddress:       session.IPAddress,
+		UserAgent:       session.UserAgent,
+		Browser:         session.Browser,
+		OS:              session.OS,
+		DeviceType:      session.DeviceType,
+		Referrer:        session.Referrer,
+		LastActivity:    now,
+		SessionName:     session.SessionName,
+		GeoLocation:     session.GeoLocation,
+		CreatedFrom:     session.CreatedFrom,
+	}
+
+	return sessionObj, true
 }
 
 // GetSessionsByUserID retrieves all sessions, open and closed, for a specific user
@@ -127,6 +168,17 @@ func (s *SessionStoreDB) GetSessionsByUserID(userID string) ([]SessionObject, er
 			ValidUntil:      session.ValidUntil,
 			Provider:        session.Provider,
 			ClosedOn:        session.ClosedOn,
+			// Client information
+			IPAddress:    session.IPAddress,
+			UserAgent:    session.UserAgent,
+			Browser:      session.Browser,
+			OS:           session.OS,
+			DeviceType:   session.DeviceType,
+			Referrer:     session.Referrer,
+			LastActivity: session.LastActivity,
+			SessionName:  session.SessionName,
+			GeoLocation:  session.GeoLocation,
+			CreatedFrom:  session.CreatedFrom,
 		})
 	}
 

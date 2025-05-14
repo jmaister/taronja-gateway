@@ -65,4 +65,15 @@ type Session struct {
 	ValidUntil      time.Time
 	Provider        string
 	ClosedOn        *time.Time
+	// Client information
+	IPAddress    string
+	UserAgent    string `gorm:"type:text"`
+	Browser      string
+	OS           string
+	DeviceType   string
+	Referrer     string
+	LastActivity time.Time
+	SessionName  string
+	GeoLocation  string
+	CreatedFrom  string
 }

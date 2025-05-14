@@ -88,6 +88,10 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			ValidUntil:      time.Now().Add(24 * time.Hour), // 24-hour session
 			Provider:        "basic",
 		}
+
+		// Extract and add client information
+		session.ExtractClientInfo(r, &so)
+
 		sessionStore.Set(token, so)
 
 		// Set session token in a cookie
