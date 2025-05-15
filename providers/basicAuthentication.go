@@ -7,7 +7,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
-	"github.com/jmaister/taronja-gateway/session" // For session.ExtractClientInfo, session.SessionCookieName
+	// For session.ExtractClientInfo, session.SessionCookieName
 )
 
 // RegisterBasicAuth registers basic authentication handlers for login.
@@ -71,9 +71,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionRepo db.SessionRepository, man
 			return
 		}
 
-		so := db.NewSession(user, "basic", 24*time.Hour) // NewSession returns *db.Session
-
-		session.ExtractClientInfo(r, so) // Modifies so in place
+		so := db.NewSession(r, user, "basic", 24*time.Hour) // NewSession returns *db.Session
 
 		if err := sessionRepo.CreateSession(token, so); err != nil { // Use CreateSession from db.SessionRepository
 			http.Error(w, "Internal Server Error: Could not create session", http.StatusInternalServerError)

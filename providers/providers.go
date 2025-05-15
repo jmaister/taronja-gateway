@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session" // For session.ExtractClientInfo, session.SessionCookieName
+	"github.com/jmaister/taronja-gateway/db" // For session.ExtractClientInfo, session.SessionCookieName
 	"golang.org/x/oauth2"
 )
 
@@ -264,8 +263,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	sessionObj := db.NewSession(user, ap.Provider.Name(), 24*time.Hour)
-	session.ExtractClientInfo(r, sessionObj) // Populate client-specific details
+	sessionObj := db.NewSession(r, user, ap.Provider.Name(), 24*time.Hour)
 
 	if err := ap.SessionRepo.CreateSession(sessionToken, sessionObj); err != nil {
 		log.Printf("Error storing session: %v", err)

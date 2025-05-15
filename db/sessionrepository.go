@@ -26,8 +26,8 @@ type SessionRepository interface {
 // It initializes a session with user details, provider, and validity duration.
 // Other fields like Token, client information, and GORM-managed fields
 // are expected to be set by other parts of the system.
-func NewSession(user *User, provider string, validityDuration time.Duration) *Session {
-	return &Session{
+func NewSession(r *http.Request, user *User, provider string, validityDuration time.Duration) *Session {
+	newSession := Session{
 		UserID:          user.ID,
 		Username:        user.Username,
 		Email:           user.Email,
@@ -35,4 +35,11 @@ func NewSession(user *User, provider string, validityDuration time.Duration) *Se
 		ValidUntil:      time.Now().Add(validityDuration),
 		Provider:        provider,
 	}
+
+	// Extract client information from the request
+	if r != nil {
+		ExtractClientInfo(r, &newSession)
+	}
+
+	return &newSession
 }

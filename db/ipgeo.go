@@ -1,4 +1,4 @@
-package session
+package db
 
 import (
 	"encoding/json"

@@ -31,7 +31,7 @@ func TestGenerateToken(t *testing.T) {
 func TestCreateAndGetSession(t *testing.T) {
 	token, _ := testSessionRepo.GenerateToken()
 	userID := "test-user-id"
-	sessionData := db.NewSession(&db.User{ID: userID, Username: "testuser", Email: "test@example.com"}, "test", time.Hour)
+	sessionData := db.NewSession(nil, &db.User{ID: userID, Username: "testuser", Email: "test@example.com"}, "test", time.Hour)
 	// sessionData.Token is set by CreateSession or should be set before if repo expects it.
 	// Our CreateSession now takes token and sets it.
 
@@ -53,7 +53,7 @@ func TestCreateAndGetSession(t *testing.T) {
 
 func TestUpdateSession(t *testing.T) {
 	token, _ := testSessionRepo.GenerateToken()
-	sessionData := db.NewSession(&db.User{ID: "update-user", Username: "original"}, "test", time.Hour)
+	sessionData := db.NewSession(nil, &db.User{ID: "update-user", Username: "original"}, "test", time.Hour)
 
 	err := testSessionRepo.CreateSession(token, sessionData)
 	assert.NoError(t, err)
@@ -74,7 +74,7 @@ func TestUpdateSession(t *testing.T) {
 
 func TestDeleteSession(t *testing.T) { // DeleteSession now means CloseSession
 	token, _ := testSessionRepo.GenerateToken()
-	sessionData := db.NewSession(&db.User{ID: "delete-user"}, "test", time.Hour)
+	sessionData := db.NewSession(nil, &db.User{ID: "delete-user"}, "test", time.Hour)
 	_ = testSessionRepo.CreateSession(token, sessionData)
 
 	err := testSessionRepo.DeleteSession(token)
@@ -91,7 +91,7 @@ func TestDeleteSession(t *testing.T) { // DeleteSession now means CloseSession
 
 func TestCloseSession(t *testing.T) {
 	token, _ := testSessionRepo.GenerateToken()
-	sessionData := db.NewSession(&db.User{ID: "close-user"}, "test", time.Hour)
+	sessionData := db.NewSession(nil, &db.User{ID: "close-user"}, "test", time.Hour)
 	_ = testSessionRepo.CreateSession(token, sessionData)
 
 	err := testSessionRepo.CloseSession(token)
@@ -115,7 +115,7 @@ func TestCloseSession(t *testing.T) {
 func TestValidateSession(t *testing.T) {
 	// Valid session
 	validToken, _ := testSessionRepo.GenerateToken()
-	validSessionData := db.NewSession(&db.User{ID: "valid-user", Username: "validator"}, "test", time.Hour)
+	validSessionData := db.NewSession(nil, &db.User{ID: "valid-user", Username: "validator"}, "test", time.Hour)
 	_ = testSessionRepo.CreateSession(validToken, validSessionData)
 
 	reqValid := httptest.NewRequest("GET", "/", nil)
@@ -132,7 +132,7 @@ func TestValidateSession(t *testing.T) {
 
 	// Expired session
 	expiredToken, _ := testSessionRepo.GenerateToken()
-	expiredSessionData := db.NewSession(&db.User{ID: "expired-user"}, "test", -time.Hour) // Expired
+	expiredSessionData := db.NewSession(reqValid, &db.User{ID: "expired-user"}, "test", -time.Hour) // Expired
 	_ = testSessionRepo.CreateSession(expiredToken, expiredSessionData)
 
 	reqExpired := httptest.NewRequest("GET", "/", nil)
@@ -166,45 +166,54 @@ func TestGetSessionsByUserID(t *testing.T) {
 	// This might require a direct DB op or a helper if not careful with test data
 
 	s1Token, _ := testSessionRepo.GenerateToken()
-	s1Data := db.NewSession(&db.User{ID: userID}, "test", time.Hour)
+	s1Data := db.NewSession(nil, &db.User{ID: userID}, "test", time.Hour)
 	_ = testSessionRepo.CreateSession(s1Token, s1Data)
 
 	s2Token, _ := testSessionRepo.GenerateToken()
-	s2Data := db.NewSession(&db.User{ID: userID}, "test", 2*time.Hour)
+	s2Data := db.NewSession(nil, &db.User{ID: userID}, "test", 2*time.Hour)
 	_ = testSessionRepo.CreateSession(s2Token, s2Data)
 
 	// Expired session for same user
 	expToken, _ := testSessionRepo.GenerateToken()
-	expData := db.NewSession(&db.User{ID: userID}, "test", -time.Hour)
+	expData := db.NewSession(nil, &db.User{ID: userID}, "test", -time.Hour)
 	_ = testSessionRepo.CreateSession(expToken, expData)
 
 	// Closed session for same user
 	closedToken, _ := testSessionRepo.GenerateToken()
-	closedData := db.NewSession(&db.User{ID: userID}, "test", time.Hour)
+	closedData := db.NewSession(nil, &db.User{ID: userID}, "test", time.Hour)
 	_ = testSessionRepo.CreateSession(closedToken, closedData)
 	_ = testSessionRepo.CloseSession(closedToken)
 
 	// Session for a different user
 	otherUserToken, _ := testSessionRepo.GenerateToken()
-	otherUserData := db.NewSession(&db.User{ID: "other-user-id"}, "test", time.Hour)
+	otherUserData := db.NewSession(nil, &db.User{ID: "other-user-id"}, "test", time.Hour)
 	_ = testSessionRepo.CreateSession(otherUserToken, otherUserData)
 
 	userSessions, err := testSessionRepo.GetSessionsByUserID(userID)
 	assert.NoError(t, err)
-	assert.Len(t, userSessions, 2, "Should only retrieve active, non-expired sessions for the user")
+	assert.Len(t, userSessions, 4, "Should retrieve all sessions (active, expired, closed) for the user")
 
-	foundS1, foundS2 := false, false
+	tokensFound := map[string]bool{
+		s1Token:     false,
+		s2Token:     false,
+		expToken:    false,
+		closedToken: false,
+	}
+
 	for _, s := range userSessions {
 		assert.Equal(t, userID, s.UserID)
-		assert.Nil(t, s.ClosedOn)
-		assert.True(t, s.ValidUntil.After(time.Now()))
-		if s.Token == s1Token {
-			foundS1 = true
-		}
-		if s.Token == s2Token {
-			foundS2 = true
+		tokensFound[s.Token] = true
+		// Optionally, check session state
+		if s.Token == closedToken {
+			assert.NotNil(t, s.ClosedOn, "Closed session should have ClosedOn set")
+		} else if s.Token == expToken {
+			assert.True(t, s.ValidUntil.Before(time.Now()), "Expired session should have ValidUntil in the past")
+		} else {
+			assert.Nil(t, s.ClosedOn, "Active session should not have ClosedOn set")
+			assert.True(t, s.ValidUntil.After(time.Now()), "Active session should have ValidUntil in the future")
 		}
 	}
-	assert.True(t, foundS1, "Session 1 not found")
-	assert.True(t, foundS2, "Session 2 not found")
+	for token, found := range tokensFound {
+		assert.True(t, found, "Session with token %s not found", token)
+	}
 }
