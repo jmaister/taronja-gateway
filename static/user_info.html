@@ -60,7 +60,7 @@
                         {{range .Sessions}}
                             <tr>
                                 <td style="padding: 8px; border: 1px solid #ddd;">{{.provider}}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd;">{{.validUntil}}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">{{FormatDate .validUntil}}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd;">
                                     {{if .closedOn}}
                                         <span style="color: orange; font-weight: bold;">Closed</span>
@@ -70,13 +70,13 @@
                                         <span style="color: red;">Expired</span>
                                     {{end}}
                                 </td>
-                                <td style="padding: 8px; border: 1px solid #ddd;">{{if .closedOn}}{{.closedOn}}{{else}}N/A{{end}}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">{{if .closedOn}}{{FormatDate .closedOn}}{{else}}N/A{{end}}</td>
                             </tr>
                         {{end}}
                     </tbody>
                 </table>
             {{else}}
-                <p>No active sessions found for this user.</p>
+                <p>No sessions found for this user.</p>
             {{end}}
         {{else if .Error}}
             <p class="error">{{.Error}}</p>

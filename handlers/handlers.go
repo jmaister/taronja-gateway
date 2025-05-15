@@ -11,7 +11,6 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
-	"github.com/jmaister/taronja-gateway/session"
 )
 
 // --- Meta API Handlers ---
@@ -34,9 +33,9 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleMe provides information about the currently authenticated user.
-func HandleMe(w http.ResponseWriter, r *http.Request, sessionStore session.SessionStore) {
-	// Retrieve the session object from the session store using the request's cookie
-	sessionObject, valid := sessionStore.Validate(r)
+func HandleMe(w http.ResponseWriter, r *http.Request, sessionRepo db.SessionRepository) {
+	// Retrieve the session object from the session repository using the request's cookie
+	sessionObject, valid := sessionRepo.ValidateSession(r)
 	if !valid {
 		// No valid authenticated session found
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -151,7 +150,7 @@ func HandleCreateUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRe
 
 // HandleGetUser retrieves and returns a user by their ID as an HTML page.
 // It ensures that sensitive information like the password is not exposed.
-func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepository, templates map[string]*template.Template, managementPrefix string, sessionStore session.SessionStore) {
+func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepository, templates map[string]*template.Template, managementPrefix string, sessionRepo db.SessionRepository) {
 	userID := r.PathValue("user_id")
 
 	tmpl, ok := templates["user_info.html"]
@@ -211,7 +210,7 @@ func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepos
 	data["User"] = userData
 
 	// Get all sessions for this user
-	userSessions, err := sessionStore.GetSessionsByUserID(userID)
+	userSessions, err := sessionRepo.GetSessionsByUserID(userID)
 	if err != nil {
 		log.Printf("Warning: Error fetching sessions for user %s: %v", userID, err)
 		// Continue without sessions, don't fail the entire page

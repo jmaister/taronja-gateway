@@ -84,7 +84,7 @@ func TestNewGateway(t *testing.T) {
 			if got.Server == nil {
 				t.Error("NewGateway() gateway.server is nil")
 			}
-			if got.SessionStore == nil {
+			if got.SessionRepository == nil {
 				t.Error("NewGateway() gateway.sessionStore is nil")
 			}
 

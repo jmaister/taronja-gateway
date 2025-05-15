@@ -12,7 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/session" // For session.ExtractClientInfo, session.SessionCookieName
 	"golang.org/x/oauth2"
 )
 
@@ -44,39 +44,33 @@ type AuthProvider interface {
 	Name() string
 }
 
-// RegisterProviders registers all enabled authentication providers in the gateway
-// Each provider is only registered if it's configured in the gateway config
-func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+// RegisterProviders registers all enabled authentication providers.
+// It now accepts db.SessionRepository.
+func RegisterProviders(mux *http.ServeMux, sessionRepo db.SessionRepository, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
-	// Register Basic Authentication if enabled
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled {
 		log.Printf("Registering Basic Authentication provider")
-		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo)
+		RegisterBasicAuth(mux, sessionRepo, gatewayConfig.Management.Prefix, userRepo)
 	}
 
-	// Register GitHub Authentication if configured
 	if gatewayConfig.AuthenticationProviders.Github.ClientId != "" &&
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret != "" {
 		log.Printf("Registering GitHub Authentication provider")
-		RegisterGithubAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGithubAuth(mux, sessionRepo, gatewayConfig, userRepo)
 	} else {
 		log.Printf("GitHub Authentication provider not configured, skipping registration")
 	}
 
-	// Register Google Authentication if configured
 	if gatewayConfig.AuthenticationProviders.Google.ClientId != "" &&
 		gatewayConfig.AuthenticationProviders.Google.ClientSecret != "" {
 		log.Printf("Registering Google Authentication provider")
-		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionRepo, gatewayConfig, userRepo)
 	} else {
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
-
-	// More providers can be added here in the future
 }
 
-// Simple implementation of AuthProvider
 type SimpleAuthProvider struct {
 	name string
 }
@@ -89,39 +83,40 @@ func NewSimpleAuthProvider(name string) *SimpleAuthProvider {
 	return &SimpleAuthProvider{name: name}
 }
 
-// AuthenticationProvider manages OAuth2 authentication flows
+// AuthenticationProvider manages OAuth2 authentication flows.
+// It now uses db.SessionRepository.
 type AuthenticationProvider struct {
-	Provider     AuthProvider
-	LongName     string
-	OAuthConfig  *oauth2.Config
-	Fetcher      UserDataFetcher
-	UserRepo     db.UserRepository
-	SessionStore session.SessionStore
+	Provider    AuthProvider
+	LongName    string
+	OAuthConfig *oauth2.Config
+	Fetcher     UserDataFetcher
+	UserRepo    db.UserRepository
+	SessionRepo db.SessionRepository // Changed from SessionStore
 }
 
-func NewOauth2Config(authProvider AuthProvider, provider *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
+func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
 	redirectUrl, _ := url.JoinPath(baseUrl, "/_/auth/"+authProvider.Name()+"/callback")
-
-	// Scopes: https://developers.google.com/identity/protocols/oauth2/scopes
 	return &oauth2.Config{
 		RedirectURL:  redirectUrl,
-		ClientID:     provider.ClientId,
-		ClientSecret: provider.ClientSecret,
-		Scopes:       []string{"email", "profile"},
+		ClientID:     providerCreds.ClientId,
+		ClientSecret: providerCreds.ClientSecret,
+		Scopes:       []string{"email", "profile"}, // Common scopes
 		Endpoint:     endpoint,
 	}
 }
 
-func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, baseUrl string, ur db.UserRepository, ss session.SessionStore) *AuthenticationProvider {
-	redirectUrl, _ := url.JoinPath(baseUrl, "/_/auth/"+provider.Name()+"/callback")
-	log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, redirectUrl)
+// NewAuthenticationProvider creates a new AuthenticationProvider.
+// It now accepts db.SessionRepository.
+func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sr db.SessionRepository) *AuthenticationProvider {
+	// baseUrl is not directly needed here if redirectURL is in oauthConfig
+	// log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
 
 	return &AuthenticationProvider{
-		Provider:     provider,
-		LongName:     longName,
-		OAuthConfig:  oauthConfig,
-		UserRepo:     ur,
-		SessionStore: ss,
+		Provider:    provider,
+		LongName:    longName,
+		OAuthConfig: oauthConfig,
+		UserRepo:    ur,
+		SessionRepo: sr, // Use sr (SessionRepository)
 	}
 }
 
@@ -166,7 +161,8 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, authCodeURL, http.StatusTemporaryRedirect)
 }
 
-// Callback handles the OAuth2 callback
+// Callback handles the OAuth2 callback.
+// Uses db.SessionRepository methods.
 func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
@@ -205,7 +201,6 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Handle user creation or update
 	user, err := ap.UserRepo.FindUserByIdOrUsername("", "", userInfo.Email)
 	if err != nil {
 		log.Printf("Error finding user: %v", err)
@@ -214,10 +209,9 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	}
 
 	if user == nil {
-		// User not found, creating a new one
 		user = &db.User{
 			Email:          userInfo.Email,
-			Username:       userInfo.Username,
+			Username:       userInfo.Username, // Or generate one if not provided/unique
 			Name:           userInfo.Name,
 			GivenName:      userInfo.GivenName,
 			FamilyName:     userInfo.FamilyName,
@@ -225,136 +219,100 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 			Locale:         userInfo.Locale,
 			Provider:       ap.Provider.Name(),
 			ProviderId:     userInfo.ID,
-			EmailConfirmed: true,
+			EmailConfirmed: true, // Typically true for OAuth
 		}
-
+		if user.Username == "" { // Fallback for username if not provided
+			user.Username = userInfo.Email
+		}
 		err = ap.UserRepo.CreateUser(user)
 		if err != nil {
 			log.Printf("Error creating user: %v", err)
 			http.Error(w, "Failed to create user", http.StatusInternalServerError)
 			return
 		}
-	} else if user.Provider == ap.Provider.Name() {
-		// Update existing user with the same provider
+	} else { // User exists
+		if user.Provider != ap.Provider.Name() {
+			// User exists but with a different provider - this is a conflict.
+			log.Printf("User %s already exists with provider %s, attempted login with %s", userInfo.Email, user.Provider, ap.Provider.Name())
+			http.Error(w, "User account already exists with a different login method.", http.StatusConflict)
+			return
+		}
+		// User exists with the same provider, update details if necessary
 		user.Name = userInfo.Name
 		user.GivenName = userInfo.GivenName
 		user.FamilyName = userInfo.FamilyName
 		user.Picture = userInfo.Picture
 		user.Locale = userInfo.Locale
-		user.ProviderId = userInfo.ID
-
-		err := ap.UserRepo.UpdateUser(user)
-		if err != nil {
-			log.Printf("Error updating user: %v", err)
-			// Non-critical error, continue with login
+		user.ProviderId = userInfo.ID // Update ProviderId in case it changed or wasn't set
+		user.EmailConfirmed = true    // Re-confirm email
+		if err := ap.UserRepo.UpdateUser(user); err != nil {
+			log.Printf("Error updating user %s: %v", user.Email, err)
+			// Non-critical, proceed with login
 		}
-	} else {
-		// User exists but with a different provider
-		log.Printf("User already exists with a different provider: %s", user.Provider)
-		http.Error(w, "User already exists with provider "+user.Provider, http.StatusUnauthorized)
-		return
 	}
 
-	// Validate user for login
 	if err := validateUserLogin(user); err != nil {
-		log.Printf("User validation failed: %v", err)
+		log.Printf("User validation failed for %s: %v", user.Email, err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	// Create a session for the authenticated user
-	tokenKey, err := ap.SessionStore.GenerateKey()
+	sessionToken, err := ap.SessionRepo.GenerateToken()
 	if err != nil {
-		log.Printf("Error generating session key: %v", err)
+		log.Printf("Error generating session token: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Create a session object
-	sessionObj := session.SessionObject{
-		UserID:          user.ID, // Add UserID to correctly link session to user
-		Username:        user.Username,
-		Email:           user.Email,
-		IsAuthenticated: true,
-		ValidUntil:      time.Now().Add(24 * time.Hour), // 24-hour session
-		Provider:        ap.Provider.Name(),
-	}
+	sessionObj := db.NewSession(user, ap.Provider.Name(), 24*time.Hour)
+	session.ExtractClientInfo(r, sessionObj) // Populate client-specific details
 
-	// Extract and add client information
-	session.ExtractClientInfo(r, &sessionObj)
-
-	// Store the session
-	if err := ap.SessionStore.Set(tokenKey, sessionObj); err != nil {
+	if err := ap.SessionRepo.CreateSession(sessionToken, sessionObj); err != nil {
 		log.Printf("Error storing session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Set session cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     session.SessionCookieName,
-		Value:    tokenKey,
+		Name:     db.SessionCookieName,
+		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
-		MaxAge:   86400, // 24 hours in seconds
+		MaxAge:   86400, // 24 hours
 	})
 
-	// Get redirect URL from cookie
 	redirectURL := "/"
 	redirectCookie, err := r.Cookie(RedirectUrlCookieName)
 	if err == nil && redirectCookie.Value != "" {
 		redirectURL = redirectCookie.Value
+		// Clear the redirect cookie
+		http.SetCookie(w, &http.Cookie{Name: RedirectUrlCookieName, Value: "", Path: "/", MaxAge: -1})
 	}
 
-	// Clear redirect cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     RedirectUrlCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   r.TLS != nil,
-		MaxAge:   -1, // Delete immediately
-	})
-
-	// Redirect to the original URL
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-// Logout handles the logout process
+// Logout handles the logout process.
+// Uses db.SessionRepository.DeleteSession.
 func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request) {
-	// Get the session token from the cookie
-	cookie, err := r.Cookie(session.SessionCookieName)
-	if err != nil {
-		log.Printf("Error getting session cookie: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+	cookie, err := r.Cookie(db.SessionCookieName)
+	if err == nil && cookie != nil {
+		_ = ap.SessionRepo.DeleteSession(cookie.Value) // DeleteSession marks as closed
+		http.SetCookie(w, &http.Cookie{
+			Name:     db.SessionCookieName,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   r.TLS != nil,
+			MaxAge:   -1,
+		})
 	}
-
-	// Delete the session from the store
-	if err := ap.SessionStore.Delete(cookie.Value); err != nil {
-		log.Printf("Error deleting session: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Expire the session cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     session.SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   r.TLS != nil,
-		MaxAge:   -1, // Delete immediately
-	})
-
 	// Add cache control headers to prevent browser caching
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
-
-	// Redirect to the login page or home page
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, "/", http.StatusFound) // Or a configured logout redirect URL
 }
 
 // GetLoginPath returns the path for login endpoint
@@ -371,7 +329,7 @@ func (ap *AuthenticationProvider) GetCallbackPath() string {
 func (ap *AuthenticationProvider) RegisterEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc(ap.GetLoginPath(), ap.Login)
 	mux.HandleFunc(ap.GetCallbackPath(), ap.Callback)
-	log.Printf("Registered OAuth2 endpoints for %s provider", ap.LongName)
+	log.Printf("Registered OAuth2 endpoints for %s provider (%s, %s)", ap.LongName, ap.GetLoginPath(), ap.GetCallbackPath())
 }
 
 func generateState() (string, error) {
@@ -383,15 +341,14 @@ func generateState() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// validateUserLogin validates if a user can log in
 func validateUserLogin(user *db.User) error {
 	if !user.EmailConfirmed {
 		return errors.New("user email is not confirmed")
 	}
+	// Add other validation rules if necessary
 	return nil
 }
 
-// SplitRoles splits a comma-separated role string into a slice
 func SplitRoles(roles string) []string {
 	if roles == "" {
 		return []string{}

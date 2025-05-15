@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/db"
 )
 
 func TestGatewayLogout(t *testing.T) {
@@ -30,18 +30,18 @@ func TestGatewayLogout(t *testing.T) {
 	}
 
 	// Create a test session
-	sessionKey, err := gw.SessionStore.GenerateKey()
+	sessionKey, err := gw.SessionRepository.GenerateToken()
 	if err != nil {
 		t.Fatalf("Failed to generate session key: %v", err)
 	}
-	sessionObject := session.SessionObject{
+	sessionObject := db.Session{
 		Username:        "testuser",
 		Email:           "test@example.com",
 		IsAuthenticated: true,
 		Provider:        "test",
 		ValidUntil:      time.Now().Add(1 * time.Hour), // Ensure session is valid
 	}
-	err = gw.SessionStore.Set(sessionKey, sessionObject)
+	err = gw.SessionRepository.CreateSession(sessionKey, &sessionObject)
 	if err != nil {
 		t.Fatalf("Failed to set session: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestGatewayLogout(t *testing.T) {
 	logoutPath := cfg.Management.Prefix + "/logout"
 	req := httptest.NewRequest("GET", logoutPath, nil)
 	req.AddCookie(&http.Cookie{
-		Name:  session.SessionCookieName,
+		Name:  db.SessionCookieName,
 		Value: sessionKey,
 		Path:  "/", // Ensure cookie path matches what the server expects/sets
 	})
@@ -70,7 +70,7 @@ func TestGatewayLogout(t *testing.T) {
 	}
 
 	// Check that the session was deleted from the store
-	_, errGet := gw.SessionStore.Get(sessionKey)
+	_, errGet := gw.SessionRepository.GetSessionByToken(sessionKey)
 	if errGet == nil { // If errGet is nil, session was found (not deleted)
 		t.Error("Session was not deleted from store")
 	}
@@ -79,7 +79,7 @@ func TestGatewayLogout(t *testing.T) {
 	cookies := recorder.Result().Cookies()
 	var foundClearedCookie bool
 	for _, cookie := range cookies {
-		if cookie.Name == session.SessionCookieName {
+		if cookie.Name == db.SessionCookieName {
 			if cookie.Value == "" && cookie.MaxAge == -1 {
 				foundClearedCookie = true
 				break
@@ -131,7 +131,7 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 	// Check that no session cookie was set or cleared, as none was present
 	cookies := recorder.Result().Cookies()
 	for _, cookie := range cookies {
-		if cookie.Name == session.SessionCookieName {
+		if cookie.Name == db.SessionCookieName {
 			t.Errorf("Session cookie was unexpectedly found in response: Name=%s, Value=%s", cookie.Name, cookie.Value)
 		}
 	}
@@ -155,18 +155,18 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	}
 
 	// Create a test session (even if redirecting, logout should clear it)
-	sessionKey, err := gw.SessionStore.GenerateKey()
+	sessionKey, err := gw.SessionRepository.GenerateToken()
 	if err != nil {
 		t.Fatalf("Failed to generate session key: %v", err)
 	}
-	sessionObject := session.SessionObject{
+	sessionObject := db.Session{
 		Username:        "testuser",
 		Email:           "test@example.com",
 		IsAuthenticated: true,
 		Provider:        "test",
 		ValidUntil:      time.Now().Add(1 * time.Hour),
 	}
-	err = gw.SessionStore.Set(sessionKey, sessionObject)
+	err = gw.SessionRepository.CreateSession(sessionKey, &sessionObject)
 	if err != nil {
 		t.Fatalf("Failed to set session: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	logoutPath := cfg.Management.Prefix + "/logout?redirect=/customlogin"
 	req := httptest.NewRequest("GET", logoutPath, nil)
 	req.AddCookie(&http.Cookie{
-		Name:  session.SessionCookieName,
+		Name:  db.SessionCookieName,
 		Value: sessionKey,
 		Path:  "/",
 	})
@@ -195,7 +195,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	}
 
 	// Check that the session was deleted from the store
-	_, errGet := gw.SessionStore.Get(sessionKey)
+	_, errGet := gw.SessionRepository.GetSessionByToken(sessionKey)
 	if errGet == nil {
 		t.Error("Session was not deleted from store")
 	}
@@ -204,7 +204,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	cookies := recorder.Result().Cookies()
 	var foundClearedCookie bool
 	for _, cookie := range cookies {
-		if cookie.Name == session.SessionCookieName {
+		if cookie.Name == db.SessionCookieName {
 			if cookie.Value == "" && cookie.MaxAge == -1 {
 				foundClearedCookie = true
 				break

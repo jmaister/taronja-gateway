@@ -9,7 +9,6 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 )
@@ -154,7 +153,7 @@ func fetchGitHubEmail(accessToken string) (string, error) {
 }
 
 // RegisterGithubAuth configures and registers GitHub OAuth2 authentication
-func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterGithubAuth(mux *http.ServeMux, sessionRepo db.SessionRepository, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	if gatewayConfig.AuthenticationProviders.Github.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret == "" {
 		return // Skip if not configured
@@ -178,9 +177,8 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		oauthConfig,
 		provider,
 		"GitHub",
-		gatewayConfig.Server.URL,
 		userRepo,
-		sessionStore,
+		sessionRepo,
 	)
 
 	// Set the fetcher

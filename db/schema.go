@@ -76,4 +76,13 @@ type Session struct {
 	SessionName  string
 	GeoLocation  string
 	CreatedFrom  string
+	// Detailed geo information
+	Latitude    float64
+	Longitude   float64
+	City        string
+	Country     string
+	CountryCode string
+	Region      string
+	Continent   string
+	ZipCode     string
 }

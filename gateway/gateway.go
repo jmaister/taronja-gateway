@@ -18,18 +18,17 @@ import (
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/providers"
-	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server         *http.Server
-	GatewayConfig  *config.GatewayConfig
-	Mux            *http.ServeMux
-	SessionStore   session.SessionStore
-	UserRepository db.UserRepository
-	templates      map[string]*template.Template
+	Server            *http.Server
+	GatewayConfig     *config.GatewayConfig
+	Mux               *http.ServeMux
+	SessionRepository db.SessionRepository
+	UserRepository    db.UserRepository
+	templates         map[string]*template.Template
 }
 
 // --- NewGateway Function ---
@@ -55,7 +54,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		Handler:      handler,
 	}
 
-	sessionStore := session.NewSessionStoreDB()
+	sessionStore := db.NewSessionRepositoryDB()
 
 	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
 
@@ -66,12 +65,12 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	}
 
 	gateway := &Gateway{
-		Server:         server,
-		GatewayConfig:  config,
-		Mux:            mux,
-		SessionStore:   sessionStore,
-		UserRepository: userRepository,
-		templates:      templates,
+		Server:            server,
+		GatewayConfig:     config,
+		Mux:               mux,
+		SessionRepository: sessionStore,
+		UserRepository:    userRepository,
+		templates:         templates,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -93,7 +92,10 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.Template, error) {
 	templates := make(map[string]*template.Template)
 	for _, tmplName := range templateNames {
-		t, err := template.ParseFS(fs, tmplName)
+		t := template.New(tmplName).Funcs(template.FuncMap{
+			"FormatDate": handlers.FormatDate,
+		})
+		t, err := t.ParseFS(fs, tmplName)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing template '%s' from embedded FS: %w", tmplName, err)
 		}
@@ -120,7 +122,7 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		mePath := prefix + "/me"
 		// Create a handler that passes the session store to HandleMe
 		meHandler := func(w http.ResponseWriter, r *http.Request) {
-			handlers.HandleMe(w, r, g.SessionStore)
+			handlers.HandleMe(w, r, g.SessionRepository)
 		}
 		authWrappedMeHandler := g.wrapWithAuth(meHandler, false)
 		g.Mux.HandleFunc(mePath, authWrappedMeHandler)
@@ -133,8 +135,6 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	g.registerLoginRoutes()
 
 	// Logout Route
-	var sessionStore session.SessionStore = g.SessionStore
-	var _ session.SessionStore = sessionStore
 	g.registerLogout()
 
 	// Register all user management routes
@@ -156,7 +156,7 @@ func (g *Gateway) registerLoginRoutes() {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository)
+		providers.RegisterProviders(g.Mux, g.SessionRepository, g.GatewayConfig, g.UserRepository)
 	}
 
 	// Login page handler
@@ -192,7 +192,7 @@ func (g *Gateway) registerLogout() {
 
 	g.Mux.HandleFunc(logoutPath, func(w http.ResponseWriter, r *http.Request) {
 		// Get the session cookie
-		cookie, err := r.Cookie(session.SessionCookieName)
+		cookie, err := r.Cookie(db.SessionCookieName)
 		if err != nil {
 			// No session cookie, redirect to home
 			http.Redirect(w, r, "/", http.StatusFound)
@@ -206,14 +206,14 @@ func (g *Gateway) registerLogout() {
 		}
 
 		// Delete the session from the store
-		if err := g.SessionStore.Delete(cookie.Value); err != nil {
+		if err := g.SessionRepository.DeleteSession(cookie.Value); err != nil {
 			log.Printf("Error deleting session: %v", err)
 			// Continue with logout even if there's an error
 		}
 
 		// Expire the session cookie
 		http.SetCookie(w, &http.Cookie{
-			Name:     session.SessionCookieName,
+			Name:     db.SessionCookieName,
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,
@@ -313,7 +313,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return middleware.SessionMiddleware(next, g.SessionStore, isStatic, g.GatewayConfig.Management.Prefix)
+	return middleware.SessionMiddleware(next, g.SessionRepository, isStatic, g.GatewayConfig.Management.Prefix)
 }
 
 // --- Route Handler Creation ---
