@@ -11,6 +11,8 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
+	"github.com/jmaister/taronja-gateway/handlers"
+	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +20,7 @@ import (
 // TestRegisterBasicAuth verifies that the basic authentication provider works correctly.
 // This test uses session.MemorySessionStore rather than a mock to ensure realistic behavior.
 func TestRegisterBasicAuth(t *testing.T) {
-	managementPrefix := "/_"      // Common for all tests
+	managementPrefix := "/_"
 	testPassword := "password123" // Use a consistent password for all tests
 
 	// Helper to create a standard test user and repo for each test case
@@ -40,110 +42,13 @@ func TestRegisterBasicAuth(t *testing.T) {
 		return mockUserRepo
 	}
 
-	// Helper function to register logout route for testing
-	setupLogoutRoute := func(mux *http.ServeMux, sessionRepo db.SessionRepository, managementPrefix string) {
-		// Register the logout route
-		logoutPath := managementPrefix + "/auth/logout"
-		mux.HandleFunc(logoutPath, func(w http.ResponseWriter, r *http.Request) {
-			cookie, err := r.Cookie(db.SessionCookieName)
-			if err == nil {
-				sessionRepo.DeleteSession(cookie.Value)
-			}
-
-			// Clear the cookie by setting an expired one
-			http.SetCookie(w, &http.Cookie{
-				Name:     db.SessionCookieName,
-				Value:    "",
-				Path:     "/",
-				HttpOnly: true,
-				MaxAge:   -1,
-				Expires:  time.Now().Add(-1 * time.Hour),
-			})
-
-			http.Redirect(w, r, "/", http.StatusFound)
-		})
-	}
-
-	// Helper for creating test login handler (avoids issues with password hashing)
-	setupTestLoginHandler := func(
-		mux *http.ServeMux,
-		sessionRepo db.SessionRepository,
-		managementPrefix string,
-	) {
-		basicLoginPath := managementPrefix + "/auth/basic/login"
-		mux.HandleFunc("POST "+basicLoginPath, func(w http.ResponseWriter, r *http.Request) {
-			// First, check if the user already has a valid session
-			_, isValid := sessionRepo.ValidateSession(r)
-			if isValid {
-				// If session is valid, redirect to the requested URL or home
-				redirectURL := r.URL.Query().Get("redirect")
-				if redirectURL == "" {
-					redirectURL = "/"
-				}
-				http.Redirect(w, r, redirectURL, http.StatusFound)
-				return
-			}
-
-			// Parse form data
-			err := r.ParseForm()
-			if err != nil {
-				http.Error(w, "Error parsing form data", http.StatusBadRequest)
-				return
-			}
-
-			// Extract username and password
-			username := r.Form.Get("username")
-			password := r.Form.Get("password")
-
-			// In test, we know exactly what we're looking for
-			if username != "admin" {
-				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-				return
-			}
-
-			if password != testPassword {
-				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-				return
-			}
-
-			// Generate session
-			token, err := sessionRepo.GenerateToken()
-			require.NoError(t, err)
-
-			// Create session object
-			so := db.Session{
-				Username:        "admin",
-				Email:           "admin@example.com",
-				IsAuthenticated: true,
-				ValidUntil:      time.Now().Add(24 * time.Hour),
-				Provider:        "basic",
-			}
-			sessionRepo.CreateSession(token, &so)
-
-			// Set cookie
-			http.SetCookie(w, &http.Cookie{
-				Name:     db.SessionCookieName,
-				Value:    token,
-				Path:     "/",
-				HttpOnly: true,
-				MaxAge:   86400, // 24 hours
-			})
-
-			// Handle redirect
-			redirectURL := r.URL.Query().Get("redirect")
-			if redirectURL == "" {
-				redirectURL = "/"
-			}
-			http.Redirect(w, r, redirectURL, http.StatusFound)
-		})
-	}
-
 	t.Run("successful form authentication", func(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		setupUserAndRepo(t) // Create test user
-		setupTestLoginHandler(mux, realSessionRepo, managementPrefix)
+		realSessionStore := session.NewSessionStoreDB(realSessionRepo)
+		mockUserRepo := setupUserAndRepo(t)                                      // Create test user
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED: Use real registration
 
 		// Create a request with valid form credentials
 		formData := url.Values{
@@ -166,13 +71,13 @@ func TestRegisterBasicAuth(t *testing.T) {
 		require.Len(t, cookies, 1)
 
 		sessionCookie := cookies[0]
-		assert.Equal(t, db.SessionCookieName, sessionCookie.Name)
+		assert.Equal(t, session.SessionCookieName, sessionCookie.Name) // CHANGED
 		assert.NotEmpty(t, sessionCookie.Value, "Session token should not be empty")
 		assert.Equal(t, "/", sessionCookie.Path)
 		assert.True(t, sessionCookie.HttpOnly)
 		assert.Equal(t, 86400, sessionCookie.MaxAge)
 
-		sessionObj, err := realSessionRepo.GetSessionByToken(sessionCookie.Value)
+		sessionObj, err := realSessionRepo.FindSessionByToken(sessionCookie.Value)
 		require.NoError(t, err)
 		assert.Equal(t, "admin", sessionObj.Username)
 		assert.Equal(t, "admin@example.com", sessionObj.Email)
@@ -183,8 +88,9 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
+		realSessionStore := session.NewSessionStoreDB(realSessionRepo) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
-		RegisterBasicAuth(mux, realSessionRepo, managementPrefix, mockUserRepo)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED realSessionRepo to realSessionStore
 
 		formData := url.Values{
 			"username": {"admin"},
@@ -199,12 +105,12 @@ func TestRegisterBasicAuth(t *testing.T) {
 		mux.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
-		assert.Equal(t, "Invalid credentials\n", w.Body.String())
+		assert.Equal(t, "Invalid credentials\n", w.Body.String()) // Add newline to match actual output
 
 		cookies := w.Result().Cookies()
 		var sessionCookie *http.Cookie
 		for _, c := range cookies {
-			if c.Name == db.SessionCookieName {
+			if c.Name == session.SessionCookieName { // CHANGED
 				sessionCookie = c
 				break
 			}
@@ -216,8 +122,9 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		setupUserAndRepo(t)
-		setupTestLoginHandler(mux, realSessionRepo, managementPrefix)
+		realSessionStore := session.NewSessionStoreDB(realSessionRepo) // ADDED
+		mockUserRepo := setupUserAndRepo(t)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED: Use real registration
 
 		formData := url.Values{
 			"username": {"admin"},
@@ -238,7 +145,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		cookies := w.Result().Cookies()
 		require.Len(t, cookies, 1)
 		sessionCookie := cookies[0]
-		sessionObj, err := realSessionRepo.GetSessionByToken(sessionCookie.Value)
+		sessionObj, err := realSessionRepo.FindSessionByToken(sessionCookie.Value)
 		require.NoError(t, err)
 		assert.Equal(t, "admin", sessionObj.Username)
 	})
@@ -247,14 +154,17 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		mockUserRepo := db.NewMemoryUserRepository() // Not strictly needed for logout
-		RegisterBasicAuth(mux, realSessionRepo, managementPrefix, mockUserRepo)
+		realSessionStore := session.NewSessionStoreDB(realSessionRepo)
+		// For RegisterBasicAuth, a user repo is needed. An empty one is sufficient here
+		// as the login functionality itself is not being tested in this logout scenario.
+		mockUserRepo := db.NewMemoryUserRepository() // REVERTED: Use a new empty repo.
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo)
 
-		// Register the logout route handler for this test
-		setupLogoutRoute(mux, realSessionRepo, managementPrefix)
+		// Register the real logout route handler for this test
+		handlers.RegisterLogoutHandler(mux, realSessionStore, managementPrefix)
 
-		// Manually create a session
-		sessionToken, err := realSessionRepo.GenerateToken()
+		// Manually create a session for a different user "testuser"
+		sessionToken, err := session.GenerateToken()
 		require.NoError(t, err)
 		sessionObj := db.Session{
 			Username:        "testuser",
@@ -268,7 +178,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 
 		req := httptest.NewRequest("GET", "/_/auth/logout", nil)
 		req.AddCookie(&http.Cookie{
-			Name:  db.SessionCookieName,
+			Name:  session.SessionCookieName,
 			Value: sessionToken,
 		})
 		w := httptest.NewRecorder()
@@ -279,14 +189,14 @@ func TestRegisterBasicAuth(t *testing.T) {
 		assert.Equal(t, "/", w.Header().Get("Location")) // Redirects to home after logout
 
 		// Verify session is deleted from store
-		_, err = realSessionRepo.GetSessionByToken(sessionToken)
+		_, err = realSessionRepo.FindSessionByToken(sessionToken)
 		assert.Error(t, err, "session has been closed")
 
 		// Verify cookie is expired
 		cookies := w.Result().Cookies()
 		require.Len(t, cookies, 1)
 		logoutCookie := cookies[0]
-		assert.Equal(t, db.SessionCookieName, logoutCookie.Name)
+		assert.Equal(t, session.SessionCookieName, logoutCookie.Name)
 		assert.Equal(t, "", logoutCookie.Value) // Value cleared
 		assert.True(t, logoutCookie.MaxAge < 0) // MaxAge set to a negative value
 	})

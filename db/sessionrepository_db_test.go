@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/session" // Added import for session package
 )
 
 func TestSessionStoreDB(t *testing.T) {
@@ -17,7 +18,7 @@ func TestSessionStoreDB(t *testing.T) {
 	store := db.NewSessionRepositoryDB()
 
 	// Generate a session token
-	token, err := store.GenerateToken()
+	token, err := session.GenerateToken() // Changed to session.GenerateToken()
 	if err != nil {
 		t.Fatalf("Error generating session token: %v", err)
 	}
@@ -39,7 +40,7 @@ func TestSessionStoreDB(t *testing.T) {
 	}
 
 	// Test GetSessionByToken
-	retrievedSession, err := store.GetSessionByToken(token)
+	retrievedSession, err := store.FindSessionByToken(token)
 	if err != nil {
 		t.Fatalf("Error retrieving session: %v", err)
 	}
@@ -64,25 +65,6 @@ func TestSessionStoreDB(t *testing.T) {
 		t.Errorf("Expected Provider %s, got %s", sessionData.Provider, retrievedSession.Provider)
 	}
 
-	// Test DeleteSession
-	err = store.DeleteSession(token)
-	if err != nil {
-		t.Fatalf("Error deleting session: %v", err)
-	}
-
-	// Verify session was deleted
-	deletedSession, errGet := store.GetSessionByToken(token)
-	if errGet == nil && deletedSession != nil { // A closed session might return an error or nil, nil. If it's found and not closed, it's an error.
-		// The current GetSessionByToken returns an error for closed sessions.
-		// So, if errGet is nil, it means it was found and not closed, which is unexpected.
-		// Or, if it's found but marked as closed, GetSessionByToken should return an error.
-		t.Error("Expected an error or nil session when getting deleted session, but got a session or no error")
-	}
-	// More robust check: DeleteSession soft deletes. GetSessionByToken should return an error for closed sessions.
-	if errGet == nil {
-		t.Error("Expected an error when getting a deleted (closed) session, got nil")
-	}
-
 }
 
 func TestSessionStoreDBValidateSession(t *testing.T) {
@@ -91,9 +73,10 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 
 	// Create a new SessionStoreDB
 	repo := db.NewSessionRepositoryDB()
+	sessionStore := session.NewSessionStoreDB(repo) // Create SessionStore to use ValidateSession
 
 	// Generate a session token for a valid session
-	validToken, err := repo.GenerateToken()
+	validToken, err := session.GenerateToken() // Changed to session.GenerateToken()
 	if err != nil {
 		t.Fatalf("Error generating session token: %v", err)
 	}
@@ -115,7 +98,7 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 	}
 
 	// Generate a session token for an expired session
-	expiredToken, err := repo.GenerateToken()
+	expiredToken, err := session.GenerateToken() // Changed to session.GenerateToken()
 	if err != nil {
 		t.Fatalf("Error generating expired session token: %v", err)
 	}
@@ -138,11 +121,11 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 	// Test 1: Request with valid session cookie
 	r1 := httptest.NewRequest("GET", "http://example.com", nil)
 	r1.AddCookie(&http.Cookie{
-		Name:  db.SessionCookieName, // Using session.SessionCookieName
+		Name:  session.SessionCookieName, // Changed to session.SessionCookieName
 		Value: validToken,
 	})
 
-	retrievedSess1, isValid1 := repo.ValidateSession(r1)
+	retrievedSess1, isValid1 := sessionStore.ValidateSession(r1) // Changed to sessionStore.ValidateSession
 	if !isValid1 {
 		t.Error("Expected valid session, got invalid")
 	}
@@ -159,11 +142,11 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 	// Test 2: Request with expired session cookie
 	r2 := httptest.NewRequest("GET", "http://example.com", nil)
 	r2.AddCookie(&http.Cookie{
-		Name:  db.SessionCookieName, // Using session.SessionCookieName
+		Name:  session.SessionCookieName, // Changed to session.SessionCookieName
 		Value: expiredToken,
 	})
 
-	_, isValid2 := repo.ValidateSession(r2)
+	_, isValid2 := sessionStore.ValidateSession(r2) // Changed to sessionStore.ValidateSession
 	if isValid2 {
 		t.Error("Expected invalid session for expired token, got valid")
 	}
@@ -171,11 +154,11 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 	// Test 3: Request with non-existent session cookie
 	r3 := httptest.NewRequest("GET", "http://example.com", nil)
 	r3.AddCookie(&http.Cookie{
-		Name:  db.SessionCookieName, // Using session.SessionCookieName
+		Name:  session.SessionCookieName, // Changed to session.SessionCookieName
 		Value: "non-existent-session-token",
 	})
 
-	_, isValid3 := repo.ValidateSession(r3)
+	_, isValid3 := sessionStore.ValidateSession(r3) // Changed to sessionStore.ValidateSession
 	if isValid3 {
 		t.Error("Expected invalid session for non-existent token, got valid")
 	}
@@ -183,7 +166,7 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 	// Test 4: Request with no session cookie
 	r4 := httptest.NewRequest("GET", "http://example.com", nil)
 
-	_, isValid4 := repo.ValidateSession(r4)
+	_, isValid4 := sessionStore.ValidateSession(r4) // Changed to sessionStore.ValidateSession
 	if isValid4 {
 		t.Error("Expected invalid session for request with no cookie, got valid")
 	}
@@ -197,7 +180,7 @@ func TestSessionStoreDBCloseSession(t *testing.T) {
 	repo := db.NewSessionRepositoryDB()
 
 	// Generate a session token
-	token, err := repo.GenerateToken()
+	token, err := session.GenerateToken() // Changed to session.GenerateToken()
 	if err != nil {
 		t.Fatalf("Error generating session token: %v", err)
 	}
@@ -225,7 +208,7 @@ func TestSessionStoreDBCloseSession(t *testing.T) {
 	}
 
 	// Try to get the closed session (should return error and nil)
-	closedSession, err := repo.GetSessionByToken(token)
+	closedSession, err := repo.FindSessionByToken(token)
 	if err == nil || closedSession != nil {
 		t.Error("Expected error and nil session when getting closed session, but got no error or non-nil session")
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db" // For session.ExtractClientInfo, session.SessionCookieName
+	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 )
 
@@ -45,18 +46,18 @@ type AuthProvider interface {
 
 // RegisterProviders registers all enabled authentication providers.
 // It now accepts db.SessionRepository.
-func RegisterProviders(mux *http.ServeMux, sessionRepo db.SessionRepository, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled {
 		log.Printf("Registering Basic Authentication provider")
-		RegisterBasicAuth(mux, sessionRepo, gatewayConfig.Management.Prefix, userRepo)
+		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo)
 	}
 
 	if gatewayConfig.AuthenticationProviders.Github.ClientId != "" &&
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret != "" {
 		log.Printf("Registering GitHub Authentication provider")
-		RegisterGithubAuth(mux, sessionRepo, gatewayConfig, userRepo)
+		RegisterGithubAuth(mux, sessionStore, gatewayConfig, userRepo)
 	} else {
 		log.Printf("GitHub Authentication provider not configured, skipping registration")
 	}
@@ -64,7 +65,7 @@ func RegisterProviders(mux *http.ServeMux, sessionRepo db.SessionRepository, gat
 	if gatewayConfig.AuthenticationProviders.Google.ClientId != "" &&
 		gatewayConfig.AuthenticationProviders.Google.ClientSecret != "" {
 		log.Printf("Registering Google Authentication provider")
-		RegisterGoogleAuth(mux, sessionRepo, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
 	} else {
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
@@ -85,12 +86,12 @@ func NewSimpleAuthProvider(name string) *SimpleAuthProvider {
 // AuthenticationProvider manages OAuth2 authentication flows.
 // It now uses db.SessionRepository.
 type AuthenticationProvider struct {
-	Provider    AuthProvider
-	LongName    string
-	OAuthConfig *oauth2.Config
-	Fetcher     UserDataFetcher
-	UserRepo    db.UserRepository
-	SessionRepo db.SessionRepository // Changed from SessionStore
+	Provider     AuthProvider
+	LongName     string
+	OAuthConfig  *oauth2.Config
+	Fetcher      UserDataFetcher
+	UserRepo     db.UserRepository
+	SessionStore session.SessionStore
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -106,16 +107,16 @@ func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProvid
 
 // NewAuthenticationProvider creates a new AuthenticationProvider.
 // It now accepts db.SessionRepository.
-func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sr db.SessionRepository) *AuthenticationProvider {
+func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sessionStore session.SessionStore) *AuthenticationProvider {
 	// baseUrl is not directly needed here if redirectURL is in oauthConfig
 	// log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
 
 	return &AuthenticationProvider{
-		Provider:    provider,
-		LongName:    longName,
-		OAuthConfig: oauthConfig,
-		UserRepo:    ur,
-		SessionRepo: sr, // Use sr (SessionRepository)
+		Provider:     provider,
+		LongName:     longName,
+		OAuthConfig:  oauthConfig,
+		UserRepo:     ur,
+		SessionStore: sessionStore,
 	}
 }
 
@@ -256,24 +257,16 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	sessionToken, err := ap.SessionRepo.GenerateToken()
+	sessionObj, err := ap.SessionStore.NewSession(r, user, ap.Provider.Name(), 24*time.Hour)
 	if err != nil {
-		log.Printf("Error generating session token: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	sessionObj := db.NewSession(r, user, ap.Provider.Name(), 24*time.Hour)
-
-	if err := ap.SessionRepo.CreateSession(sessionToken, sessionObj); err != nil {
-		log.Printf("Error storing session: %v", err)
+		log.Printf("Error creating session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     db.SessionCookieName,
-		Value:    sessionToken,
+		Name:     session.SessionCookieName,
+		Value:    sessionObj.Token,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
@@ -294,11 +287,11 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 // Logout handles the logout process.
 // Uses db.SessionRepository.DeleteSession.
 func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(db.SessionCookieName)
+	cookie, err := r.Cookie(session.SessionCookieName)
 	if err == nil && cookie != nil {
-		_ = ap.SessionRepo.DeleteSession(cookie.Value) // DeleteSession marks as closed
+		_ = ap.SessionStore.EndSession(cookie.Value) // End the session
 		http.SetCookie(w, &http.Cookie{
-			Name:     db.SessionCookieName,
+			Name:     session.SessionCookieName,
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,

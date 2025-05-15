@@ -7,16 +7,17 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
+	"github.com/jmaister/taronja-gateway/session"
 	// For session.ExtractClientInfo, session.SessionCookieName
 )
 
 // RegisterBasicAuth registers basic authentication handlers for login.
 // It now uses db.SessionRepository.
-func RegisterBasicAuth(mux *http.ServeMux, sessionRepo db.SessionRepository, managementPrefix string, userRepo db.UserRepository) {
+func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo db.UserRepository) {
 	basicLoginPath := managementPrefix + "/auth/basic/login"
 
 	checkSessionAndRedirect := func(w http.ResponseWriter, r *http.Request) bool {
-		_, isValid := sessionRepo.ValidateSession(r) // Use ValidateSession from db.SessionRepository
+		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from db.SessionRepository
 		if isValid {
 			redirectURL := r.URL.Query().Get("redirect")
 			if redirectURL == "" {
@@ -65,22 +66,15 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionRepo db.SessionRepository, man
 			return
 		}
 
-		token, err := sessionRepo.GenerateToken() // Use GenerateToken from db.SessionRepository
+		sessionObject, err := sessionStore.NewSession(r, user, "basic", 24*time.Hour)
 		if err != nil {
-			http.Error(w, "Internal Server Error: Could not generate session token", http.StatusInternalServerError)
-			return
-		}
-
-		so := db.NewSession(r, user, "basic", 24*time.Hour) // NewSession returns *db.Session
-
-		if err := sessionRepo.CreateSession(token, so); err != nil { // Use CreateSession from db.SessionRepository
 			http.Error(w, "Internal Server Error: Could not create session", http.StatusInternalServerError)
 			return
 		}
 
 		http.SetCookie(w, &http.Cookie{
-			Name:     db.SessionCookieName,
-			Value:    token,
+			Name:     session.SessionCookieName,
+			Value:    sessionObject.Token,
 			Path:     "/",
 			HttpOnly: true,
 			Secure:   r.TLS != nil,

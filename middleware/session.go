@@ -5,19 +5,18 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
 // SessionMiddleware validates that the session cookie is present and valid
-func SessionMiddleware(next http.HandlerFunc, sessionRepository db.SessionRepository, isStatic bool, managementPrefix string) http.HandlerFunc {
+func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, isStatic bool, managementPrefix string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Add cache-control headers to prevent caching of authenticated content
 		w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
-		sessionObject, exists := sessionRepository.ValidateSession(r)
+		sessionObject, exists := sessionStore.ValidateSession(r)
 		if !exists {
 			if isStatic {
 				// Redirect to login page with the original URL as the redirect parameter

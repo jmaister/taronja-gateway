@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -71,7 +72,7 @@ func (f *GoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 }
 
 // RegisterGoogleAuth configures and registers Google OAuth2 authentication
-func RegisterGoogleAuth(mux *http.ServeMux, sessionRepo db.SessionRepository, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	if gatewayConfig.AuthenticationProviders.Google.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Google.ClientSecret == "" {
 		return // Skip if not configured
@@ -96,7 +97,7 @@ func RegisterGoogleAuth(mux *http.ServeMux, sessionRepo db.SessionRepository, ga
 		provider,
 		"Google",
 		userRepo,
-		sessionRepo,
+		sessionStore,
 	)
 
 	// Set the fetcher

@@ -1,15 +1,17 @@
-package db
+package session
 
 import (
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/db"
 )
 
-// ExtractClientInfo extracts client information from an HTTP request
+// PopulateClientInfo extracts client information from an HTTP request
 // and adds it to a db.Session object. This remains a utility function.
-func ExtractClientInfo(r *http.Request, obj *Session) {
+func PopulateClientInfo(r *http.Request, obj *db.Session) {
 	// Get IP address
 	ipAddress := r.RemoteAddr
 	// Check for forwarded IP if behind proxy

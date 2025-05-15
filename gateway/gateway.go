@@ -18,17 +18,18 @@ import (
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/providers"
+	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server            *http.Server
-	GatewayConfig     *config.GatewayConfig
-	Mux               *http.ServeMux
-	SessionRepository db.SessionRepository
-	UserRepository    db.UserRepository
-	templates         map[string]*template.Template
+	Server         *http.Server
+	GatewayConfig  *config.GatewayConfig
+	Mux            *http.ServeMux
+	SessionStore   session.SessionStore
+	UserRepository db.UserRepository
+	templates      map[string]*template.Template
 }
 
 // --- NewGateway Function ---
@@ -54,9 +55,9 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		Handler:      handler,
 	}
 
-	sessionStore := db.NewSessionRepositoryDB()
+	sessionStore := session.NewSessionStoreDB(db.NewSessionRepositoryDB())
 
-	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
+	userRepository := db.NewDBUserRepository(db.GetConnection())
 
 	// Initialize and parse templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html", "create_user.html", "user_info.html", "users_list.html") // Added users_list.html
@@ -65,12 +66,12 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	}
 
 	gateway := &Gateway{
-		Server:            server,
-		GatewayConfig:     config,
-		Mux:               mux,
-		SessionRepository: sessionStore,
-		UserRepository:    userRepository,
-		templates:         templates,
+		Server:         server,
+		GatewayConfig:  config,
+		Mux:            mux,
+		SessionStore:   sessionStore,
+		UserRepository: userRepository,
+		templates:      templates,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -122,7 +123,7 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		mePath := prefix + "/me"
 		// Create a handler that passes the session store to HandleMe
 		meHandler := func(w http.ResponseWriter, r *http.Request) {
-			handlers.HandleMe(w, r, g.SessionRepository)
+			handlers.HandleMe(w, r, g.SessionStore)
 		}
 		authWrappedMeHandler := g.wrapWithAuth(meHandler, false)
 		g.Mux.HandleFunc(mePath, authWrappedMeHandler)
@@ -156,7 +157,7 @@ func (g *Gateway) registerLoginRoutes() {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.SessionRepository, g.GatewayConfig, g.UserRepository)
+		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository)
 	}
 
 	// Login page handler
@@ -187,50 +188,8 @@ func (g *Gateway) registerLoginRoutes() {
 
 // registerLogout registers a global logout endpoint that clears the session
 func (g *Gateway) registerLogout() {
-	// Define the logout route path
-	logoutPath := g.GatewayConfig.Management.Prefix + "/logout"
-
-	g.Mux.HandleFunc(logoutPath, func(w http.ResponseWriter, r *http.Request) {
-		// Get the session cookie
-		cookie, err := r.Cookie(db.SessionCookieName)
-		if err != nil {
-			// No session cookie, redirect to home
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		// Get redirect URL from query parameters, default to "/"
-		redirectURL := r.URL.Query().Get("redirect")
-		if redirectURL == "" {
-			redirectURL = "/"
-		}
-
-		// Delete the session from the store
-		if err := g.SessionRepository.DeleteSession(cookie.Value); err != nil {
-			log.Printf("Error deleting session: %v", err)
-			// Continue with logout even if there's an error
-		}
-
-		// Expire the session cookie
-		http.SetCookie(w, &http.Cookie{
-			Name:     db.SessionCookieName,
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   r.TLS != nil,
-			MaxAge:   -1, // Delete immediately
-		})
-
-		// Add cache control headers to prevent browser caching
-		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-
-		// Redirect to the original URL or home page
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-	})
-
-	log.Printf("Registered Global Logout Route: | Path: %s", logoutPath)
+	handlers.RegisterLogoutHandler(g.Mux, g.SessionStore, g.GatewayConfig.Management.Prefix) // CHANGED
+	log.Printf("Registered Global Logout Route: | Path: %s", g.GatewayConfig.Management.Prefix+"/logout")
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
@@ -313,7 +272,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return middleware.SessionMiddleware(next, g.SessionRepository, isStatic, g.GatewayConfig.Management.Prefix)
+	return middleware.SessionMiddleware(next, g.SessionStore, isStatic, g.GatewayConfig.Management.Prefix)
 }
 
 // --- Route Handler Creation ---

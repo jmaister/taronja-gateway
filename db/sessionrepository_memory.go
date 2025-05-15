@@ -1,7 +1,6 @@
 package db
 
 import (
-	"net/http"
 	"sync"
 	"time"
 )
@@ -30,7 +29,7 @@ func (m *memorySessionRepo) CreateSession(token string, session *Session) error 
 	return nil
 }
 
-func (m *memorySessionRepo) GetSessionByToken(token string) (*Session, error) {
+func (m *memorySessionRepo) FindSessionByToken(token string) (*Session, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 	s, ok := m.store[token]
@@ -52,24 +51,6 @@ func (m *memorySessionRepo) UpdateSession(session *Session) error {
 
 func (m *memorySessionRepo) DeleteSession(token string) error {
 	return m.CloseSession(token)
-}
-
-func (m *memorySessionRepo) ValidateSession(r *http.Request) (*Session, bool) {
-	cookie, err := r.Cookie(SessionCookieName)
-	if err != nil {
-		return nil, false
-	}
-	s, err := m.GetSessionByToken(cookie.Value)
-	if err != nil || s == nil {
-		return nil, false
-	}
-	if s.ValidUntil.Before(time.Now()) {
-		_ = m.CloseSession(s.Token)
-		return nil, false
-	}
-	s.LastActivity = time.Now()
-	_ = m.UpdateSession(s)
-	return s, true
 }
 
 func (m *memorySessionRepo) GetSessionsByUserID(userID string) ([]Session, error) {
