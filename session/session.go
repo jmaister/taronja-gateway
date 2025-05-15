@@ -116,7 +116,3 @@ func ExtractClientInfo(r *http.Request, obj *db.Session) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
-
-// GetGeoDataFromIP is assumed to exist in ipgeo.go in the same package.
-// If not, this function call in ExtractClientInfo will cause an error.
-// For this refactoring, we assume ipgeo.go and GetGeoDataFromIP are correctly defined.
