@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
@@ -26,17 +25,15 @@ func TestRegisterBasicAuth(t *testing.T) {
 	// Helper to create a standard test user and repo for each test case
 	setupUserAndRepo := func(t *testing.T) db.UserRepository {
 		mockUserRepo := db.NewMemoryUserRepository()
-		hashedPassword, err := encryption.GeneratePasswordHash(testPassword)
-		require.NoError(t, err, "Password hashing should succeed")
 
 		testUser := &db.User{
 			ID:       "user1",
 			Username: "admin",
 			Email:    "admin@example.com",
-			Password: hashedPassword,
+			Password: testPassword,
 		}
 
-		err = mockUserRepo.CreateUser(testUser)
+		err := mockUserRepo.CreateUser(testUser)
 		require.NoError(t, err, "User creation should succeed")
 
 		return mockUserRepo
@@ -176,7 +173,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		err = realSessionRepo.CreateSession(sessionToken, &sessionObj)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest("GET", "/_/auth/logout", nil)
+		req := httptest.NewRequest("GET", "/_/logout", nil)
 		req.AddCookie(&http.Cookie{
 			Name:  session.SessionCookieName,
 			Value: sessionToken,
