@@ -178,7 +178,6 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		oauthConfig,
 		provider,
 		"GitHub",
-		gatewayConfig.Server.URL,
 		userRepo,
 		sessionStore,
 	)

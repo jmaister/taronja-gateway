@@ -96,7 +96,6 @@ func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		oauthConfig,
 		provider,
 		"Google",
-		gatewayConfig.Server.URL,
 		userRepo,
 		sessionStore,
 	)

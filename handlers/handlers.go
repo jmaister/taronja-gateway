@@ -35,8 +35,8 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 
 // HandleMe provides information about the currently authenticated user.
 func HandleMe(w http.ResponseWriter, r *http.Request, sessionStore session.SessionStore) {
-	// Retrieve the session object from the session store using the request's cookie
-	sessionObject, valid := sessionStore.Validate(r)
+	// Retrieve the session object from the session repository using the request's cookie
+	sessionObject, valid := sessionStore.ValidateSession(r)
 	if !valid {
 		// No valid authenticated session found
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -151,7 +151,7 @@ func HandleCreateUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRe
 
 // HandleGetUser retrieves and returns a user by their ID as an HTML page.
 // It ensures that sensitive information like the password is not exposed.
-func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepository, templates map[string]*template.Template, managementPrefix string) {
+func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepository, templates map[string]*template.Template, managementPrefix string, sessionStore session.SessionStore) {
 	userID := r.PathValue("user_id")
 
 	tmpl, ok := templates["user_info.html"]
@@ -209,6 +209,26 @@ func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepos
 		"updatedAt": user.UpdatedAt.Format(time.RFC1123),
 	}
 	data["User"] = userData
+
+	// Get all sessions for this user
+	userSessions, err := sessionStore.FindSessionsByUserID(userID)
+	if err != nil {
+		log.Printf("Warning: Error fetching sessions for user %s: %v", userID, err)
+		// Continue without sessions, don't fail the entire page
+	} else {
+		// Format session data for display
+		sessionData := make([]map[string]interface{}, 0, len(userSessions))
+		for _, sess := range userSessions {
+			sessionData = append(sessionData, map[string]interface{}{
+				"provider":   sess.Provider,
+				"validUntil": sess.ValidUntil.Format(time.RFC1123),
+				"active":     sess.ValidUntil.After(time.Now()) && sess.ClosedOn == nil,
+				"closedOn":   sess.ClosedOn,
+			})
+		}
+		data["Sessions"] = sessionData
+		data["SessionCount"] = len(sessionData)
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

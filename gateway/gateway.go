@@ -35,6 +35,9 @@ type Gateway struct {
 // --- NewGateway Function ---
 
 func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
+	// Initialize the database connection
+	db.Init()
+
 	mux := http.NewServeMux()
 
 	// Create server handler based on logging configuration
@@ -52,10 +55,9 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		Handler:      handler,
 	}
 
-	sessionStore := session.NewMemorySessionStore()
+	sessionStore := session.NewSessionStoreDB(db.NewSessionRepositoryDB())
 
-	db.Init()                                                    // Initialize the database connection
-	userRepository := db.NewDBUserRepository(db.GetConnection()) // Create UserRepository instance here
+	userRepository := db.NewDBUserRepository(db.GetConnection())
 
 	// Initialize and parse templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html", "create_user.html", "user_info.html", "users_list.html") // Added users_list.html
@@ -91,7 +93,10 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.Template, error) {
 	templates := make(map[string]*template.Template)
 	for _, tmplName := range templateNames {
-		t, err := template.ParseFS(fs, tmplName)
+		t := template.New(tmplName).Funcs(template.FuncMap{
+			"FormatDate": handlers.FormatDate,
+		})
+		t, err := t.ParseFS(fs, tmplName)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing template '%s' from embedded FS: %w", tmplName, err)
 		}
@@ -131,8 +136,6 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	g.registerLoginRoutes()
 
 	// Logout Route
-	var sessionStore session.SessionStore = g.SessionStore
-	var _ session.SessionStore = sessionStore
 	g.registerLogout()
 
 	// Register all user management routes
@@ -185,50 +188,8 @@ func (g *Gateway) registerLoginRoutes() {
 
 // registerLogout registers a global logout endpoint that clears the session
 func (g *Gateway) registerLogout() {
-	// Define the logout route path
-	logoutPath := g.GatewayConfig.Management.Prefix + "/logout"
-
-	g.Mux.HandleFunc(logoutPath, func(w http.ResponseWriter, r *http.Request) {
-		// Get the session cookie
-		cookie, err := r.Cookie(session.SessionCookieName)
-		if err != nil {
-			// No session cookie, redirect to home
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		// Get redirect URL from query parameters, default to "/"
-		redirectURL := r.URL.Query().Get("redirect")
-		if redirectURL == "" {
-			redirectURL = "/"
-		}
-
-		// Delete the session from the store
-		if err := g.SessionStore.Delete(cookie.Value); err != nil {
-			log.Printf("Error deleting session: %v", err)
-			// Continue with logout even if there's an error
-		}
-
-		// Expire the session cookie
-		http.SetCookie(w, &http.Cookie{
-			Name:     session.SessionCookieName,
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   r.TLS != nil,
-			MaxAge:   -1, // Delete immediately
-		})
-
-		// Add cache control headers to prevent browser caching
-		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, post-check=0, pre-check=0")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-
-		// Redirect to the original URL or home page
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-	})
-
-	log.Printf("Registered Global Logout Route: | Path: %s", logoutPath)
+	handlers.RegisterLogoutHandler(g.Mux, g.SessionStore, g.GatewayConfig.Management.Prefix) // CHANGED
+	log.Printf("Registered Global Logout Route: | Path: %s", g.GatewayConfig.Management.Prefix+"/logout")
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.

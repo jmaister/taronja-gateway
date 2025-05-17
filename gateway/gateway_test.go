@@ -87,6 +87,9 @@ func TestNewGateway(t *testing.T) {
 			if got.SessionStore == nil {
 				t.Error("NewGateway() gateway.sessionStore is nil")
 			}
+			if got.UserRepository == nil {
+				t.Error("NewGateway() gateway.userRepository is nil")
+			}
 
 			// Check server configuration
 			if got.Server.Addr != "localhost:8080" {

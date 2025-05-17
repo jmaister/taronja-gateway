@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -22,37 +23,30 @@ func TestGatewayLogout(t *testing.T) {
 		},
 	}
 
-	// Create a gateway instance. NewGateway calls configureManagementRoutes,
-	// which we will modify to call registerLogout.
+	// Create a gateway instance.
 	gw, err := NewGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
 
-	// Create a test session
-	sessionKey, err := gw.SessionStore.GenerateKey()
+	// Create a dummy user for the session
+	testUser := &db.User{ID: "testlogoutuser", Username: "testlogoutusername"}
+
+	// Create a test session using SessionStore's NewSession
+	// NewSession handles token generation and creation in the repository.
+	sessionData, err := gw.SessionStore.NewSession(nil, testUser, "test-provider", time.Hour)
 	if err != nil {
-		t.Fatalf("Failed to generate session key: %v", err)
+		t.Fatalf("Failed to create session: %v", err)
 	}
-	sessionObject := session.SessionObject{
-		Username:        "testuser",
-		Email:           "test@example.com",
-		IsAuthenticated: true,
-		Provider:        "test",
-		ValidUntil:      time.Now().Add(1 * time.Hour), // Ensure session is valid
-	}
-	err = gw.SessionStore.Set(sessionKey, sessionObject)
-	if err != nil {
-		t.Fatalf("Failed to set session: %v", err)
-	}
+	sessionKey := sessionData.Token // Get the token from the created session
 
 	// Create a request to the logout endpoint
 	logoutPath := cfg.Management.Prefix + "/logout"
 	req := httptest.NewRequest("GET", logoutPath, nil)
 	req.AddCookie(&http.Cookie{
 		Name:  session.SessionCookieName,
-		Value: sessionKey,
-		Path:  "/", // Ensure cookie path matches what the server expects/sets
+		Value: sessionKey, // Use the session token from the created session
+		Path:  "/",        // Ensure cookie path matches what the server expects/sets
 	})
 
 	recorder := httptest.NewRecorder()
@@ -69,10 +63,21 @@ func TestGatewayLogout(t *testing.T) {
 		t.Errorf("Expected redirect to '%s', got '%s'", expectedRedirect, location)
 	}
 
-	// Check that the session was deleted from the store
-	_, errGet := gw.SessionStore.Get(sessionKey)
-	if errGet == nil { // If errGet is nil, session was found (not deleted)
-		t.Error("Session was not deleted from store")
+	// Check that the session was deleted from the store (actually closed)
+	// Access Repo via type assertion on SessionStore if it's SessionStoreDB
+	var retrievedSession *db.Session
+	var errGet error
+	if storeDB, ok := gw.SessionStore.(*session.SessionStoreDB); ok {
+		retrievedSession, errGet = storeDB.Repo.FindSessionByToken(sessionKey)
+	} else {
+		t.Fatalf("SessionStore is not of type *session.SessionStoreDB, cannot access Repo")
+	}
+
+	if errGet == nil && retrievedSession != nil { // If errGet is nil and session is found, it was not properly closed/deleted
+		t.Error("Session was not deleted/closed from store")
+	} else if errGet != nil && errGet.Error() != db.ErrSessionClosed.Error() {
+		// If there's an error, it should be because the session is marked as closed
+		t.Errorf("Expected '%s' error, got: %v", db.ErrSessionClosed.Error(), errGet)
 	}
 
 	// Check that the session cookie was cleared in the response
@@ -155,18 +160,26 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	}
 
 	// Create a test session (even if redirecting, logout should clear it)
-	sessionKey, err := gw.SessionStore.GenerateKey()
+	sessionKey, err := session.GenerateToken() // Use package level GenerateToken
 	if err != nil {
 		t.Fatalf("Failed to generate session key: %v", err)
 	}
-	sessionObject := session.SessionObject{
+	sessionObject := db.Session{ // This is db.Session
+		Token:           sessionKey, // Set the token
+		UserID:          "testuser",
 		Username:        "testuser",
 		Email:           "test@example.com",
 		IsAuthenticated: true,
 		Provider:        "test",
 		ValidUntil:      time.Now().Add(1 * time.Hour),
+		// Removed CreatedAt and UpdatedAt as they are not in db.Session based on previous errors
 	}
-	err = gw.SessionStore.Set(sessionKey, sessionObject)
+	// Access Repo via type assertion on SessionStore if it's SessionStoreDB
+	if storeDB, ok := gw.SessionStore.(*session.SessionStoreDB); ok {
+		err = storeDB.Repo.CreateSession(sessionKey, &sessionObject)
+	} else {
+		t.Fatalf("SessionStore is not of type *session.SessionStoreDB, cannot access Repo")
+	}
 	if err != nil {
 		t.Fatalf("Failed to set session: %v", err)
 	}
@@ -194,10 +207,21 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 		t.Errorf("Expected redirect to '%s', got '%s'", expectedRedirect, location)
 	}
 
-	// Check that the session was deleted from the store
-	_, errGet := gw.SessionStore.Get(sessionKey)
-	if errGet == nil {
-		t.Error("Session was not deleted from store")
+	// Check that the session was deleted from the store (actually closed)
+	// Access Repo via type assertion on SessionStore if it's SessionStoreDB
+	var retrievedSession *db.Session
+	var errGet error
+	if storeDB, ok := gw.SessionStore.(*session.SessionStoreDB); ok {
+		retrievedSession, errGet = storeDB.Repo.FindSessionByToken(sessionKey)
+	} else {
+		t.Fatalf("SessionStore is not of type *session.SessionStoreDB, cannot access Repo")
+	}
+
+	if errGet == nil && retrievedSession != nil { // If errGet is nil and session is found, it was not properly closed/deleted
+		t.Error("Session was not deleted/closed from store")
+	} else if errGet != nil && errGet.Error() != db.ErrSessionClosed.Error() {
+		// If there's an error, it should be because the session is marked as closed
+		t.Errorf("Expected '%s' error, got: %v", db.ErrSessionClosed.Error(), errGet)
 	}
 
 	// Check that the session cookie was cleared in the response

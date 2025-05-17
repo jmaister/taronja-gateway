@@ -14,7 +14,7 @@ func Init() {
 	}
 
 	// Migrate the schema
-	err2 := db.AutoMigrate(&User{})
+	err2 := db.AutoMigrate(&User{}, &Session{})
 	if err2 != nil {
 		panic("Failed to migration DB: " + err2.Error())
 	}
@@ -29,7 +29,7 @@ func InitForTest() {
 	}
 
 	// Migrate the schema
-	err2 := db.AutoMigrate(&User{})
+	err2 := db.AutoMigrate(&User{}, &Session{})
 	if err2 != nil {
 		panic("Failed to migration DB: " + err2.Error())
 	}
@@ -39,7 +39,7 @@ func InitForTest() {
 
 func GetConnection() *gorm.DB {
 	if conn == nil {
-		panic("Connection not initialized")
+		panic("Connection not initialized. Call db.Init() first.")
 	}
 	return conn
 }
