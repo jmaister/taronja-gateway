@@ -36,7 +36,7 @@ jobs:
         treemap-output: coverage-treemap.svg
         
     - name: Upload coverage treemap as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-treemap
         path: coverage-treemap.svg
