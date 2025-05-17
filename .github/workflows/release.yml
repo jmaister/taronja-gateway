@@ -1,4 +1,4 @@
-name: Go Release with Coverage Treemap
+name: Go Release
 
 on:
   release:
@@ -18,12 +18,6 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
-
-      - name: Generate coverage treemap
-        uses: ./.github/actions/go-cover-treemap
-        with:
-          go-version: '1.24'
-          treemap-output: coverage-treemap.svg
 
       - name: Set up GoReleaser
         uses: goreleaser/goreleaser-action@v5

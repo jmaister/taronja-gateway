@@ -55,10 +55,13 @@ changelog:
       - Merge pull request
       - Merge branch
 
-# Add the coverage treemap to the release assets
 release:
-  extra_files:
-    - glob: coverage-treemap.svg
+  github:
+    owner: jmaister
+    name: taronja-gateway
+  draft: false
+  prerelease: auto
+  # extra_files: no extra release assets
 
 # Docker image builds are disabled due to issues
 # dockers:

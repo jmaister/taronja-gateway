@@ -29,18 +29,6 @@ jobs:
         go test -v -coverprofile=coverage.out ./...
         echo "Tests completed"
         
-    - name: Generate coverage treemap
-      uses: ./.github/actions/go-cover-treemap
-      with:
-        go-version: '1.24'
-        treemap-output: coverage-treemap.svg
-        
-    - name: Upload coverage treemap as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-treemap
-        path: coverage-treemap.svg
-        
     - name: Check GoReleaser Config
       uses: goreleaser/goreleaser-action@v5
       with:
