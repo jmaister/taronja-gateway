@@ -77,12 +77,9 @@ release:
 #       - --label=org.opencontainers.image.version={{.Version}}
 
 # Optionally use Homebrew for macOS users
-brews:
-  - name: tg
-    repository:
-      owner: "jmaister"
-      name: homebrew-tap
-    directory: Formula
-    homepage: "https://github.com/jmaister/taronja-gateway"
-    description: "Application and API Gateway for microservices"
-    license: "MIT"
+#brews:
+#  - name: tg
+#    directory: dist/homebrew/Formula
+#    homepage: "https://github.com/jmaister/taronja-gateway"
+#    description: "Application and API Gateway for microservices"
+#    license: "MIT"

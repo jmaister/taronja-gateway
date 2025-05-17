@@ -95,6 +95,24 @@ When a new version is ready to be released:
    - Generate coverage reports
    - Publish all artifacts to the GitHub release
 
+## Installation
+
+### Quick Install (All Platforms)
+
+```bash
+curl -fsSL https://github.com/jmaister/taronja-gateway/raw/main/install.sh | bash
+```
+
+This script detects your OS and architecture, downloads the latest release, and installs it to your system path.
+
+### Windows Installation
+
+```bat
+powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.bat' -OutFile 'install.bat'" && install.bat
+```
+
+The Windows installer places the binary in `%USERPROFILE%\bin`. Add this directory to your PATH to use `tg` from anywhere.
+
 ## Version Information
 
 You can check the current version of your installation:
