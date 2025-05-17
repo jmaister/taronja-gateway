@@ -44,3 +44,62 @@ The Taronja Gateway CLI provides the following commands:
     ```
     This command creates a new user in the database with the provided username, email, and password.
 
+## Building and Releasing
+
+### Development Builds
+
+```bash
+# Build the binary
+make build
+
+# Run tests
+make test
+
+# Generate test coverage report
+make cover
+```
+
+### Release Process
+
+Taronja Gateway uses [GoReleaser](https://goreleaser.com/) for building and publishing releases.
+
+```bash
+# Install GoReleaser
+make setup-goreleaser
+
+# Check GoReleaser configuration
+make release-check
+
+# Create a local snapshot release (for testing)
+make release-local
+
+# Build Docker image locally
+make release-docker
+```
+
+### GitHub Releases
+
+When a new version is ready to be released:
+
+1. Tag the commit with a semantic version:
+   ```bash
+   git tag -a v1.0.0 -m "Release v1.0.0"
+   git push origin v1.0.0
+   ```
+
+2. Create a new release on GitHub, pointing to the created tag.
+
+3. The GitHub action will automatically:
+   - Build binaries for multiple platforms
+   - Create Docker images
+   - Generate coverage reports
+   - Publish all artifacts to the GitHub release
+
+## Version Information
+
+You can check the current version of your installation:
+
+```bash
+./tg version
+```
+

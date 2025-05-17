@@ -22,6 +22,34 @@ test:
 	@echo "Running tests..."
 	go test -cover ./...
 
+# Generate coverage and treemap SVG
+cover:
+	@echo "Generating coverage report..."
+	go test -coverprofile=cover.out ./...
+	go tool cover -html=cover.out -o coverage.html
+
+# Release targets
+release-check:
+	@echo "Checking GoReleaser config..."
+	goreleaser check
+
+release-local:
+	@echo "Building release locally (no publish)..."
+	goreleaser release --snapshot --clean
+
+release-docker:
+	@echo "Building Docker image locally..."
+	goreleaser release --snapshot --clean --skip-publish
+
+setup-goreleaser:
+	@echo "Setting up GoReleaser..."
+	@if [ -f ./scripts/setup_goreleaser.sh ]; then \
+		bash ./scripts/setup_goreleaser.sh; \
+	else \
+		echo "setup_goreleaser.sh not found!"; \
+		exit 1; \
+	fi
+
 # Run JMeter tests
 jmeter:
 	@echo "Running JMeter..."

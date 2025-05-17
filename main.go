@@ -13,6 +13,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version information - will be injected during build by GoReleaser
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "tg",
 	Short: "Taronja Gateway CLI",
@@ -50,6 +57,17 @@ var addUserCmd = &cobra.Command{
 	},
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Display version information",
+	Long:  `Shows the version, build date, and commit hash of the application.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("Taronja Gateway %s\n", version)
+		fmt.Printf("  Commit: %s\n", commit)
+		fmt.Printf("  Built: %s\n", date)
+	},
+}
+
 func init() {
 	// Add flag for config file to runCmd
 	runCmd.Flags().String("config", "", "Path to the configuration file")
@@ -59,6 +77,7 @@ func init() {
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(addUserCmd)
+	rootCmd.AddCommand(versionCmd)
 	// Future commands can be added here using rootCmd.AddCommand()
 }
 

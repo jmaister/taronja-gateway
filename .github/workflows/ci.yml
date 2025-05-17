@@ -1,4 +1,4 @@
-name: Go
+name: CI build
 
 on:
   push:
@@ -26,5 +26,11 @@ jobs:
 
     - name: Test
       run: |
-        go test -v -cover ./...
+        go test -v -coverprofile=coverage.out ./...
         echo "Tests completed"
+        
+    - name: Check GoReleaser Config
+      uses: goreleaser/goreleaser-action@v5
+      with:
+        version: latest
+        args: check

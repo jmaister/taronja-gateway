@@ -1,0 +1,88 @@
+project_name: taronja-gateway
+
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    main: ./main.go
+    binary: tg
+
+archives:
+  - format: tar.gz
+    # this name template makes the OS and Arch compatible with the results of uname.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+    - goos: windows
+      format: zip
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: jmaister
+    name: taronja-gateway
+  draft: false
+  prerelease: auto
+  # extra_files: no extra release assets
+
+# Docker image builds are disabled due to issues
+# dockers:
+#   - image_templates:
+#       - "ghcr.io/jmaister/{{.ProjectName}}:{{ .Version }}"
+#       - "ghcr.io/jmaister/{{.ProjectName}}:latest"
+#     dockerfile: Dockerfile
+#     use: buildx
+#     build_flag_templates:
+#       - --label=org.opencontainers.image.created={{.Date}}
+#       - --label=org.opencontainers.image.title={{.ProjectName}}
+#       - --label=org.opencontainers.image.revision={{.FullCommit}}
+#       - --label=org.opencontainers.image.version={{.Version}}
+
+# Optionally use Homebrew for macOS users
+brews:
+  - name: tg
+    repository:
+      owner: "jmaister"
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/jmaister/taronja-gateway"
+    description: "Application and API Gateway for microservices"
+    license: "MIT"
