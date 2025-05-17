@@ -1,0 +1,44 @@
+name: Go Release with Coverage Treemap
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for GoReleaser to generate proper changelog
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Generate coverage treemap
+        uses: ./.github/actions/go-cover-treemap
+        with:
+          go-version: '1.24'
+          treemap-output: coverage-treemap.svg
+
+      - name: Set up GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: If you didn't add coverage-treemap.svg to extra_files in .goreleaser.yml,
+      # you can upload it separately:
+      - name: Upload coverage treemap to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: coverage-treemap.svg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

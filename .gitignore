@@ -6,6 +6,9 @@ jmeter.log
 # Executable files
 tg
 tg.exe
+dist/
+cover.out
+coverage.html
 
 
 # Environment files
