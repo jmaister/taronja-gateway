@@ -2,7 +2,7 @@
 REM Windows installer for taronja-gateway (tg)
 REM Downloads the latest GoReleaser Windows artifact from GitHub and installs tg.exe to %USERPROFILE%\bin
 
-setlocal
+setlocal enabledelayedexpansion
 
 set REPO=jmaister/taronja-gateway
 set TG_BIN=tg.exe
@@ -41,6 +41,14 @@ for /d %%D in (%EXTRACT_DIR%\taronja-gateway*) do set EXTRACTED_DIR=%%D
 REM Move tg.exe from extracted folder to install dir
 if exist "%EXTRACTED_DIR%\%TG_BIN%" move /Y "%EXTRACTED_DIR%\%TG_BIN%" "%INSTALL_DIR%\tg.exe"
 
+REM Also check if tg.exe is directly in the extract dir
+if exist "%EXTRACT_DIR%\%TG_BIN%" move /Y "%EXTRACT_DIR%\%TG_BIN%" "%INSTALL_DIR%\tg.exe"
+
+REM Error if not found
+if not exist "%INSTALL_DIR%\tg.exe" (
+    echo ERROR: tg.exe not found after extraction. Please check the contents of %EXTRACT_DIR%.
+)
+
 REM Clean up
 if exist tg_win.zip del tg_win.zip
 if exist latest.json del latest.json
@@ -50,10 +58,30 @@ REM Add install dir to PATH if not already present
 set PATH_CHECK=%PATH:;%INSTALL_DIR%;=%
 if "%PATH_CHECK%"=="%PATH%" (
     echo.
-    echo Add %INSTALL_DIR% to your PATH to use 'tg' from anywhere.
+    REM Show the current user PATH and what it will become
+    set USERPATH=
+    for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set USERPATH=%%B
+    if not defined USERPATH (
+        REM User PATH is not set
+        set NEWPATH=%INSTALL_DIR%
+    ) else (
+        REM User PATH exists
+        set NEWPATH=!USERPATH!;%INSTALL_DIR%
+    )
+    REM Show only the new PATH that would be set
+    echo.
+    echo If you add automatically, your user PATH will become:
+    echo !NEWPATH!
+    echo.
+    echo Adding %INSTALL_DIR% to your PATH to use 'tg.exe' from anywhere.
+    set /p ADDPATH="Do you want to add it automatically with setx? (y/N): "
+    if /I "!ADDPATH!"=="Y" (
+        setx PATH "!NEWPATH!"
+        echo %INSTALL_DIR% has been added to your user PATH. You may need to restart your command prompt for changes to take effect.
+    )
 ) else (
     echo.
-    echo 'tg' installed to %INSTALL_DIR% and should be available in your PATH.
+    echo 'tg.exe' is installed to %INSTALL_DIR% which is already in your PATH.
 )
 
 echo Done.
