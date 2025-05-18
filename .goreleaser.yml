@@ -19,6 +19,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.buildOS={{.Os}} -X main.buildArch={{.Arch}}
     main: ./main.go
     binary: tg
+    upx: true
 
 archives:
   - format: tar.gz
@@ -83,3 +84,6 @@ release:
 #    homepage: "https://github.com/jmaister/taronja-gateway"
 #    description: "Application and API Gateway for microservices"
 #    license: "MIT"
+
+upx:
+  - enabled: true
