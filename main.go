@@ -15,9 +15,11 @@ import (
 
 // Version information - will be injected during build by GoReleaser
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	version   = "dev"
+	commit    = "none"
+	date      = "unknown"
+	buildOS   = "unknown"
+	buildArch = "unknown"
 )
 
 var rootCmd = &cobra.Command{
@@ -60,11 +62,12 @@ var addUserCmd = &cobra.Command{
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Display version information",
-	Long:  `Shows the version, build date, and commit hash of the application.`,
+	Long:  `Shows the version, build date, commit hash, build OS, and architecture of the application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Taronja Gateway %s\n", version)
 		fmt.Printf("  Commit: %s\n", commit)
 		fmt.Printf("  Built: %s\n", date)
+		fmt.Printf("  OS/Arch: %s/%s\n", buildOS, buildArch)
 	},
 }
 
