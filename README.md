@@ -100,7 +100,7 @@ When a new version is ready to be released:
 ### Quick Install (All Platforms)
 
 ```bash
-curl -fsSL https://github.com/jmaister/taronja-gateway/raw/main/install.sh | bash
+curl -fsSL https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.sh | bash
 ```
 
 This script detects your OS and architecture, downloads the latest release, and installs it to your system path.
