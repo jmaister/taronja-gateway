@@ -8,7 +8,7 @@ ifeq ($(OS),Windows_NT)
 endif
 
 # Build target
-build:
+build: api-codegen
 	@echo "Building $(PROJECT_NAME)..."
 	go build -o $(BINARY_NAME) .
 
@@ -55,14 +55,6 @@ jmeter:
 	@echo "Running JMeter..."
 	jmeter -t test/test-plan.jmx
 
-# Target to run all k6 tests with a 5-second duration, each test runs only once
-k6-test:
-	@echo "Running all K6 tests for 5 seconds each, only once..."
-	@for file in $(shell find tests -name '*.js' -o -name '*.ts'); do \
-		echo "Running $$file..."; \
-		k6 run --quiet --duration 5s --iterations 1 $$file; \
-	done
-
 # Clean target
 clean:
 	@echo "Cleaning up..."
@@ -72,6 +64,10 @@ clean:
 tidy:
 	@echo "Tidying dependencies..."
 	go mod tidy
+
+api-codegen:
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
+
 
 # Default target
 .PHONY: all build build-windows run test clean fmt tidy

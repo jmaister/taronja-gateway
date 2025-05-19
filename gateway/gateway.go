@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
@@ -113,11 +114,6 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	prefix := g.GatewayConfig.Management.Prefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
 
-	// Health Endpoint
-	healthPath := prefix + "/health"
-	g.Mux.HandleFunc(healthPath, handlers.HandleHealth)
-	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
-
 	// Me Endpoint - only register if there are auth methods configured
 	if g.GatewayConfig.HasAnyAuthentication() {
 		mePath := prefix + "/me"
@@ -147,6 +143,28 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		fileServer := http.FileServer(http.FS(staticAssetsFS))
 		http.StripPrefix(staticPath, fileServer).ServeHTTP(w, r)
 	})
+
+	// --- Register OpenAPI Routes ---
+	// Use the new StrictApiServer
+	strictApiServer := handlers.NewStrictApiServer()
+	// Convert the StrictServerInterface to the standard ServerInterface
+	// No strict middlewares are being added here, pass nil or an empty slice if you have them.
+	standardApiServer := api.NewStrictHandler(strictApiServer, nil)
+
+	openApiHandler := api.HandlerWithOptions(standardApiServer, api.StdHTTPServerOptions{
+		BaseURL: "", // Ensure BaseURL is appropriate for your setup, likely "" or "/"
+		// Middlewares for the StdHTTPServerOptions are applied *after* the strict handler's processing
+		// Middlewares: []api.MiddlewareFunc{},
+		// ErrorHandlerFunc can be customized if needed
+	})
+	// Ensure the pattern ends with a trailing slash for ServeMux to correctly match subpaths
+	apiPattern := prefix
+	if !strings.HasSuffix(apiPattern, "/") {
+		apiPattern += "/"
+	}
+	g.Mux.Handle(apiPattern, http.StripPrefix(strings.TrimSuffix(prefix, "/"), openApiHandler))
+	log.Printf("Registered OpenAPI Routes under prefix: %s. Individual routes are not dynamically logged.", prefix)
+	// --- End Register OpenAPI Routes ---
 
 }
 

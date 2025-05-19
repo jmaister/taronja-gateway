@@ -1,0 +1,34 @@
+openapi: 3.0.0
+info:
+  title: Taronja Gateway API
+  version: v1.0.0
+  description: API for Taronja Gateway interal and public endpoints
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2023-10-01T12:00:00Z"
+      required:
+        - status
+        - timestamp

@@ -16,23 +16,6 @@ import (
 
 // --- Meta API Handlers ---
 
-// HandleHealth checks the health of the gateway.
-func HandleHealth(w http.ResponseWriter, r *http.Request) {
-	// Basic response
-	response := map[string]string{
-		"status":    "ok",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(w).Encode(response)
-	if err != nil {
-		// This error is unlikely but possible if the connection is closed
-		log.Printf("Error encoding health response: %v", err)
-	}
-}
-
 // HandleMe provides information about the currently authenticated user.
 func HandleMe(w http.ResponseWriter, r *http.Request, sessionStore session.SessionStore) {
 	// Retrieve the session object from the session repository using the request's cookie
