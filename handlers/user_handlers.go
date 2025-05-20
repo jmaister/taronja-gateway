@@ -1,50 +1,17 @@
 package handlers
 
 import (
-	"encoding/json" // Added for HandleHealth
+	"encoding/json" // For HandleCreateUser if it still uses it directly, or for other user handlers
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"time"
 
-	"html/template"
-
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
-	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/session" // For HandleGetUser sessionStore
 )
-
-// --- Meta API Handlers ---
-
-// HandleMe provides information about the currently authenticated user.
-func HandleMe(w http.ResponseWriter, r *http.Request, sessionStore session.SessionStore) {
-	// Retrieve the session object from the session repository using the request's cookie
-	sessionObject, valid := sessionStore.ValidateSession(r)
-	if !valid {
-		// No valid authenticated session found
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// User found, return their information
-	response := map[string]interface{}{
-		"authenticated": true,
-		"username":      sessionObject.Username,
-		"email":         sessionObject.Email,
-		"provider":      sessionObject.Provider,
-
-		// Add more fields as needed (e.g., email, name if fetched during OAuth)
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(w).Encode(response)
-	if err != nil {
-		// This error is unlikely but possible if the connection is closed
-		log.Printf("Error encoding user info response: %v", err)
-	}
-}
 
 // CreateUserRequest defines the expected JSON structure for the create user request
 type CreateUserRequest struct {

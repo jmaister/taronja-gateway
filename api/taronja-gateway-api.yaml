@@ -16,6 +16,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /login:
+    # ...existing login code...
+  /logout:
+    # ...existing logout code...
+  /me:
+    get:
+      summary: Get current logged user information
+      operationId: getCurrentUser
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Information about the currently authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                    example: true
+                  username:
+                    type: string
+                    example: "testuser"
+                  email:
+                    type: string
+                    format: email
+                    example: "user@example.com"
+                  provider:
+                    type: string
+                    example: "google"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2023-01-01T12:00:00Z"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -32,3 +75,15 @@ components:
       required:
         - status
         - timestamp
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 401
+        message:
+          type: string
+          example: "Unauthorized"
+      required:
+        - code
+        - message

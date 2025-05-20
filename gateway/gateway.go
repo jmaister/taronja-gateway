@@ -109,24 +109,10 @@ func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.
 
 // --- Route Configuration ---
 
-// configureManagementRoutes sets up internal API endpoints like /health, /me
+// configureManagementRoutes sets up internal gateway endpoints
 func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	prefix := g.GatewayConfig.Management.Prefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
-
-	// Me Endpoint - only register if there are auth methods configured
-	if g.GatewayConfig.HasAnyAuthentication() {
-		mePath := prefix + "/me"
-		// Create a handler that passes the session store to HandleMe
-		meHandler := func(w http.ResponseWriter, r *http.Request) {
-			handlers.HandleMe(w, r, g.SessionStore)
-		}
-		authWrappedMeHandler := g.wrapWithAuth(meHandler, false)
-		g.Mux.HandleFunc(mePath, authWrappedMeHandler)
-		log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
-	} else {
-		log.Printf("Skipping Me endpoint registration as no authentication methods are configured")
-	}
 
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes()
@@ -146,7 +132,7 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 
 	// --- Register OpenAPI Routes ---
 	// Use the new StrictApiServer
-	strictApiServer := handlers.NewStrictApiServer()
+	strictApiServer := handlers.NewStrictApiServer(g.SessionStore)
 	// Convert the StrictServerInterface to the standard ServerInterface
 	// No strict middlewares are being added here, pass nil or an empty slice if you have them.
 	standardApiServer := api.NewStrictHandler(strictApiServer, nil)
@@ -156,6 +142,10 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		// Middlewares for the StdHTTPServerOptions are applied *after* the strict handler's processing
 		// Middlewares: []api.MiddlewareFunc{},
 		// ErrorHandlerFunc can be customized if needed
+		Middlewares: []api.MiddlewareFunc{
+			// Use the adapter to include session middleware
+			middleware.SessionMiddlewareFunc(g.SessionStore, false, g.GatewayConfig.Management.Prefix),
+		},
 	})
 	// Ensure the pattern ends with a trailing slash for ServeMux to correctly match subpaths
 	apiPattern := prefix

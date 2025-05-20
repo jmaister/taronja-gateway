@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/jmaister/taronja-gateway/api" // Added for api.MiddlewareFunc
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -32,5 +33,15 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, session.SessionKey, sessionObject)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+// SessionMiddlewareFunc creates an api.MiddlewareFunc from the existing SessionMiddleware.
+// This allows SessionMiddleware to be used with OpenAPI generated handlers that expect api.MiddlewareFunc.
+func SessionMiddlewareFunc(sessionStore session.SessionStore, isStatic bool, managementPrefix string) api.MiddlewareFunc {
+	return func(nextHandler http.Handler) http.Handler {
+		// Adapt nextHandler (an http.Handler) to http.HandlerFunc for SessionMiddleware.
+		// The result of SessionMiddleware is an http.HandlerFunc, which satisfies the http.Handler interface.
+		return SessionMiddleware(http.HandlerFunc(nextHandler.ServeHTTP), sessionStore, isStatic, managementPrefix)
 	}
 }
