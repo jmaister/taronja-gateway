@@ -9,6 +9,9 @@ paths:
     get:
       summary: Health check
       operationId: healthCheck
+      security:
+        - {}
+        - cookieAuth: []
       responses:
         '200':
           description: Successful operation
@@ -19,7 +22,44 @@ paths:
   /login:
     # ...existing login code...
   /logout:
-    # ...existing logout code...
+    get:
+        summary: Logs out the current user
+        operationId: logoutUser
+        tags:
+            - User
+        parameters:
+            - in: cookie
+              name: tg_session_token
+              schema:
+                type: string
+              required: false
+              description: Session token cookie for authentication
+            - in: query
+              name: redirect
+              schema:
+                type: string
+              required: false
+              description: URL to redirect to after successful logout
+              example: "/login"
+        responses:
+            '302':
+                description: Successfully logged out and redirected to root page, even if no redirect URL is provided, even if the user is not logged in
+                headers:
+                    Location:
+                        schema:
+                            type: string
+                            example: "/"
+                        description: URL to redirect to after logout
+                    Set-Cookie:
+                        schema:
+                            type: string
+                            example: "tg_session_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
+                        description: Clears the session cookie by setting it to an empty value with immediate expiration
+                    Cache-Control:
+                        schema:
+                            type: string
+                            example: "no-store"
+                        description: Prevents caching of the response
   /me:
     get:
       summary: Get current logged user information

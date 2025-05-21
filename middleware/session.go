@@ -2,12 +2,103 @@ package middleware
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
-	"github.com/jmaister/taronja-gateway/api" // Added for api.MiddlewareFunc
+	"slices"
+
+	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/db" // Import db for Session type
 	"github.com/jmaister/taronja-gateway/session"
 )
+
+// ErrRedirect is a custom error type to signal a redirection.
+type ErrRedirect struct {
+	URL  string
+	Code int
+}
+
+func (e *ErrRedirect) Error() string {
+	return fmt.Sprintf("redirect to %s with code %d", e.URL, e.Code)
+}
+
+// GetSessionToken extracts the session token from the HTTP request.
+func GetSessionToken(r *http.Request) (string, error) {
+	cookie, err := r.Cookie(session.SessionCookieName) // Corrected: Use SessionCookieName
+	if err != nil {
+		if err == http.ErrNoCookie {
+			return "", nil // No cookie is not an error in this context, just means no token found
+		}
+		return "", err // Other errors (e.g., malformed cookies by user agent)
+	}
+	return cookie.Value, nil
+}
+
+var OperationWithNoSecurity = []string{
+	"login", // TODO: fix name when implemented using OpenAPI
+	"LogoutUser",
+	"HealthCheck",
+}
+
+// StrictSessionMiddleware creates a strict middleware for session handling based on OpenAPI operation security requirements.
+func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase string) api.StrictMiddlewareFunc {
+	return func(f api.StrictHandlerFunc, operationID string) api.StrictHandlerFunc {
+		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, requestObject interface{}) (responseObject interface{}, err error) {
+
+			// Check if the operation ID is in the list of operations with no security
+			authIsRequired := true
+			if slices.Contains(OperationWithNoSecurity, operationID) {
+				authIsRequired = false
+			}
+
+			// If auth is not required, proceed to the next handler
+			if !authIsRequired {
+				log.Printf("SessionStrictMiddleware: Session not required for operation '%s' (path: %s). Proceeding without session.", operationID, r.URL.Path)
+				return f(ctx, w, r, requestObject)
+			}
+
+			// Try to validate the session using the SessionStore's ValidateSession method
+			// This method should handle token extraction from the request (e.g., cookie)
+			var validSession *db.Session // Corrected: Use db.Session type
+			var isAuthenticated bool
+
+			// ValidateSession is expected to handle cookie extraction and validation.
+			// It returns the session data and a boolean indicating if the session is valid.
+			validSession, isAuthenticated = store.ValidateSession(r)
+
+			if isAuthenticated && validSession != nil { // Valid session exists
+				// Enrich the context passed to the next handler with the session data.
+				newCtx := context.WithValue(ctx, session.SessionKey, validSession) // Corrected: Use SessionKey
+				log.Printf("SessionStrictMiddleware: Session valid for operation '%s' (path: %s). Proceeding with session.", operationID, r.URL.Path)
+				return f(newCtx, w, r, requestObject)
+			}
+
+			// If we reach here, authIsRequired is true, and the session is not valid (isAuthenticated is false or validSession is nil).
+			// Therefore, a redirect is necessary.
+			log.Printf("SessionStrictMiddleware: Session required for operation '%s' (path: %s), but none found or invalid. Redirecting.", operationID, r.URL.Path)
+
+			var redirectURLStr string
+			if loginRedirectPathBase == "/" || loginRedirectPathBase == "" {
+				redirectURLStr = "/login"
+			} else {
+				redirectURLStr = strings.TrimSuffix(loginRedirectPathBase, "/") + "/login"
+			}
+
+			originalRequestURI := r.RequestURI
+
+			// Avoid redirecting to login from login, and avoid empty redirect parameter
+			if originalRequestURI != "" && originalRequestURI != "/" && !strings.HasPrefix(originalRequestURI, redirectURLStr) {
+				redirectQuery := url.Values{}
+				redirectQuery.Add("redirect", originalRequestURI)
+				redirectURLStr += "?" + redirectQuery.Encode()
+			}
+			return nil, &ErrRedirect{URL: redirectURLStr, Code: http.StatusFound}
+		}
+	}
+}
 
 // SessionMiddleware validates that the session cookie is present and valid
 func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, isStatic bool, managementPrefix string) http.HandlerFunc {

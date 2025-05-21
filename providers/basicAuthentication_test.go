@@ -7,10 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,54 +145,4 @@ func TestRegisterBasicAuth(t *testing.T) {
 		assert.Equal(t, "admin", sessionObj.Username)
 	})
 
-	t.Run("logout successfully invalidates session", func(t *testing.T) {
-		// Per-test setup
-		mux := http.NewServeMux()
-		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStoreDB(realSessionRepo)
-		// For RegisterBasicAuth, a user repo is needed. An empty one is sufficient here
-		// as the login functionality itself is not being tested in this logout scenario.
-		mockUserRepo := db.NewMemoryUserRepository() // REVERTED: Use a new empty repo.
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo)
-
-		// Register the real logout route handler for this test
-		handlers.RegisterLogoutHandler(mux, realSessionStore, managementPrefix)
-
-		// Manually create a session for a different user "testuser"
-		sessionToken, err := session.GenerateToken()
-		require.NoError(t, err)
-		sessionObj := db.Session{
-			Username:        "testuser",
-			Email:           "test@example.com",
-			IsAuthenticated: true,
-			Provider:        "basic",
-			ValidUntil:      time.Now().Add(1 * time.Hour),
-		}
-		err = realSessionRepo.CreateSession(sessionToken, &sessionObj)
-		require.NoError(t, err)
-
-		req := httptest.NewRequest("GET", "/_/logout", nil)
-		req.AddCookie(&http.Cookie{
-			Name:  session.SessionCookieName,
-			Value: sessionToken,
-		})
-		w := httptest.NewRecorder()
-
-		mux.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusFound, w.Code)
-		assert.Equal(t, "/", w.Header().Get("Location")) // Redirects to home after logout
-
-		// Verify session is deleted from store
-		_, err = realSessionRepo.FindSessionByToken(sessionToken)
-		assert.Error(t, err, "session has been closed")
-
-		// Verify cookie is expired
-		cookies := w.Result().Cookies()
-		require.Len(t, cookies, 1)
-		logoutCookie := cookies[0]
-		assert.Equal(t, session.SessionCookieName, logoutCookie.Name)
-		assert.Equal(t, "", logoutCookie.Value) // Value cleared
-		assert.True(t, logoutCookie.MaxAge < 0) // MaxAge set to a negative value
-	})
 }

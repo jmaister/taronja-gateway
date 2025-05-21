@@ -117,9 +117,6 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes()
 
-	// Logout Route
-	g.registerLogout()
-
 	// Register all user management routes
 	g.RegisterUserManagementRoutes()
 
@@ -130,12 +127,23 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		http.StripPrefix(staticPath, fileServer).ServeHTTP(w, r)
 	})
 
+	// Register the OpenAPI routes
+	g.registerOpenAPIRoutes(prefix)
+
+}
+
+// Note: User management route registration functions have been moved to usermanagement.go
+
+func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	// --- Register OpenAPI Routes ---
 	// Use the new StrictApiServer
 	strictApiServer := handlers.NewStrictApiServer(g.SessionStore)
 	// Convert the StrictServerInterface to the standard ServerInterface
-	// No strict middlewares are being added here, pass nil or an empty slice if you have them.
-	standardApiServer := api.NewStrictHandler(strictApiServer, nil)
+
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix)
+	standardApiServer := api.NewStrictHandler(strictApiServer, []api.StrictMiddlewareFunc{
+		strictSessionMiddleware,
+	})
 
 	openApiHandler := api.HandlerWithOptions(standardApiServer, api.StdHTTPServerOptions{
 		BaseURL: "", // Ensure BaseURL is appropriate for your setup, likely "" or "/"
@@ -143,8 +151,7 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		// Middlewares: []api.MiddlewareFunc{},
 		// ErrorHandlerFunc can be customized if needed
 		Middlewares: []api.MiddlewareFunc{
-			// Use the adapter to include session middleware
-			middleware.SessionMiddlewareFunc(g.SessionStore, false, g.GatewayConfig.Management.Prefix),
+			// middleware.SessionMiddlewareFunc(g.SessionStore, false, g.GatewayConfig.Management.Prefix),
 		},
 	})
 	// Ensure the pattern ends with a trailing slash for ServeMux to correctly match subpaths
@@ -155,10 +162,7 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	g.Mux.Handle(apiPattern, http.StripPrefix(strings.TrimSuffix(prefix, "/"), openApiHandler))
 	log.Printf("Registered OpenAPI Routes under prefix: %s. Individual routes are not dynamically logged.", prefix)
 	// --- End Register OpenAPI Routes ---
-
 }
-
-// Note: User management route registration functions have been moved to usermanagement.go
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes() {
@@ -192,12 +196,6 @@ func (g *Gateway) registerLoginRoutes() {
 		}
 	})
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
-}
-
-// registerLogout registers a global logout endpoint that clears the session
-func (g *Gateway) registerLogout() {
-	handlers.RegisterLogoutHandler(g.Mux, g.SessionStore, g.GatewayConfig.Management.Prefix) // CHANGED
-	log.Printf("Registered Global Logout Route: | Path: %s", g.GatewayConfig.Management.Prefix+"/logout")
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.

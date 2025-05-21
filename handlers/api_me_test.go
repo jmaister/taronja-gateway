@@ -1,0 +1,155 @@
+package handlers_test
+
+import (
+	"context"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/handlers"
+	"github.com/jmaister/taronja-gateway/session"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestGetCurrentUser(t *testing.T) {
+	s := &handlers.StrictApiServer{}
+
+	t.Run("AuthenticatedUser", func(t *testing.T) {
+		// Setup: Create a valid session
+		validSession := &db.Session{
+			Token:           "valid-session-id",
+			UserID:          "1",
+			Username:        "testuser",
+			Email:           "testuser@example.com",
+			Provider:        "testprovider",
+			IsAuthenticated: true,
+			ValidUntil:      time.Now().Add(1 * time.Hour),
+		}
+		ctxWithSession := context.WithValue(context.Background(), session.SessionKey, validSession)
+		req := api.GetCurrentUserRequestObject{}
+
+		// Execute
+		resp, err := s.GetCurrentUser(ctxWithSession, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		userResp, ok := resp.(api.GetCurrentUser200JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser200JSONResponse")
+		assert.NotNil(t, userResp.Authenticated)
+		assert.True(t, *userResp.Authenticated)
+		assert.NotNil(t, userResp.Username)
+		assert.Equal(t, "testuser", *userResp.Username)
+		assert.NotNil(t, userResp.Email)
+		// Ensure comparison is type-consistent, assuming *userResp.Email might be a base string
+		// due to the casting in api_me.go.
+		assert.Equal(t, openapi_types.Email("testuser@example.com"), openapi_types.Email(*userResp.Email))
+		assert.NotNil(t, userResp.Provider)
+		assert.Equal(t, "testprovider", *userResp.Provider)
+		assert.NotNil(t, userResp.Timestamp)
+	})
+
+	t.Run("UnauthenticatedUser_NoSessionInContext", func(t *testing.T) {
+		// Setup: Context without session
+		ctxWithoutSession := context.Background()
+		req := api.GetCurrentUserRequestObject{}
+
+		// Execute
+		resp, err := s.GetCurrentUser(ctxWithoutSession, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		errResp, ok := resp.(api.GetCurrentUser401JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+		assert.Equal(t, "Unauthorized", errResp.Message)
+	})
+
+	t.Run("UnauthenticatedUser_NilSessionInContext", func(t *testing.T) {
+		// Setup: Context with nil session
+		ctxWithNilSession := context.WithValue(context.Background(), session.SessionKey, (*db.Session)(nil))
+		req := api.GetCurrentUserRequestObject{}
+
+		// Execute
+		resp, err := s.GetCurrentUser(ctxWithNilSession, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		errResp, ok := resp.(api.GetCurrentUser401JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+		assert.Equal(t, "Unauthorized", errResp.Message)
+	})
+
+	t.Run("UnauthenticatedUser_SessionNotAuthenticated", func(t *testing.T) {
+		// Setup: Session is not authenticated
+		notAuthSession := &db.Session{
+			Token:           "not-auth-session-id",
+			IsAuthenticated: false, // Key difference
+			ValidUntil:      time.Now().Add(1 * time.Hour),
+		}
+		ctxWithNotAuthSession := context.WithValue(context.Background(), session.SessionKey, notAuthSession)
+		req := api.GetCurrentUserRequestObject{}
+
+		// Execute
+		resp, err := s.GetCurrentUser(ctxWithNotAuthSession, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		errResp, ok := resp.(api.GetCurrentUser401JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+		assert.Equal(t, "Unauthorized", errResp.Message)
+	})
+
+	t.Run("UnauthenticatedUser_SessionExpired", func(t *testing.T) {
+		// Setup: Session is expired
+		expiredSession := &db.Session{
+			Token:           "not-auth-session-id",
+			IsAuthenticated: true,
+			ValidUntil:      time.Now().Add(-1 * time.Hour), // Expired
+		}
+
+		// Execute
+		ctxWithExpiredSession := context.WithValue(context.Background(), session.SessionKey, expiredSession)
+		req := api.GetCurrentUserRequestObject{}
+		resp, err := s.GetCurrentUser(ctxWithExpiredSession, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		errResp, ok := resp.(api.GetCurrentUser401JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+		assert.Equal(t, "Unauthorized", errResp.Message)
+	})
+
+	t.Run("UnauthenticatedUser_WrongSessionTypeInContext", func(t *testing.T) {
+		// Setup: Context with wrong session type
+		ctxWithWrongSessionType := context.WithValue(context.Background(), session.SessionKey, "not-a-session-object")
+		req := api.GetCurrentUserRequestObject{}
+
+		// Execute
+		resp, err := s.GetCurrentUser(ctxWithWrongSessionType, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		errResp, ok := resp.(api.GetCurrentUser401JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+		assert.Equal(t, "Unauthorized", errResp.Message)
+	})
+}
