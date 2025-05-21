@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"embed"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template" // Added for template parsing
 	"log"
@@ -141,9 +143,43 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix)
-	standardApiServer := api.NewStrictHandler(strictApiServer, []api.StrictMiddlewareFunc{
+
+	// Define custom ResponseErrorHandlerFunc
+	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
+		var errorWithResponse *middleware.ErrorWithResponse
+		if errors.As(err, &errorWithResponse) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			responseText := "Unauthorized" // Default response text
+			if errorWithResponse.Message != "" {
+				responseText = errorWithResponse.Message
+			}
+			encodeErr := json.NewEncoder(w).Encode(api.Error{
+				Code:    http.StatusUnauthorized,
+				Message: responseText,
+			})
+			if encodeErr != nil {
+				log.Printf("Error encoding %d response: %v", errorWithResponse.Code, encodeErr)
+				// Fallback to plain text error if JSON encoding fails
+				http.Error(w, responseText, errorWithResponse.Code)
+			}
+			return
+		}
+		// Default behavior for other errors
+		log.Printf("Internal server error: %v", err) // Log the error
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+
+	strictHandlerOptions := api.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		},
+		ResponseErrorHandlerFunc: responseErrorHandler,
+	}
+
+	standardApiServer := api.NewStrictHandlerWithOptions(strictApiServer, []api.StrictMiddlewareFunc{
 		strictSessionMiddleware,
-	})
+	}, strictHandlerOptions)
 
 	openApiHandler := api.HandlerWithOptions(standardApiServer, api.StdHTTPServerOptions{
 		BaseURL: "", // Ensure BaseURL is appropriate for your setup, likely "" or "/"

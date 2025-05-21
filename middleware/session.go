@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"slices"
 
@@ -15,14 +14,14 @@ import (
 	"github.com/jmaister/taronja-gateway/session"
 )
 
-// ErrRedirect is a custom error type to signal a redirection.
-type ErrRedirect struct {
-	URL  string
-	Code int
+// ErrorWithResponse is a custom error type.
+type ErrorWithResponse struct {
+	Code    int
+	Message string
 }
 
-func (e *ErrRedirect) Error() string {
-	return fmt.Sprintf("redirect to %s with code %d", e.URL, e.Code)
+func (e *ErrorWithResponse) Error() string {
+	return fmt.Sprintf("error with code %d: %s", e.Code, e.Message)
 }
 
 // GetSessionToken extracts the session token from the HTTP request.
@@ -62,7 +61,7 @@ func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase s
 
 			// Try to validate the session using the SessionStore's ValidateSession method
 			// This method should handle token extraction from the request (e.g., cookie)
-			var validSession *db.Session // Corrected: Use db.Session type
+			var validSession *db.Session
 			var isAuthenticated bool
 
 			// ValidateSession is expected to handle cookie extraction and validation.
@@ -80,22 +79,9 @@ func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase s
 			// Therefore, a redirect is necessary.
 			log.Printf("SessionStrictMiddleware: Session required for operation '%s' (path: %s), but none found or invalid. Redirecting.", operationID, r.URL.Path)
 
-			var redirectURLStr string
-			if loginRedirectPathBase == "/" || loginRedirectPathBase == "" {
-				redirectURLStr = "/login"
-			} else {
-				redirectURLStr = strings.TrimSuffix(loginRedirectPathBase, "/") + "/login"
-			}
+			// These operations that are not authenticated return a 401 error
+			return nil, &ErrorWithResponse{Code: http.StatusUnauthorized, Message: "Unauthorized, no session found or invalid."}
 
-			originalRequestURI := r.RequestURI
-
-			// Avoid redirecting to login from login, and avoid empty redirect parameter
-			if originalRequestURI != "" && originalRequestURI != "/" && !strings.HasPrefix(originalRequestURI, redirectURLStr) {
-				redirectQuery := url.Values{}
-				redirectQuery.Add("redirect", originalRequestURI)
-				redirectURLStr += "?" + redirectQuery.Encode()
-			}
-			return nil, &ErrRedirect{URL: redirectURLStr, Code: http.StatusFound}
 		}
 	}
 }
