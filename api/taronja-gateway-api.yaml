@@ -19,8 +19,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
-  /login:
-    # ...existing login code...
   /logout:
     get:
         summary: Logs out the current user
