@@ -20,7 +20,7 @@
 <body>
     <div class="container">
         <h1>Create New User</h1>
-        <form action="{{.ManagementPrefix}}/api/user" method="POST">
+        <form action="{{.ManagementPrefix}}/api/users" method="POST">
             <div>
                 <label for="username">Username:</label>
                 <input type="text" id="username" name="username" required>
@@ -36,6 +36,11 @@
             <button type="submit">Create User</button>
         </form>
         <div id="message-area" class="message" style="display: none;"></div>
+        
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <a href="/" style="color: #007bff; text-decoration: none; margin-right: 20px;">← Home</a>
+            <a href="{{.ManagementPrefix}}/admin/users" style="color: #007bff; text-decoration: none;">View All Users</a>
+        </div>
     </div>
 
     <script>
@@ -63,13 +68,21 @@
                         body: jsonBody,
                     });
 
-                    const responseText = await response.text();
-
                     if (response.ok) {
-                        messageArea.textContent = responseText; // Or a custom success message
-                        messageArea.className = 'message success';
-                        form.reset(); // Clear the form on success
+                        // Parse the JSON response to get the user ID
+                        const userData = await response.json();
+                        if (userData && userData.id) {
+                            // Redirect to the admin user detail page
+                            window.location.href = '{{.ManagementPrefix}}/admin/users/' + userData.id;
+                            return;
+                        } else {
+                            // Fallback if user ID is not available
+                            messageArea.textContent = 'User created successfully, but unable to redirect.';
+                            messageArea.className = 'message success';
+                            form.reset();
+                        }
                     } else {
+                        const responseText = await response.text();
                         messageArea.textContent = 'Error: ' + responseText;
                         messageArea.className = 'message error';
                     }

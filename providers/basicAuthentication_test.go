@@ -41,7 +41,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStoreDB(realSessionRepo)
+		realSessionStore := session.NewSessionStore(realSessionRepo)
 		mockUserRepo := setupUserAndRepo(t)                                      // Create test user
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED: Use real registration
 
@@ -83,7 +83,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStoreDB(realSessionRepo) // ADDED
+		realSessionStore := session.NewSessionStore(realSessionRepo) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED realSessionRepo to realSessionStore
 
@@ -117,7 +117,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStoreDB(realSessionRepo) // ADDED
+		realSessionStore := session.NewSessionStore(realSessionRepo) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED: Use real registration
 

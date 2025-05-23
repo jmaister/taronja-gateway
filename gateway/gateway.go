@@ -58,7 +58,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		Handler:      handler,
 	}
 
-	sessionStore := session.NewSessionStoreDB(db.NewSessionRepositoryDB())
+	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB())
 
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 
@@ -139,7 +139,10 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	// --- Register OpenAPI Routes ---
 	// Use the new StrictApiServer
-	strictApiServer := handlers.NewStrictApiServer(g.SessionStore)
+	strictApiServer := handlers.NewStrictApiServer(
+		g.SessionStore,
+		g.UserRepository,
+	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix)

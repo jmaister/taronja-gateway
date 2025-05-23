@@ -67,8 +67,9 @@ func TestFindUserByIdOrUsername(t *testing.T) {
 
 	// Test not found case
 	foundUser, err = repo.FindUserByIdOrUsername("nonexistent", "", "")
-	assert.Nil(t, err)
 	assert.Nil(t, foundUser)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "record not found", "Should return record not found error")
 }
 
 func TestCreateUser(t *testing.T) {
