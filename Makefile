@@ -17,6 +17,12 @@ run: build
 	@echo "Running $(PROJECT_NAME)..."
 	@./$(BINARY_NAME) run --config sample/config.yaml
 
+# Development target with file watching (requires modd)
+dev:
+	@echo "Starting development mode with file watching..."
+	@echo "Using modd from go.mod tools..."
+	go run github.com/cortesi/modd/cmd/modd
+
 # Test target
 test:
 	@echo "Running tests..."
@@ -70,5 +76,5 @@ api-codegen:
 
 
 # Default target
-.PHONY: all build build-windows run test clean fmt tidy
+.PHONY: all build build-windows run dev dev-help test clean fmt tidy
 all: build

@@ -57,6 +57,9 @@ make test
 
 # Generate test coverage report
 make cover
+
+# Run in development mode with automatic restart on file changes
+make dev
 ```
 
 ### Release Process
