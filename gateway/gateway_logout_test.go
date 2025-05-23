@@ -136,7 +136,7 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 	// Check that no session cookie was set or cleared, as none was present
 	cookies := recorder.Result().Cookies()
 	for _, cookie := range cookies {
-		if cookie.Name == session.SessionCookieName {
+		if cookie.Name == session.SessionCookieName && cookie.Value != "" {
 			t.Errorf("Session cookie was unexpectedly found in response: Name=%s, Value=%s", cookie.Name, cookie.Value)
 		}
 	}

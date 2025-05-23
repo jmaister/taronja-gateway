@@ -53,7 +53,7 @@ func (r *UserRepositoryDB) FindUserByIdOrUsername(id, username, email string) (*
 		}
 	}
 
-	return nil, nil // Not found but not an error
+	return nil, gorm.ErrRecordNotFound
 }
 
 // CreateUser adds a new user to the repository

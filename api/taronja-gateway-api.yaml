@@ -1,0 +1,307 @@
+openapi: 3.0.0
+info:
+  title: Taronja Gateway API
+  version: v1.0.0
+  description: API for Taronja Gateway interal and public endpoints
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      security:
+        - {}
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /logout:
+    get:
+        summary: Logs out the current user
+        operationId: logoutUser
+        tags:
+            - User
+        parameters:
+            - in: cookie
+              name: tg_session_token
+              schema:
+                type: string
+              required: false
+              description: Session token cookie for authentication
+            - in: query
+              name: redirect
+              schema:
+                type: string
+              required: false
+              description: URL to redirect to after successful logout
+              example: "/login"
+        responses:
+            '302':
+                description: Successfully logged out and redirected to root page, even if no redirect URL is provided, even if the user is not logged in
+                headers:
+                    Location:
+                        schema:
+                            type: string
+                            example: "/"
+                        description: URL to redirect to after logout
+                    Set-Cookie:
+                        schema:
+                            type: string
+                            example: "tg_session_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
+                        description: Clears the session cookie by setting it to an empty value with immediate expiration
+                    Cache-Control:
+                        schema:
+                            type: string
+                            example: "no-store"
+                        description: Prevents caching of the response
+  /me:
+    get:
+      summary: Get current logged user information
+      operationId: getCurrentUser
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Information about the currently authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                    example: true
+                  username:
+                    type: string
+                    example: "testuser"
+                  email:
+                    type: string
+                    format: email
+                    example: "user@example.com"
+                  provider:
+                    type: string
+                    example: "google"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2023-01-01T12:00:00Z"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users:
+    get:
+      summary: List all users
+      operationId: listUsers
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: A list of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a new user
+      operationId: createUser
+      tags:
+        - User
+      # No security for user creation, as it's typically a public endpoint
+      # If registration requires admin privileges or similar, add:
+      # security:
+      #   - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse' # Or a simpler success message
+        '400':
+          description: Bad Request (e.g., missing fields, invalid data)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (e.g., username or email already exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{userId}:
+    get:
+      summary: Get a user by ID
+      operationId: getUserById
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user to retrieve
+          schema:
+            type: string # Assuming User ID is a string (e.g., UUID)
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Bad Request (e.g. invalid user ID format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2023-10-01T12:00:00Z"
+      required:
+        - status
+        - timestamp
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 401
+        message:
+          type: string
+          example: "Unauthorized"
+      required:
+        - code
+        - message
+    UserCreateRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          example: "newuser"
+        email:
+          type: string
+          format: email
+          example: "newuser@example.com"
+        password:
+          type: string
+          format: password
+          example: "securepassword123"
+      required:
+        - username
+        - email
+        - password
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string # Assuming User ID is a string (e.g., UUID or from path)
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        username:
+          type: string
+          example: "testuser"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        name:
+          type: string
+          nullable: true
+          example: "Test User"
+        picture:
+          type: string
+          format: uri
+          nullable: true
+          example: "https://example.com/picture.jpg"
+        provider:
+          type: string
+          nullable: true
+          example: "google"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+      required:
+        - id
+        - username
+        - email
+        - createdAt
+        - updatedAt
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: tg_session_token # Ensure this is your actual session cookie name

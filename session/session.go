@@ -31,8 +31,8 @@ type SessionStoreDB struct {
 	Repo db.SessionRepository
 }
 
-// NewSessionStoreDB creates a new SessionStoreDB instance with the provided session repository.
-func NewSessionStoreDB(repo db.SessionRepository) *SessionStoreDB {
+// NewSessionStore creates a new SessionStoreDB instance with the provided session repository.
+func NewSessionStore(repo db.SessionRepository) *SessionStoreDB {
 	return &SessionStoreDB{
 		Repo: repo,
 	}

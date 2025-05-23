@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"embed"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template" // Added for template parsing
 	"log"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
@@ -55,7 +58,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		Handler:      handler,
 	}
 
-	sessionStore := session.NewSessionStoreDB(db.NewSessionRepositoryDB())
+	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB())
 
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 
@@ -108,35 +111,13 @@ func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.
 
 // --- Route Configuration ---
 
-// configureManagementRoutes sets up internal API endpoints like /health, /me
+// configureManagementRoutes sets up internal gateway endpoints
 func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	prefix := g.GatewayConfig.Management.Prefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
 
-	// Health Endpoint
-	healthPath := prefix + "/health"
-	g.Mux.HandleFunc(healthPath, handlers.HandleHealth)
-	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Health Check", healthPath, false)
-
-	// Me Endpoint - only register if there are auth methods configured
-	if g.GatewayConfig.HasAnyAuthentication() {
-		mePath := prefix + "/me"
-		// Create a handler that passes the session store to HandleMe
-		meHandler := func(w http.ResponseWriter, r *http.Request) {
-			handlers.HandleMe(w, r, g.SessionStore)
-		}
-		authWrappedMeHandler := g.wrapWithAuth(meHandler, false)
-		g.Mux.HandleFunc(mePath, authWrappedMeHandler)
-		log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "User Info", mePath, true)
-	} else {
-		log.Printf("Skipping Me endpoint registration as no authentication methods are configured")
-	}
-
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes()
-
-	// Logout Route
-	g.registerLogout()
 
 	// Register all user management routes
 	g.RegisterUserManagementRoutes()
@@ -148,9 +129,79 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		http.StripPrefix(staticPath, fileServer).ServeHTTP(w, r)
 	})
 
+	// Register the OpenAPI routes
+	g.registerOpenAPIRoutes(prefix)
+
 }
 
 // Note: User management route registration functions have been moved to usermanagement.go
+
+func (g *Gateway) registerOpenAPIRoutes(prefix string) {
+	// --- Register OpenAPI Routes ---
+	// Use the new StrictApiServer
+	strictApiServer := handlers.NewStrictApiServer(
+		g.SessionStore,
+		g.UserRepository,
+	)
+	// Convert the StrictServerInterface to the standard ServerInterface
+
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix)
+
+	// Define custom ResponseErrorHandlerFunc
+	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
+		var errorWithResponse *middleware.ErrorWithResponse
+		if errors.As(err, &errorWithResponse) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			responseText := "Unauthorized" // Default response text
+			if errorWithResponse.Message != "" {
+				responseText = errorWithResponse.Message
+			}
+			encodeErr := json.NewEncoder(w).Encode(api.Error{
+				Code:    http.StatusUnauthorized,
+				Message: responseText,
+			})
+			if encodeErr != nil {
+				log.Printf("Error encoding %d response: %v", errorWithResponse.Code, encodeErr)
+				// Fallback to plain text error if JSON encoding fails
+				http.Error(w, responseText, errorWithResponse.Code)
+			}
+			return
+		}
+		// Default behavior for other errors
+		log.Printf("Internal server error: %v", err) // Log the error
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+
+	strictHandlerOptions := api.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		},
+		ResponseErrorHandlerFunc: responseErrorHandler,
+	}
+
+	standardApiServer := api.NewStrictHandlerWithOptions(strictApiServer, []api.StrictMiddlewareFunc{
+		strictSessionMiddleware,
+	}, strictHandlerOptions)
+
+	openApiHandler := api.HandlerWithOptions(standardApiServer, api.StdHTTPServerOptions{
+		BaseURL: "", // Ensure BaseURL is appropriate for your setup, likely "" or "/"
+		// Middlewares for the StdHTTPServerOptions are applied *after* the strict handler's processing
+		// Middlewares: []api.MiddlewareFunc{},
+		// ErrorHandlerFunc can be customized if needed
+		Middlewares: []api.MiddlewareFunc{
+			// middleware.SessionMiddlewareFunc(g.SessionStore, false, g.GatewayConfig.Management.Prefix),
+		},
+	})
+	// Ensure the pattern ends with a trailing slash for ServeMux to correctly match subpaths
+	apiPattern := prefix
+	if !strings.HasSuffix(apiPattern, "/") {
+		apiPattern += "/"
+	}
+	g.Mux.Handle(apiPattern, http.StripPrefix(strings.TrimSuffix(prefix, "/"), openApiHandler))
+	log.Printf("Registered OpenAPI Routes under prefix: %s. Individual routes are not dynamically logged.", prefix)
+	// --- End Register OpenAPI Routes ---
+}
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes() {
@@ -184,12 +235,6 @@ func (g *Gateway) registerLoginRoutes() {
 		}
 	})
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
-}
-
-// registerLogout registers a global logout endpoint that clears the session
-func (g *Gateway) registerLogout() {
-	handlers.RegisterLogoutHandler(g.Mux, g.SessionStore, g.GatewayConfig.Management.Prefix) // CHANGED
-	log.Printf("Registered Global Logout Route: | Path: %s", g.GatewayConfig.Management.Prefix+"/logout")
 }
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
