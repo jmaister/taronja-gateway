@@ -76,5 +76,5 @@ api-codegen:
 
 
 # Default target
-.PHONY: all build build-windows run dev dev-help test clean fmt tidy
+.PHONY: all build build-windows run dev test cover clean fmt tidy
 all: build
