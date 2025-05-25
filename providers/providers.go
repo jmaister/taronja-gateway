@@ -14,6 +14,7 @@ import (
 	"github.com/jmaister/taronja-gateway/db" // For session.ExtractClientInfo, session.SessionCookieName
 	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
+	"gorm.io/gorm"
 )
 
 // More providers can be added here in the future: https://pkg.go.dev/golang.org/x/oauth2/endpoints
@@ -196,13 +197,13 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	// Fetch user data using the token
 	userInfo, err := ap.Fetcher.FetchUserData(token.AccessToken)
 	if err != nil {
-		log.Printf("Error loading user data: %v", err)
-		http.Error(w, "Error loading user data", http.StatusInternalServerError)
+		log.Printf("Error loading user data from provider %s: %v", ap.Provider.Name(), err)
+		http.Error(w, "Error loading user data from provider", http.StatusInternalServerError)
 		return
 	}
 
 	user, err := ap.UserRepo.FindUserByIdOrUsername("", "", userInfo.Email)
-	if err != nil {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Printf("Error finding user: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
