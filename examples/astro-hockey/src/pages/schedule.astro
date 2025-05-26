@@ -1,0 +1,356 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+// Sample schedule data
+const upcomingGames = [
+	{
+		date: "May 28, 2025",
+		time: "7:00 PM",
+		opponent: "Ice Wolves",
+		location: "Home",
+		venue: "Thunder Arena"
+	},
+	{
+		date: "June 2, 2025",
+		time: "8:30 PM",
+		opponent: "Steel Sharks",
+		location: "Away",
+		venue: "Shark Tank Arena"
+	},
+	{
+		date: "June 5, 2025",
+		time: "7:30 PM",
+		opponent: "Fire Eagles",
+		location: "Home",
+		venue: "Thunder Arena"
+	},
+	{
+		date: "June 10, 2025",
+		time: "6:00 PM",
+		opponent: "Lightning Bulls",
+		location: "Away",
+		venue: "Electric Coliseum"
+	},
+	{
+		date: "June 15, 2025",
+		time: "7:00 PM",
+		opponent: "Frost Giants",
+		location: "Home",
+		venue: "Thunder Arena"
+	}
+];
+
+const recentGames = [
+	{
+		date: "May 20, 2025",
+		opponent: "Ice Wolves",
+		result: "W",
+		score: "4-3",
+		location: "Home"
+	},
+	{
+		date: "May 15, 2025",
+		opponent: "Steel Sharks",
+		result: "W",
+		score: "6-2",
+		location: "Away"
+	},
+	{
+		date: "May 10, 2025",
+		opponent: "Fire Eagles",
+		result: "W",
+		score: "3-1",
+		location: "Home"
+	},
+	{
+		date: "May 5, 2025",
+		opponent: "Lightning Bulls",
+		result: "L",
+		score: "2-4",
+		location: "Away"
+	}
+];
+---
+
+<Layout title="Schedule - Thunder Hawks Hockey Team">
+	<h1>Game Schedule</h1>
+	
+	<div class="card">
+		<h2>🗓️ Upcoming Games</h2>
+		<div class="schedule-grid">
+			{upcomingGames.map((game) => (
+				<div class="game-card upcoming">
+					<div class="game-date">
+						<div class="date">{game.date}</div>
+						<div class="time">{game.time}</div>
+					</div>
+					<div class="game-details">
+						<h3>Thunder Hawks vs {game.opponent}</h3>
+						<div class="location">
+							<span class={`location-badge ${game.location.toLowerCase()}`}>
+								{game.location}
+							</span>
+							<span class="venue">{game.venue}</span>
+						</div>
+					</div>
+					<div class="game-actions">
+						<a href="#" class="btn-small">Buy Tickets</a>
+					</div>
+				</div>
+			))}
+		</div>
+	</div>
+
+	<div class="card">
+		<h2>📊 Recent Results</h2>
+		<div class="results-table">
+			<div class="table-header">
+				<div>Date</div>
+				<div>Opponent</div>
+				<div>Result</div>
+				<div>Score</div>
+				<div>Location</div>
+			</div>
+			{recentGames.map((game) => (
+				<div class="table-row">
+					<div>{game.date}</div>
+					<div>{game.opponent}</div>
+					<div class={`result ${game.result === 'W' ? 'win' : 'loss'}`}>
+						{game.result === 'W' ? 'WIN' : 'LOSS'}
+					</div>
+					<div class="score">{game.score}</div>
+					<div>{game.location}</div>
+				</div>
+			))}
+		</div>
+	</div>
+
+	<div class="card">
+		<h2>🏆 Season Stats</h2>
+		<div class="stats-grid">
+			<div class="stat-item">
+				<h3>25</h3>
+				<p>Games Played</p>
+			</div>
+			<div class="stat-item">
+				<h3>22</h3>
+				<p>Wins</p>
+			</div>
+			<div class="stat-item">
+				<h3>3</h3>
+				<p>Losses</p>
+			</div>
+			<div class="stat-item">
+				<h3>88%</h3>
+				<p>Win Rate</p>
+			</div>
+			<div class="stat-item">
+				<h3>145</h3>
+				<p>Goals For</p>
+			</div>
+			<div class="stat-item">
+				<h3>67</h3>
+				<p>Goals Against</p>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.schedule-grid {
+		display: grid;
+		gap: 1.5rem;
+	}
+	
+	.game-card {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		gap: 1.5rem;
+		padding: 1.5rem;
+		border: 2px solid #e0e0e0;
+		border-radius: 10px;
+		transition: all 0.3s ease;
+	}
+	
+	.game-card:hover {
+		border-color: #1e3c72;
+		box-shadow: 0 5px 15px rgba(30, 60, 114, 0.2);
+	}
+	
+	.upcoming {
+		border-left: 5px solid #ffd700;
+	}
+	
+	.game-date {
+		text-align: center;
+		min-width: 120px;
+	}
+	
+	.date {
+		font-weight: bold;
+		color: #1e3c72;
+		font-size: 1.1rem;
+	}
+	
+	.time {
+		color: #666;
+		font-size: 0.9rem;
+		margin-top: 0.25rem;
+	}
+	
+	.game-details h3 {
+		color: #333;
+		margin-bottom: 0.5rem;
+		font-size: 1.2rem;
+	}
+	
+	.location {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.location-badge {
+		padding: 0.25rem 0.75rem;
+		border-radius: 15px;
+		font-size: 0.8rem;
+		font-weight: bold;
+		text-transform: uppercase;
+	}
+	
+	.location-badge.home {
+		background: #4CAF50;
+		color: white;
+	}
+	
+	.location-badge.away {
+		background: #FF9800;
+		color: white;
+	}
+	
+	.venue {
+		color: #666;
+		font-size: 0.9rem;
+	}
+	
+	.game-actions {
+		display: flex;
+		align-items: center;
+	}
+	
+	.btn-small {
+		background: #1e3c72;
+		color: white;
+		padding: 0.5rem 1rem;
+		text-decoration: none;
+		border-radius: 5px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		transition: background 0.3s ease;
+	}
+	
+	.btn-small:hover {
+		background: #2a5298;
+	}
+	
+	.results-table {
+		border-radius: 10px;
+		overflow: hidden;
+		border: 1px solid #e0e0e0;
+	}
+	
+	.table-header {
+		display: grid;
+		grid-template-columns: 1fr 1fr auto auto 1fr;
+		gap: 1rem;
+		padding: 1rem;
+		background: #f5f5f5;
+		font-weight: bold;
+		color: #1e3c72;
+	}
+	
+	.table-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr auto auto 1fr;
+		gap: 1rem;
+		padding: 1rem;
+		border-top: 1px solid #e0e0e0;
+		transition: background 0.3s ease;
+	}
+	
+	.table-row:hover {
+		background: #f9f9f9;
+	}
+	
+	.result {
+		padding: 0.25rem 0.75rem;
+		border-radius: 15px;
+		font-weight: bold;
+		font-size: 0.8rem;
+		text-align: center;
+	}
+	
+	.result.win {
+		background: #4CAF50;
+		color: white;
+	}
+	
+	.result.loss {
+		background: #f44336;
+		color: white;
+	}
+	
+	.score {
+		font-weight: bold;
+		color: #1e3c72;
+	}
+	
+	.stats-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 1.5rem;
+		margin-top: 1rem;
+	}
+	
+	.stat-item {
+		text-align: center;
+		padding: 1.5rem;
+		background: linear-gradient(135deg, #1e3c72, #2a5298);
+		color: white;
+		border-radius: 10px;
+	}
+	
+	.stat-item h3 {
+		font-size: 2.5rem;
+		color: #ffd700;
+		margin-bottom: 0.5rem;
+	}
+	
+	.stat-item p {
+		font-size: 1rem;
+		text-transform: uppercase;
+		letter-spacing: 1px;
+	}
+	
+	@media (max-width: 768px) {
+		.game-card {
+			grid-template-columns: 1fr;
+			text-align: center;
+		}
+		
+		.table-header,
+		.table-row {
+			grid-template-columns: 1fr;
+			gap: 0.5rem;
+		}
+		
+		.table-header > div,
+		.table-row > div {
+			padding: 0.25rem 0;
+		}
+		
+		.stats-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+</style>

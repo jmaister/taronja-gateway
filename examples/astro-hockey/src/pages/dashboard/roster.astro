@@ -1,0 +1,547 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+// Sample roster data
+const players = [
+	{
+		name: "Jake Thunder",
+		number: 19,
+		position: "Center",
+		age: 28,
+		height: "6'2\"",
+		weight: "200 lbs",
+		hometown: "Toronto, ON",
+		goals: 35,
+		assists: 42,
+		points: 77
+	},
+	{
+		name: "Mike Storm",
+		number: 8,
+		position: "Left Wing",
+		age: 25,
+		height: "6'0\"",
+		weight: "185 lbs",
+		hometown: "Montreal, QC",
+		goals: 28,
+		assists: 31,
+		points: 59
+	},
+	{
+		name: "Alex Lightning",
+		number: 27,
+		position: "Right Wing",
+		age: 24,
+		height: "5'11\"",
+		weight: "180 lbs",
+		hometown: "Vancouver, BC",
+		goals: 22,
+		assists: 38,
+		points: 60
+	},
+	{
+		name: "Ryan Bolt",
+		number: 4,
+		position: "Defense",
+		age: 29,
+		height: "6'3\"",
+		weight: "210 lbs",
+		hometown: "Calgary, AB",
+		goals: 8,
+		assists: 25,
+		points: 33
+	},
+	{
+		name: "Sam Frost",
+		number: 2,
+		position: "Defense",
+		age: 26,
+		height: "6'1\"",
+		weight: "195 lbs",
+		hometown: "Ottawa, ON",
+		goals: 5,
+		assists: 22,
+		points: 27
+	},
+	{
+		name: "Tony Ice",
+		number: 30,
+		position: "Goalie",
+		age: 27,
+		height: "6'4\"",
+		weight: "220 lbs",
+		hometown: "Edmonton, AB",
+		saves: 852,
+		savePercent: "92.5%",
+		gaa: "2.15"
+	},
+	{
+		name: "Mark Blaze",
+		number: 11,
+		position: "Center",
+		age: 23,
+		height: "5'10\"",
+		weight: "175 lbs",
+		hometown: "Winnipeg, MB",
+		goals: 18,
+		assists: 24,
+		points: 42
+	},
+	{
+		name: "Chris Eagle",
+		number: 15,
+		position: "Left Wing",
+		age: 30,
+		height: "6'1\"",
+		weight: "190 lbs",
+		hometown: "Halifax, NS",
+		goals: 21,
+		assists: 19,
+		points: 40
+	}
+];
+
+const coaches = [
+	{
+		name: "Coach Rick Thunder",
+		position: "Head Coach",
+		experience: "15 years",
+		achievements: "5x Championship Winner"
+	},
+	{
+		name: "Assistant Coach Maria Storm",
+		position: "Assistant Coach",
+		experience: "8 years",
+		achievements: "Former Olympic Player"
+	},
+	{
+		name: "Coach Dave Lightning",
+		position: "Goalie Coach",
+		experience: "12 years",
+		achievements: "Former NHL Goalie"
+	}
+];
+---
+
+<Layout title="Roster - Thunder Hawks Hockey Team">
+	<h1>Team Roster</h1>
+	
+	<div class="card">
+		<h2>👥 Coaching Staff</h2>
+		<div class="coaches-grid">
+			{coaches.map((coach) => (
+				<div class="coach-card">
+					<div class="coach-avatar">
+						<div class="avatar-placeholder">
+							{coach.name.split(' ').map(n => n[0]).join('')}
+						</div>
+					</div>
+					<div class="coach-info">
+						<h3>{coach.name}</h3>
+						<p class="position">{coach.position}</p>
+						<p class="experience">Experience: {coach.experience}</p>
+						<p class="achievements">{coach.achievements}</p>
+					</div>
+				</div>
+			))}
+		</div>
+	</div>
+
+	<div class="card">
+		<h2>🏒 Player Roster</h2>
+		<div class="position-filter">
+			<button class="filter-btn active" data-position="all">All Players</button>
+			<button class="filter-btn" data-position="Center">Centers</button>
+			<button class="filter-btn" data-position="Left Wing">Left Wings</button>
+			<button class="filter-btn" data-position="Right Wing">Right Wings</button>
+			<button class="filter-btn" data-position="Defense">Defense</button>
+			<button class="filter-btn" data-position="Goalie">Goalies</button>
+		</div>
+		
+		<div class="players-grid">
+			{players.map((player) => (
+				<div class={`player-card ${player.position.toLowerCase().replace(' ', '-')}`} data-position={player.position}>
+					<div class="player-header">
+						<div class="player-number">#{player.number}</div>
+						<div class="player-position">{player.position}</div>
+					</div>
+					<div class="player-info">
+						<h3>{player.name}</h3>
+						<div class="player-details">
+							<div class="detail">
+								<span class="label">Age:</span>
+								<span class="value">{player.age}</span>
+							</div>
+							<div class="detail">
+								<span class="label">Height:</span>
+								<span class="value">{player.height}</span>
+							</div>
+							<div class="detail">
+								<span class="label">Weight:</span>
+								<span class="value">{player.weight}</span>
+							</div>
+							<div class="detail">
+								<span class="label">Hometown:</span>
+								<span class="value">{player.hometown}</span>
+							</div>
+						</div>
+					</div>
+					<div class="player-stats">
+						{player.position === 'Goalie' ? (
+							<>
+								<div class="stat">
+									<span class="stat-value">{player.saves}</span>
+									<span class="stat-label">Saves</span>
+								</div>
+								<div class="stat">
+									<span class="stat-value">{player.savePercent}</span>
+									<span class="stat-label">Save %</span>
+								</div>
+								<div class="stat">
+									<span class="stat-value">{player.gaa}</span>
+									<span class="stat-label">GAA</span>
+								</div>
+							</>
+						) : (
+							<>
+								<div class="stat">
+									<span class="stat-value">{player.goals}</span>
+									<span class="stat-label">Goals</span>
+								</div>
+								<div class="stat">
+									<span class="stat-value">{player.assists}</span>
+									<span class="stat-label">Assists</span>
+								</div>
+								<div class="stat">
+									<span class="stat-value">{player.points}</span>
+									<span class="stat-label">Points</span>
+								</div>
+							</>
+						)}
+					</div>
+				</div>
+			))}
+		</div>
+	</div>
+
+	<div class="card">
+		<h2>📈 Team Statistics</h2>
+		<div class="team-stats">
+			<div class="stat-category">
+				<h3>Offense</h3>
+				<div class="stats-list">
+					<div class="team-stat">
+						<span>Goals Per Game:</span>
+						<span>5.8</span>
+					</div>
+					<div class="team-stat">
+						<span>Power Play %:</span>
+						<span>24.5%</span>
+					</div>
+					<div class="team-stat">
+						<span>Shots Per Game:</span>
+						<span>32.4</span>
+					</div>
+				</div>
+			</div>
+			<div class="stat-category">
+				<h3>Defense</h3>
+				<div class="stats-list">
+					<div class="team-stat">
+						<span>Goals Against Per Game:</span>
+						<span>2.7</span>
+					</div>
+					<div class="team-stat">
+						<span>Penalty Kill %:</span>
+						<span>89.2%</span>
+					</div>
+					<div class="team-stat">
+						<span>Blocked Shots:</span>
+						<span>18.6</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.coaches-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 1.5rem;
+		margin-top: 1rem;
+	}
+	
+	.coach-card {
+		display: flex;
+		gap: 1rem;
+		padding: 1.5rem;
+		background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+		border-radius: 10px;
+		border-left: 4px solid #ffd700;
+	}
+	
+	.coach-avatar {
+		flex-shrink: 0;
+	}
+	
+	.avatar-placeholder {
+		width: 60px;
+		height: 60px;
+		background: #1e3c72;
+		color: white;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: bold;
+		font-size: 1.2rem;
+	}
+	
+	.coach-info h3 {
+		color: #1e3c72;
+		margin-bottom: 0.5rem;
+	}
+	
+	.position {
+		color: #ffd700;
+		font-weight: bold;
+		margin-bottom: 0.25rem;
+	}
+	
+	.experience, .achievements {
+		color: #666;
+		font-size: 0.9rem;
+		margin-bottom: 0.25rem;
+	}
+	
+	.position-filter {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 2rem;
+		flex-wrap: wrap;
+	}
+	
+	.filter-btn {
+		padding: 0.5rem 1rem;
+		border: 2px solid #1e3c72;
+		background: white;
+		color: #1e3c72;
+		border-radius: 25px;
+		cursor: pointer;
+		font-weight: 600;
+		transition: all 0.3s ease;
+	}
+	
+	.filter-btn:hover,
+	.filter-btn.active {
+		background: #1e3c72;
+		color: white;
+	}
+	
+	.players-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		gap: 1.5rem;
+	}
+	
+	.player-card {
+		background: white;
+		border-radius: 10px;
+		overflow: hidden;
+		box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+		transition: transform 0.3s ease, box-shadow 0.3s ease;
+		border-top: 4px solid #1e3c72;
+	}
+	
+	.player-card:hover {
+		transform: translateY(-5px);
+		box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+	}
+	
+	.player-header {
+		background: linear-gradient(135deg, #1e3c72, #2a5298);
+		color: white;
+		padding: 1rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	
+	.player-number {
+		font-size: 2rem;
+		font-weight: bold;
+		color: #ffd700;
+	}
+	
+	.player-position {
+		background: rgba(255, 255, 255, 0.2);
+		padding: 0.25rem 0.75rem;
+		border-radius: 15px;
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+	
+	.player-info {
+		padding: 1rem;
+	}
+	
+	.player-info h3 {
+		color: #1e3c72;
+		margin-bottom: 1rem;
+		font-size: 1.3rem;
+	}
+	
+	.player-details {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.5rem;
+	}
+	
+	.detail {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.9rem;
+	}
+	
+	.label {
+		color: #666;
+		font-weight: 600;
+	}
+	
+	.value {
+		color: #333;
+	}
+	
+	.player-stats {
+		background: #f8f9fa;
+		padding: 1rem;
+		display: flex;
+		justify-content: space-around;
+	}
+	
+	.stat {
+		text-align: center;
+	}
+	
+	.stat-value {
+		display: block;
+		font-size: 1.5rem;
+		font-weight: bold;
+		color: #1e3c72;
+	}
+	
+	.stat-label {
+		font-size: 0.8rem;
+		color: #666;
+		text-transform: uppercase;
+		letter-spacing: 1px;
+	}
+	
+	.team-stats {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 2rem;
+		margin-top: 1rem;
+	}
+	
+	.stat-category h3 {
+		color: #1e3c72;
+		border-bottom: 2px solid #ffd700;
+		padding-bottom: 0.5rem;
+		margin-bottom: 1rem;
+	}
+	
+	.stats-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	
+	.team-stat {
+		display: flex;
+		justify-content: space-between;
+		padding: 0.75rem;
+		background: #f8f9fa;
+		border-radius: 5px;
+		border-left: 3px solid #1e3c72;
+	}
+	
+	.team-stat span:last-child {
+		font-weight: bold;
+		color: #1e3c72;
+	}
+	
+	/* Position-based card colors */
+	.player-card.center {
+		border-top-color: #4CAF50;
+	}
+	
+	.player-card.left-wing,
+	.player-card.right-wing {
+		border-top-color: #FF9800;
+	}
+	
+	.player-card.defense {
+		border-top-color: #2196F3;
+	}
+	
+	.player-card.goalie {
+		border-top-color: #9C27B0;
+	}
+	
+	@media (max-width: 768px) {
+		.coaches-grid {
+			grid-template-columns: 1fr;
+		}
+		
+		.coach-card {
+			flex-direction: column;
+			text-align: center;
+		}
+		
+		.position-filter {
+			justify-content: center;
+		}
+		
+		.players-grid {
+			grid-template-columns: 1fr;
+		}
+		
+		.player-details {
+			grid-template-columns: 1fr;
+		}
+		
+		.team-stats {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
+
+<script>
+	// Add filtering functionality
+	document.addEventListener('DOMContentLoaded', function() {
+		const filterButtons = document.querySelectorAll('.filter-btn') as NodeListOf<HTMLElement>;
+		const playerCards = document.querySelectorAll('.player-card') as NodeListOf<HTMLElement>;
+		
+		filterButtons.forEach(button => {
+			button.addEventListener('click', function(this: HTMLElement) {
+				// Remove active class from all buttons
+				filterButtons.forEach(btn => btn.classList.remove('active'));
+				// Add active class to clicked button
+				this.classList.add('active');
+				
+				const selectedPosition = this.dataset.position;
+				
+				playerCards.forEach(card => {
+					if (selectedPosition === 'all' || card.dataset.position === selectedPosition) {
+						card.style.display = 'block';
+					} else {
+						card.style.display = 'none';
+					}
+				});
+			});
+		});
+	});
+</script>
