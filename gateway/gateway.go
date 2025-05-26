@@ -63,7 +63,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 
 	// Initialize and parse templates
-	templates, err := parseTemplates(static.StaticAssetsFS, "login.html", "create_user.html", "user_info.html", "users_list.html") // Added users_list.html
+	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
 		return nil, err // Propagate error from template parsing
 	}
