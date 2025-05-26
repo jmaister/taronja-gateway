@@ -124,6 +124,11 @@ const coaches = [
 ---
 
 <Layout title="Roster - Thunder Hawks Hockey Team">
+	<!-- User Info Section -->
+	<div id="user-info" class="user-info-container">
+		<!-- User info will be loaded here via JavaScript -->
+	</div>
+
 	<h1>Team Roster</h1>
 	
 	<div class="card">
@@ -266,6 +271,69 @@ const coaches = [
 </Layout>
 
 <style>
+	.user-info-container {
+		margin-bottom: 3rem;
+        font-size: 24px;
+        color: white;
+	}
+
+	.user-profile {
+		display: flex;
+		align-items: center;
+		gap: 2rem;
+		background: white;
+		padding: 2.5rem;
+		border-radius: 15px;
+		box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+		border-left: 6px solid #ffd700;
+	}
+
+	.user-avatar {
+		flex-shrink: 0;
+	}
+
+	.user-picture {
+		width: 120px;
+		height: 120px;
+		border-radius: 50%;
+		object-fit: cover;
+		border: 5px solid #1e3c72;
+		box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
+	}
+
+	.user-placeholder {
+		width: 120px;
+		height: 120px;
+		background-color: #1e3c72 !important;
+		color: white !important;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 4rem !important;
+		font-weight: bold;
+		border: 3px solid #ffd700;
+		text-transform: uppercase;
+	}
+
+	.user-details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.user-greeting {
+		color: #666;
+		font-size: 1.2rem;
+		font-weight: 500;
+	}
+
+	.username {
+		color: #1e3c72;
+		font-size: 2rem;
+		font-weight: bold;
+	}
+
 	.coaches-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -490,8 +558,13 @@ const coaches = [
 	.player-card.goalie {
 		border-top-color: #9C27B0;
 	}
-	
-	@media (max-width: 768px) {
+		@media (max-width: 768px) {
+		.user-profile {
+			flex-direction: column;
+			text-align: center;
+			gap: 0.75rem;
+		}
+
 		.coaches-grid {
 			grid-template-columns: 1fr;
 		}
@@ -520,8 +593,56 @@ const coaches = [
 </style>
 
 <script>
+	// Define types for user data
+	interface UserData {
+		username: string;
+		picture?: string;
+		[key: string]: any;
+	}
+
+	// Load user data from /_/me endpoint
+	async function loadUserData(): Promise<void> {
+		try {
+			const response = await fetch('/_/me');
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+			
+			const userData: UserData = await response.json();
+			displayUserInfo(userData);
+		} catch (error) {
+			console.error('Failed to load user data:', error);
+			// Show error state or default user info
+			displayUserInfo({ username: 'Guest' });
+		}
+	}
+
+	// Display user info at the top of the page
+	function displayUserInfo(userData: UserData): void {
+		const userInfoContainer = document.getElementById('user-info');
+		if (!userInfoContainer) return;
+
+		userInfoContainer.innerHTML = `
+			<div class="user-profile">
+				<div class="user-avatar">
+					${userData.picture 
+						? `<img src="${userData.picture}" alt="${userData.username}" class="user-picture" />` 
+						: `<div class="user-placeholder">${userData.username.charAt(0).toUpperCase()}</div>`
+					}
+				</div>
+				<div class="user-details">
+					<span class="user-greeting">Welcome back,</span>
+					<span class="username">${userData.username}</span>
+				</div>
+			</div>
+		`;
+	}
+
 	// Add filtering functionality
 	document.addEventListener('DOMContentLoaded', function() {
+		// Load user data on page load
+		loadUserData();
+
 		const filterButtons = document.querySelectorAll('.filter-btn') as NodeListOf<HTMLElement>;
 		const playerCards = document.querySelectorAll('.player-card') as NodeListOf<HTMLElement>;
 		
