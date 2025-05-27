@@ -12,10 +12,6 @@ routes:
     from: /favicon.ico
     toFile: ./sample/webfiles/favicon.ico
     static: true
-  - name: React App Assets
-    from: /assets/*
-    toFolder: ./webapp/dist/assets
-    static: true
   - name: V1 of the API
     from: /api/v1/*
     removeFromPath: "/api/v1/"
@@ -47,7 +43,7 @@ routes:
     authentication:
       enabled: true
   - name: Fronted App
-    from: / # This will be the main catch-all for the React app
+    from: /
     toFolder: ./sample/webfiles
     static: true
 

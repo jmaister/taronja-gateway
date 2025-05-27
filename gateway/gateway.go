@@ -121,9 +121,6 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes()
 
-	// Register all user management routes
-	g.RegisterUserManagementRoutes()
-
 	// Register the static content endpoint to load assets from the provided embedded FS
 	staticPath := prefix + "/static/"
 	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
@@ -135,13 +132,7 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	g.registerOpenAPIRoutes(prefix)
 
 	// Register dashboard webapp, server static files from embedded FS in webapp/dist
-	dashboardPath := prefix + "/admin/"
-	g.Mux.HandleFunc(dashboardPath, func(w http.ResponseWriter, r *http.Request) {
-		fileServer := http.FileServer(http.FS(g.WebappEmbedFS))
-		http.StripPrefix(dashboardPath, fileServer).ServeHTTP(w, r)
-		log.Printf("Dashboard request served: %s", r.URL.Path)
-	})
-	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Static Assets", staticPath, false)
+	g.registerDashboard(prefix)
 
 }
 
@@ -322,6 +313,95 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 		//g.authManager.HandleOAuthCallback(provider, w, r)
 	})
 	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
+}
+
+func (g *Gateway) registerDashboard(prefix string) {
+	dashboardPath := prefix + "/admin/"
+	// TODO: must be authenticated to access the dashboard
+	// TODO: only specific users can access the dashboard, based on config/attributes/other...
+	g.Mux.HandleFunc(dashboardPath, func(w http.ResponseWriter, r *http.Request) {
+		// Get the path after stripping the dashboard prefix
+		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
+
+		// Check if this looks like a static asset (has file extension)
+		isStaticAsset := strings.Contains(path, ".") && (strings.HasSuffix(path, ".js") ||
+			strings.HasSuffix(path, ".css") ||
+			strings.HasSuffix(path, ".json") ||
+			strings.HasSuffix(path, ".png") ||
+			strings.HasSuffix(path, ".jpg") ||
+			strings.HasSuffix(path, ".jpeg") ||
+			strings.HasSuffix(path, ".gif") ||
+			strings.HasSuffix(path, ".svg") ||
+			strings.HasSuffix(path, ".ico") ||
+			strings.HasSuffix(path, ".woff") ||
+			strings.HasSuffix(path, ".woff2") ||
+			strings.HasSuffix(path, ".ttf") ||
+			strings.HasSuffix(path, ".eot"))
+
+		var data []byte
+		var err error
+		var finalPath string
+
+		if path == "" || path == "/" || !isStaticAsset {
+			// Serve index.html for root requests or SPA routes (no file extension)
+			finalPath = "webapp/dist/index.html"
+			log.Printf("Dashboard: Serving SPA route '%s' with index.html", r.URL.Path)
+		} else {
+			// Try to serve the actual static asset
+			finalPath = "webapp/dist/" + path
+			data, err = g.WebappEmbedFS.ReadFile(finalPath)
+			if err != nil {
+				// Static asset not found, serve index.html for SPA routing
+				log.Printf("Dashboard: Static asset not found '%s', serving index.html for SPA routing", finalPath)
+				finalPath = "webapp/dist/index.html"
+			} else {
+				log.Printf("Dashboard: Serving static asset: %s", finalPath)
+			}
+		}
+
+		// Read the final file (index.html or static asset)
+		if data == nil {
+			data, err = g.WebappEmbedFS.ReadFile(finalPath)
+			if err != nil {
+				log.Printf("Dashboard: Could not read file '%s': %v", finalPath, err)
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		// Determine content type based on the final served file extension
+		contentType := "text/html"
+		if strings.HasSuffix(finalPath, ".js") {
+			contentType = "application/javascript"
+		} else if strings.HasSuffix(finalPath, ".css") {
+			contentType = "text/css"
+		} else if strings.HasSuffix(finalPath, ".json") {
+			contentType = "application/json"
+		} else if strings.HasSuffix(finalPath, ".png") {
+			contentType = "image/png"
+		} else if strings.HasSuffix(finalPath, ".jpg") || strings.HasSuffix(finalPath, ".jpeg") {
+			contentType = "image/jpeg"
+		} else if strings.HasSuffix(finalPath, ".gif") {
+			contentType = "image/gif"
+		} else if strings.HasSuffix(finalPath, ".svg") {
+			contentType = "image/svg+xml"
+		} else if strings.HasSuffix(finalPath, ".ico") {
+			contentType = "image/x-icon"
+		} else if strings.HasSuffix(finalPath, ".woff") {
+			contentType = "font/woff"
+		} else if strings.HasSuffix(finalPath, ".woff2") {
+			contentType = "font/woff2"
+		} else if strings.HasSuffix(finalPath, ".ttf") {
+			contentType = "font/ttf"
+		} else if strings.HasSuffix(finalPath, ".eot") {
+			contentType = "application/vnd.ms-fontobject"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Write(data)
+		log.Printf("Dashboard request served: %s -> %s", r.URL.Path, finalPath)
+	})
+	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth: %t", "Dashboard", dashboardPath, true)
 }
 
 // --- Authentication Middleware ---

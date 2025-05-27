@@ -16,11 +16,12 @@ function App() {
   // but current components primarily use <Link> or navigate.
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/_/admin">
+        {/* This is the URL configured in gateway.go for the admin dashboard */}
       <div className="min-h-screen bg-gray-100">
         <nav className="bg-blue-300 text-white p-4 shadow-md">
           <div className="container mx-auto flex justify-between items-center">
-            <Link to="/users" className="text-xl font-bold hover:cursor-pointer">User Management App</Link>
+            <Link to="/" className="text-xl font-bold hover:cursor-pointer">Taronja Gateway dashboard</Link>
             <div>
               <Link to="/users" className="px-3 py-2 rounded hover:bg-blue-700">Users List</Link>
               <Link to="/users/new" className="px-3 py-2 rounded hover:bg-blue-700">Create User</Link>
@@ -33,7 +34,6 @@ function App() {
             <Route path="/users" element={<UsersListPage />} />
             <Route path="/users/new" element={<CreateUserPage />} />
             <Route path="/users/:userId" element={<UserInfoPage />} />
-            <Route path="/" element={<Navigate replace to="/users" />} />
             <Route path="*" element={
               <div className="text-center p-10">
                 <h1 className="text-3xl font-bold mb-4">Welcome to
