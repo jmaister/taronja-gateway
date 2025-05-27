@@ -46,9 +46,9 @@ routes:
     static: true
     authentication:
       enabled: true
-  - name: React App Index
+  - name: Fronted App
     from: / # This will be the main catch-all for the React app
-    toFile: ./webapp/dist/index.html
+    toFolder: ./sample/webfiles
     static: true
 
 

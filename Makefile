@@ -10,6 +10,7 @@ endif
 # Build target
 build: api-codegen
 	@echo "Building $(PROJECT_NAME)..."
+	cd webapp && npm install && npm run build
 	go build -o $(BINARY_NAME) .
 
 # Run target
@@ -78,7 +79,7 @@ api-codegen:
 # Install the way scripts/install.bat does
 install: build
 	@echo "Installing dependencies..."
-	cp tg.exe ~/bin/
+	cp $(BINARY_NAME) ~/bin/
 
 # Default target
 .PHONY: all build build-windows run dev test cover clean fmt tidy

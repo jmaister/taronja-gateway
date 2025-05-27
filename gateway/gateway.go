@@ -33,11 +33,12 @@ type Gateway struct {
 	SessionStore   session.SessionStore
 	UserRepository db.UserRepository
 	templates      map[string]*template.Template
+	WebappEmbedFS  *embed.FS
 }
 
 // --- NewGateway Function ---
 
-func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
+func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
 	// Initialize the database connection
 	db.Init()
 
@@ -75,6 +76,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		SessionStore:   sessionStore,
 		UserRepository: userRepository,
 		templates:      templates,
+		WebappEmbedFS:  webappEmbedFS,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -131,6 +133,15 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 
 	// Register the OpenAPI routes
 	g.registerOpenAPIRoutes(prefix)
+
+	// Register dashboard webapp, server static files from embedded FS in webapp/dist
+	dashboardPath := prefix + "/admin/"
+	g.Mux.HandleFunc(dashboardPath, func(w http.ResponseWriter, r *http.Request) {
+		fileServer := http.FileServer(http.FS(g.WebappEmbedFS))
+		http.StripPrefix(dashboardPath, fileServer).ServeHTTP(w, r)
+		log.Printf("Dashboard request served: %s", r.URL.Path)
+	})
+	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Static Assets", staticPath, false)
 
 }
 
