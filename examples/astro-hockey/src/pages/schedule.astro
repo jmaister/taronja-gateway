@@ -1,0 +1,155 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+// Sample schedule data
+const upcomingGames = [
+	{
+		date: "May 28, 2025",
+		time: "7:00 PM",
+		opponent: "Ice Wolves",
+		location: "Home",
+		venue: "Thunder Arena"
+	},
+	{
+		date: "June 2, 2025",
+		time: "8:30 PM",
+		opponent: "Steel Sharks",
+		location: "Away",
+		venue: "Shark Tank Arena"
+	},
+	{
+		date: "June 5, 2025",
+		time: "7:30 PM",
+		opponent: "Fire Eagles",
+		location: "Home",
+		venue: "Thunder Arena"
+	},
+	{
+		date: "June 10, 2025",
+		time: "6:00 PM",
+		opponent: "Lightning Bulls",
+		location: "Away",
+		venue: "Electric Coliseum"
+	},
+	{
+		date: "June 15, 2025",
+		time: "7:00 PM",
+		opponent: "Frost Giants",
+		location: "Home",
+		venue: "Thunder Arena"
+	}
+];
+
+const recentGames = [
+	{
+		date: "May 20, 2025",
+		opponent: "Ice Wolves",
+		result: "W",
+		score: "4-3",
+		location: "Home"
+	},
+	{
+		date: "May 15, 2025",
+		opponent: "Steel Sharks",
+		result: "W",
+		score: "6-2",
+		location: "Away"
+	},
+	{
+		date: "May 10, 2025",
+		opponent: "Fire Eagles",
+		result: "W",
+		score: "3-1",
+		location: "Home"
+	},
+	{
+		date: "May 5, 2025",
+		opponent: "Lightning Bulls",
+		result: "L",
+		score: "2-4",
+		location: "Away"
+	}
+];
+---
+
+<Layout title="Schedule - Thunder Hawks Hockey Team">
+	<h1 class="text-blue-900 mb-4 text-5xl text-center">Game Schedule</h1>
+		<div class="bg-white rounded-xl p-8 my-8 shadow-2xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">🗓️ Upcoming Games</h2>
+		<div class="grid gap-6">
+			{upcomingGames.map((game) => (
+				<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border-2 border-gray-200 rounded-xl transition-all duration-300 hover:border-blue-900 hover:shadow-lg border-l-8 border-l-yellow-400">
+					<div class="text-center min-w-[120px]">
+						<div class="font-bold text-blue-900 text-lg">{game.date}</div>
+						<div class="text-gray-600 text-sm mt-1">{game.time}</div>
+					</div>
+					<div class="flex-1">
+						<h3 class="text-gray-800 mb-2 text-xl">Thunder Hawks vs {game.opponent}</h3>
+						<div class="flex items-center gap-2 flex-wrap">
+							<span class={`px-3 py-1 rounded-full text-xs font-bold uppercase text-white ${game.location.toLowerCase() === 'home' ? 'bg-green-500' : 'bg-orange-500'}`}>
+								{game.location}
+							</span>
+							<span class="text-gray-600 text-sm">{game.venue}</span>
+						</div>
+					</div>					<div class="flex items-center justify-center lg:justify-end">
+						<a href="#" class="inline-block bg-blue-900 text-white px-4 py-2 no-underline rounded-md font-medium text-sm transition-colors duration-300 hover:bg-blue-800">Buy Tickets</a>
+					</div>
+				</div>
+			))}		</div>
+	</div>
+	<div class="bg-white rounded-xl p-8 my-8 shadow-2xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">📊 Recent Results</h2>
+		<div class="rounded-xl overflow-hidden border border-gray-200">
+			<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 p-4 bg-gray-50 font-bold text-blue-900">
+				<div>Date</div>
+				<div>Opponent</div>
+				<div class="hidden lg:block">Result</div>
+				<div class="hidden lg:block">Score</div>
+				<div class="hidden lg:block">Location</div>
+			</div>
+			{recentGames.map((game) => (
+				<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 p-4 border-t border-gray-200 transition-colors duration-300 hover:bg-gray-50">
+					<div>{game.date}</div>
+					<div>{game.opponent}</div>
+					<div class="hidden lg:block">
+						<span class={`px-3 py-1 rounded-full font-bold text-xs text-center text-white ${game.result === 'W' ? 'bg-green-500' : 'bg-red-500'}`}>
+							{game.result === 'W' ? 'WIN' : 'LOSS'}
+						</span>
+					</div>
+					<div class="hidden lg:block font-bold text-blue-900">{game.score}</div>
+					<div class="hidden lg:block">{game.location}</div>
+				</div>
+			))}		</div>
+	</div>
+	<div class="bg-white rounded-xl p-8 my-8 shadow-2xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">🏆 Season Stats</h2>
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mt-4">
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">25</h3>
+				<p class="text-base uppercase tracking-wider">Games Played</p>
+			</div>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">22</h3>
+				<p class="text-base uppercase tracking-wider">Wins</p>
+			</div>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">3</h3>
+				<p class="text-base uppercase tracking-wider">Losses</p>
+			</div>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">88%</h3>
+				<p class="text-base uppercase tracking-wider">Win Rate</p>
+			</div>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">145</h3>
+				<p class="text-base uppercase tracking-wider">Goals For</p>
+			</div>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">67</h3>
+				<p class="text-base uppercase tracking-wider">Goals Against</p>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+
