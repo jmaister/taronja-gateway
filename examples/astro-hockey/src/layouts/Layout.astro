@@ -1,4 +1,6 @@
 ---
+import '../styles/global.css';
+
 export interface Props {
 	title: string;
 }
@@ -12,111 +14,21 @@ const { title } = Astro.props;
 		<meta charset="UTF-8" />
 		<meta name="description" content="Thunder Hawks Hockey Team - Official Website" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="generator" content={Astro.generator} />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />		<meta name="generator" content={Astro.generator} />
 		<title>{title}</title>
-		<style>
-			* {
-				margin: 0;
-				padding: 0;
-				box-sizing: border-box;
-			}
-					body {
-				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-				line-height: 1.6;
-				color: #333;
-				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-				min-height: 100vh;
-			}
-			
-			.container {
-				max-width: 1200px;
-				margin: 0 auto;
-				padding: 0 20px;
-			}
-			
-			nav {
-				background: rgba(0, 0, 0, 0.8);
-				padding: 1rem 0;
-				position: sticky;
-				top: 0;
-				z-index: 100;
-			}
-			
-			nav ul {
-				list-style: none;
-				display: flex;
-				justify-content: center;
-				gap: 2rem;
-			}
-			
-			nav a {
-				color: white;
-				text-decoration: none;
-				font-weight: 600;
-				font-size: 1.1rem;
-				transition: color 0.3s ease;
-			}
-			
-			nav a:hover {
-				color: #ffd700;
-			}
-			
-			main {
-				padding: 2rem 0;
-			}
-			
-			.card {
-				background: white;
-				border-radius: 10px;
-				padding: 2rem;
-				margin: 2rem 0;
-				box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-			}
-			
-			h1, h2, h3 {
-				color: #1e3c72;
-				margin-bottom: 1rem;
-			}
-			
-			h1 {
-				font-size: 3rem;
-				text-align: center;
-			}
-			
-			h2 {
-				font-size: 2rem;
-				border-bottom: 3px solid #ffd700;
-				padding-bottom: 0.5rem;
-			}
-			
-			.btn {
-				display: inline-block;
-				background: #1e3c72;
-				color: white;
-				padding: 12px 24px;
-				text-decoration: none;
-				border-radius: 5px;
-				font-weight: 600;
-				transition: background 0.3s ease;
-			}
-			
-			.btn:hover {
-				background: #2a5298;
-			}
-		</style>
 	</head>
-	<body>
-		<nav>
-			<div class="container">				<ul>
-					<li><a href="/">Home</a></li>
-					<li><a href="/schedule">Schedule</a></li>
-					<li><a href="/dashboard/roster">Roster</a></li>
+	<body class="font-sans leading-relaxed text-gray-800 bg-gradient-to-br from-indigo-500 to-purple-600 min-h-screen">
+		<nav class="bg-black/80 py-4 sticky top-0 z-50">
+			<div class="max-w-6xl mx-auto px-5">
+				<ul class="list-none flex justify-center gap-8">
+					<li><a href="/" class="text-white no-underline font-semibold text-lg transition-colors duration-300 hover:text-yellow-400">Home</a></li>
+					<li><a href="/schedule" class="text-white no-underline font-semibold text-lg transition-colors duration-300 hover:text-yellow-400">Schedule</a></li>
+					<li><a href="/dashboard/roster" class="text-white no-underline font-semibold text-lg transition-colors duration-300 hover:text-yellow-400">Roster</a></li>
 				</ul>
 			</div>
 		</nav>
-		<main>
-			<div class="container">
+		<main class="py-8">
+			<div class="max-w-6xl mx-auto px-5">
 				<slot />
 			</div>
 		</main>

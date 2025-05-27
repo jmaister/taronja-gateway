@@ -1,0 +1,7 @@
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+/* 
+  Note: Using inline Tailwind classes instead of @apply directives 
+  for better compatibility with Tailwind CSS 4 build process
+*/

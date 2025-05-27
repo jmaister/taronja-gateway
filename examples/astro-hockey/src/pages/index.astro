@@ -3,34 +3,34 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout title="Thunder Hawks Hockey Team">
-	<div class="hero">
-		<div class="hero-content">
-			<img src="/logo.svg" alt="Thunder Hawks Logo" class="team-logo" />
-			<h1>Thunder Hawks</h1>
-			<p class="tagline">Dominating the ice since 2010</p>
-			<div class="hero-stats">
-				<div class="stat">
-					<h3>15</h3>
-					<p>Championships</p>
+	<div class="text-center py-12 bg-white/10 rounded-2xl my-8 backdrop-blur-md">
+		<div class="text-white">
+			<img src="/logo.svg" alt="Thunder Hawks Logo" class="w-36 h-36 mx-auto mb-4 drop-shadow-lg" />
+			<h1 class="text-white text-6xl mb-2 drop-shadow-md">Thunder Hawks</h1>
+			<p class="text-xl mb-8 text-yellow-400 italic">Dominating the ice since 2010</p>
+			<div class="flex justify-center gap-12 my-8 flex-wrap">
+				<div class="text-center">
+					<h3 class="text-4xl text-yellow-400 mb-2 font-bold">15</h3>
+					<p class="text-lg uppercase tracking-wider">Championships</p>
 				</div>
-				<div class="stat">
-					<h3>28</h3>
-					<p>Players</p>
+				<div class="text-center">
+					<h3 class="text-4xl text-yellow-400 mb-2 font-bold">28</h3>
+					<p class="text-lg uppercase tracking-wider">Players</p>
 				</div>
-				<div class="stat">
-					<h3>98%</h3>
-					<p>Win Rate</p>
+				<div class="text-center">
+					<h3 class="text-4xl text-yellow-400 mb-2 font-bold">98%</h3>
+					<p class="text-lg uppercase tracking-wider">Win Rate</p>
 				</div>
 			</div>
-			<div class="hero-actions">
-				<a href="/schedule" class="btn">View Schedule</a>
-				<a href="/dashboard/roster" class="btn">Meet the Team</a>
+			<div class="flex justify-center gap-4 mt-8 flex-wrap">
+				<a href="/schedule" class="inline-block bg-blue-900 text-white px-6 py-3 no-underline rounded-lg font-semibold transition-colors duration-300 hover:bg-blue-800">View Schedule</a>
+				<a href="/dashboard/roster" class="inline-block bg-blue-900 text-white px-6 py-3 no-underline rounded-lg font-semibold transition-colors duration-300 hover:bg-blue-800">Meet the Team</a>
 			</div>
 		</div>
 	</div>
 
-	<div class="card">
-		<h2>About Thunder Hawks</h2>
+	<div class="bg-white rounded-xl p-8 my-8 shadow-xl">
+		<h2 class="text-blue-900 text-3xl border-b-4 border-yellow-400 pb-2 mb-4">About Thunder Hawks</h2>
 		<p>
 			The Thunder Hawks are a premier hockey team known for their aggressive play style and 
 			unwavering team spirit. Founded in 2010, we've consistently dominated the league with 
@@ -43,116 +43,19 @@ import Layout from '../layouts/Layout.astro';
 		</p>
 	</div>
 
-	<div class="card">
-		<h2>Latest News</h2>
-		<div class="news-item">
-			<h3>Championship Victory!</h3>
-			<p class="news-date">May 20, 2025</p>
+	<div class="bg-white rounded-xl p-8 my-8 shadow-xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">Latest News</h2>
+		<div class="border-l-4 border-yellow-400 pl-4 mb-6">
+			<h3 class="text-blue-900 mb-4 text-xl">Championship Victory!</h3>
+			<p class="text-gray-600 text-sm mb-2">May 20, 2025</p>
 			<p>Thunder Hawks claim their 15th championship title with a thrilling 4-3 overtime victory!</p>
 		</div>
-		<div class="news-item">
-			<h3>New Season Starts</h3>
-			<p class="news-date">May 15, 2025</p>
+		<div class="border-l-4 border-yellow-400 pl-4 mb-6">
+			<h3 class="text-blue-900 mb-4 text-xl">New Season Starts</h3>
+			<p class="text-gray-600 text-sm mb-2">May 15, 2025</p>
 			<p>Get ready for another exciting season! Season tickets are now available.</p>
 		</div>
 	</div>
 </Layout>
 
-<style>
-	.hero {
-		text-align: center;
-		padding: 3rem 0;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 15px;
-		margin: 2rem 0;
-		backdrop-filter: blur(10px);
-	}
-	
-	.hero-content {
-		color: white;
-	}
-	
-	.team-logo {
-		width: 150px;
-		height: 150px;
-		margin-bottom: 1rem;
-		filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.3));
-	}
-	
-	.hero h1 {
-		color: white;
-		font-size: 4rem;
-		margin-bottom: 0.5rem;
-		text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-	}
-	
-	.tagline {
-		font-size: 1.3rem;
-		margin-bottom: 2rem;
-		color: #ffd700;
-		font-style: italic;
-	}
-	
-	.hero-stats {
-		display: flex;
-		justify-content: center;
-		gap: 3rem;
-		margin: 2rem 0;
-	}
-	
-	.stat {
-		text-align: center;
-	}
-	
-	.stat h3 {
-		font-size: 2.5rem;
-		color: #ffd700;
-		margin-bottom: 0.5rem;
-	}
-	
-	.stat p {
-		font-size: 1.1rem;
-		text-transform: uppercase;
-		letter-spacing: 1px;
-	}
-	
-	.hero-actions {
-		display: flex;
-		justify-content: center;
-		gap: 1rem;
-		margin-top: 2rem;
-	}
-	
-	.news-item {
-		border-left: 4px solid #ffd700;
-		padding-left: 1rem;
-		margin-bottom: 1.5rem;
-	}
-	
-	.news-item h3 {
-		color: #1e3c72;
-		margin-bottom: 0.5rem;
-	}
-	
-	.news-date {
-		color: #666;
-		font-size: 0.9rem;
-		margin-bottom: 0.5rem;
-	}
-	
-	@media (max-width: 768px) {
-		.hero h1 {
-			font-size: 2.5rem;
-		}
-		
-		.hero-stats {
-			flex-direction: column;
-			gap: 1rem;
-		}
-		
-		.hero-actions {
-			flex-direction: column;
-			align-items: center;
-		}
-	}
-</style>
+

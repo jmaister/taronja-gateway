@@ -73,284 +73,83 @@ const recentGames = [
 ---
 
 <Layout title="Schedule - Thunder Hawks Hockey Team">
-	<h1>Game Schedule</h1>
-	
-	<div class="card">
-		<h2>🗓️ Upcoming Games</h2>
-		<div class="schedule-grid">
+	<h1 class="text-blue-900 mb-4 text-5xl text-center">Game Schedule</h1>
+		<div class="bg-white rounded-xl p-8 my-8 shadow-2xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">🗓️ Upcoming Games</h2>
+		<div class="grid gap-6">
 			{upcomingGames.map((game) => (
-				<div class="game-card upcoming">
-					<div class="game-date">
-						<div class="date">{game.date}</div>
-						<div class="time">{game.time}</div>
+				<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border-2 border-gray-200 rounded-xl transition-all duration-300 hover:border-blue-900 hover:shadow-lg border-l-8 border-l-yellow-400">
+					<div class="text-center min-w-[120px]">
+						<div class="font-bold text-blue-900 text-lg">{game.date}</div>
+						<div class="text-gray-600 text-sm mt-1">{game.time}</div>
 					</div>
-					<div class="game-details">
-						<h3>Thunder Hawks vs {game.opponent}</h3>
-						<div class="location">
-							<span class={`location-badge ${game.location.toLowerCase()}`}>
+					<div class="flex-1">
+						<h3 class="text-gray-800 mb-2 text-xl">Thunder Hawks vs {game.opponent}</h3>
+						<div class="flex items-center gap-2 flex-wrap">
+							<span class={`px-3 py-1 rounded-full text-xs font-bold uppercase text-white ${game.location.toLowerCase() === 'home' ? 'bg-green-500' : 'bg-orange-500'}`}>
 								{game.location}
 							</span>
-							<span class="venue">{game.venue}</span>
+							<span class="text-gray-600 text-sm">{game.venue}</span>
 						</div>
-					</div>
-					<div class="game-actions">
-						<a href="#" class="btn-small">Buy Tickets</a>
+					</div>					<div class="flex items-center justify-center lg:justify-end">
+						<a href="#" class="inline-block bg-blue-900 text-white px-4 py-2 no-underline rounded-md font-medium text-sm transition-colors duration-300 hover:bg-blue-800">Buy Tickets</a>
 					</div>
 				</div>
-			))}
-		</div>
+			))}		</div>
 	</div>
-
-	<div class="card">
-		<h2>📊 Recent Results</h2>
-		<div class="results-table">
-			<div class="table-header">
+	<div class="bg-white rounded-xl p-8 my-8 shadow-2xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">📊 Recent Results</h2>
+		<div class="rounded-xl overflow-hidden border border-gray-200">
+			<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 p-4 bg-gray-50 font-bold text-blue-900">
 				<div>Date</div>
 				<div>Opponent</div>
-				<div>Result</div>
-				<div>Score</div>
-				<div>Location</div>
+				<div class="hidden lg:block">Result</div>
+				<div class="hidden lg:block">Score</div>
+				<div class="hidden lg:block">Location</div>
 			</div>
 			{recentGames.map((game) => (
-				<div class="table-row">
+				<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 p-4 border-t border-gray-200 transition-colors duration-300 hover:bg-gray-50">
 					<div>{game.date}</div>
 					<div>{game.opponent}</div>
-					<div class={`result ${game.result === 'W' ? 'win' : 'loss'}`}>
-						{game.result === 'W' ? 'WIN' : 'LOSS'}
+					<div class="hidden lg:block">
+						<span class={`px-3 py-1 rounded-full font-bold text-xs text-center text-white ${game.result === 'W' ? 'bg-green-500' : 'bg-red-500'}`}>
+							{game.result === 'W' ? 'WIN' : 'LOSS'}
+						</span>
 					</div>
-					<div class="score">{game.score}</div>
-					<div>{game.location}</div>
+					<div class="hidden lg:block font-bold text-blue-900">{game.score}</div>
+					<div class="hidden lg:block">{game.location}</div>
 				</div>
-			))}
-		</div>
+			))}		</div>
 	</div>
-
-	<div class="card">
-		<h2>🏆 Season Stats</h2>
-		<div class="stats-grid">
-			<div class="stat-item">
-				<h3>25</h3>
-				<p>Games Played</p>
+	<div class="bg-white rounded-xl p-8 my-8 shadow-2xl">
+		<h2 class="text-blue-900 mb-4 text-3xl border-b-4 border-yellow-400 pb-2">🏆 Season Stats</h2>
+		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mt-4">
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">25</h3>
+				<p class="text-base uppercase tracking-wider">Games Played</p>
 			</div>
-			<div class="stat-item">
-				<h3>22</h3>
-				<p>Wins</p>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">22</h3>
+				<p class="text-base uppercase tracking-wider">Wins</p>
 			</div>
-			<div class="stat-item">
-				<h3>3</h3>
-				<p>Losses</p>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">3</h3>
+				<p class="text-base uppercase tracking-wider">Losses</p>
 			</div>
-			<div class="stat-item">
-				<h3>88%</h3>
-				<p>Win Rate</p>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">88%</h3>
+				<p class="text-base uppercase tracking-wider">Win Rate</p>
 			</div>
-			<div class="stat-item">
-				<h3>145</h3>
-				<p>Goals For</p>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">145</h3>
+				<p class="text-base uppercase tracking-wider">Goals For</p>
 			</div>
-			<div class="stat-item">
-				<h3>67</h3>
-				<p>Goals Against</p>
+			<div class="text-center p-6 bg-gradient-to-br from-blue-900 to-blue-700 text-white rounded-xl">
+				<h3 class="text-4xl text-yellow-400 mb-2 font-bold">67</h3>
+				<p class="text-base uppercase tracking-wider">Goals Against</p>
 			</div>
 		</div>
 	</div>
 </Layout>
 
-<style>
-	.schedule-grid {
-		display: grid;
-		gap: 1.5rem;
-	}
-	
-	.game-card {
-		display: grid;
-		grid-template-columns: auto 1fr auto;
-		gap: 1.5rem;
-		padding: 1.5rem;
-		border: 2px solid #e0e0e0;
-		border-radius: 10px;
-		transition: all 0.3s ease;
-	}
-	
-	.game-card:hover {
-		border-color: #1e3c72;
-		box-shadow: 0 5px 15px rgba(30, 60, 114, 0.2);
-	}
-	
-	.upcoming {
-		border-left: 5px solid #ffd700;
-	}
-	
-	.game-date {
-		text-align: center;
-		min-width: 120px;
-	}
-	
-	.date {
-		font-weight: bold;
-		color: #1e3c72;
-		font-size: 1.1rem;
-	}
-	
-	.time {
-		color: #666;
-		font-size: 0.9rem;
-		margin-top: 0.25rem;
-	}
-	
-	.game-details h3 {
-		color: #333;
-		margin-bottom: 0.5rem;
-		font-size: 1.2rem;
-	}
-	
-	.location {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	
-	.location-badge {
-		padding: 0.25rem 0.75rem;
-		border-radius: 15px;
-		font-size: 0.8rem;
-		font-weight: bold;
-		text-transform: uppercase;
-	}
-	
-	.location-badge.home {
-		background: #4CAF50;
-		color: white;
-	}
-	
-	.location-badge.away {
-		background: #FF9800;
-		color: white;
-	}
-	
-	.venue {
-		color: #666;
-		font-size: 0.9rem;
-	}
-	
-	.game-actions {
-		display: flex;
-		align-items: center;
-	}
-	
-	.btn-small {
-		background: #1e3c72;
-		color: white;
-		padding: 0.5rem 1rem;
-		text-decoration: none;
-		border-radius: 5px;
-		font-size: 0.9rem;
-		font-weight: 600;
-		transition: background 0.3s ease;
-	}
-	
-	.btn-small:hover {
-		background: #2a5298;
-	}
-	
-	.results-table {
-		border-radius: 10px;
-		overflow: hidden;
-		border: 1px solid #e0e0e0;
-	}
-	
-	.table-header {
-		display: grid;
-		grid-template-columns: 1fr 1fr auto auto 1fr;
-		gap: 1rem;
-		padding: 1rem;
-		background: #f5f5f5;
-		font-weight: bold;
-		color: #1e3c72;
-	}
-	
-	.table-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr auto auto 1fr;
-		gap: 1rem;
-		padding: 1rem;
-		border-top: 1px solid #e0e0e0;
-		transition: background 0.3s ease;
-	}
-	
-	.table-row:hover {
-		background: #f9f9f9;
-	}
-	
-	.result {
-		padding: 0.25rem 0.75rem;
-		border-radius: 15px;
-		font-weight: bold;
-		font-size: 0.8rem;
-		text-align: center;
-	}
-	
-	.result.win {
-		background: #4CAF50;
-		color: white;
-	}
-	
-	.result.loss {
-		background: #f44336;
-		color: white;
-	}
-	
-	.score {
-		font-weight: bold;
-		color: #1e3c72;
-	}
-	
-	.stats-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-		gap: 1.5rem;
-		margin-top: 1rem;
-	}
-	
-	.stat-item {
-		text-align: center;
-		padding: 1.5rem;
-		background: linear-gradient(135deg, #1e3c72, #2a5298);
-		color: white;
-		border-radius: 10px;
-	}
-	
-	.stat-item h3 {
-		font-size: 2.5rem;
-		color: #ffd700;
-		margin-bottom: 0.5rem;
-	}
-	
-	.stat-item p {
-		font-size: 1rem;
-		text-transform: uppercase;
-		letter-spacing: 1px;
-	}
-	
-	@media (max-width: 768px) {
-		.game-card {
-			grid-template-columns: 1fr;
-			text-align: center;
-		}
-		
-		.table-header,
-		.table-row {
-			grid-template-columns: 1fr;
-			gap: 0.5rem;
-		}
-		
-		.table-header > div,
-		.table-row > div {
-			padding: 0.25rem 0;
-		}
-		
-		.stats-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-	}
-</style>
+
