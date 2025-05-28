@@ -32,7 +32,7 @@ jobs:
         go test -v -coverprofile=coverage.out ./...
         go tool cover -func=coverage.out > coverage_full.txt
         # Extract per-package coverage, excluding lines with "total:"
-        awk '!/total:/ {pkg=$1; split(pkg, p, "/"); current_pkg=p[1]; for(i=2; i<=3 && i<=length(p); i++) current_pkg=current_pkg"/"p[i]; sub(/:.*/, "", current_pkg); raw_coverage=$NF; sub(/%/, "", raw_coverage); coverage[current_pkg]+=raw_coverage; count[current_pkg]++} END {for (pkg in coverage) printf "%s %.1f%\n", pkg, coverage[pkg]/count[pkg]}' coverage_full.txt > package_coverage.txt
+        awk '!/total:/ {pkg=$1; split(pkg, p, "/"); current_pkg=p[1]; for(i=2; i<=3 && i<=length(p); i++) current_pkg=current_pkg"/"p[i]; sub(/:.*/, "", current_pkg); raw_coverage=$NF; sub(/%/, "", raw_coverage); numeric_coverage = raw_coverage + 0.0; coverage[current_pkg]+=numeric_coverage; count[current_pkg]++} END {for (pkg in coverage) {if (count[pkg] > 0) {printf "%s %.1f%\n", pkg, coverage[pkg]/count[pkg]} else {printf "%s 0.0%\n", pkg}}}' coverage_full.txt > package_coverage.txt
         # Extract total coverage
         grep total: coverage_full.txt | awk '{print "Total " $3}' >> package_coverage.txt
         echo "Tests completed"
@@ -51,25 +51,45 @@ jobs:
           table += `| Package          | Coverage |\n`;
           table += `|------------------|----------|\n`;
           
-          let totalCoverage = "";
-          
+          let totalCoverageLine = ""; // Store the full line for total coverage
+
           for (const line of lines) {
-            const parts = line.split(' ');
-            if (parts[0] === 'Total') {
-              totalCoverage = parts[1];
-            } else {
-              // Assuming package name can have spaces if we didn't process it carefully, join all but last part
-              const pkgName = parts.slice(0, -1).join(' ');
-              const coverage = parts[parts.length -1];
-              table += `| ${pkgName} | ${coverage} |\n`;
+            if (line.startsWith('Total ')) {
+              totalCoverageLine = line; // Save the total line to be added last
+              continue; // Skip processing for the table body
             }
+            
+            // Attempt to split the line into package name and coverage percentage
+            const lastSpaceIndex = line.lastIndexOf(' ');
+            if (lastSpaceIndex === -1 || lastSpaceIndex === 0 || lastSpaceIndex === line.length - 1) {
+              console.warn(`Skipping malformed line: ${line}`);
+              continue; // Skip lines that don't have a clear space separation
+            }
+            
+            const pkgName = line.substring(0, lastSpaceIndex);
+            const coverage = line.substring(lastSpaceIndex + 1);
+
+            // Validate coverage format (e.g., ends with %, and the part before % is a number)
+            if (!coverage.endsWith('%') || isNaN(parseFloat(coverage.slice(0, -1)))) {
+              console.warn(`Skipping line with invalid coverage format: ${line}`);
+              continue;
+            }
+            
+            table += `| ${pkgName} | ${coverage} |\n`;
           }
           
-          if (totalCoverage) {
-            table += `| **Total**        | **${totalCoverage}** |\n`;
+          // Add the total coverage line at the end
+          if (totalCoverageLine) {
+            const parts = totalCoverageLine.split(' '); // "Total" and "xx.x%"
+            if (parts.length === 2 && parts[1].endsWith('%') && !isNaN(parseFloat(parts[1].slice(0,-1)))) {
+              table += `| **${parts[0]}**        | **${parts[1]}** |\n`;
+            } else {
+              console.warn(`Malformed total line: ${totalCoverageLine}`);
+              table += `| **Total**        | **Error** |\n`; // Indicate an error in total line
+            }
           } else {
-            // Fallback if total wasn't found for some reason
-            table += `| **Total**        | **N/A** |\n`;
+            console.warn('Total coverage line not found in package_coverage.txt');
+            table += `| **Total**        | **N/A** |\n`; // Fallback if total line is missing
           }
 
           const commentBody = table;
@@ -80,7 +100,7 @@ jobs:
             issue_number: context.issue.number,
           });
 
-          const existingComment = comments.find(comment => comment.body.includes(commentMarker));
+          const existingComment = comments.find(c => c.body.includes('<!-- coverage_comment -->'));
 
           if (existingComment) {
             await github.rest.issues.updateComment({
