@@ -23,6 +23,7 @@ jobs:
       with:
         node-version: '22'
         cache: 'npm'
+        cache-dependency-path: webapp/package-lock.json
 
     - name: Build React App
       run: |
