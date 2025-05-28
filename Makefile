@@ -75,11 +75,6 @@ api-codegen:
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
 
 
-# Install the way scripts/install.bat does
-install: build
-	@echo "Installing dependencies..."
-	cp tg.exe ~/bin/
-
 # Default target
 .PHONY: all build build-windows run dev test cover clean fmt tidy
 all: build

@@ -18,6 +18,20 @@ jobs:
       with:
         go-version: '1.24'
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: webapp/package-lock.json
+
+    - name: Build React App
+      run: |
+        cd webapp
+        npm install
+        npm run build
+        cd ..
+
     - name: Build Go
       run: go build -v ./...
 
