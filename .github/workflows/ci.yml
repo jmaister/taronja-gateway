@@ -27,7 +27,42 @@ jobs:
     - name: Test
       run: |
         go test -v -coverprofile=coverage.out ./...
+        go tool cover -func=coverage.out | grep total: | awk '{print $3}' > coverage_percentage.txt
         echo "Tests completed"
+
+    - name: Post Coverage Comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const coveragePercentage = fs.readFileSync('coverage_percentage.txt', 'utf8').trim();
+          const commentMarker = "<!-- coverage_comment -->";
+          const commentBody = `${commentMarker}\nCode Coverage: ${coveragePercentage}%`;
+
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+
+          const existingComment = comments.find(comment => comment.body.includes(commentMarker));
+
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: commentBody,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody,
+            });
+          }
         
     - name: Check GoReleaser Config
       uses: goreleaser/goreleaser-action@v5
