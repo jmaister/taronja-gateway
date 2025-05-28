@@ -21,22 +21,15 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20' # Or a suitable LTS version like 18 or 22
-
-    - name: Cache Node.js modules
-      uses: actions/cache@v4
-      with:
-        path: webapp/node_modules
-        key: ${{ runner.os }}-node-20-${{ hashFiles('webapp/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node-20-
+        node-version: '22'
+        cache: 'npm'
 
     - name: Build React App
       run: |
         cd webapp
         npm install
         npm run build
-        cd .. # Go back to the root directory for subsequent Go steps
+        cd ..
 
     - name: Build Go
       run: go build -v ./...
