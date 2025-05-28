@@ -78,7 +78,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 // Fetch all users
 export async function fetchUsers(): Promise<User[]> {
-  const response = await fetch('/_/api/users', {
+  const response = await fetch('/api/users', {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -89,7 +89,7 @@ export async function fetchUsers(): Promise<User[]> {
 
 // Create a new user
 export async function createUser(userData: UserCreateRequest): Promise<User> {
-  const response = await fetch('/_/api/users', {
+  const response = await fetch('/api/users', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -103,7 +103,7 @@ export async function createUser(userData: UserCreateRequest): Promise<User> {
 
 // Fetch a single user by ID
 export async function fetchUser(userId: string): Promise<User> {
-  const response = await fetch(`/_/api/users/${userId}`, {
+  const response = await fetch(`/api/users/${userId}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -115,7 +115,7 @@ export async function fetchUser(userId: string): Promise<User> {
 // Fetch the current user's details
 // Assuming /me returns a CurrentUser (or User) object
 export async function fetchCurrentUser(): Promise<CurrentUser> { 
-  const response = await fetch('/_/me', {
+  const response = await fetch('/me', {
     method: 'GET',
     headers: {
       'Accept': 'application/json',

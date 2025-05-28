@@ -24,7 +24,7 @@ func TestGatewayLogout(t *testing.T) {
 	}
 
 	// Create a gateway instance.
-	gw, err := NewGateway(cfg, nil)
+	gw, err := NewGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 		},
 	}
 
-	gw, err := NewGateway(cfg, nil)
+	gw, err := NewGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 		},
 	}
 
-	gw, err := NewGateway(cfg, nil)
+	gw, err := NewGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}

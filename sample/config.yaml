@@ -42,7 +42,7 @@ routes:
     static: true
     authentication:
       enabled: true
-  - name: Fronted App
+  - name: FrontEnd
     from: /
     toFolder: ./sample/webfiles
     static: true

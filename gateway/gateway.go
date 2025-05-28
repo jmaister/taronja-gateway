@@ -33,12 +33,11 @@ type Gateway struct {
 	SessionStore   session.SessionStore
 	UserRepository db.UserRepository
 	templates      map[string]*template.Template
-	WebappEmbedFS  *embed.FS
 }
 
 // --- NewGateway Function ---
 
-func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
+func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 	// Initialize the database connection
 	db.Init()
 
@@ -76,7 +75,6 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		SessionStore:   sessionStore,
 		UserRepository: userRepository,
 		templates:      templates,
-		WebappEmbedFS:  webappEmbedFS,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -121,6 +119,9 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes()
 
+	// Register all user management routes
+	g.RegisterUserManagementRoutes()
+
 	// Register the static content endpoint to load assets from the provided embedded FS
 	staticPath := prefix + "/static/"
 	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
@@ -128,12 +129,71 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 		http.StripPrefix(staticPath, fileServer).ServeHTTP(w, r)
 	})
 
-	// Register the OpenAPI routes
+	// Register the OpenAPI routes (e.g., /_/api/)
 	g.registerOpenAPIRoutes(prefix)
 
-	// Register dashboard webapp, server static files from embedded FS in webapp/dist
-	g.registerDashboard(prefix)
+	// --- React Admin App Routes ---
+	// These should be registered after more specific management API routes (like OpenAPI)
+	// and user management HTML template routes, but before any overly broad root handlers for the prefix.
 
+	reactAdminBasePath := prefix + "/admin" // e.g., /_/admin
+	log.Printf("Registering React Admin app under base path: %s", reactAdminBasePath)
+
+	// Handler for React App Assets (e.g., /_/admin/assets/*)
+	// Ensure assetsPattern ends with a trailing slash for Mux to match subpaths correctly.
+	assetsPattern := reactAdminBasePath + "/assets/"
+	assetFileServer := http.FileServer(http.Dir("./webapp/dist/assets"))
+	// Strip the full assetsPattern prefix so the file server looks for files relative to "./webapp/dist/assets"
+	g.Mux.Handle(assetsPattern, http.StripPrefix(assetsPattern, assetFileServer))
+	log.Printf("Registered React Admin assets route: %s -> ./webapp/dist/assets", assetsPattern)
+
+	// Handler for React App Index (SPA Catch-all for /_/admin/*)
+	// This pattern must also end with a trailing slash.
+	// This will catch /_/admin/, /_/admin/users, /_/admin/users/123 etc.
+	// It needs to be specific enough not to catch /_/admin/assets/
+	// and should be registered after the assets handler.
+	spaPattern := reactAdminBasePath + "/"
+	g.Mux.HandleFunc(spaPattern, func(w http.ResponseWriter, r *http.Request) {
+		// Prevent serving index.html for files that look like they might be static assets
+		// but were not caught by the /assets/ handler. This can happen if files are
+		// in webapp/dist but not in webapp/dist/assets.
+		// A simple check: if the path segment after reactAdminBasePath contains a dot (likely an extension)
+		// and is not the root of the admin app itself.
+		potentialFile := strings.TrimPrefix(r.URL.Path, reactAdminBasePath) // e.g., /users, /favicon.ico
+		if strings.Contains(potentialFile, ".") && potentialFile != "/index.html" { // Allow explicit /index.html for direct access if desired
+			// Check if it's actually a file in the dist root (e.g. favicon.ico, manifest.json)
+			// These should be served directly if they exist at the root of webapp/dist
+			// Note: Vite usually puts these in webapp/dist directly, not webapp/dist/admin
+			// The current setup serves assets from webapp/dist/assets.
+			// Other root files like favicon.ico, if intended to be served from /_/admin/favicon.ico,
+			// would need their own handler or be placed into webapp/dist/assets and accessed via /_/admin/assets/favicon.ico.
+			// For now, any path with a "." not under /assets/ is considered "not found" to avoid
+			// serving index.html for potentially missing specific assets.
+			// A more robust solution might check os.Stat for the file in webapp/dist.
+			
+			// Example: if r.URL.Path is /_/admin/manifest.json
+			// potentialFile is /manifest.json
+			// We need to check if ./webapp/dist/manifest.json exists
+			requestedDistFilePath := filepath.Join("./webapp/dist", strings.TrimPrefix(potentialFile, "/"))
+			if _, err := os.Stat(requestedDistFilePath); err == nil {
+				// File exists in ./webapp/dist, serve it.
+				// This handles files like favicon.ico or manifest.json if they are in ./webapp/dist
+				// and accessed via /_/admin/favicon.ico etc.
+				http.ServeFile(w, r, requestedDistFilePath)
+				return
+			}
+			// If it's not favicon.ico or a known root asset, and contains ".", treat as not found.
+			// This helps prevent /_/admin/some/path/file.js from serving index.html if it's a missing asset.
+			// log.Printf("SPA Catch-all: Path %s looks like a file but not under /assets, serving 404", r.URL.Path)
+			// http.NotFound(w,r)
+			// return
+			// For a simpler SPA, we might just always serve index.html for any non-asset path.
+			// The router in React will handle the 404 for unknown client-side routes.
+		}
+		// Default to serving index.html for SPA routing
+		http.ServeFile(w, r, "./webapp/dist/index.html")
+	})
+	log.Printf("Registered React Admin SPA catch-all route: %s -> ./webapp/dist/index.html", spaPattern)
 }
 
 // Note: User management route registration functions have been moved to usermanagement.go
@@ -315,95 +375,6 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
 }
 
-func (g *Gateway) registerDashboard(prefix string) {
-	dashboardPath := prefix + "/admin/"
-	// TODO: must be authenticated to access the dashboard
-	// TODO: only specific users can access the dashboard, based on config/attributes/other...
-	g.Mux.HandleFunc(dashboardPath, func(w http.ResponseWriter, r *http.Request) {
-		// Get the path after stripping the dashboard prefix
-		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
-
-		// Check if this looks like a static asset (has file extension)
-		isStaticAsset := strings.Contains(path, ".") && (strings.HasSuffix(path, ".js") ||
-			strings.HasSuffix(path, ".css") ||
-			strings.HasSuffix(path, ".json") ||
-			strings.HasSuffix(path, ".png") ||
-			strings.HasSuffix(path, ".jpg") ||
-			strings.HasSuffix(path, ".jpeg") ||
-			strings.HasSuffix(path, ".gif") ||
-			strings.HasSuffix(path, ".svg") ||
-			strings.HasSuffix(path, ".ico") ||
-			strings.HasSuffix(path, ".woff") ||
-			strings.HasSuffix(path, ".woff2") ||
-			strings.HasSuffix(path, ".ttf") ||
-			strings.HasSuffix(path, ".eot"))
-
-		var data []byte
-		var err error
-		var finalPath string
-
-		if path == "" || path == "/" || !isStaticAsset {
-			// Serve index.html for root requests or SPA routes (no file extension)
-			finalPath = "webapp/dist/index.html"
-			log.Printf("Dashboard: Serving SPA route '%s' with index.html", r.URL.Path)
-		} else {
-			// Try to serve the actual static asset
-			finalPath = "webapp/dist/" + path
-			data, err = g.WebappEmbedFS.ReadFile(finalPath)
-			if err != nil {
-				// Static asset not found, serve index.html for SPA routing
-				log.Printf("Dashboard: Static asset not found '%s', serving index.html for SPA routing", finalPath)
-				finalPath = "webapp/dist/index.html"
-			} else {
-				log.Printf("Dashboard: Serving static asset: %s", finalPath)
-			}
-		}
-
-		// Read the final file (index.html or static asset)
-		if data == nil {
-			data, err = g.WebappEmbedFS.ReadFile(finalPath)
-			if err != nil {
-				log.Printf("Dashboard: Could not read file '%s': %v", finalPath, err)
-				http.NotFound(w, r)
-				return
-			}
-		}
-
-		// Determine content type based on the final served file extension
-		contentType := "text/html"
-		if strings.HasSuffix(finalPath, ".js") {
-			contentType = "application/javascript"
-		} else if strings.HasSuffix(finalPath, ".css") {
-			contentType = "text/css"
-		} else if strings.HasSuffix(finalPath, ".json") {
-			contentType = "application/json"
-		} else if strings.HasSuffix(finalPath, ".png") {
-			contentType = "image/png"
-		} else if strings.HasSuffix(finalPath, ".jpg") || strings.HasSuffix(finalPath, ".jpeg") {
-			contentType = "image/jpeg"
-		} else if strings.HasSuffix(finalPath, ".gif") {
-			contentType = "image/gif"
-		} else if strings.HasSuffix(finalPath, ".svg") {
-			contentType = "image/svg+xml"
-		} else if strings.HasSuffix(finalPath, ".ico") {
-			contentType = "image/x-icon"
-		} else if strings.HasSuffix(finalPath, ".woff") {
-			contentType = "font/woff"
-		} else if strings.HasSuffix(finalPath, ".woff2") {
-			contentType = "font/woff2"
-		} else if strings.HasSuffix(finalPath, ".ttf") {
-			contentType = "font/ttf"
-		} else if strings.HasSuffix(finalPath, ".eot") {
-			contentType = "application/vnd.ms-fontobject"
-		}
-
-		w.Header().Set("Content-Type", contentType)
-		w.Write(data)
-		log.Printf("Dashboard request served: %s -> %s", r.URL.Path, finalPath)
-	})
-	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth: %t", "Dashboard", dashboardPath, true)
-}
-
 // --- Authentication Middleware ---
 
 // wrapWithAuth applies the authentication check based on config.
@@ -487,17 +458,13 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 	var fsPath string
 	var isDir bool
 
-	log.Printf("Static Route [%s]: Creating handler for route '%s'", routeConfig.Name, routeConfig.From)
-
 	// Determine path from configuration
 	if routeConfig.ToFile != "" {
 		// Use ToFile directly as an independent path
 		fsPath = routeConfig.ToFile
-		log.Printf("Static Route [%s]: Using ToFile path: %s", routeConfig.Name, fsPath)
 	} else if routeConfig.ToFolder != "" {
 		// Use ToFolder directly
 		fsPath = routeConfig.ToFolder
-		log.Printf("Static Route [%s]: Using ToFolder path: %s", routeConfig.Name, fsPath)
 	} else {
 		log.Printf("Warning: No path specified for static route '%s'. Skipping registration.", routeConfig.Name)
 		return nil
@@ -511,77 +478,32 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 	}
 
 	isDir = fileInfo.IsDir()
-	log.Printf("Static Route [%s]: Path '%s' is directory: %t", routeConfig.Name, fsPath, isDir)
-
-	// Check if removeFromPath is used with static routes (not applicable)
-	if routeConfig.RemoveFromPath != "" {
-		log.Printf("Warning: Static Route [%s]: 'removeFromPath' field (%s) is not applicable to static routes and will be ignored. This field is only used for proxy routes.",
-			routeConfig.Name, routeConfig.RemoveFromPath)
-	}
 
 	if isDir {
 		// Directory serving
 		fs := http.Dir(fsPath) // Serve from the resolved directory path
 		fileServer := http.FileServer(fs)
-
-		// For static routes, determine if we should strip the route prefix
-		routePrefix := routeConfig.From
-		if strings.HasSuffix(routePrefix, "/*") {
-			routePrefix = strings.TrimSuffix(routePrefix, "*") // Keep trailing slash: /dashboard/
+		stripPrefix := routeConfig.From
+		if strings.HasSuffix(stripPrefix, "/*") {
+			stripPrefix = strings.TrimSuffix(stripPrefix, "*") // Keep trailing slash: /static/
 		}
 
-		// Check if the target directory contains subdirectories that match the route prefix
-		// This helps decide whether to preserve the full URL path or strip the prefix
-		shouldPreserveFullPath := false
-		if routePrefix != "/" && len(routePrefix) > 1 {
-			// Extract the first path component from the route prefix
-			trimmedPrefix := strings.Trim(routePrefix, "/")
-			firstComponent := strings.Split(trimmedPrefix, "/")[0]
-
-			// Check if a subdirectory with this name exists in the target folder
-			potentialSubdir := filepath.Join(fsPath, firstComponent)
-			if stat, err := os.Stat(potentialSubdir); err == nil && stat.IsDir() {
-				shouldPreserveFullPath = true
-				log.Printf("Static Route [%s]: Found matching subdirectory '%s', preserving full URL path", routeConfig.Name, firstComponent)
-			}
-		}
-
-		log.Printf("Static Route [%s]: Setting up directory serving - fsPath: %s, From: %s, routePrefix: %s, preserveFullPath: %t",
-			routeConfig.Name, fsPath, routeConfig.From, routePrefix, shouldPreserveFullPath)
-
-		// Choose handler based on whether to preserve full path
 		var finalHandler http.Handler
-		if routePrefix == "/" || shouldPreserveFullPath {
+		if stripPrefix == "/" {
 			finalHandler = fileServer
-			log.Printf("Static Route [%s]: Using direct file server handler (preserving full URL path)", routeConfig.Name)
 		} else {
-			finalHandler = http.StripPrefix(routePrefix, fileServer)
-			log.Printf("Static Route [%s]: Using StripPrefix handler with prefix: %s", routeConfig.Name, routePrefix)
+			finalHandler = http.StripPrefix(stripPrefix, fileServer)
 		}
 
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Static Route [%s]: Request received - URL: %s, RemoteAddr: %s", routeConfig.Name, r.URL.Path, r.RemoteAddr)
-			log.Printf("Static Route [%s]: Route config - From: %s, ToFolder: %s, RemoveFromPath: %s, routePrefix: %s, preserveFullPath: %t",
-				routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.RemoveFromPath, routePrefix, shouldPreserveFullPath)
-
-			// Calculate paths for logging and index.html detection
-			var relativePath string
-			if shouldPreserveFullPath {
-				relativePath = r.URL.Path
-			} else {
-				relativePath = strings.TrimPrefix(r.URL.Path, routePrefix)
-				if !strings.HasPrefix(relativePath, "/") && relativePath != "" {
-					relativePath = "/" + relativePath
-				}
-			}
-			cleanRelativePath := filepath.Clean(relativePath)
-
 			// Prevent directory listing? Check for index.html.
 			if strings.HasSuffix(r.URL.Path, "/") {
+				relativePath := strings.TrimPrefix(r.URL.Path, stripPrefix)
+				if !strings.HasPrefix(relativePath, "/") {
+					relativePath = "/" + relativePath
+				}
+				cleanRelativePath := filepath.Clean(relativePath)
 				indexPath := filepath.Join(fsPath, cleanRelativePath, "index.html")
-
-				log.Printf("Static Route [%s]: Directory request detected - originalPath: %s, routePrefix: %s, relativePath: %s, cleanRelativePath: %s, indexPath: %s",
-					routeConfig.Name, r.URL.Path, routePrefix, relativePath, cleanRelativePath, indexPath)
 
 				_, statErr := os.Stat(indexPath) // Renamed err to statErr to avoid conflict
 				// Corrected: os.IsNotExist returns a bool, not an error.
@@ -593,54 +515,39 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 
 				if isNotExist { // Use the boolean variable here
 					// index.html does not exist. Disable listing explicitly.
-					log.Printf("Static Route [%s]: No index.html found at path: %s - returning 404", routeConfig.Name, indexPath)
+					log.Printf("Static route [%s]: No index.html found at path: %s", routeConfig.Name, indexPath)
 					http.NotFound(w, r) // Return 404 instead of listing
 					return
 				} else if statErr != nil { // Check original statErr for other errors
-					log.Printf("Static Route [%s]: Error checking index.html at '%s': %v - continuing with fileserver", routeConfig.Name, indexPath, statErr)
+					log.Printf("Serving Static Dir [%s]: Error checking index.html at '%s': %v", routeConfig.Name, indexPath, statErr)
 					// Fall through, maybe FileServer can handle it, maybe not.
-				} else {
-					log.Printf("Static Route [%s]: Found index.html at path: %s - serving file", routeConfig.Name, indexPath)
 				}
-			} else {
-				// Calculate the final file path that will be accessed
-				finalFilePath := filepath.Join(fsPath, cleanRelativePath)
-
-				log.Printf("Static Route [%s]: File request - originalPath: %s, routePrefix: %s, relativePath: %s, cleanRelativePath: %s, finalFilePath: %s",
-					routeConfig.Name, r.URL.Path, routePrefix, relativePath, cleanRelativePath, finalFilePath)
 			}
-
 			finalHandler.ServeHTTP(w, r)
 		}
 
 	} else {
 		// Single file serving
 		filePath := fsPath // Already cleaned in loadConfig
-		log.Printf("Static Route [%s]: Setting up single file serving - filePath: %s", routeConfig.Name, filePath)
 
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Static Route [%s]: Single file request received - URL: %s, serving file: %s, RemoteAddr: %s",
-				routeConfig.Name, r.URL.Path, filePath, r.RemoteAddr)
-
 			// Check existence/type at request time
 			fileInfo, err := os.Stat(filePath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					log.Printf("Static Route [%s]: File not found: %s - returning 404", routeConfig.Name, filePath)
 					http.NotFound(w, r)
 				} else {
-					log.Printf("Static Route [%s]: Error accessing static file (%s): %v - returning 500", routeConfig.Name, filePath, err)
+					log.Printf("Error accessing static file [%s] (%s): %v", routeConfig.Name, filePath, err)
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				}
 				return
 			}
 			if fileInfo.IsDir() {
-				log.Printf("Static Route [%s]: Configuration Error - path points to directory %s but route is not configured for directory serving (/*)", routeConfig.Name, filePath)
+				log.Printf("Configuration Error: Static route [%s] points to a directory %s but is not a directory route (/*)", routeConfig.Name, filePath)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 
-			log.Printf("Static Route [%s]: Successfully serving file: %s (size: %d bytes)", routeConfig.Name, filePath, fileInfo.Size())
 			http.ServeFile(w, r, filePath)
 		}
 	}
