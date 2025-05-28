@@ -32,7 +32,7 @@ jobs:
         go test -v -coverprofile=coverage.out ./...
         go tool cover -func=coverage.out > coverage_full.txt
         # Extract per-package coverage, excluding lines with "total:"
-        awk '!/total:/ {pkg=$1; split(pkg, p, "/"); current_pkg=p[1]; for(i=2; i<=3 && i<=length(p); i++) current_pkg=current_pkg"/"p[i]; sub(/:.*/, "", current_pkg); raw_coverage=$NF; sub(/%/, "", raw_coverage); numeric_coverage = raw_coverage + 0.0; coverage[current_pkg]+=numeric_coverage; count[current_pkg]++} END {for (pkg in coverage) {if (count[pkg] > 0) {printf "%s %.1f%\n", pkg, coverage[pkg]/count[pkg]} else {printf "%s 0.0%\n", pkg}}}' coverage_full.txt > package_coverage.txt
+        awk '!/^total:/ { pkg_and_file = $1; sub(/\/[^\/]+:[0-9]+:$/, "", pkg_and_file); current_pkg = pkg_and_file; raw_coverage = $NF; sub(/%/, "", raw_coverage); numeric_coverage = raw_coverage + 0.0; coverage[current_pkg]+=numeric_coverage; count[current_pkg]++ } END { for (pkg in coverage) { if (count[pkg] > 0) { printf "%s %.1f%\n", pkg, coverage[pkg]/count[pkg] } else { printf "%s 0.0%\n", pkg } } }' coverage_full.txt > package_coverage.txt
         # Extract total coverage
         grep total: coverage_full.txt | awk '{print "Total " $3}' >> package_coverage.txt
         echo "Tests completed"
