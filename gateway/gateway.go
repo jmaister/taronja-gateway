@@ -33,11 +33,12 @@ type Gateway struct {
 	SessionStore   session.SessionStore
 	UserRepository db.UserRepository
 	templates      map[string]*template.Template
+	WebappEmbedFS  *embed.FS
 }
 
 // --- NewGateway Function ---
 
-func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
+func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
 	// Initialize the database connection
 	db.Init()
 
@@ -75,6 +76,7 @@ func NewGateway(config *config.GatewayConfig) (*Gateway, error) {
 		SessionStore:   sessionStore,
 		UserRepository: userRepository,
 		templates:      templates,
+		WebappEmbedFS:  webappEmbedFS,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -119,9 +121,6 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Login Routes for Basic and OAuth2 Authentication
 	g.registerLoginRoutes()
 
-	// Register all user management routes
-	g.RegisterUserManagementRoutes()
-
 	// Register the static content endpoint to load assets from the provided embedded FS
 	staticPath := prefix + "/static/"
 	g.Mux.HandleFunc(staticPath, func(w http.ResponseWriter, r *http.Request) {
@@ -132,71 +131,99 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Register the OpenAPI routes (e.g., /_/api/)
 	g.registerOpenAPIRoutes(prefix)
 
-	// --- React Admin App Routes ---
-	// These should be registered after more specific management API routes (like OpenAPI)
-	// and user management HTML template routes, but before any overly broad root handlers for the prefix.
+	// Register dashboard
+	g.registerDashboard(prefix)
 
-	reactAdminBasePath := prefix + "/admin" // e.g., /_/admin
-	log.Printf("Registering React Admin app under base path: %s", reactAdminBasePath)
-
-	// Handler for React App Assets (e.g., /_/admin/assets/*)
-	// Ensure assetsPattern ends with a trailing slash for Mux to match subpaths correctly.
-	assetsPattern := reactAdminBasePath + "/assets/"
-	assetFileServer := http.FileServer(http.Dir("./webapp/dist/assets"))
-	// Strip the full assetsPattern prefix so the file server looks for files relative to "./webapp/dist/assets"
-	g.Mux.Handle(assetsPattern, http.StripPrefix(assetsPattern, assetFileServer))
-	log.Printf("Registered React Admin assets route: %s -> ./webapp/dist/assets", assetsPattern)
-
-	// Handler for React App Index (SPA Catch-all for /_/admin/*)
-	// This pattern must also end with a trailing slash.
-	// This will catch /_/admin/, /_/admin/users, /_/admin/users/123 etc.
-	// It needs to be specific enough not to catch /_/admin/assets/
-	// and should be registered after the assets handler.
-	spaPattern := reactAdminBasePath + "/"
-	g.Mux.HandleFunc(spaPattern, func(w http.ResponseWriter, r *http.Request) {
-		// Prevent serving index.html for files that look like they might be static assets
-		// but were not caught by the /assets/ handler. This can happen if files are
-		// in webapp/dist but not in webapp/dist/assets.
-		// A simple check: if the path segment after reactAdminBasePath contains a dot (likely an extension)
-		// and is not the root of the admin app itself.
-		potentialFile := strings.TrimPrefix(r.URL.Path, reactAdminBasePath) // e.g., /users, /favicon.ico
-		if strings.Contains(potentialFile, ".") && potentialFile != "/index.html" { // Allow explicit /index.html for direct access if desired
-			// Check if it's actually a file in the dist root (e.g. favicon.ico, manifest.json)
-			// These should be served directly if they exist at the root of webapp/dist
-			// Note: Vite usually puts these in webapp/dist directly, not webapp/dist/admin
-			// The current setup serves assets from webapp/dist/assets.
-			// Other root files like favicon.ico, if intended to be served from /_/admin/favicon.ico,
-			// would need their own handler or be placed into webapp/dist/assets and accessed via /_/admin/assets/favicon.ico.
-			// For now, any path with a "." not under /assets/ is considered "not found" to avoid
-			// serving index.html for potentially missing specific assets.
-			// A more robust solution might check os.Stat for the file in webapp/dist.
-			
-			// Example: if r.URL.Path is /_/admin/manifest.json
-			// potentialFile is /manifest.json
-			// We need to check if ./webapp/dist/manifest.json exists
-			requestedDistFilePath := filepath.Join("./webapp/dist", strings.TrimPrefix(potentialFile, "/"))
-			if _, err := os.Stat(requestedDistFilePath); err == nil {
-				// File exists in ./webapp/dist, serve it.
-				// This handles files like favicon.ico or manifest.json if they are in ./webapp/dist
-				// and accessed via /_/admin/favicon.ico etc.
-				http.ServeFile(w, r, requestedDistFilePath)
-				return
-			}
-			// If it's not favicon.ico or a known root asset, and contains ".", treat as not found.
-			// This helps prevent /_/admin/some/path/file.js from serving index.html if it's a missing asset.
-			// log.Printf("SPA Catch-all: Path %s looks like a file but not under /assets, serving 404", r.URL.Path)
-			// http.NotFound(w,r)
-			// return
-			// For a simpler SPA, we might just always serve index.html for any non-asset path.
-			// The router in React will handle the 404 for unknown client-side routes.
-		}
-		// Default to serving index.html for SPA routing
-		http.ServeFile(w, r, "./webapp/dist/index.html")
-	})
-	log.Printf("Registered React Admin SPA catch-all route: %s -> ./webapp/dist/index.html", spaPattern)
 }
 
-// Note: User management route registration functions have been moved to usermanagement.go
+func (g *Gateway) registerDashboard(prefix string) {
+	dashboardPath := prefix + "/admin/"
+	// TODO: must be authenticated to access the dashboard
+	// TODO: only specific users can access the dashboard, based on config/attributes/other...
+	g.Mux.HandleFunc(dashboardPath, func(w http.ResponseWriter, r *http.Request) {
+		// Get the path after stripping the dashboard prefix
+		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
+
+		// Check if this looks like a static asset (has file extension)
+		isStaticAsset := strings.Contains(path, ".") && (strings.HasSuffix(path, ".js") ||
+			strings.HasSuffix(path, ".css") ||
+			strings.HasSuffix(path, ".json") ||
+			strings.HasSuffix(path, ".png") ||
+			strings.HasSuffix(path, ".jpg") ||
+			strings.HasSuffix(path, ".jpeg") ||
+			strings.HasSuffix(path, ".gif") ||
+			strings.HasSuffix(path, ".svg") ||
+			strings.HasSuffix(path, ".ico") ||
+			strings.HasSuffix(path, ".woff") ||
+			strings.HasSuffix(path, ".woff2") ||
+			strings.HasSuffix(path, ".ttf") ||
+			strings.HasSuffix(path, ".eot"))
+
+		var data []byte
+		var err error
+		var finalPath string
+
+		if path == "" || path == "/" || !isStaticAsset {
+			// Serve index.html for root requests or SPA routes (no file extension)
+			finalPath = "webapp/dist/index.html"
+			log.Printf("Dashboard: Serving SPA route '%s' with index.html", r.URL.Path)
+		} else {
+			// Try to serve the actual static asset
+			finalPath = "webapp/dist/" + path
+			data, err = g.WebappEmbedFS.ReadFile(finalPath)
+			if err != nil {
+				// Static asset not found, serve index.html for SPA routing
+				log.Printf("Dashboard: Static asset not found '%s', serving index.html for SPA routing", finalPath)
+				finalPath = "webapp/dist/index.html"
+			} else {
+				log.Printf("Dashboard: Serving static asset: %s", finalPath)
+			}
+		}
+
+		// Read the final file (index.html or static asset)
+		if data == nil {
+			data, err = g.WebappEmbedFS.ReadFile(finalPath)
+			if err != nil {
+				log.Printf("Dashboard: Could not read file '%s': %v", finalPath, err)
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		// Determine content type based on the final served file extension
+		contentType := "text/html"
+		if strings.HasSuffix(finalPath, ".js") {
+			contentType = "application/javascript"
+		} else if strings.HasSuffix(finalPath, ".css") {
+			contentType = "text/css"
+		} else if strings.HasSuffix(finalPath, ".json") {
+			contentType = "application/json"
+		} else if strings.HasSuffix(finalPath, ".png") {
+			contentType = "image/png"
+		} else if strings.HasSuffix(finalPath, ".jpg") || strings.HasSuffix(finalPath, ".jpeg") {
+			contentType = "image/jpeg"
+		} else if strings.HasSuffix(finalPath, ".gif") {
+			contentType = "image/gif"
+		} else if strings.HasSuffix(finalPath, ".svg") {
+			contentType = "image/svg+xml"
+		} else if strings.HasSuffix(finalPath, ".ico") {
+			contentType = "image/x-icon"
+		} else if strings.HasSuffix(finalPath, ".woff") {
+			contentType = "font/woff"
+		} else if strings.HasSuffix(finalPath, ".woff2") {
+			contentType = "font/woff2"
+		} else if strings.HasSuffix(finalPath, ".ttf") {
+			contentType = "font/ttf"
+		} else if strings.HasSuffix(finalPath, ".eot") {
+			contentType = "application/vnd.ms-fontobject"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Write(data)
+		log.Printf("Dashboard request served: %s -> %s", r.URL.Path, finalPath)
+	})
+	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth: %t", "Dashboard", dashboardPath, true)
+}
 
 func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	// --- Register OpenAPI Routes ---

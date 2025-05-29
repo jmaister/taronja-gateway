@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
+
+//go:embed webapp/dist
+var webappEmbedFS embed.FS
 
 // Version information - will be injected during build by GoReleaser
 var (
@@ -110,7 +114,7 @@ func runGateway(configFilePath string) {
 	log.Printf("Configuration loaded successfully: %s", config.Name)
 
 	// 2. Create Gateway Instance
-	gateway, err := gateway.NewGateway(config)
+	gateway, err := gateway.NewGateway(config, &webappEmbedFS)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}

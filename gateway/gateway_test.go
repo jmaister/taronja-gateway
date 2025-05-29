@@ -55,7 +55,7 @@ func TestNewGateway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewGateway(tt.config)
+			got, err := NewGateway(tt.config, nil)
 
 			if tt.wantErr {
 				if err == nil {
@@ -267,7 +267,7 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			}
 
 			// Create a new gateway
-			gateway, err := NewGateway(gatewayConfig)
+			gateway, err := NewGateway(gatewayConfig, nil)
 			require.NoError(t, err, "Failed to create gateway")
 
 			// Create a listener manually since we're using port 0
@@ -430,7 +430,7 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 			}
 
 			// Create a new gateway
-			gateway, err := NewGateway(gatewayConfig)
+			gateway, err := NewGateway(gatewayConfig, nil)
 
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
@@ -493,7 +493,7 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 	}
 
 	// Create a new gateway
-	gateway, err := NewGateway(gatewayConfig)
+	gateway, err := NewGateway(gatewayConfig, nil)
 	require.NoError(t, err, "Failed to create gateway")
 
 	// Create a listener manually since we're using port 0
@@ -606,7 +606,7 @@ func TestHelloEndpoint(t *testing.T) {
 	}
 
 	// Create a new gateway
-	gateway, err := NewGateway(config)
+	gateway, err := NewGateway(config, nil)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}

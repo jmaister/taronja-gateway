@@ -10,6 +10,7 @@ endif
 # Build target
 build: api-codegen
 	@echo "Building $(PROJECT_NAME)..."
+	cd webapp && npm install && npm run build
 	go build -o $(BINARY_NAME) .
 
 # Run target
@@ -74,6 +75,8 @@ tidy:
 api-codegen:
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
 
+install:
+	cp $(BINARY_NAME) ~/bin/$(BINARY_NAME)
 
 # Default target
 .PHONY: all build build-windows run dev test cover clean fmt tidy
