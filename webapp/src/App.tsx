@@ -1,7 +1,5 @@
 import React, { useState } from 'react'; // Ensure React is in scope for JSX
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
-import reactLogo from './assets/react.svg';
-import viteLogo from '/vite.svg';
 import './App.css';
 
 // Import the components that will be used as pages
@@ -13,19 +11,17 @@ import { UserInfoPage } from './components/UserInfoPage';
 // const sampleUser = { id: '1', username: 'john.doe', email: 'john.doe@example.com', provider: 'local', name: 'John Doe', picture: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
 
 function App() {
-  const [count, setCount] = useState<number>(0);
-
   // managementPrefix is no longer needed for client-side routing.
   // API calls use absolute paths. Non-SPA links (if any) would need it,
   // but current components primarily use <Link> or navigate.
-  const basename = "/_/admin"; // Set the basename based on management.prefix
 
   return (
-    <BrowserRouter basename={basename}>
+    <BrowserRouter basename="/_/admin">
+      {/* The basename is set to match the Vite base path, ensuring correct routing */}
       <div className="min-h-screen bg-gray-100">
-        <nav className="bg-blue-600 text-white p-4 shadow-md">
+        <nav className="bg-blue-300 text-white p-4 shadow-md">
           <div className="container mx-auto flex justify-between items-center">
-            <Link to="/users" className="text-xl font-bold hover:cursor-pointer">User Management App</Link>
+            <Link to="/" className="text-xl font-bold hover:cursor-pointer">Taronja Gateway dashboard</Link>
             <div>
               <Link to="/users" className="px-3 py-2 rounded hover:bg-blue-700">Users List</Link>
               <Link to="/users/new" className="px-3 py-2 rounded hover:bg-blue-700">Create User</Link>
@@ -41,9 +37,14 @@ function App() {
             <Route path="/" element={<Navigate replace to="/users" />} />
             <Route path="*" element={
               <div className="text-center p-10">
-                <h1 className="text-3xl font-bold mb-4">404 - Not Found</h1>
-                <p className="mb-4">The page you are looking for does not exist.</p>
-                <Link to="/users" className="text-blue-600 hover:underline">Go to Users List</Link>
+                <h1 className="text-3xl font-bold mb-4">Welcome to
+                    <br />
+                    <span className="text-5xl font-bold bg-gradient-to-r from-orange-400 to-orange-600 bg-clip-text text-transparent">
+                        Taronja Gateway
+                    </span>
+                    <br />
+                    dashboard
+                    </h1>
               </div>
             } />
           </Routes>
@@ -51,25 +52,6 @@ function App() {
 
         <footer className="text-center p-4 text-gray-600 text-sm">
           <p>Vite + React + TypeScript + Tailwind CSS v4</p>
-          <div className="card mt-4 p-4 bg-white shadow rounded max-w-sm mx-auto">
-            <button onClick={() => setCount((prevCount) => prevCount + 1)} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-              Vite Counter: {count}
-            </button>
-          </div>
-          <p className="mt-2 text-xs">
-            Edit <code>src/App.tsx</code> and save to test HMR.
-          </p>
-          <p className="read-the-docs mt-2 text-xs">
-            Click on the Vite and React logos to learn more.
-          </p>
-          <div className="flex justify-center items-center space-x-4 mt-2">
-            <a href="https://vite.dev" target="_blank" rel="noopener noreferrer">
-              <img src={viteLogo} className="h-10 w-10" alt="Vite logo" />
-            </a>
-            <a href="https://react.dev" target="_blank" rel="noopener noreferrer">
-              <img src={reactLogo} className="h-10 w-10" alt="React logo" />
-            </a>
-          </div>
         </footer>
       </div>
     </BrowserRouter>
