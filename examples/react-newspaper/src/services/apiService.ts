@@ -1,9 +1,12 @@
 import type { User } from '../contexts/AuthContext'; // Assuming User is exported from AuthContext or a shared types file
 
 export class ApiError extends Error {
-  constructor(message: string, public status?: number) {
+  public status?: number;
+  
+  constructor(message: string, status?: number) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
   }
 }
 
@@ -14,7 +17,7 @@ export class ApiError extends Error {
  */
 export const fetchMe = async (): Promise<User | null> => {
   try {
-    const response = await fetch('/api/me');
+    const response = await fetch('/_/me');
 
     if (response.ok) { // Status 200-299
       return await response.json() as User;
@@ -33,7 +36,7 @@ export const fetchMe = async (): Promise<User | null> => {
     }
     // Network errors or other unexpected errors during fetch/JSON parsing
     console.error('Network or parsing error in fetchMe:', error);
-    throw new ApiError('Network error or failed to parse user data.', (error as any).status);
+    throw new ApiError('Network error or failed to parse user data.', error instanceof Error ? undefined : undefined);
   }
 };
 
