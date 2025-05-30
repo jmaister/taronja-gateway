@@ -30,13 +30,13 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/article/:id" element={<ArticlePageWrapper />} />
-            <Route 
-              path="/premium/article/:id" 
+            <Route
+              path="/premium/article/:id"
               element={
                 <ProtectedRoute>
                   <PremiumArticlePageWrapper />
                 </ProtectedRoute>
-              } 
+              }
             />
             {/* Add a 404 or default route within the layout if needed */}
             <Route path="*" element={<div>Page not found inside layout</div>} />

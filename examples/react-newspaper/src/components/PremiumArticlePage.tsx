@@ -23,28 +23,28 @@ const PremiumArticlePage: React.FC<PremiumArticlePageProps> = ({ id }) => {
         </h1>
         <p className="text-sm text-amber-600">Published exclusively for subscribers on: {new Date().toLocaleDateString()}</p>
       </header>
-      
+
       <div className="prose prose-lg max-w-none text-justify text-gray-700">
         <p>
           <em>This is exclusive content for our subscribers. Thank you for supporting The React Times.</em>
         </p>
         <p>
-          Vestibulum sed arcu non odio euismod lacinia. At tempor commodo ullamcorper a lacus vestibulum sed arcu. 
-          Tellus cras adipiscing enim eu turpis egestas pretium. Pharetra magna ac placerat vestibulum lectus mauris ultrices eros. 
+          Vestibulum sed arcu non odio euismod lacinia. At tempor commodo ullamcorper a lacus vestibulum sed arcu.
+          Tellus cras adipiscing enim eu turpis egestas pretium. Pharetra magna ac placerat vestibulum lectus mauris ultrices eros.
           Nulla pharetra diam sit amet nisl suscipit adipiscing bibendum. Erat nam at lectus urna duis convallis convallis tellus.
         </p>
         <p>
-          Quis lectus nulla at volutpat diam ut venenatis tellus in. Feugiat vivamus at augue eget arcu dictum varius duis. 
-          Libero enim sed faucibus turpis in eu. Ultricies mi quis hendrerit dolor magna eget est lorem. 
+          Quis lectus nulla at volutpat diam ut venenatis tellus in. Feugiat vivamus at augue eget arcu dictum varius duis.
+          Libero enim sed faucibus turpis in eu. Ultricies mi quis hendrerit dolor magna eget est lorem.
           Id diam vel quam elementum pulvinar etiam non quam lacus. Non curabitur gravida arcu ac tortor dignissim.
         </p>
         <p>
-          Adipiscing elit ut aliquam purus sit amet luctus venenatis. Elementum sagittis vitae et leo duis ut diam. 
-          Gravida dictum fusce ut placerat orci nulla pellentesque. Ac tortor dignissim convallis aenean et tortor at risus. 
+          Adipiscing elit ut aliquam purus sit amet luctus venenatis. Elementum sagittis vitae et leo duis ut diam.
+          Gravida dictum fusce ut placerat orci nulla pellentesque. Ac tortor dignissim convallis aenean et tortor at risus.
           Purus semper eget duis at tellus at urna condimentum.
         </p>
       </div>
-      
+
       <footer className="mt-8 border-t border-amber-300 pt-4">
         <button className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-150">
           Explore More Premium Content

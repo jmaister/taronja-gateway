@@ -36,8 +36,8 @@ const NewspaperLayout: React.FC<NewspaperLayoutProps> = ({ children }) => {
                 Logout
               </button>
             ) : (
-              <Link 
-                to="/login" 
+              <Link
+                to="/login"
                 className="text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors shadow"
               >
                 Login

@@ -14,12 +14,12 @@ const LoginPage: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(''); 
+    setError('');
     try {
-      await login(username, password); 
+      await login(username, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError('Failed to login. Please try again.'); 
+      setError('Failed to login. Please try again.');
       console.error(err);
     }
   };
