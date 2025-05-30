@@ -557,56 +557,16 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 			log.Printf("Static Route [%s]: Using StripPrefix handler with prefix: %s", routeConfig.Name, routePrefix)
 		}
 
+		// Wrap with SPA handler if needed
+		if routeConfig.IsSPA {
+			finalHandler = g.createSPAHandler(finalHandler, fsPath, routeConfig)
+			log.Printf("Static Route [%s]: Wrapped with SPA handler", routeConfig.Name)
+		}
+
 		return func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Static Route [%s]: Request received - URL: %s, RemoteAddr: %s", routeConfig.Name, r.URL.Path, r.RemoteAddr)
-			log.Printf("Static Route [%s]: Route config - From: %s, ToFolder: %s, RemoveFromPath: %s, routePrefix: %s, preserveFullPath: %t",
-				routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.RemoveFromPath, routePrefix, shouldPreserveFullPath)
-
-			// Calculate paths for logging and index.html detection
-			var relativePath string
-			if shouldPreserveFullPath {
-				relativePath = r.URL.Path
-			} else {
-				relativePath = strings.TrimPrefix(r.URL.Path, routePrefix)
-				if !strings.HasPrefix(relativePath, "/") && relativePath != "" {
-					relativePath = "/" + relativePath
-				}
-			}
-			cleanRelativePath := filepath.Clean(relativePath)
-
-			// Prevent directory listing? Check for index.html.
-			if strings.HasSuffix(r.URL.Path, "/") {
-				indexPath := filepath.Join(fsPath, cleanRelativePath, "index.html")
-
-				log.Printf("Static Route [%s]: Directory request detected - originalPath: %s, routePrefix: %s, relativePath: %s, cleanRelativePath: %s, indexPath: %s",
-					routeConfig.Name, r.URL.Path, routePrefix, relativePath, cleanRelativePath, indexPath)
-
-				_, statErr := os.Stat(indexPath) // Renamed err to statErr to avoid conflict
-				// Corrected: os.IsNotExist returns a bool, not an error.
-				// Store the boolean result in a new variable.
-				isNotExist := false
-				if statErr != nil {
-					isNotExist = os.IsNotExist(statErr)
-				}
-
-				if isNotExist { // Use the boolean variable here
-					// index.html does not exist. Disable listing explicitly.
-					log.Printf("Static Route [%s]: No index.html found at path: %s - returning 404", routeConfig.Name, indexPath)
-					http.NotFound(w, r) // Return 404 instead of listing
-					return
-				} else if statErr != nil { // Check original statErr for other errors
-					log.Printf("Static Route [%s]: Error checking index.html at '%s': %v - continuing with fileserver", routeConfig.Name, indexPath, statErr)
-					// Fall through, maybe FileServer can handle it, maybe not.
-				} else {
-					log.Printf("Static Route [%s]: Found index.html at path: %s - serving file", routeConfig.Name, indexPath)
-				}
-			} else {
-				// Calculate the final file path that will be accessed
-				finalFilePath := filepath.Join(fsPath, cleanRelativePath)
-
-				log.Printf("Static Route [%s]: File request - originalPath: %s, routePrefix: %s, relativePath: %s, cleanRelativePath: %s, finalFilePath: %s",
-					routeConfig.Name, r.URL.Path, routePrefix, relativePath, cleanRelativePath, finalFilePath)
-			}
+			log.Printf("Static Route [%s]: Route config - From: %s, ToFolder: %s, RemoveFromPath: %s, routePrefix: %s, preserveFullPath: %t, isSPA: %t",
+				routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.RemoveFromPath, routePrefix, shouldPreserveFullPath, routeConfig.IsSPA)
 
 			finalHandler.ServeHTTP(w, r)
 		}
@@ -642,6 +602,96 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 			http.ServeFile(w, r, filePath)
 		}
 	}
+}
+
+// createSPAHandler wraps a file server handler with SPA (Single Page Application) routing logic.
+// When a file is not found (404), it serves the index.html from the root of the static folder.
+func (g *Gateway) createSPAHandler(handler http.Handler, fsPath string, routeConfig config.RouteConfig) http.Handler {
+	return &spaHandler{
+		handler:     handler,
+		fsPath:      fsPath,
+		routeConfig: routeConfig,
+	}
+}
+
+// spaHandler implements http.Handler and provides SPA routing functionality
+type spaHandler struct {
+	handler     http.Handler
+	fsPath      string
+	routeConfig config.RouteConfig
+}
+
+func (s *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Create a custom ResponseWriter to capture 404 errors
+	recorder := &spaResponseRecorder{
+		ResponseWriter: w,
+		status:         200, // Default to 200
+	}
+
+	// Let the original handler process the request
+	s.handler.ServeHTTP(recorder, r)
+
+	// If we got a 404 and this is a SPA route, serve index.html instead
+	if recorder.status == 404 && !recorder.responseWritten {
+		indexPath := filepath.Join(s.fsPath, "index.html")
+
+		// Check if index.html exists
+		if _, err := os.Stat(indexPath); err == nil {
+			log.Printf("Static Route [%s]: SPA fallback - File not found, serving index.html: %s", s.routeConfig.Name, indexPath)
+
+			// Clear any headers and set appropriate content type
+			for key := range w.Header() {
+				w.Header().Del(key)
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+			// Serve the index.html file directly (this will handle status code)
+			http.ServeFile(w, r, indexPath)
+			return
+		} else {
+			log.Printf("Static Route [%s]: SPA fallback failed - index.html not found at: %s", s.routeConfig.Name, indexPath)
+			// Write the 404 response if index.html doesn't exist
+			w.WriteHeader(404)
+			return
+		}
+	}
+
+	// If not a 404 or response was already written, write the captured response
+	if recorder.responseWritten {
+		return // Response already sent
+	}
+
+	// Write the status and data if response wasn't written yet
+	w.WriteHeader(recorder.status)
+	if len(recorder.data) > 0 {
+		w.Write(recorder.data)
+	}
+}
+
+// spaResponseRecorder is a custom ResponseWriter that captures the status code
+type spaResponseRecorder struct {
+	http.ResponseWriter
+	status          int
+	wroteHeader     bool
+	responseWritten bool
+	data            []byte
+}
+
+func (r *spaResponseRecorder) WriteHeader(status int) {
+	if !r.wroteHeader {
+		r.status = status
+		r.wroteHeader = true
+		// Don't write to the underlying response yet
+	}
+}
+
+func (r *spaResponseRecorder) Write(data []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(200)
+	}
+	// Capture the data instead of writing it immediately
+	r.data = append(r.data, data...)
+	return len(data), nil
 }
 
 // --- Utility Functions ---

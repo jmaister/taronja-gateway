@@ -676,6 +676,193 @@ func TestHelloEndpoint(t *testing.T) {
 	}
 }
 
+// TestGatewaySPARouting tests SPA (Single Page Application) routing functionality
+func TestGatewaySPARouting(t *testing.T) {
+	// Create temporary directory structure for testing SPA
+	tempDir := t.TempDir()
+
+	// Create index.html (main SPA file)
+	indexContent := `<!DOCTYPE html>
+<html>
+<head><title>SPA App</title></head>
+<body>
+<div id="app">SPA Application</div>
+<script>
+// Mock SPA routing logic
+window.onload = function() {
+	if (window.location.pathname === '/about') {
+		document.getElementById('app').innerHTML = 'About Page';
+	} else if (window.location.pathname === '/contact') {
+		document.getElementById('app').innerHTML = 'Contact Page';
+	}
+};
+</script>
+</body>
+</html>`
+	indexPath := filepath.Join(tempDir, "index.html")
+	err := os.WriteFile(indexPath, []byte(indexContent), 0644)
+	require.NoError(t, err)
+
+	// Create a static asset file (CSS)
+	cssContent := "body { background-color: blue; }"
+	cssPath := filepath.Join(tempDir, "style.css")
+	err = os.WriteFile(cssPath, []byte(cssContent), 0644)
+	require.NoError(t, err)
+
+	// Create a JavaScript file
+	jsContent := "console.log('SPA app loaded');"
+	jsPath := filepath.Join(tempDir, "app.js")
+	err = os.WriteFile(jsPath, []byte(jsContent), 0644)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		routes         []config.RouteConfig
+		requestPath    string
+		expectedStatus int
+		expectedBody   string
+		description    string
+	}{
+		{
+			name: "SPA route - serve index.html for root",
+			routes: []config.RouteConfig{
+				{
+					Name:     "SPA Route",
+					From:     "/*",
+					ToFolder: tempDir,
+					Static:   true,
+					IsSPA:    true,
+				},
+			},
+			requestPath:    "/",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "SPA Application",
+			description:    "Root path should serve index.html",
+		},
+		{
+			name: "SPA route - serve index.html for client-side route",
+			routes: []config.RouteConfig{
+				{
+					Name:     "SPA Route",
+					From:     "/*",
+					ToFolder: tempDir,
+					Static:   true,
+					IsSPA:    true,
+				},
+			},
+			requestPath:    "/about",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "SPA Application", // Should serve index.html, not 404
+			description:    "Client-side route should fallback to index.html",
+		},
+		{
+			name: "SPA route - serve static asset directly",
+			routes: []config.RouteConfig{
+				{
+					Name:     "SPA Route",
+					From:     "/*",
+					ToFolder: tempDir,
+					Static:   true,
+					IsSPA:    true,
+				},
+			},
+			requestPath:    "/style.css",
+			expectedStatus: http.StatusOK,
+			expectedBody:   cssContent,
+			description:    "Static assets should be served directly",
+		},
+		{
+			name: "SPA route - serve JS file directly",
+			routes: []config.RouteConfig{
+				{
+					Name:     "SPA Route",
+					From:     "/*",
+					ToFolder: tempDir,
+					Static:   true,
+					IsSPA:    true,
+				},
+			},
+			requestPath:    "/app.js",
+			expectedStatus: http.StatusOK,
+			expectedBody:   jsContent,
+			description:    "JavaScript files should be served directly",
+		},
+		{
+			name: "Non-SPA route - should return 404 for missing files",
+			routes: []config.RouteConfig{
+				{
+					Name:     "Non-SPA Route",
+					From:     "/*",
+					ToFolder: tempDir,
+					Static:   true,
+					IsSPA:    false, // SPA disabled
+				},
+			},
+			requestPath:    "/nonexistent",
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "",
+			description:    "Non-SPA routes should return 404 for missing files",
+		},
+		{
+			name: "SPA route with prefix - fallback to index.html",
+			routes: []config.RouteConfig{
+				{
+					Name:     "SPA Route with Prefix",
+					From:     "/app/*",
+					ToFolder: tempDir,
+					Static:   true,
+					IsSPA:    true,
+				},
+			},
+			requestPath:    "/app/dashboard",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "SPA Application",
+			description:    "SPA with prefix should fallback to index.html for client routes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create gateway config
+			gatewayConfig := &config.GatewayConfig{
+				Server: config.ServerConfig{
+					Host: "127.0.0.1",
+					Port: 0, // Let OS choose port
+				},
+				Management: config.ManagementConfig{
+					Prefix: "/_",
+				},
+				Routes: tt.routes,
+			}
+
+			// Create gateway
+			gateway, err := NewGateway(gatewayConfig, nil)
+			require.NoError(t, err, "Failed to create gateway")
+
+			// Create test server
+			server := httptest.NewServer(gateway.Mux)
+			defer server.Close()
+
+			// Make request
+			resp, err := http.Get(server.URL + tt.requestPath)
+			require.NoError(t, err, "Failed to make request")
+			defer resp.Body.Close()
+
+			// Check status
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode,
+				"Status code mismatch for %s", tt.description)
+
+			// Check body if expected
+			if tt.expectedBody != "" {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err, "Failed to read response body")
+				assert.Contains(t, string(body), tt.expectedBody,
+					"Response body should contain expected content for %s", tt.description)
+			}
+		})
+	}
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return substr != "" && s != substr && s != "" && strings.Contains(s, substr)
