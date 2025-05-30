@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npx vite",
+    "build": "npx vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -16,7 +16,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
-    "@tailwindcss/vite": "^4.1.8",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@types/react-router-dom": "^5.3.3",

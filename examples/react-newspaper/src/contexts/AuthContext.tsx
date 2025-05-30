@@ -1,46 +1,93 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { fetchMe, logoutUser, ApiError } from '../services/apiService'; // Updated import
+
+// User Interface (can also be moved to a shared types file)
+export interface User {
+  id: string;
+  name: string;
+  email?: string;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (username?: string, password?: string) => Promise<void>; // Made params optional for mock
-  logout: () => void;
+  currentUser: User | null;
+  isLoading: boolean;
+  checkUserSession: () => Promise<void>;
+  logout: () => Promise<void>; // logout can now be async if it calls logoutUser
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_STORAGE_KEY = 'reactNewspaperAuthStatus';
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const checkUserSession = async () => {
+    setIsLoading(true);
+    try {
+      const userData = await fetchMe(); // Use apiService
+      if (userData) {
+        setIsAuthenticated(true);
+        setCurrentUser(userData);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ isAuthenticated: true, user: userData }));
+      } else {
+        // fetchMe returned null (e.g., 401)
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+    } catch (error) {
+      // Errors from fetchMe (network, unexpected server response)
+      console.error('Error during session check:', error);
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      // If error is an ApiError, you could potentially inspect error.status
+      // For now, any error during fetchMe leads to logged-out state.
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => { // Made async to potentially await logoutUser
+    try {
+      await logoutUser(); // Call placeholder logoutUser from apiService
+      // console.log('Backend logout process completed (if any)');
+    } catch (error) {
+      console.error('Error during backend logout:', error);
+      // Decide if frontend logout should proceed even if backend call fails
+    } finally {
+      // Always clear frontend state regardless of backend logout success
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      // console.log('User logged out from frontend');
+    }
+  };
 
   useEffect(() => {
-    // Check localStorage for persisted login state
-    const storedUser = localStorage.getItem('reactNewspaperUser');
-    if (storedUser) {
-      setIsAuthenticated(true);
+    const storedAuthStatus = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (storedAuthStatus) {
+      try {
+        const { isAuthenticated: storedIsAuthenticated, user: storedUser } = JSON.parse(storedAuthStatus);
+        if (storedIsAuthenticated && storedUser) {
+          setIsAuthenticated(true);
+          setCurrentUser(storedUser);
+        }
+      } catch (e) {
+        console.error("Error parsing auth status from localStorage", e);
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
     }
+    checkUserSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (username?: string, password?: string): Promise<void> => {
-    // Mock login: accepts any username/password or specific ones
-    // For simplicity, we'll just simulate a successful login
-    console.log('Attempting login with:', username, password); // For debugging
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        setIsAuthenticated(true);
-        // Persist mock user data/token
-        localStorage.setItem('reactNewspaperUser', JSON.stringify({ username: username || 'mockUser', token: 'mockToken123' }));
-        resolve();
-      }, 500); // Simulate network delay
-    });
-  };
-
-  const logout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('reactNewspaperUser');
-    // Optionally, redirect here or let the component handle it
-  };
-
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, currentUser, isLoading, checkUserSession, logout }}>
       {children}
     </AuthContext.Provider>
   );

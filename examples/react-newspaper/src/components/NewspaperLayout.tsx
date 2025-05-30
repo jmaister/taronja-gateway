@@ -1,18 +1,24 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext'; // Ensure currentUser is exported and imported if not already
 
 interface NewspaperLayoutProps {
   children: React.ReactNode;
 }
 
 const NewspaperLayout: React.FC<NewspaperLayoutProps> = ({ children }) => {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, currentUser, logout, isLoading } = useAuth(); // Added currentUser and isLoading
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
     navigate('/'); // Redirect to home page after logout
+  };
+
+  // Construct the login URL with a return_to parameter
+  const getLoginUrl = () => {
+    const returnToPath = window.location.pathname + window.location.search;
+    return `/_/login?return_to=${encodeURIComponent(returnToPath)}`;
   };
 
   return (
@@ -28,20 +34,28 @@ const NewspaperLayout: React.FC<NewspaperLayoutProps> = ({ children }) => {
             <Link to="/article/2" className="text-sm sm:text-base hover:text-slate-300 px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">Article 2</Link>
             <Link to="/premium/article/3" className="text-sm sm:text-base hover:text-slate-300 px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">Premium 3</Link>
             <Link to="/premium/article/4" className="text-sm sm:text-base hover:text-slate-300 px-3 py-2 rounded-md hover:bg-slate-700 transition-colors">Premium 4</Link>
-            {isAuthenticated ? (
-              <button
-                onClick={handleLogout}
-                className="text-sm sm:text-base bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors shadow"
-              >
-                Logout
-              </button>
+
+            {isLoading ? (
+              <span className="text-sm sm:text-base text-slate-400 px-3 py-2">Loading...</span>
+            ) : isAuthenticated && currentUser ? (
+              <>
+                <span className="text-sm sm:text-base text-slate-300 px-3 py-2 hidden sm:inline">
+                  Welcome, {currentUser.name || currentUser.id}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm sm:text-base bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors shadow"
+                >
+                  Logout
+                </button>
+              </>
             ) : (
-              <Link
-                to="/login"
+              <a
+                href={getLoginUrl()}
                 className="text-sm sm:text-base bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors shadow"
               >
                 Login
-              </Link>
+              </a>
             )}
           </nav>
         </div>

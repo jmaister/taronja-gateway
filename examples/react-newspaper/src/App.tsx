@@ -3,7 +3,7 @@ import NewspaperLayout from './components/NewspaperLayout';
 import HomePage from './components/HomePage';
 import ArticlePage from './components/ArticlePage';
 import PremiumArticlePage from './components/PremiumArticlePage';
-import LoginPage from './components/LoginPage';
+// LoginPage is removed
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Helper component to extract ID for ArticlePage
@@ -21,8 +21,7 @@ const PremiumArticlePageWrapper = () => {
 function App() {
   return (
     <Routes>
-      {/* Route for LoginPage without NewspaperLayout */}
-      <Route path="/login" element={<LoginPage />} />
+      {/* LoginPage route removed */}
 
       {/* Routes with NewspaperLayout */}
       <Route path="/*" element={
