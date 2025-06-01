@@ -41,7 +41,7 @@ const NewspaperLayout: React.FC<NewspaperLayoutProps> = ({ children }) => {
             ) : isAuthenticated && currentUser ? (
               <>
                 <span className="text-sm sm:text-base text-slate-200 px-3 py-2 hidden sm:inline font-medium">
-                  Welcome, {currentUser.name || currentUser.id}
+                  Welcome, {currentUser.username || currentUser.email || 'User'}!
                 </span>
                 <button
                   onClick={handleLogout}

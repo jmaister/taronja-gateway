@@ -3,8 +3,7 @@ import { fetchMe } from '../services/apiService'; // Only importing fetchMe sinc
 
 // User Interface (can also be moved to a shared types file)
 export interface User {
-  id: string;
-  name: string;
+  username: string;
   email?: string;
 }
 
