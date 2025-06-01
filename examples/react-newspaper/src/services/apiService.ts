@@ -40,24 +40,5 @@ export const fetchMe = async (): Promise<User | null> => {
   }
 };
 
-/**
- * Logs out the current user by calling the backend logout endpoint.
- * For this example, it's a placeholder as no specific backend logout URL is given.
- * If a backend logout endpoint exists (e.g., POST to /api/logout), implement it here.
- * @returns {Promise<void>}
- */
-export const logoutUser = async (): Promise<void> => {
-  try {
-    // Example: if there was a logout endpoint
-    // const response = await fetch('/api/logout', { method: 'POST' });
-    // if (!response.ok) {
-    //   throw new ApiError('Logout failed', response.status);
-    // }
-    // console.log('Backend logout successful');
-    return Promise.resolve(); // Placeholder implementation
-  } catch (error) {
-    console.error('Error during backend logout:', error);
-    // Depending on requirements, might re-throw or handle silently
-    throw error;
-  }
-};
+// Note: Logout is now handled by direct redirect to /_/logout URL
+// No need for an API service function since the gateway handles it

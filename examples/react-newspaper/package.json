@@ -8,7 +8,8 @@
     "build": "npx vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "gateway": "npx vite build && tg run --config ./taronja-gateway.yaml"
+    "gateway": "npx vite build && tg run --config ./taronja-gateway.yaml",
+    "gateway-http": "npx vite build && concurrently --kill-others \"tg run --config ./taronja-gateway-http.yaml\" \"vite preview\""
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19.1.5",
     "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^4.5.0",
+    "concurrently": "^9.1.2",
     "eslint": "^9.28.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

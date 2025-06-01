@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { fetchMe, logoutUser, ApiError } from '../services/apiService'; // Updated import
+import { fetchMe } from '../services/apiService'; // Only importing fetchMe since we removed logout functionality
 
 // User Interface (can also be moved to a shared types file)
 export interface User {
@@ -13,7 +13,6 @@ interface AuthContextType {
   currentUser: User | null;
   isLoading: boolean;
   checkUserSession: () => Promise<void>;
-  logout: () => Promise<void>; // logout can now be async if it calls logoutUser
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,22 +51,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const logout = async () => { // Made async to potentially await logoutUser
-    try {
-      await logoutUser(); // Call placeholder logoutUser from apiService
-      // console.log('Backend logout process completed (if any)');
-    } catch (error) {
-      console.error('Error during backend logout:', error);
-      // Decide if frontend logout should proceed even if backend call fails
-    } finally {
-      // Always clear frontend state regardless of backend logout success
-      setIsAuthenticated(false);
-      setCurrentUser(null);
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-      // console.log('User logged out from frontend');
-    }
-  };
-
   useEffect(() => {
     const storedAuthStatus = localStorage.getItem(AUTH_STORAGE_KEY);
     if (storedAuthStatus) {
@@ -83,11 +66,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     }
     checkUserSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, currentUser, isLoading, checkUserSession, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, currentUser, isLoading, checkUserSession }}>
       {children}
     </AuthContext.Provider>
   );

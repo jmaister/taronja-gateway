@@ -1,4 +1,4 @@
-import type { Config } from '@tailwindcss/vite'
+import type { Config } from 'tailwindcss'
 
 export default {
   content: [

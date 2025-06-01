@@ -18,7 +18,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
       // Add current path as a 'return_to' query parameter
       // Ensure it's properly encoded.
       const returnToPath = window.location.pathname + window.location.search;
-      const redirectUrl = `${loginUrl}?return_to=${encodeURIComponent(returnToPath)}`;
+      const redirectUrl = `${loginUrl}?redirect=${encodeURIComponent(returnToPath)}`;
 
       window.location.href = redirectUrl;
     }
