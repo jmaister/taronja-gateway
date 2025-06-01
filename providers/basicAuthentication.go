@@ -75,7 +75,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		}
 
 		if user == nil {
-			http.Error(w, "Invalid credentials 1", http.StatusUnauthorized)
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
@@ -83,11 +83,11 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		if err != nil {
 			log.Printf("Password comparison failed: %v", err)
 			// Log actual error but return generic message to user
-			http.Error(w, "Invalid credentials 2", http.StatusUnauthorized)
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 		if !matches {
-			http.Error(w, "Invalid credentials 3", http.StatusUnauthorized)
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
