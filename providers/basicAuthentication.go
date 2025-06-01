@@ -8,6 +8,7 @@ import (
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/session"
+	"gorm.io/gorm"
 	// For session.ExtractClientInfo, session.SessionCookieName
 )
 
@@ -34,23 +35,47 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			return
 		}
 
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Error parsing form data", http.StatusBadRequest)
+		// Parse form data - try both URL-encoded and multipart
+		var username, password string
+
+		// First try to parse as URL-encoded form
+		if err := r.ParseForm(); err == nil {
+			username = r.Form.Get("username")
+			password = r.Form.Get("password")
+		}
+
+		// If that didn't work or values are empty, try multipart form
+		if (username == "" || password == "") && r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			if err := r.ParseMultipartForm(32 << 20); err == nil { // 32MB max
+				if r.MultipartForm != nil && r.MultipartForm.Value != nil {
+					if usernames := r.MultipartForm.Value["username"]; len(usernames) > 0 {
+						username = usernames[0]
+					}
+					if passwords := r.MultipartForm.Value["password"]; len(passwords) > 0 {
+						password = passwords[0]
+					}
+				}
+			}
+		}
+
+		log.Printf("Login attempt for user: %s", username)
+		log.Printf("Password received: %t (length: %d)", password != "", len(password))
+
+		if username == "" || password == "" {
+			log.Printf("Empty username or password received")
+			http.Error(w, "Username and password are required", http.StatusBadRequest)
 			return
 		}
 
-		username := r.Form.Get("username")
-		password := r.Form.Get("password")
-
 		user, err := userRepo.FindUserByIdOrUsername("", username, username)
-		if err != nil {
+		if err != nil && err != gorm.ErrRecordNotFound {
 			log.Printf("Error finding user: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		if user == nil {
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			http.Error(w, "Invalid credentials 1", http.StatusUnauthorized)
 			return
 		}
 
@@ -58,11 +83,11 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		if err != nil {
 			log.Printf("Password comparison failed: %v", err)
 			// Log actual error but return generic message to user
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			http.Error(w, "Invalid credentials 2", http.StatusUnauthorized)
 			return
 		}
 		if !matches {
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			http.Error(w, "Invalid credentials 3", http.StatusUnauthorized)
 			return
 		}
 
@@ -82,6 +107,11 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		})
 
 		redirectURL := r.Form.Get("redirect")
+		if redirectURL == "" && r.MultipartForm != nil && r.MultipartForm.Value != nil {
+			if redirects := r.MultipartForm.Value["redirect"]; len(redirects) > 0 {
+				redirectURL = redirects[0]
+			}
+		}
 		if redirectURL == "" {
 			redirectURL = r.URL.Query().Get("redirect")
 		}

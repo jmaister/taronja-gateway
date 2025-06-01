@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "gateway": "npx vite build && tg run --config ./taronja-gateway.yaml",
-    "gateway-http": "npx vite build && concurrently --kill-others \"tg run --config ./taronja-gateway-http.yaml\" \"vite preview\""
+    "gateway-http": "npx vite build && concurrently --kill-others \"tg run --config ./taronja-gateway-http.yaml\" \"vite preview\"",
+    "adduser": "tg adduser john john@example.com smith"
   },
   "dependencies": {
     "react": "^19.1.0",

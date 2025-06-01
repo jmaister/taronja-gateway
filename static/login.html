@@ -121,6 +121,23 @@
         .oauth-other {
             background-color: #6c757d; /* Ensure this rule is not empty */
         }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 12px 0;
+            font-size: 14px;
+            display: none;
+        }
+        .loading {
+            background-color: #6c757d !important;
+            cursor: not-allowed !important;
+        }
+        .loading:hover {
+            background-color: #6c757d !important;
+        }
 
     </style>
 </head>
@@ -129,11 +146,12 @@
         <h1>Login</h1>
 
         {{if .AuthenticationProviders.Basic.Enabled}}
+        <div id="errorMessage" class="error-message"></div>
         <form id="loginForm" action="{{.ManagementPrefix}}/auth/basic/login" method="POST">
             <input type="text" name="username" placeholder="Username" required>
             <input type="password" name="password" placeholder="Password" required>
             <input type="hidden" id="redirectInput" name="redirect" value="{{.RedirectURL}}">
-            <button type="submit">Login</button>
+            <button type="submit" id="loginButton">Login</button>
         </form>
         {{end}}
 
@@ -159,5 +177,106 @@
             {{end}}
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginForm = document.getElementById('loginForm');
+            const loginButton = document.getElementById('loginButton');
+            const errorMessage = document.getElementById('errorMessage');
+
+            if (loginForm) {
+                loginForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    // Hide any previous error messages
+                    hideError();
+                    
+                    // Show loading state
+                    setLoading(true);
+                    
+                    // Get form data and convert to URL-encoded format
+                    const formData = new FormData(loginForm);
+                    const urlEncodedData = new URLSearchParams(formData);
+                    
+                    // Submit form via fetch
+                    fetch(loginForm.action, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: urlEncodedData,
+                    })
+                    .then(response => {
+                        if (response.redirected) {
+                            // Login successful, redirect to the target page
+                            window.location.href = response.url;
+                            return;
+                        }
+                        
+                        if (!response.ok) {
+                            // Handle different HTTP status codes
+                            if (response.status === 401) {
+                                return response.text().then(text => {
+                                    throw new Error('Invalid username or password');
+                                });
+                            } else if (response.status === 429) {
+                                throw new Error('Too many login attempts. Please try again later.');
+                            } else {
+                                throw new Error('Login failed. Please try again.');
+                            }
+                        }
+                        
+                        return response.text();
+                    })
+                    .then(data => {
+                        // If we get here and it's not a redirect, check if we have a redirect URL
+                        const redirectUrl = urlEncodedData.get('redirect');
+                        if (redirectUrl && redirectUrl !== '') {
+                            window.location.href = redirectUrl;
+                        } else {
+                            // Default redirect after successful login
+                            window.location.href = '/';
+                        }
+                    })
+                    .catch(error => {
+                        // Show error message
+                        showError(error.message);
+                    })
+                    .finally(() => {
+                        // Remove loading state
+                        setLoading(false);
+                    });
+                });
+            }
+
+            function setLoading(loading) {
+                if (loginButton) {
+                    if (loading) {
+                        loginButton.disabled = true;
+                        loginButton.classList.add('loading');
+                        loginButton.textContent = 'Logging in...';
+                    } else {
+                        loginButton.disabled = false;
+                        loginButton.classList.remove('loading');
+                        loginButton.textContent = 'Login';
+                    }
+                }
+            }
+
+            function showError(message) {
+                if (errorMessage) {
+                    errorMessage.textContent = message;
+                    errorMessage.style.display = 'block';
+                }
+            }
+
+            function hideError() {
+                if (errorMessage) {
+                    errorMessage.style.display = 'none';
+                    errorMessage.textContent = '';
+                }
+            }
+        });
+    </script>
 </body>
 </html>
