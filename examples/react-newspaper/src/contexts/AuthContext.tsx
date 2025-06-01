@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { fetchMe } from '../services/apiService'; // Only importing fetchMe since we removed logout functionality
 
 // User Interface (can also be moved to a shared types file)
@@ -16,12 +16,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'reactNewspaperAuthStatus';
+// Check session every 5 minutes (300000 ms)
+const SESSION_CHECK_INTERVAL = 300000;
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const intervalRef = useRef<number | null>(null);
 
   const checkUserSession = async () => {
     setIsLoading(true);
@@ -30,19 +32,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (userData) {
         setIsAuthenticated(true);
         setCurrentUser(userData);
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ isAuthenticated: true, user: userData }));
       } else {
         // fetchMe returned null (e.g., 401)
         setIsAuthenticated(false);
         setCurrentUser(null);
-        localStorage.removeItem(AUTH_STORAGE_KEY);
       }
     } catch (error) {
       // Errors from fetchMe (network, unexpected server response)
       console.error('Error during session check:', error);
       setIsAuthenticated(false);
       setCurrentUser(null);
-      localStorage.removeItem(AUTH_STORAGE_KEY);
       // If error is an ApiError, you could potentially inspect error.status
       // For now, any error during fetchMe leads to logged-out state.
     } finally {
@@ -51,20 +50,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
-    const storedAuthStatus = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (storedAuthStatus) {
-      try {
-        const { isAuthenticated: storedIsAuthenticated, user: storedUser } = JSON.parse(storedAuthStatus);
-        if (storedIsAuthenticated && storedUser) {
-          setIsAuthenticated(true);
-          setCurrentUser(storedUser);
-        }
-      } catch (e) {
-        console.error("Error parsing auth status from localStorage", e);
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-      }
-    }
+    // Initial session check
     checkUserSession();
+
+    // Set up periodic session checks
+    intervalRef.current = setInterval(() => {
+      checkUserSession();
+    }, SESSION_CHECK_INTERVAL);
+
+    // Cleanup interval on unmount
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, []);
 
   return (
