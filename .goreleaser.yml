@@ -4,6 +4,9 @@ before:
   hooks:
     # You may remove this if you don't use go modules.
     - go mod tidy
+    # Build the webapp before building the Go binary
+    - bash -c "cd webapp && npm install"
+    - bash -c "cd webapp && npm run build"
 
 builds:
   - env:
