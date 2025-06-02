@@ -1,0 +1,13 @@
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+/* Allow Tailwind to control root font and background */
+body {
+  margin: 0; /* Keep this, good default */
+  /* Other body styles will be handled by Tailwind or components */
+  /* display: flex; place-items: center; (removed, can interfere with layout) */
+  min-width: 320px; /* Keep this, good for responsiveness */
+  min-height: 100vh; /* Keep this, good default */
+  -webkit-font-smoothing: antialiased; /* Keep this, good for text rendering */
+  -moz-osx-font-smoothing: grayscale; /* Keep this, good for text rendering */
+}

@@ -29,6 +29,7 @@ type RouteConfig struct {
 	ToFolder       string               `yaml:"toFolder"` // Folder path for static content
 	ToFile         string               `yaml:"toFile"`   // Optional specific file within folder
 	Static         bool                 `yaml:"static"`
+	IsSPA          bool                 `yaml:"isSPA"` // Enable SPA routing (fallback to index.html)
 	RemoveFromPath string               `yaml:"removeFromPath"`
 	Authentication AuthenticationConfig `yaml:"authentication"`
 }
