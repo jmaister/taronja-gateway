@@ -64,7 +64,7 @@ func (r *TrafficMetricRepositoryDB) GetAverageResponseTime(startDate, endDate ti
 	}
 
 	err := r.DB.Model(&TrafficMetric{}).
-		Select("AVG(response_time_ms) as average").
+		Select("AVG(response_time_ns) as average").
 		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
 		Scan(&result).Error
 

@@ -75,7 +75,7 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository) func(http.Han
 			next.ServeHTTP(resp, req)
 
 			// Calculate response time
-			responseTime := time.Since(startTime).Milliseconds()
+			responseTime := time.Since(startTime).Nanoseconds()
 
 			// Extract session information if available
 			var userID, sessionID string
@@ -99,7 +99,7 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository) func(http.Han
 			// Setting the rest of the fields, values not coming from req *http.Request
 			stat.Timestamp = startTime
 			stat.HttpStatus = resp.Status()
-			stat.ResponseTimeMs = responseTime
+			stat.ResponseTimeNs = responseTime
 			stat.ResponseSize = resp.Size()
 			stat.Error = errorMsg
 			stat.UserID = userID

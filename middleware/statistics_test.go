@@ -45,7 +45,7 @@ func TestStatisticsMiddleware(t *testing.T) {
 		assert.Equal(t, "GET", stat.HttpMethod)
 		assert.Equal(t, "/test", stat.Path)
 		assert.Equal(t, 200, stat.HttpStatus)
-		assert.GreaterOrEqual(t, stat.ResponseTimeMs, int64(0))
+		assert.GreaterOrEqual(t, stat.ResponseTimeNs, int64(0))
 		assert.Equal(t, "192.168.1.1", stat.IPAddress)
 		assert.Equal(t, "test-agent/1.0", stat.UserAgent)
 		assert.Equal(t, int64(13), stat.ResponseSize) // "Hello, World!" is 13 bytes

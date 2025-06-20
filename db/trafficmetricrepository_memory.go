@@ -91,7 +91,7 @@ func (r *TrafficMetricRepositoryMemory) GetAverageResponseTime(startDate, endDat
 
 	for _, stat := range r.stats {
 		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
-			total += stat.ResponseTimeMs
+			total += stat.ResponseTimeNs
 			count++
 		}
 	}

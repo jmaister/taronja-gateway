@@ -107,7 +107,7 @@ type TrafficMetric struct {
 	HttpMethod     string    `gorm:"type:varchar(10);not null"`  // HTTP method (GET, POST, etc.)
 	Path           string    `gorm:"type:varchar(500);not null"` // URL path of the request
 	HttpStatus     int       `gorm:"not null"`                   // HTTP status code of the response
-	ResponseTimeMs int64     `gorm:"not null"`                   // Time taken to process the request in milliseconds
+	ResponseTimeNs int64     `gorm:"not null"`                   // Time taken to process the request in nanoseconds
 	Timestamp      time.Time `gorm:"not null"`                   // Time when the request was received
 	ResponseSize   int64     `gorm:"default:0"`                  // Size of the response in bytes
 	Error          string    `gorm:"type:text"`                  // Any error message if the request failed

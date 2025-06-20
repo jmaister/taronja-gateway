@@ -93,7 +93,7 @@ func NewTrafficMetric(req *http.Request) *db.TrafficMetric {
 		HttpMethod:     req.Method,
 		Path:           req.URL.Path,
 		HttpStatus:     0,
-		ResponseTimeMs: 0,
+		ResponseTimeNs: 0,
 		Timestamp:      time.Now(),
 		ResponseSize:   0,
 		Error:          "",

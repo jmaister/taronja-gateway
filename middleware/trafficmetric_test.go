@@ -53,7 +53,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		assert.Equal(t, "GET", stat.HttpMethod)
 		assert.Equal(t, "/api/test", stat.Path)
 		assert.Equal(t, 200, stat.HttpStatus)
-		assert.GreaterOrEqual(t, stat.ResponseTimeMs, int64(0))
+		assert.GreaterOrEqual(t, stat.ResponseTimeNs, int64(0))
 		assert.Equal(t, int64(16), stat.ResponseSize) // "Success response" is 16 bytes
 		assert.Equal(t, "192.168.1.100", stat.IPAddress)
 		assert.Equal(t, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", stat.UserAgent)
@@ -210,8 +210,8 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
-		assert.GreaterOrEqual(t, stat.ResponseTimeMs, int64(4))                      // Should be at least 4ms
-		assert.LessOrEqual(t, stat.ResponseTimeMs, actualDuration.Milliseconds()+10) // Allow some margin
+		assert.GreaterOrEqual(t, stat.ResponseTimeNs, int64(4000000))                     // Should be at least 4ms (4000000 ns)
+		assert.LessOrEqual(t, stat.ResponseTimeNs, actualDuration.Nanoseconds()+10000000) // Allow some margin (10ms in ns)
 	})
 
 	t.Run("handles nil session gracefully", func(t *testing.T) {
