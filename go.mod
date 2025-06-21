@@ -24,6 +24,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/google/uuid v1.5.0 // indirect
+	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/yaml v0.3.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
@@ -59,6 +60,7 @@ require (
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
+	github.com/ua-parser/uap-go v0.0.0-20250326155420-f7f5a2f9f5bc
 	golang.org/x/crypto v0.38.0
 	golang.org/x/oauth2 v0.30.0
 	gorm.io/driver/sqlite v1.5.7

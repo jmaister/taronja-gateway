@@ -71,7 +71,7 @@ func GenerateToken() (string, error) {
 
 // NewSession creates a new session with the given user and provider.
 // It initializes the session with the current time and a validity duration.
-func (s *SessionStoreDB) NewSession(r *http.Request, user *db.User, provider string, validityDuration time.Duration) (*db.Session, error) {
+func (s *SessionStoreDB) NewSession(req *http.Request, user *db.User, provider string, validityDuration time.Duration) (*db.Session, error) {
 	token, err := GenerateToken()
 	if err != nil {
 		return nil, err
@@ -87,8 +87,12 @@ func (s *SessionStoreDB) NewSession(r *http.Request, user *db.User, provider str
 	}
 
 	// Extract client information from the request
-	if r != nil {
-		PopulateClientInfo(r, newSession)
+	if req != nil {
+		clientInfo := NewClientInfo(req)
+		newSession.ClientInfo = *clientInfo
+	} else {
+		// Initialize with empty client info if no request
+		newSession.ClientInfo = db.ClientInfo{}
 	}
 	err = s.Repo.CreateSession(token, newSession)
 	if err != nil {

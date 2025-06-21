@@ -44,11 +44,20 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 
 	mux := http.NewServeMux()
 
-	// Create server handler based on logging configuration
+	// Create server handler based on configuration
 	var handler http.Handler = mux
+
+	// Apply analytics middleware if enabled
+	if config.Management.Analytics {
+		log.Printf("Request/response analytics collection enabled")
+		trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
+		handler = middleware.TrafficMetricMiddleware(trafficMetricRepo)(handler)
+	}
+
+	// Apply logging middleware if enabled
 	if config.Management.Logging {
 		log.Printf("Request logging enabled")
-		handler = middleware.LoggingMiddleware(mux)
+		handler = middleware.LoggingMiddleware(handler)
 	}
 
 	server := &http.Server{

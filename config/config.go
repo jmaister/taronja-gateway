@@ -61,8 +61,9 @@ type NotificationConfig struct {
 
 // New: Management API Configuration Structs
 type ManagementConfig struct {
-	Prefix  string `yaml:"prefix"`  // e.g., "/_"
-	Logging bool   `yaml:"logging"` // Enable logging
+	Prefix    string `yaml:"prefix"`    // e.g., "/_"
+	Logging   bool   `yaml:"logging"`   // Enable logging
+	Analytics bool   `yaml:"analytics"` // Enable request/response analytics collection
 }
 
 // Main GatewayConfig Struct including Management API config

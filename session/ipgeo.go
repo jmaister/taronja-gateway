@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/db"
 )
 
 // IPGeoCache provides caching to avoid excessive API calls for the same IP
@@ -108,4 +110,17 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 	ipCache.mutex.Unlock()
 
 	return geoData, nil
+}
+
+// Copy GeoData into an instance of TrafficMetric
+func (g GeoData) ToTrafficMetric(target *db.TrafficMetric) {
+	target.GeoLocation = g.FormattedLoc
+	target.Latitude = g.Latitude
+	target.Longitude = g.Longitude
+	target.City = g.City
+	target.ZipCode = g.ZipCode
+	target.Country = g.Country
+	target.CountryCode = g.CountryCode
+	target.Region = g.Region
+	target.Continent = g.Continent
 }

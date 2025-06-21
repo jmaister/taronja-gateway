@@ -6,6 +6,7 @@ server:
 management:
   prefix: _
   logging: true
+  analytics: true
 
 routes:
   - name: Favicon
