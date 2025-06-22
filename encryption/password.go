@@ -86,8 +86,8 @@ func ComparePassword(password, hash string) (bool, error) {
 // IsPasswordHashed checks if a password is likely already hashed
 // argon2id hashes start with "$argon2id$"
 func IsPasswordHashed(password string) bool {
-	if len(password) < 9 {
+	if len(password) < 10 {
 		return false
 	}
-	return password[0:9] == "$argon2id$"
+	return password[0:10] == "$argon2id$"
 }
