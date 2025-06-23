@@ -84,8 +84,7 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.True(t, *userResp.Authenticated)
 		assert.NotNil(t, userResp.Username)
 		assert.Equal(t, "admin", *userResp.Username)
-		assert.NotNil(t, userResp.Email)
-		assert.Equal(t, openapi_types.Email(""), openapi_types.Email(*userResp.Email))
+		assert.Nil(t, userResp.Email) // Admin user has no email, so email should be nil
 		assert.NotNil(t, userResp.Provider)
 		assert.Equal(t, session.AdminProvider, *userResp.Provider)
 		assert.NotNil(t, userResp.IsAdmin)

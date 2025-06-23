@@ -33,15 +33,17 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 	isAdmin := sessionObject.IsAdmin
 	timestamp := time.Now().UTC() // Consistent with APIGetMe logic
 
-	emailPointer := openapi_types.Email(email)
-	if email == "" {
-		emailPointer = openapi_types.Email("") // Ensure email is not nil if empty
+	var emailPointer *openapi_types.Email
+	if email != "" {
+		emailType := openapi_types.Email(email)
+		emailPointer = &emailType
 	}
+	// If email is empty, emailPointer remains nil
 
 	response := api.GetCurrentUser200JSONResponse{
 		Authenticated: &authenticated,
 		Username:      &username,
-		Email:         &emailPointer,
+		Email:         emailPointer,
 		Provider:      &provider,
 		IsAdmin:       &isAdmin,
 		Timestamp:     &timestamp,
