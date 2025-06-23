@@ -42,14 +42,14 @@ type UserCreateRequest struct {
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
-	CreatedAt time.Time           `json:"createdAt"`
-	Email     openapi_types.Email `json:"email"`
-	Id        string              `json:"id"`
-	Name      *string             `json:"name"`
-	Picture   *string             `json:"picture"`
-	Provider  *string             `json:"provider"`
-	UpdatedAt time.Time           `json:"updatedAt"`
-	Username  string              `json:"username"`
+	CreatedAt time.Time            `json:"createdAt"`
+	Email     *openapi_types.Email `json:"email,omitempty"`
+	Id        string               `json:"id"`
+	Name      *string              `json:"name"`
+	Picture   *string              `json:"picture"`
+	Provider  *string              `json:"provider"`
+	UpdatedAt time.Time            `json:"updatedAt"`
+	Username  string               `json:"username"`
 }
 
 // LogoutUserParams defines parameters for LogoutUser.
@@ -555,6 +555,7 @@ type GetCurrentUserResponseObject interface {
 type GetCurrentUser200JSONResponse struct {
 	Authenticated *bool                `json:"authenticated,omitempty"`
 	Email         *openapi_types.Email `json:"email,omitempty"`
+	IsAdmin       *bool                `json:"isAdmin,omitempty"`
 	Provider      *string              `json:"provider,omitempty"`
 	Timestamp     *time.Time           `json:"timestamp,omitempty"`
 	Username      *string              `json:"username,omitempty"`

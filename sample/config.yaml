@@ -7,6 +7,12 @@ management:
   prefix: _
   logging: true
   analytics: true
+  admin:
+    # Admin access to the dashboard
+    # Only this user can access the /_/admin/ dashboard
+    enabled: true
+    username: admin
+    password: admin123  # This will be automatically hashed for security
 
 routes:
   - name: Favicon

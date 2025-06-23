@@ -89,6 +89,7 @@ type Session struct {
 	Username        string
 	Email           string
 	IsAuthenticated bool
+	IsAdmin         bool
 	ValidUntil      time.Time
 	Provider        string
 	ClosedOn        *time.Time

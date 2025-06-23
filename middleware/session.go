@@ -43,7 +43,7 @@ var OperationWithNoSecurity = []string{
 }
 
 // StrictSessionMiddleware creates a strict middleware for session handling based on OpenAPI operation security requirements.
-func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase string) api.StrictMiddlewareFunc {
+func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase string, adminRequired bool) api.StrictMiddlewareFunc {
 	return func(f api.StrictHandlerFunc, operationID string) api.StrictHandlerFunc {
 		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, requestObject interface{}) (responseObject interface{}, err error) {
 
@@ -68,7 +68,7 @@ func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase s
 			// It returns the session data and a boolean indicating if the session is valid.
 			validSession, isAuthenticated = store.ValidateSession(r)
 
-			if isAuthenticated && validSession != nil { // Valid session exists
+			if isAuthenticated && validSession != nil && ((adminRequired && validSession.IsAdmin) || !adminRequired) { // Valid session exists
 				// Enrich the context passed to the next handler with the session data.
 				newCtx := context.WithValue(ctx, session.SessionKey, validSession) // Corrected: Use SessionKey
 				log.Printf("SessionStrictMiddleware: Session valid for operation '%s' (path: %s). Proceeding with session.", operationID, r.URL.Path)
@@ -87,7 +87,7 @@ func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase s
 }
 
 // SessionMiddleware validates that the session cookie is present and valid
-func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, isStatic bool, managementPrefix string) http.HandlerFunc {
+func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, isStatic bool, managementPrefix string, adminRequired bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Add cache-control headers to prevent caching of authenticated content
 		w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
@@ -107,6 +107,22 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 			}
 			return
 		}
+
+		// Check if admin access is required and user is not admin
+		if adminRequired && !sessionObject.IsAdmin {
+			log.Printf("Admin access required but user %s (session %s) is not admin", sessionObject.UserID, sessionObject.Token)
+			if isStatic {
+				// Redirect to login page with error message
+				originalURL := r.URL.RequestURI()
+				redirectURL := managementPrefix + "/login?redirect=" + url.QueryEscape(originalURL)
+				http.Redirect(w, r, redirectURL, http.StatusFound)
+			} else {
+				// Return 403 Forbidden for API requests
+				http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+			}
+			return
+		}
+
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, session.SessionKey, sessionObject)
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -115,10 +131,10 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 
 // SessionMiddlewareFunc creates an api.MiddlewareFunc from the existing SessionMiddleware.
 // This allows SessionMiddleware to be used with OpenAPI generated handlers that expect api.MiddlewareFunc.
-func SessionMiddlewareFunc(sessionStore session.SessionStore, isStatic bool, managementPrefix string) api.MiddlewareFunc {
+func SessionMiddlewareFunc(sessionStore session.SessionStore, isStatic bool, managementPrefix string, adminRequired bool) api.MiddlewareFunc {
 	return func(nextHandler http.Handler) http.Handler {
 		// Adapt nextHandler (an http.Handler) to http.HandlerFunc for SessionMiddleware.
 		// The result of SessionMiddleware is an http.HandlerFunc, which satisfies the http.Handler interface.
-		return SessionMiddleware(http.HandlerFunc(nextHandler.ServeHTTP), sessionStore, isStatic, managementPrefix)
+		return SessionMiddleware(http.HandlerFunc(nextHandler.ServeHTTP), sessionStore, isStatic, managementPrefix, adminRequired)
 	}
 }
