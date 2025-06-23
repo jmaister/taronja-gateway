@@ -52,7 +52,7 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled {
 		log.Printf("Registering Basic Authentication provider")
-		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo)
+		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo, gatewayConfig)
 	}
 
 	if gatewayConfig.AuthenticationProviders.Github.ClientId != "" &&
@@ -272,7 +272,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
-		MaxAge:   86400, // 24 hours
+		MaxAge:   int((24 * time.Hour).Seconds()), // 24 hours
 	})
 
 	redirectURL := "/"

@@ -70,7 +70,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		// Test operations that are in OperationWithNoSecurity list
 		for _, operationID := range OperationWithNoSecurity {
 			t.Run(operationID, func(t *testing.T) {
-				middleware := StrictSessionMiddleware(store, loginRedirectBase)
+				middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
 				handlerCalled := false
 				mockHandler := mockStrictHandler("success", nil)
 
@@ -95,7 +95,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 	t.Run("operation with valid session", func(t *testing.T) {
 		sessionData, cookie := createValidSessionAndCookie(t, store, user)
 
-		middleware := StrictSessionMiddleware(store, loginRedirectBase)
+		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
 		handlerCalled := false
 		var receivedCtx context.Context
 
@@ -119,7 +119,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 	})
 
 	t.Run("operation requiring auth with no session cookie", func(t *testing.T) {
-		middleware := StrictSessionMiddleware(store, loginRedirectBase)
+		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -139,7 +139,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 	})
 
 	t.Run("operation requiring auth with invalid session token", func(t *testing.T) {
-		middleware := StrictSessionMiddleware(store, loginRedirectBase)
+		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -168,7 +168,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		expiredSession, err := store.NewSession(req, user, "test-provider", -time.Hour) // Expired 1 hour ago
 		require.NoError(t, err)
 
-		middleware := StrictSessionMiddleware(store, loginRedirectBase)
+		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -197,7 +197,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		err := store.EndSession(sessionData.Token)
 		require.NoError(t, err)
 
-		middleware := StrictSessionMiddleware(store, loginRedirectBase)
+		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -237,7 +237,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/static/file.html", nil)
 		req.AddCookie(cookie)
@@ -271,7 +271,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		req.AddCookie(cookie)
@@ -301,7 +301,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/static/file.html", nil)
 		w := httptest.NewRecorder()
@@ -323,7 +323,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		w := httptest.NewRecorder()
@@ -342,7 +342,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/static/file.html", nil)
 		req.AddCookie(&http.Cookie{
@@ -368,7 +368,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		req.AddCookie(&http.Cookie{
@@ -396,7 +396,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
 
 		testReq := httptest.NewRequest("GET", "/static/file.html", nil)
 		testReq.AddCookie(&http.Cookie{
@@ -427,7 +427,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
 
 		testReq := httptest.NewRequest("GET", "/api/users", nil)
 		testReq.AddCookie(&http.Cookie{
@@ -456,7 +456,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix)
+		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		req.AddCookie(cookie)
@@ -492,7 +492,7 @@ func TestSessionMiddlewareFunc(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middlewareFunc := SessionMiddlewareFunc(store, false, managementPrefix)
+		middlewareFunc := SessionMiddlewareFunc(store, false, managementPrefix, false)
 		wrappedHandler := middlewareFunc(nextHandler)
 
 		req := httptest.NewRequest("GET", "/api/test", nil)
@@ -512,7 +512,7 @@ func TestSessionMiddlewareFunc(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middlewareFunc := SessionMiddlewareFunc(store, false, managementPrefix)
+		middlewareFunc := SessionMiddlewareFunc(store, false, managementPrefix, false)
 		wrappedHandler := middlewareFunc(nextHandler)
 
 		req := httptest.NewRequest("GET", "/api/test", nil)
