@@ -34,10 +34,11 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 		providerPtr = &dbUser.Provider
 	}
 
+	email := openapi_types.Email(dbUser.Email)
 	return api.UserResponse{
 		Id:        dbUser.ID, // Corrected: Directly use dbUser.ID
 		Username:  dbUser.Username,
-		Email:     openapi_types.Email(dbUser.Email), // Corrected: Cast to openapi_types.Email
+		Email:     &email,
 		Name:      namePtr,
 		Picture:   picturePtr,
 		Provider:  providerPtr,

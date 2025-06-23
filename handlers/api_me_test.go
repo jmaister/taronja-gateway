@@ -26,6 +26,7 @@ func TestGetCurrentUser(t *testing.T) {
 			Email:           "testuser@example.com",
 			Provider:        "testprovider",
 			IsAuthenticated: true,
+			IsAdmin:         false, // Regular user
 			ValidUntil:      time.Now().Add(1 * time.Hour),
 		}
 		ctxWithSession := context.WithValue(context.Background(), session.SessionKey, validSession)
@@ -50,6 +51,45 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.Equal(t, openapi_types.Email("testuser@example.com"), openapi_types.Email(*userResp.Email))
 		assert.NotNil(t, userResp.Provider)
 		assert.Equal(t, "testprovider", *userResp.Provider)
+		assert.NotNil(t, userResp.IsAdmin)
+		assert.False(t, *userResp.IsAdmin)
+		assert.NotNil(t, userResp.Timestamp)
+	})
+
+	t.Run("AuthenticatedAdminUser", func(t *testing.T) {
+		// Setup: Create a valid admin session
+		adminSession := &db.Session{
+			Token:           "admin-session-id",
+			UserID:          "admin",
+			Username:        "admin",
+			Email:           "",
+			Provider:        session.AdminProvider,
+			IsAuthenticated: true,
+			IsAdmin:         true, // Admin user
+			ValidUntil:      time.Now().Add(1 * time.Hour),
+		}
+		ctxWithAdminSession := context.WithValue(context.Background(), session.SessionKey, adminSession)
+		req := api.GetCurrentUserRequestObject{}
+
+		// Execute
+		resp, err := s.GetCurrentUser(ctxWithAdminSession, req)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.NotNil(t, resp)
+
+		userResp, ok := resp.(api.GetCurrentUser200JSONResponse)
+		assert.True(t, ok, "Response should be GetCurrentUser200JSONResponse")
+		assert.NotNil(t, userResp.Authenticated)
+		assert.True(t, *userResp.Authenticated)
+		assert.NotNil(t, userResp.Username)
+		assert.Equal(t, "admin", *userResp.Username)
+		assert.NotNil(t, userResp.Email)
+		assert.Equal(t, openapi_types.Email(""), openapi_types.Email(*userResp.Email))
+		assert.NotNil(t, userResp.Provider)
+		assert.Equal(t, session.AdminProvider, *userResp.Provider)
+		assert.NotNil(t, userResp.IsAdmin)
+		assert.True(t, *userResp.IsAdmin)
 		assert.NotNil(t, userResp.Timestamp)
 	})
 
