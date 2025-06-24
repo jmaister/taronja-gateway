@@ -4,13 +4,16 @@ import { createRoot } from 'react-dom/client';
 import './index.css'; // Existing global styles
 import './input.css'; // Tailwind styles
 import App from './App'; // .tsx extension is usually omitted in imports
+import { AuthProvider } from './contexts/AuthContext';
 
 const rootElement = document.getElementById('root');
 
 if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </StrictMode>,
   );
 } else {

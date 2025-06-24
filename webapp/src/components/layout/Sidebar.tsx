@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth, getUserDisplayName } from '../../contexts/AuthContext';
 
 interface NavItemConfig {
   name: string;
@@ -14,14 +15,15 @@ interface SidebarProps {
   toggleDesktopCollapse: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({
+const Sidebar = ({
   isOpenOnMobile,
   toggleMobileSidebar,
   isDesktopCollapsed,
   toggleDesktopCollapse,
-}) => {
+}: SidebarProps) => {
   const [isMobileView, setIsMobileView] = useState(false);
   const location = useLocation();
+  const { currentUser, logout } = useAuth();
 
   useEffect(() => {
     const checkMobileView = () => setIsMobileView(window.innerWidth < 768); // md breakpoint
@@ -31,6 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   const navItems: NavItemConfig[] = [
+    { name: 'Dashboard', icon: '📊', path: '/dashboard' },
     { name: 'Users', icon: '👥', path: '/users' },
     // { name: 'Settings', icon: '⚙️', path: '/settings' }, // Example of another potential link
   ];
@@ -42,6 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (path === "/users") {
       return location.pathname === path || location.pathname.startsWith(path + '/');
     }
+    // For other paths, exact match
     return location.pathname === path;
   };
 
@@ -119,6 +123,20 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {!displayIconsOnly && (
           <div className="mt-auto pt-6 border-t border-slate-700">
+            {currentUser && (
+              <div className="mb-4 px-3">
+                <div className="text-xs text-slate-400 mb-2">Logged in as:</div>
+                <div className="text-sm text-slate-300 font-medium mb-2">
+                  {getUserDisplayName(currentUser)}
+                </div>
+                <button
+                  onClick={logout}
+                  className="w-full text-xs text-slate-400 hover:text-slate-200 py-1 px-2 rounded border border-slate-600 hover:border-slate-500 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
             <p className="text-xs text-slate-400 text-center">© {new Date().getFullYear()} Admin Panel</p>
           </div>
         )}

@@ -1,4 +1,4 @@
-import React from 'react';
+import { UserBadge } from '../UserProfile';
 
 interface HeaderProps {
   pageTitle?: string;
@@ -6,11 +6,11 @@ interface HeaderProps {
   isMobileView?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({
+const Header = ({
   pageTitle = "User Management",
   toggleMobileSidebar,
   isMobileView,
-}) => {
+}: HeaderProps) => {
   return (
     <header className="bg-white shadow-md p-4 sticky top-0 z-20">
       <div className="container mx-auto flex items-center justify-between h-12">
@@ -58,15 +58,8 @@ const Header: React.FC<HeaderProps> = ({
             </svg>
           </button>
 
-          {/* User Profile Placeholder */}
-          <div className="flex items-center space-x-2 cursor-pointer group">
-            <img
-              src="https://via.placeholder.com/32"
-              alt="User Avatar"
-              className="w-8 h-8 rounded-full ring-2 ring-offset-1 ring-transparent group-hover:ring-blue-500 transition-all duration-150"
-            />
-            <span className="hidden sm:inline text-sm font-medium text-gray-700 group-hover:text-blue-600">Admin User</span>
-          </div>
+          {/* User Profile */}
+          <UserBadge />
         </div>
       </div>
     </header>

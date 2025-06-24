@@ -1,4 +1,3 @@
-import React from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -22,12 +21,7 @@ ChartJS.register(
   Legend
 );
 
-interface SampleBarChartProps {
-  // Props can be added here later to customize data, options, etc.
-  // For now, it uses fixed internal data.
-}
-
-const SampleBarChart: React.FC<SampleBarChartProps> = () => {
+const SampleBarChart = () => {
   const data: ChartData<'bar'> = {
     labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     datasets: [
@@ -74,7 +68,7 @@ const SampleBarChart: React.FC<SampleBarChartProps> = () => {
         font: {
           size: 16,
           family: 'Inter, sans-serif',
-          weight: '600',
+          weight: 600,
         },
         padding: {
           top: 10,

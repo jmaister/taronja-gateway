@@ -1,5 +1,4 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import './App.css'; // Keep if it has essential base styles not covered by Tailwind preflight
 
 // Layout and Page Components
@@ -7,54 +6,99 @@ import MainLayout from './components/layout/MainLayout';
 import { UsersListPage } from './components/UsersListPage';
 import { CreateUserPage } from './components/CreateUserPage';
 import { UserInfoPage } from './components/UserInfoPage';
+import { DashboardPage } from './components/DashboardPage';
+import { NotFoundPage } from './components/NotFoundPage';
 
-// A component to group routes under MainLayout
-const AdminLayoutRoutes: React.FC = () => (
-  <MainLayout>
-    <Outlet /> {/* Child routes will render here through MainLayout's children prop */}
-  </MainLayout>
-);
+// Authentication components
+import { useAuth } from './contexts/AuthContext';
 
-// Simple 404 Page component
-const NotFoundPage: React.FC = () => (
-  <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center p-4">
-    <h1 className="text-4xl font-bold text-slate-700 mb-4">404 - Page Not Found</h1>
-    <p className="text-lg text-slate-600 mb-8">
-      Sorry, the page you are looking for does not exist or has been moved.
-    </p>
-    <Link
-      to="/users" // Link back to the main admin page
-      className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-    >
-      Go to User Management
-    </Link>
-    <footer className="absolute bottom-4 text-center p-4 text-gray-500 text-xs">
-        <p>Taronja Gateway Admin</p>
-    </footer>
-  </div>
-);
+// A component to group routes under MainLayout with admin protection
+const AdminLayoutRoutes = () => {
+    const { isAuthenticated, currentUser, isLoading } = useAuth();
+
+    // Show loading state while checking authentication
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Redirect to login if not authenticated
+    if (!isAuthenticated) {
+        window.location.href = '/login';
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                <div className="text-center">
+                    <p className="text-gray-600 mb-4">Redirecting to login...</p>
+                    <a href="/login" className="text-blue-500 hover:text-blue-700">
+                        Click here if not redirected automatically
+                    </a>
+                </div>
+            </div>
+        );
+    }
+
+    // Check for admin privileges
+    if (!currentUser?.isAdmin) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center p-4">
+                <h1 className="text-4xl font-bold text-red-600 mb-4">Access Denied</h1>
+                <p className="text-lg text-gray-600 mb-8">
+                    You need administrator privileges to access this admin panel.
+                </p>
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-500">
+                        Current user: {currentUser?.username} ({currentUser?.email})
+                    </p>
+                    <a
+                        href="/"
+                        className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        Go to Main Site
+                    </a>
+                </div>
+                <footer className="absolute bottom-4 text-center p-4 text-gray-500 text-xs">
+                    <p>Taronja Gateway Admin</p>
+                </footer>
+            </div>
+        );
+    }
+
+    // User is authenticated and has admin privileges
+    return (
+        <MainLayout>
+            <Outlet /> {/* Child routes will render here through MainLayout's children prop */}
+        </MainLayout>
+    );
+};
 
 
 function App() {
-  return (
-    <BrowserRouter basename="/_/admin">
-      <Routes>
-        {/* Routes that use the MainLayout */}
-        <Route element={<AdminLayoutRoutes />}>
-          <Route path="/users" element={<UsersListPage />} />
-          <Route path="/users/new" element={<CreateUserPage />} />
-          <Route path="/users/:userId" element={<UserInfoPage />} />
-          {/* Add other admin routes that should use MainLayout here */}
-        </Route>
+    return (
+        <BrowserRouter basename="/_/admin">
+            <Routes>
+                {/* Routes that use the MainLayout */}
+                <Route element={<AdminLayoutRoutes />}>
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/users" element={<UsersListPage />} />
+                    <Route path="/users/new" element={<CreateUserPage />} />
+                    <Route path="/users/:userId" element={<UserInfoPage />} />
+                    {/* Add other admin routes that should use MainLayout here */}
+                </Route>
 
-        {/* Root path redirect to /users */}
-        <Route path="/" element={<Navigate replace to="/users" />} />
+                {/* Root path redirect to /dashboard */}
+                <Route path="/" element={<Navigate replace to="/dashboard" />} />
 
-        {/* Catch-all for unmatched routes */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </BrowserRouter>
-  );
+                {/* Catch-all for unmatched routes */}
+                <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+        </BrowserRouter>
+    );
 }
 
 export default App;
