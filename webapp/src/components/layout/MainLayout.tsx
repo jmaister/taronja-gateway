@@ -19,23 +19,8 @@ const getPageTitleFromPath = (path: string): string => {
 
 const MainLayout = ({ children }: MainLayoutProps) => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
-  const [isMobileView, setIsMobileView] = useState(false);
   const location = useLocation();
   const [pageTitle, setPageTitle] = useState(getPageTitleFromPath(location.pathname));
-
-  useEffect(() => {
-    const checkMobileView = () => {
-      const mobile = window.innerWidth < 768; // md breakpoint
-      setIsMobileView(mobile);
-      if (!mobile && isMobileSidebarOpen) {
-        setIsMobileSidebarOpen(false);
-      }
-    };
-    checkMobileView();
-    window.addEventListener('resize', checkMobileView);
-    return () => window.removeEventListener('resize', checkMobileView);
-  }, [isMobileSidebarOpen]);
 
   useEffect(() => {
     setPageTitle(getPageTitleFromPath(location.pathname));
@@ -45,28 +30,32 @@ const MainLayout = ({ children }: MainLayoutProps) => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
   };
 
-  const toggleDesktopCollapse = () => {
-    setIsDesktopSidebarCollapsed(!isDesktopSidebarCollapsed);
-  };
-
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        isOpenOnMobile={isMobileSidebarOpen}
-        toggleMobileSidebar={toggleMobileSidebar}
-        isDesktopCollapsed={isDesktopSidebarCollapsed}
-        toggleDesktopCollapse={toggleDesktopCollapse}
+    <div className="drawer lg:drawer-open">
+      <input 
+        id="sidebar-drawer" 
+        type="checkbox" 
+        className="drawer-toggle" 
+        checked={isMobileSidebarOpen}
+        onChange={toggleMobileSidebar}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      
+      {/* Page content */}
+      <div className="drawer-content flex flex-col">
         <Header
           pageTitle={pageTitle}
           toggleMobileSidebar={toggleMobileSidebar}
-          isMobileView={isMobileView}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+        <main className="flex-1 p-6 bg-base-100">
           {children}
         </main>
       </div>
+
+      {/* Sidebar */}
+      <Sidebar
+        isOpenOnMobile={isMobileSidebarOpen}
+        toggleMobileSidebar={toggleMobileSidebar}
+      />
     </div>
   );
 };
