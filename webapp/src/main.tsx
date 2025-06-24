@@ -1,7 +1,8 @@
 import React from 'react'; // Ensure React is in scope for JSX
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import './index.css';
+import './index.css'; // Existing global styles
+import './input.css'; // Tailwind styles
 import App from './App'; // .tsx extension is usually omitted in imports
 
 const rootElement = document.getElementById('root');

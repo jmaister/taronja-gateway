@@ -16,3 +16,4 @@ coverage.html
 
 # DB files
 *.db
+webapp/node_modules/

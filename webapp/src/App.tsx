@@ -1,59 +1,58 @@
-import React, { useState } from 'react'; // Ensure React is in scope for JSX
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
-import './App.css';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, Link } from 'react-router-dom';
+import './App.css'; // Keep if it has essential base styles not covered by Tailwind preflight
 
-// Import the components that will be used as pages
-import { UsersListPage } from './components/UsersListPage'; // Updated import
-import { CreateUserPage } from './components/CreateUserPage'; 
-import { UserInfoPage } from './components/UserInfoPage'; 
+// Layout and Page Components
+import MainLayout from './components/layout/MainLayout';
+import { UsersListPage } from './components/UsersListPage';
+import { CreateUserPage } from './components/CreateUserPage';
+import { UserInfoPage } from './components/UserInfoPage';
 
-// Sample data is no longer needed here for page props, but might be used for other examples if any.
-// const sampleUser = { id: '1', username: 'john.doe', email: 'john.doe@example.com', provider: 'local', name: 'John Doe', picture: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+// A component to group routes under MainLayout
+const AdminLayoutRoutes: React.FC = () => (
+  <MainLayout>
+    <Outlet /> {/* Child routes will render here through MainLayout's children prop */}
+  </MainLayout>
+);
+
+// Simple 404 Page component
+const NotFoundPage: React.FC = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center p-4">
+    <h1 className="text-4xl font-bold text-slate-700 mb-4">404 - Page Not Found</h1>
+    <p className="text-lg text-slate-600 mb-8">
+      Sorry, the page you are looking for does not exist or has been moved.
+    </p>
+    <Link
+      to="/users" // Link back to the main admin page
+      className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+    >
+      Go to User Management
+    </Link>
+    <footer className="absolute bottom-4 text-center p-4 text-gray-500 text-xs">
+        <p>Taronja Gateway Admin</p>
+    </footer>
+  </div>
+);
+
 
 function App() {
-  // managementPrefix is no longer needed for client-side routing.
-  // API calls use absolute paths. Non-SPA links (if any) would need it,
-  // but current components primarily use <Link> or navigate.
-
   return (
     <BrowserRouter basename="/_/admin">
-      {/* The basename is set to match the Vite base path, ensuring correct routing */}
-      <div className="min-h-screen bg-gray-100">
-        <nav className="bg-blue-300 text-white p-4 shadow-md">
-          <div className="container mx-auto flex justify-between items-center">
-            <Link to="/" className="text-xl font-bold hover:cursor-pointer">Taronja Gateway dashboard</Link>
-            <div>
-              <Link to="/users" className="px-3 py-2 rounded hover:bg-blue-700">Users List</Link>
-              <Link to="/users/new" className="px-3 py-2 rounded hover:bg-blue-700">Create User</Link>
-            </div>
-          </div>
-        </nav>
+      <Routes>
+        {/* Routes that use the MainLayout */}
+        <Route element={<AdminLayoutRoutes />}>
+          <Route path="/users" element={<UsersListPage />} />
+          <Route path="/users/new" element={<CreateUserPage />} />
+          <Route path="/users/:userId" element={<UserInfoPage />} />
+          {/* Add other admin routes that should use MainLayout here */}
+        </Route>
 
-        <main className="container mx-auto p-4">
-          <Routes>
-            <Route path="/users" element={<UsersListPage />} />
-            <Route path="/users/new" element={<CreateUserPage />} />
-            <Route path="/users/:userId" element={<UserInfoPage />} />
-            <Route path="/" element={<Navigate replace to="/users" />} />
-            <Route path="*" element={
-              <div className="text-center p-10">
-                <h1 className="text-3xl font-bold mb-4">Welcome to
-                    <br />
-                    <span className="text-5xl font-bold bg-gradient-to-r from-orange-400 to-orange-600 bg-clip-text text-transparent">
-                        Taronja Gateway
-                    </span>
-                    <br />
-                    dashboard
-                    </h1>
-              </div>
-            } />
-          </Routes>
-        </main>
+        {/* Root path redirect to /users */}
+        <Route path="/" element={<Navigate replace to="/users" />} />
 
-        <footer className="text-center p-4 text-gray-600 text-sm">
-          <p>Vite + React + TypeScript + Tailwind CSS v4</p>
-        </footer>
-      </div>
+        {/* Catch-all for unmatched routes */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
     </BrowserRouter>
   );
 }
