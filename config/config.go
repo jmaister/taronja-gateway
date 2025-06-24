@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jmaister/taronja-gateway/encryption"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -59,11 +60,19 @@ type NotificationConfig struct {
 	} `yaml:"email"`
 }
 
+// Admin configuration for dashboard and other management features.
+type AdminConfig struct {
+	Enabled  bool   `yaml:"enabled"`  // Enable admin access
+	Username string `yaml:"username"` // Admin username
+	Password string `yaml:"password"` // Admin password (will be hashed)
+}
+
 // New: Management API Configuration Structs
 type ManagementConfig struct {
-	Prefix    string `yaml:"prefix"`    // e.g., "/_"
-	Logging   bool   `yaml:"logging"`   // Enable logging
-	Analytics bool   `yaml:"analytics"` // Enable request/response analytics collection
+	Prefix    string      `yaml:"prefix"`    // e.g., "/_"
+	Logging   bool        `yaml:"logging"`   // Enable logging
+	Analytics bool        `yaml:"analytics"` // Enable request/response analytics collection
+	Admin     AdminConfig `yaml:"admin"`     // Admin access configuration
 }
 
 // Main GatewayConfig Struct including Management API config
@@ -121,6 +130,28 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		config.Management.Prefix = "/_"
 	}
 	config.Management.Prefix = "/" + strings.Trim(config.Management.Prefix, "/") // Ensure leading/no trailing slash
+
+	// Process admin credentials
+	// If admin access is enabled, ensure both username and password are set
+	if config.Management.Admin.Enabled {
+		if config.Management.Admin.Username == "" || config.Management.Admin.Password == "" {
+			return nil, fmt.Errorf("admin access is enabled but username and/or password is not set")
+		}
+		// Hash the password if it's not already hashed
+		if !encryption.IsPasswordHashed(config.Management.Admin.Password) {
+			hashedPassword, err := encryption.GeneratePasswordHash(config.Management.Admin.Password)
+			if err != nil {
+				return nil, fmt.Errorf("failed to hash admin password: %w", err)
+			}
+			config.Management.Admin.Password = hashedPassword
+			log.Printf("Admin password has been hashed for security")
+		}
+	} else {
+		// If admin access is not enabled, clear username and password
+		config.Management.Admin.Username = ""
+		config.Management.Admin.Password = ""
+		log.Printf("Admin access is disabled")
+	}
 
 	// Resolve static route paths
 	currentDir, err := os.Getwd()

@@ -147,9 +147,9 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 
 func (g *Gateway) registerDashboard(prefix string) {
 	dashboardPath := prefix + "/admin/"
-	// TODO: must be authenticated to access the dashboard
-	// TODO: only specific users can access the dashboard, based on config/attributes/other...
-	g.Mux.HandleFunc(dashboardPath, func(w http.ResponseWriter, r *http.Request) {
+
+	// Create the dashboard handler
+	dashboardHandler := func(w http.ResponseWriter, r *http.Request) {
 		// Get the path after stripping the dashboard prefix
 		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
 
@@ -230,8 +230,13 @@ func (g *Gateway) registerDashboard(prefix string) {
 		w.Header().Set("Content-Type", contentType)
 		w.Write(data)
 		log.Printf("Dashboard request served: %s -> %s", r.URL.Path, finalPath)
-	})
-	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth: %t", "Dashboard", dashboardPath, true)
+	}
+
+	// Wrap dashboard handler with admin session authentication
+	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.SessionStore, true, g.GatewayConfig.Management.Prefix, true)
+
+	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
+	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
 }
 
 func (g *Gateway) registerOpenAPIRoutes(prefix string) {
@@ -243,7 +248,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix)
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -415,7 +420,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return middleware.SessionMiddleware(next, g.SessionStore, isStatic, g.GatewayConfig.Management.Prefix)
+	return middleware.SessionMiddleware(next, g.SessionStore, isStatic, g.GatewayConfig.Management.Prefix, false)
 }
 
 // --- Route Handler Creation ---

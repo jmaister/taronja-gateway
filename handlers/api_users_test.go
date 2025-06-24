@@ -1,11 +1,8 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -44,7 +41,8 @@ func TestCreateUser(t *testing.T) {
 		createUserResp, ok := resp.(api.CreateUser201JSONResponse)
 		require.True(t, ok, "Expected CreateUser201JSONResponse")
 		assert.Equal(t, "testuser", createUserResp.Username)
-		assert.Equal(t, openapi_types.Email("testuser@example.com"), createUserResp.Email)
+		require.NotNil(t, createUserResp.Email)
+		assert.Equal(t, openapi_types.Email("testuser@example.com"), *createUserResp.Email)
 		assert.NotEmpty(t, createUserResp.Id)
 		//assert.NotZero(t, createUserResp.CreatedAt)
 		//assert.NotZero(t, createUserResp.UpdatedAt)
@@ -223,7 +221,8 @@ func TestGetUserById(t *testing.T) {
 		require.True(t, ok, "Expected GetUserById200JSONResponse")
 		assert.Equal(t, userID, getResp.Id)
 		assert.Equal(t, "getmeuser", getResp.Username)
-		assert.Equal(t, openapi_types.Email("getme@example.com"), getResp.Email)
+		require.NotNil(t, getResp.Email)
+		assert.Equal(t, openapi_types.Email("getme@example.com"), *getResp.Email)
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
@@ -251,28 +250,4 @@ func TestGetUserById(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, errResp.Code)
 		assert.Equal(t, "User ID path parameter is required", errResp.Message)
 	})
-}
-
-// Helper function to create a request with a JSON body for HTTP handlers (if needed for future tests)
-func newPostRequest(t *testing.T, body interface{}) *http.Request {
-	jsonBody, err := json.Marshal(body)
-	require.NoError(t, err)
-	req, err := http.NewRequest("POST", "/", bytes.NewBuffer(jsonBody))
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	return req
-}
-
-// Helper function to create a GET request (if needed for future tests)
-func newGetRequest(t *testing.T, path string) *http.Request {
-	req, err := http.NewRequest("GET", path, nil)
-	require.NoError(t, err)
-	return req
-}
-
-// Helper to execute requests against our handler (if needed for future tests directly with http.Handler)
-func executeRequest(req *http.Request, handler http.Handler) *httptest.ResponseRecorder {
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	return rr
 }

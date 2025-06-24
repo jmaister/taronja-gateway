@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +21,20 @@ import (
 func TestRegisterBasicAuth(t *testing.T) {
 	managementPrefix := "/_"
 	testPassword := "password123" // Use a consistent password for all tests
+
+	// Helper to create a test config with admin disabled by default
+	createTestConfig := func() *config.GatewayConfig {
+		return &config.GatewayConfig{
+			Management: config.ManagementConfig{
+				Prefix: managementPrefix,
+				Admin: config.AdminConfig{
+					Enabled:  false,
+					Username: "",
+					Password: "",
+				},
+			},
+		}
+	}
 
 	// Helper to create a standard test user and repo for each test case
 	setupUserAndRepo := func(t *testing.T) db.UserRepository {
@@ -42,8 +58,9 @@ func TestRegisterBasicAuth(t *testing.T) {
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
 		realSessionStore := session.NewSessionStore(realSessionRepo)
-		mockUserRepo := setupUserAndRepo(t)                                      // Create test user
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED: Use real registration
+		mockUserRepo := setupUserAndRepo(t) // Create test user
+		testConfig := createTestConfig()
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED: Use real registration
 
 		// Create a request with valid form credentials
 		formData := url.Values{
@@ -85,7 +102,8 @@ func TestRegisterBasicAuth(t *testing.T) {
 		realSessionRepo := db.NewMemorySessionRepository()
 		realSessionStore := session.NewSessionStore(realSessionRepo) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED realSessionRepo to realSessionStore
+		testConfig := createTestConfig()
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED realSessionRepo to realSessionStore
 
 		formData := url.Values{
 			"username": {"admin"},
@@ -119,7 +137,8 @@ func TestRegisterBasicAuth(t *testing.T) {
 		realSessionRepo := db.NewMemorySessionRepository()
 		realSessionStore := session.NewSessionStore(realSessionRepo) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo) // CHANGED: Use real registration
+		testConfig := createTestConfig()
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED: Use real registration
 
 		formData := url.Values{
 			"username": {"admin"},
@@ -143,6 +162,59 @@ func TestRegisterBasicAuth(t *testing.T) {
 		sessionObj, err := realSessionRepo.FindSessionByToken(sessionCookie.Value)
 		require.NoError(t, err)
 		assert.Equal(t, "admin", sessionObj.Username)
+	})
+
+	t.Run("successful admin authentication from config", func(t *testing.T) {
+		// Per-test setup
+		mux := http.NewServeMux()
+		realSessionRepo := db.NewMemorySessionRepository()
+		realSessionStore := session.NewSessionStore(realSessionRepo)
+		mockUserRepo := setupUserAndRepo(t) // Regular user repo (admin won't be found here)
+
+		// Generate proper hash for the admin password
+		adminPassword := "password123"
+		hashedPassword, err := encryption.GeneratePasswordHash(adminPassword)
+		require.NoError(t, err)
+
+		// Create config with admin enabled
+		testConfig := &config.GatewayConfig{
+			Management: config.ManagementConfig{
+				Prefix: managementPrefix,
+				Admin: config.AdminConfig{
+					Enabled:  true,
+					Username: "configadmin",
+					Password: hashedPassword,
+				},
+			},
+		}
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig)
+
+		formData := url.Values{
+			"username": {"configadmin"},
+			"password": {adminPassword},
+		}
+		formBody := formData.Encode()
+
+		req := httptest.NewRequest("POST", "/_/auth/basic/login", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Content-Length", strconv.Itoa(len(formBody)))
+		w := httptest.NewRecorder()
+
+		mux.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/", w.Header().Get("Location"))
+
+		cookies := w.Result().Cookies()
+		require.Len(t, cookies, 1)
+		sessionCookie := cookies[0]
+		assert.Equal(t, session.SessionCookieName, sessionCookie.Name)
+
+		sessionObj, err := realSessionRepo.FindSessionByToken(sessionCookie.Value)
+		require.NoError(t, err)
+		assert.Equal(t, "configadmin", sessionObj.Username)
+		assert.Equal(t, "", sessionObj.Email)
+		assert.True(t, sessionObj.IsAuthenticated)
 	})
 
 }
