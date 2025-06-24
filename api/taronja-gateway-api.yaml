@@ -84,6 +84,23 @@ paths:
                     type: string
                     format: email
                     example: "user@example.com"
+                  name:
+                    type: string
+                    nullable: true
+                    example: "Test User"
+                  picture:
+                    type: string
+                    format: uri
+                    nullable: true
+                    example: "https://example.com/picture.jpg"
+                  givenName:
+                    type: string
+                    nullable: true
+                    example: "Test"
+                  familyName:
+                    type: string
+                    nullable: true
+                    example: "User"
                   provider:
                     type: string
                     example: "google"

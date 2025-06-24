@@ -15,9 +15,25 @@ import (
 )
 
 func TestGetCurrentUser(t *testing.T) {
-	s := &handlers.StrictApiServer{}
+	// Setup test server with proper repositories
+	userRepo := db.NewMemoryUserRepository()
+	sessionRepo := db.NewMemorySessionRepository()
+	sessionStore := session.NewSessionStore(sessionRepo)
+	s := handlers.NewStrictApiServer(sessionStore, userRepo)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {
+		// Setup: Create a test user in the repository
+		testUser := &db.User{
+			ID:       "1",
+			Username: "testuser",
+			Email:    "testuser@example.com",
+			Name:     "Test User",
+			Picture:  "https://example.com/avatar.jpg",
+			Provider: "testprovider",
+		}
+		err := userRepo.CreateUser(testUser)
+		assert.NoError(t, err)
+
 		// Setup: Create a valid session
 		validSession := &db.Session{
 			Token:           "valid-session-id",
@@ -54,6 +70,11 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.NotNil(t, userResp.IsAdmin)
 		assert.False(t, *userResp.IsAdmin)
 		assert.NotNil(t, userResp.Timestamp)
+		// Check new fields
+		assert.NotNil(t, userResp.Name)
+		assert.Equal(t, "Test User", *userResp.Name)
+		assert.NotNil(t, userResp.Picture)
+		assert.Equal(t, "https://example.com/avatar.jpg", *userResp.Picture)
 	})
 
 	t.Run("AuthenticatedAdminUser", func(t *testing.T) {

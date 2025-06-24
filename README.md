@@ -8,25 +8,28 @@ It serves as an entry point for your API server and your frontend application, h
 
 Features table, shows what is implemented and what is planned.
 
-| Feature                      | Status   |
-|------------------------------|----------|
-| Gateway                      | ✅       |
-| Authentication               | ✅       |
-| Authentication: Basic        | ✅       |
-| Authentication: OAuth2       | ✅       |
-| - OAuth2: GitHub             | ✅       |
-| - OAuth2: Google             | ✅       |
-| Authentication: JWT          | 🚧       |
-| Authorization using RBAC     | 🚧       |
-| Sessions                     | ✅       |
-| User management              | 🚧       |
-| Rate Limiting                | 🚧       |
-| Circuit breaker              | 🚧       |
-| Caching                      | 🚧       |
-| Logging                      | ✅       |
-| Monitoring                   | 🚧       |
-| Load Balancing               | 🚧       |
-| more...                      | 🚧       |
+| Feature                       | Status   |
+|-------------------------------|----------|
+| API Gateway                   | ✅       |
+| Application Gateway           | ✅       |
+| Management Dashboard          | ✅       |
+| Logging                       | ✅       |
+| Analytics and Traffic metrics | ✅       |
+| Sessions (Persistent)         | ✅       |
+| User management               | ✅       |
+| Authentication                | ✅       |
+| Authentication: Basic         | ✅       |
+| Authentication: OAuth2        | ✅       |
+| - OAuth2: GitHub              | ✅       |
+| - OAuth2: Google              | ✅       |
+| Authentication: JWT           | 🚧       |
+| Authorization using RBAC      | 🚧       |
+| Rate Limiting                 | 🚧       |
+| Circuit breaker               | 🚧       |
+| Caching                       | 🚧       |
+| Load Balancing                | 🚧       |
+| robots.txt                    | 🚧       |
+| more...                       | 🚧       |
 
 ## Commands
 

@@ -555,7 +555,11 @@ type GetCurrentUserResponseObject interface {
 type GetCurrentUser200JSONResponse struct {
 	Authenticated *bool                `json:"authenticated,omitempty"`
 	Email         *openapi_types.Email `json:"email,omitempty"`
+	FamilyName    *string              `json:"familyName"`
+	GivenName     *string              `json:"givenName"`
 	IsAdmin       *bool                `json:"isAdmin,omitempty"`
+	Name          *string              `json:"name"`
+	Picture       *string              `json:"picture"`
 	Provider      *string              `json:"provider,omitempty"`
 	Timestamp     *time.Time           `json:"timestamp,omitempty"`
 	Username      *string              `json:"username,omitempty"`
