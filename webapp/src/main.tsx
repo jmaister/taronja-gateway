@@ -1,8 +1,7 @@
 import React from 'react'; // Ensure React is in scope for JSX
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import './index.css'; // Existing global styles
-import './input.css'; // Tailwind styles
+import './index.css'; // Global styles including Tailwind and daisyUI
 import App from './App'; // .tsx extension is usually omitted in imports
 import { AuthProvider } from './contexts/AuthContext';
 
