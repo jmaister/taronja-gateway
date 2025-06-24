@@ -254,7 +254,7 @@ export const withAuth = <P extends object>(
                     <h2 className="text-xl font-semibold text-gray-700">Authentication Required</h2>
                     <p className="text-gray-500">Please log in to access this content.</p>
                     <a 
-                        href="/login" 
+                        href="/_/login" 
                         className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                     >
                         Login
@@ -296,7 +296,7 @@ export const withAdminAuth = <P extends object>(
                     <h2 className="text-xl font-semibold text-gray-700">Authentication Required</h2>
                     <p className="text-gray-500">Please log in to access this content.</p>
                     <a 
-                        href="/login" 
+                        href="/_/login" 
                         className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                     >
                         Login
