@@ -14,7 +14,7 @@
  * - Combine with Tailwind utilities
  * - Use daisyUI color names (primary, secondary, etc.)
  */
-import { useAuth, getUserDisplayName } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 
 interface SidebarProps {
@@ -134,23 +134,12 @@ const Sidebar = ({
           {/* User Info Footer */}
           {currentUser && (
             <div className="p-4 border-t border-base-300">
-              <div className="card card-compact bg-base-100 shadow-sm">
-                <div className="card-body">
-                  <div className="text-xs opacity-70">Logged in as:</div>
-                  <div className="font-medium text-sm mb-3">
-                    {getUserDisplayName(currentUser)}
-                  </div>
-                  <button
-                    onClick={logout}
-                    className="btn btn-outline btn-sm w-full"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-              <div className="text-center text-xs opacity-50 mt-3">
-                © {new Date().getFullYear()} Admin Panel
-              </div>
+              <button
+                onClick={logout}
+                className="btn btn-outline btn-sm w-full"
+              >
+                Logout
+              </button>
             </div>
           )}
         </aside>
