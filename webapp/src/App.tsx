@@ -6,7 +6,8 @@ import MainLayout from './components/layout/MainLayout';
 import { UsersListPage } from './components/UsersListPage';
 import { CreateUserPage } from './components/CreateUserPage';
 import { UserInfoPage } from './components/UserInfoPage';
-import { DashboardPage } from './components/DashboardPage';
+import { HomePage } from './components/HomePage';
+import { ProfilePage } from './components/ProfilePage';
 import { NotFoundPage } from './components/NotFoundPage';
 
 // Authentication components
@@ -84,15 +85,16 @@ function App() {
             <Routes>
                 {/* Routes that use the MainLayout */}
                 <Route element={<AdminLayoutRoutes />}>
-                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/home" element={<HomePage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<CreateUserPage />} />
                     <Route path="/users/:userId" element={<UserInfoPage />} />
                     {/* Add other admin routes that should use MainLayout here */}
                 </Route>
 
-                {/* Root path redirect to /dashboard */}
-                <Route path="/" element={<Navigate replace to="/dashboard" />} />
+                {/* Root path redirect to /home */}
+                <Route path="/" element={<Navigate replace to="/home" />} />
 
                 {/* Catch-all for unmatched routes */}
                 <Route path="*" element={<NotFoundPage />} />

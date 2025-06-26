@@ -1,4 +1,5 @@
 import { useAuth, getUserDisplayName, getUserAvatar, getUserInitials } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 
 /**
  * UserProfile component that demonstrates how to use the enhanced AuthContext
@@ -58,7 +59,9 @@ export const UserProfile = () => {
             {/* User Info */}
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                    {displayName}
+                    <Link to="/profile" className="hover:text-blue-600 hover:underline">
+                        {displayName}
+                    </Link>
                 </p>
                 <p className="text-sm text-gray-500 truncate">
                     {currentUser.email}

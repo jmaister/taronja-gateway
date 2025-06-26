@@ -13,10 +13,10 @@ export const NotFoundPage = () => {
             </p>
             {isAuthenticated && currentUser?.isAdmin ? (
                 <Link
-                    to="/dashboard" // Link back to the main admin page
+                    to="/home" // Link back to the home page
                     className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                    Go to Dashboard
+                    Go to Home
                 </Link>
             ) : (
                 <a

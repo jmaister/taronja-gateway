@@ -28,7 +28,8 @@ const Sidebar = ({
   const { currentUser, logout } = useAuth();
 
   const navItems = [
-    { name: 'Dashboard', icon: '📊', path: '/dashboard' },
+    { name: 'Home', icon: '🏠', path: '/home' },
+    { name: 'Profile', icon: '👤', path: '/profile' },
     { 
       name: 'Users', 
       icon: '👥', 
