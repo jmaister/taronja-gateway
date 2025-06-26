@@ -56,6 +56,9 @@ type RequestStatistics struct {
 	// RequestsByStatus Number of requests grouped by HTTP status code
 	RequestsByStatus map[string]int `json:"requestsByStatus"`
 
+	// RequestsByUser Number of requests grouped by user (username or user ID)
+	RequestsByUser map[string]int `json:"requestsByUser"`
+
 	// TotalRequests Total number of requests
 	TotalRequests int `json:"totalRequests"`
 }

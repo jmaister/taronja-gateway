@@ -432,6 +432,15 @@ components:
             Edge: 1000
             Other: 45
           description: Number of requests grouped by browser
+        requestsByUser:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            alice: 1200
+            bob: 900
+            guest: 300
+          description: Number of requests grouped by user (username or user ID)
       required:
         - totalRequests
         - requestsByStatus
@@ -441,6 +450,7 @@ components:
         - requestsByDeviceType
         - requestsByPlatform
         - requestsByBrowser
+        - requestsByUser
   securitySchemes:
     cookieAuth:
       type: apiKey

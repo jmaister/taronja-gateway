@@ -93,6 +93,13 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
 
+	// Get requests by user
+	requestsByUser, err := s.trafficMetricRepo.GetRequestCountByUser(startDate, endDate)
+	if err != nil {
+		log.Printf("Error getting requests by user: %v", err)
+		return api.GetRequestStatistics500JSONResponse{}, nil
+	}
+
 	// Convert maps to the expected format for the API response
 	statusMap := make(map[string]int)
 	for status, count := range requestsByStatus {
@@ -127,6 +134,13 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		}
 	}
 
+	userMap := make(map[string]int)
+	for user, count := range requestsByUser {
+		if user != "" {
+			userMap[user] = count
+		}
+	}
+
 	// Create the response
 	response := api.RequestStatistics{
 		TotalRequests:        int(totalRequests),
@@ -137,6 +151,7 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		RequestsByDeviceType: deviceMap,
 		RequestsByPlatform:   platformMap,
 		RequestsByBrowser:    browserMap,
+		RequestsByUser:       userMap,
 	}
 
 	return api.GetRequestStatistics200JSONResponse(response), nil

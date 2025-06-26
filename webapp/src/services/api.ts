@@ -41,6 +41,7 @@ export interface CurrentUser extends User {
 }
 
 // RequestStatistics from OpenAPI spec
+// Add requestsByUser to the statistics interface
 export interface RequestStatistics {
   totalRequests: number;
   requestsByStatus: Record<string, number>;
@@ -50,6 +51,7 @@ export interface RequestStatistics {
   requestsByDeviceType: Record<string, number>;
   requestsByPlatform: Record<string, number>;
   requestsByBrowser: Record<string, number>;
+  requestsByUser?: Record<string, number>; // Optional for backward compatibility
 }
 
 // Helper function to process API responses with generics for return type

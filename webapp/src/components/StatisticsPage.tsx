@@ -376,6 +376,13 @@ export function StatisticsPage() {
           data={statistics.requestsByBrowser}
           color="#EC4899"
         />
+        {statistics.requestsByUser && (
+          <DataTable
+            title="Requests by User"
+            data={statistics.requestsByUser}
+            color="#0EA5E9"
+          />
+        )}
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ type TrafficMetricRepository interface {
 	GetRequestCountByDeviceType(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error)
+	GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) // NEW
 }
 
 // TrafficMetricRepositoryDB implements TrafficMetricRepository using GORM.
@@ -244,4 +245,32 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByBrowser(startDate, endDate 
 	}
 
 	return browserCounts, nil
+}
+
+// GetRequestCountByUser returns request counts grouped by user within a date range.
+func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) {
+	var results []struct {
+		Username string
+		Count    int
+	}
+
+	// Join with users table to get username from user_id
+	err := r.DB.Table("traffic_metrics").
+		Select("COALESCE(users.username, 'guest') as username, COUNT(*) as count").
+		Joins("LEFT JOIN users ON users.id = traffic_metrics.user_id").
+		Where("traffic_metrics.timestamp BETWEEN ? AND ?", startDate, endDate).
+		Group("users.username").
+		Scan(&results).Error
+
+	if err != nil {
+		log.Printf("Error getting request count by user: %v", err)
+		return nil, err
+	}
+
+	userCounts := make(map[string]int)
+	for _, result := range results {
+		userCounts[result.Username] = result.Count
+	}
+
+	return userCounts, nil
 }
