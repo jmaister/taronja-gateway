@@ -7,7 +7,7 @@ interface UsersListPageProps {
   // Props are empty for now
 }
 
-export function UsersListPage({}: UsersListPageProps): JSX.Element {
+export function UsersListPage({}: UsersListPageProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +30,18 @@ export function UsersListPage({}: UsersListPageProps): JSX.Element {
   }, []); // Empty dependency array to run only on mount
 
   return (
-    <div className="font-sans m-5 bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center">
-      <div className="bg-white p-5 rounded-lg shadow-md max-w-3xl w-full my-5">
-        <h1 className="text-2xl font-semibold text-gray-800 border-b-2 border-gray-200 pb-2 mb-4">
-          User List
-        </h1>
+    <div className="w-full p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+        <p className="text-gray-600 mt-2">Manage users and their permissions</p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">User List</h2>
+        </div>
+        
+        <div className="p-6">
 
         {loading && (
           <p className="text-blue-500">Loading users...</p>
@@ -99,9 +106,10 @@ export function UsersListPage({}: UsersListPageProps): JSX.Element {
             </Link>
           </p>
         </div>
+        </div>
       </div>
     </div>
   );
-};
+}
 
 // Removed default export: export default UsersListPage;

@@ -6,7 +6,7 @@ interface UserInfoPageProps {
   // Props are empty for now
 }
 
-export function UserInfoPage({}: UserInfoPageProps): JSX.Element {
+export function UserInfoPage({}: UserInfoPageProps) {
   const { userId } = useParams<{ userId: string }>(); 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);

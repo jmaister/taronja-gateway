@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react'; // Removed React import as it's not directly used after JSX transform
 import { useNavigate, Link } from 'react-router-dom'; 
-import { createUser, UserCreateRequest, User } from '../services/api'; 
+import { createUser, UserCreateRequest } from '../services/api'; 
 
 interface CreateUserPageProps {
   // Props are empty for now
@@ -8,7 +8,7 @@ interface CreateUserPageProps {
 
 type MessageType = 'success' | 'error' | '';
 
-export function CreateUserPage({}: CreateUserPageProps): JSX.Element {
+export function CreateUserPage({}: CreateUserPageProps) {
   const navigate = useNavigate(); 
   const [formData, setFormData] = useState<UserCreateRequest>({
     username: '',
@@ -65,11 +65,18 @@ export function CreateUserPage({}: CreateUserPageProps): JSX.Element {
   }
 
   return (
-    <div className="font-sans m-5 bg-gray-100 min-h-screen flex flex-col items-center py-10">
-      <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
-        <h1 className="text-gray-800 text-center text-2xl mb-6 font-semibold">
-          Create New User
-        </h1>
+    <div className="w-full p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+        <p className="text-gray-600 mt-2">Create a new user account</p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-2xl">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Create New User</h2>
+        </div>
+        
+        <div className="p-6">
 
         {message && messageType && (
           <div className={messageClasses} role="alert">
@@ -132,7 +139,7 @@ export function CreateUserPage({}: CreateUserPageProps): JSX.Element {
           </button>
         </form>
 
-        <div className="text-center mt-8 pt-6 border-t border-gray-300">
+        <div className="mt-8 pt-6 border-t border-gray-200 text-center">
           <Link 
             to="/"
             className="text-blue-600 hover:underline mr-5"
@@ -146,9 +153,10 @@ export function CreateUserPage({}: CreateUserPageProps): JSX.Element {
             View All Users
           </Link>
         </div>
+        </div>
       </div>
     </div>
   );
-};
+}
 
 // Removed default export: export default CreateUserPage;

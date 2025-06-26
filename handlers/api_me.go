@@ -25,28 +25,72 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 		}, nil
 	}
 
-	// User found, return their information
+	// Get full user information from the database
+	user, err := s.userRepo.FindUserByIdOrUsername(sessionObject.UserID, "", "")
+	if err != nil || user == nil {
+		// If user not found in database, still return session info
+		// This can happen if the user was deleted but session is still valid
+		authenticated := true
+		email := sessionObject.Email
+		username := sessionObject.Username
+		provider := sessionObject.Provider
+		isAdmin := sessionObject.IsAdmin
+		timestamp := time.Now().UTC()
+
+		var emailPointer *openapi_types.Email
+		if email != "" {
+			emailType := openapi_types.Email(email)
+			emailPointer = &emailType
+		}
+
+		response := api.GetCurrentUser200JSONResponse{
+			Authenticated: &authenticated,
+			Username:      &username,
+			Email:         emailPointer,
+			Provider:      &provider,
+			IsAdmin:       &isAdmin,
+			Timestamp:     &timestamp,
+		}
+		return response, nil
+	}
+
+	// User found, return their information including additional fields
 	authenticated := true
-	email := sessionObject.Email
-	username := sessionObject.Username
-	provider := sessionObject.Provider
+	email := user.Email
+	username := user.Username
+	provider := user.Provider
 	isAdmin := sessionObject.IsAdmin
-	timestamp := time.Now().UTC() // Consistent with APIGetMe logic
+	timestamp := time.Now().UTC()
+	name := user.Name
+	picture := user.Picture
+	givenName := user.GivenName
+	familyName := user.FamilyName
 
 	var emailPointer *openapi_types.Email
 	if email != "" {
 		emailType := openapi_types.Email(email)
 		emailPointer = &emailType
 	}
-	// If email is empty, emailPointer remains nil
 
 	response := api.GetCurrentUser200JSONResponse{
 		Authenticated: &authenticated,
 		Username:      &username,
 		Email:         emailPointer,
+		Name:          stringToPointer(name),
+		Picture:       stringToPointer(picture),
+		GivenName:     stringToPointer(givenName),
+		FamilyName:    stringToPointer(familyName),
 		Provider:      &provider,
 		IsAdmin:       &isAdmin,
 		Timestamp:     &timestamp,
 	}
 	return response, nil
+}
+
+// Helper function to convert string to pointer, returns nil for empty strings
+func stringToPointer(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
