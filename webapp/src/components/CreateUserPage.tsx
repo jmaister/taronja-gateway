@@ -8,7 +8,7 @@ interface CreateUserPageProps {
 
 type MessageType = 'success' | 'error' | '';
 
-export function CreateUserPage({}: CreateUserPageProps): JSX.Element {
+export function CreateUserPage({}: CreateUserPageProps) {
   const navigate = useNavigate(); 
   const [formData, setFormData] = useState<UserCreateRequest>({
     username: '',

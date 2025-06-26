@@ -7,7 +7,7 @@ interface UsersListPageProps {
   // Props are empty for now
 }
 
-export function UsersListPage({}: UsersListPageProps): JSX.Element {
+export function UsersListPage({}: UsersListPageProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
