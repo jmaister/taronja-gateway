@@ -31,7 +31,7 @@ const AdminLayoutRoutes = () => {
 
     // Redirect to login if not authenticated
     if (!isAuthenticated) {
-        window.location.href = '/login';
+        window.location.href = '/_/login';
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
                 <div className="text-center">
@@ -57,7 +57,7 @@ const AdminLayoutRoutes = () => {
                         Current user: {currentUser?.username} ({currentUser?.email})
                     </p>
                     <a
-                        href="/"
+                        href="/_/admin"
                         className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                     >
                         Go to Main Site

@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react'; // Removed React import as it's not directly used after JSX transform
 import { useNavigate, Link } from 'react-router-dom'; 
-import { createUser, UserCreateRequest, User } from '../services/api'; 
+import { createUser, UserCreateRequest } from '../services/api'; 
 
 interface CreateUserPageProps {
   // Props are empty for now

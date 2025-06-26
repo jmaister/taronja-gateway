@@ -20,10 +20,14 @@ import { Link } from 'react-router-dom';
 interface SidebarProps {
   isOpenOnMobile: boolean; // Keep for consistency but not used internally
   toggleMobileSidebar: () => void;
+  isCollapsed?: boolean;
+  toggleCollapse?: () => void;
 }
 
 const Sidebar = ({
   toggleMobileSidebar,
+  isCollapsed = false,
+  toggleCollapse,
 }: SidebarProps) => {
   const { currentUser, logout } = useAuth();
 
@@ -42,101 +46,115 @@ const Sidebar = ({
 
   return (
     <div className="drawer-side z-40">
-      {/* Mobile overlay */}
+      {/* Mobile overlay - for DaisyUI drawer functionality */}
       <label 
         htmlFor="sidebar-drawer" 
-        className="drawer-overlay md:hidden"
-        onClick={toggleMobileSidebar}
+        aria-label="close sidebar" 
+        className="drawer-overlay lg:hidden"
       ></label>
       
-      {/* Sidebar */}
-      <aside className="min-h-full bg-base-200 flex flex-col w-64 transition-all duration-300 ease-in-out">
-        {/* Header */}
-        <div className="navbar bg-base-300 min-h-16">
-          <div className="navbar-start">
-            <h1 className="text-sm font-bold">Taronja Gateway</h1>
+      {/* Sidebar - conditionally render based on collapse state */}
+      {!isCollapsed && (
+        <aside className="min-h-full bg-base-200 flex flex-col w-64 transition-all duration-300 ease-in-out">
+          {/* Header */}
+          <div className="navbar bg-base-300 min-h-16">
+            <div className="navbar-start">
+              <h1 className="text-sm font-bold">Taronja Gateway</h1>
+            </div>
+            <div className="navbar-end">
+              {/* Desktop hide button */}
+              {toggleCollapse && (
+                <button
+                  onClick={toggleCollapse}
+                  className="btn btn-ghost btn-sm hidden lg:flex"
+                  aria-label="Hide sidebar"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
+              {/* Mobile close button */}
+              <button
+                onClick={toggleMobileSidebar}
+                className="btn btn-ghost btn-sm lg:hidden"
+                aria-label="Close sidebar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <div className="navbar-end">
-            {/* Mobile close button */}
-            <button
-              onClick={toggleMobileSidebar}
-              className="btn btn-ghost btn-sm md:hidden"
-              aria-label="Close sidebar"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
 
-        {/* Navigation Menu */}
-        <div className="flex-1 p-4">
-          <ul className="menu menu-vertical w-full">
-            {navItems.map((item) => {
-              // Handle items with submenus
-              if (item.submenu) {
-                return (
-                  <li key={item.name}>
-                    <details className="group">
-                      <summary className="group-hover:bg-base-300">
+          {/* Navigation Menu */}
+          <div className="flex-1 p-4">
+            <ul className="menu menu-vertical w-full">
+              {navItems.map((item) => {
+                // Handle items with submenus
+                if (item.submenu) {
+                  return (
+                    <li key={item.name}>
+                      <details className="group">
+                        <summary className="group-hover:bg-base-300">
+                          <span className="text-lg">{item.icon}</span>
+                          <span>{item.name}</span>
+                        </summary>
+                        <ul className="menu-compact">
+                          {item.submenu.map((subItem) => (
+                            <li key={subItem.name}>
+                              <Link to={subItem.path} className="pl-8">
+                                {subItem.name}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
+                  );
+                }
+                
+                // Handle regular menu items
+                if (item.path) {
+                  return (
+                    <li key={item.name}>
+                      <Link to={item.path}>
                         <span className="text-lg">{item.icon}</span>
                         <span>{item.name}</span>
-                      </summary>
-                      <ul className="menu-compact">
-                        {item.submenu.map((subItem) => (
-                          <li key={subItem.name}>
-                            <Link to={subItem.path} className="pl-8">
-                              {subItem.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  </li>
-                );
-              }
-              
-              // Handle regular menu items
-              if (item.path) {
-                return (
-                  <li key={item.name}>
-                    <Link to={item.path}>
-                      <span className="text-lg">{item.icon}</span>
-                      <span>{item.name}</span>
-                    </Link>
-                  </li>
-                );
-              }
-              
-              return null;
-            })}
-          </ul>
-        </div>
+                      </Link>
+                    </li>
+                  );
+                }
+                
+                return null;
+              })}
+            </ul>
+          </div>
 
-        {/* User Info Footer */}
-        {currentUser && (
-          <div className="p-4 border-t border-base-300">
-            <div className="card card-compact bg-base-100 shadow-sm">
-              <div className="card-body">
-                <div className="text-xs opacity-70">Logged in as:</div>
-                <div className="font-medium text-sm mb-3">
-                  {getUserDisplayName(currentUser)}
+          {/* User Info Footer */}
+          {currentUser && (
+            <div className="p-4 border-t border-base-300">
+              <div className="card card-compact bg-base-100 shadow-sm">
+                <div className="card-body">
+                  <div className="text-xs opacity-70">Logged in as:</div>
+                  <div className="font-medium text-sm mb-3">
+                    {getUserDisplayName(currentUser)}
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="btn btn-outline btn-sm w-full"
+                  >
+                    Logout
+                  </button>
                 </div>
-                <button
-                  onClick={logout}
-                  className="btn btn-outline btn-sm w-full"
-                >
-                  Logout
-                </button>
+              </div>
+              <div className="text-center text-xs opacity-50 mt-3">
+                © {new Date().getFullYear()} Admin Panel
               </div>
             </div>
-            <div className="text-center text-xs opacity-50 mt-3">
-              © {new Date().getFullYear()} Admin Panel
-            </div>
-          </div>
-        )}
-      </aside>
+          )}
+        </aside>
+      )}
     </div>
   );
 };

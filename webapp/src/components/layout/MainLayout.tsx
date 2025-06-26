@@ -21,6 +21,7 @@ const getPageTitleFromPath = (path: string): string => {
 
 const MainLayout = ({ children }: MainLayoutProps) => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
   const [pageTitle, setPageTitle] = useState(getPageTitleFromPath(location.pathname));
 
@@ -32,8 +33,12 @@ const MainLayout = ({ children }: MainLayoutProps) => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
   };
 
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
   return (
-    <div className="drawer lg:drawer-open">
+    <div className={`drawer ${isCollapsed ? '' : 'lg:drawer-open'}`}>
       <input 
         id="sidebar-drawer" 
         type="checkbox" 
@@ -47,6 +52,8 @@ const MainLayout = ({ children }: MainLayoutProps) => {
         <Header
           pageTitle={pageTitle}
           toggleMobileSidebar={toggleMobileSidebar}
+          isCollapsed={isCollapsed}
+          toggleCollapse={toggleCollapse}
         />
         <main className="flex-1 p-6 bg-base-100">
           {children}
@@ -57,6 +64,8 @@ const MainLayout = ({ children }: MainLayoutProps) => {
       <Sidebar
         isOpenOnMobile={isMobileSidebarOpen}
         toggleMobileSidebar={toggleMobileSidebar}
+        isCollapsed={isCollapsed}
+        toggleCollapse={toggleCollapse}
       />
     </div>
   );
