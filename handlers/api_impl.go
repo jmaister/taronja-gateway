@@ -12,15 +12,17 @@ import (
 type StrictApiServer struct {
 	// No dependencies needed here if middleware handles session validation
 	// and places SessionData in context.
-	sessionStore session.SessionStore
-	userRepo     db.UserRepository
+	sessionStore      session.SessionStore
+	userRepo          db.UserRepository
+	trafficMetricRepo db.TrafficMetricRepository
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository) *StrictApiServer {
 	return &StrictApiServer{
-		sessionStore: sessionStore,
-		userRepo:     userRepo,
+		sessionStore:      sessionStore,
+		userRepo:          userRepo,
+		trafficMetricRepo: trafficMetricRepo,
 	}
 }
 

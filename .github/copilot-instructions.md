@@ -8,6 +8,16 @@
 * Use Unix line endings (LF).
 * Use UTF-8 encoding.
 
+# Naming Conventions
+
+* Keep consistency of field naming, the field names should be related with their types:
+    * `UserRepository` for a repository that manages users.
+    * `TrafficMetricRepository` for a repository that manages traffic metrics.
+    * `SessionStore` for a session store.
+    * `GatewayConfig` for the gateway configuration.
+* Keep consistency, do not use for example `StatsRepository` for the table TrafficMetric. It should be `TrafficMetricRepository` instead.
+* Consistency on file names, for Go and for TypeScript, between what the file contains and its name.
+
 # Taronja Gateway
 
 * The project is done with Go language.

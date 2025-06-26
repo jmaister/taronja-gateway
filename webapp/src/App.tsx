@@ -9,6 +9,7 @@ import { UserInfoPage } from './components/UserInfoPage';
 import { HomePage } from './components/HomePage';
 import { ProfilePage } from './components/ProfilePage';
 import { NotFoundPage } from './components/NotFoundPage';
+import { StatisticsPage } from './components/StatisticsPage';
 
 // Authentication components
 import { useAuth } from './contexts/AuthContext';
@@ -87,6 +88,7 @@ function App() {
                 <Route element={<AdminLayoutRoutes />}>
                     <Route path="/home" element={<HomePage />} />
                     <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/statistics" element={<StatisticsPage />} />
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<CreateUserPage />} />
                     <Route path="/users/:userId" element={<UserInfoPage />} />

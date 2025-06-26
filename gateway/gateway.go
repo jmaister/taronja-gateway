@@ -27,13 +27,14 @@ import (
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server         *http.Server
-	GatewayConfig  *config.GatewayConfig
-	Mux            *http.ServeMux
-	SessionStore   session.SessionStore
-	UserRepository db.UserRepository
-	templates      map[string]*template.Template
-	WebappEmbedFS  *embed.FS
+	Server            *http.Server
+	GatewayConfig     *config.GatewayConfig
+	Mux               *http.ServeMux
+	SessionStore      session.SessionStore
+	UserRepository    db.UserRepository
+	TrafficMetricRepo db.TrafficMetricRepository
+	templates         map[string]*template.Template
+	WebappEmbedFS     *embed.FS
 }
 
 // --- NewGateway Function ---
@@ -72,6 +73,9 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 
+	// Initialize traffic metrics repository
+	statsRepository := db.NewTrafficMetricRepository(db.GetConnection())
+
 	// Initialize and parse templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
@@ -79,13 +83,14 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	}
 
 	gateway := &Gateway{
-		Server:         server,
-		GatewayConfig:  config,
-		Mux:            mux,
-		SessionStore:   sessionStore,
-		UserRepository: userRepository,
-		templates:      templates,
-		WebappEmbedFS:  webappEmbedFS,
+		Server:            server,
+		GatewayConfig:     config,
+		Mux:               mux,
+		SessionStore:      sessionStore,
+		UserRepository:    userRepository,
+		TrafficMetricRepo: statsRepository,
+		templates:         templates,
+		WebappEmbedFS:     webappEmbedFS,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -245,6 +250,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	strictApiServer := handlers.NewStrictApiServer(
 		g.SessionStore,
 		g.UserRepository,
+		g.TrafficMetricRepo,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 

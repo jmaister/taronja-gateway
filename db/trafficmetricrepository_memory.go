@@ -118,3 +118,104 @@ func (r *TrafficMetricRepositoryMemory) GetRequestCountByStatus(startDate, endDa
 
 	return statusCounts, nil
 }
+
+// GetTotalRequestCount returns the total number of requests within a date range.
+func (r *TrafficMetricRepositoryMemory) GetTotalRequestCount(startDate, endDate time.Time) (int64, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	var count int64
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// GetAverageResponseSize calculates the average response size within a date range.
+func (r *TrafficMetricRepositoryMemory) GetAverageResponseSize(startDate, endDate time.Time) (float64, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	var total int64
+	var count int
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			total += stat.ResponseSize
+			count++
+		}
+	}
+
+	if count == 0 {
+		return 0, nil
+	}
+
+	return float64(total) / float64(count), nil
+}
+
+// GetRequestCountByCountry returns request counts grouped by country within a date range.
+func (r *TrafficMetricRepositoryMemory) GetRequestCountByCountry(startDate, endDate time.Time) (map[string]int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	countryCounts := make(map[string]int)
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			countryCounts[stat.Country]++
+		}
+	}
+
+	return countryCounts, nil
+}
+
+// GetRequestCountByDeviceType returns request counts grouped by device type within a date range.
+func (r *TrafficMetricRepositoryMemory) GetRequestCountByDeviceType(startDate, endDate time.Time) (map[string]int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	deviceCounts := make(map[string]int)
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			deviceCounts[stat.DeviceFamily]++
+		}
+	}
+
+	return deviceCounts, nil
+}
+
+// GetRequestCountByPlatform returns request counts grouped by platform within a date range.
+func (r *TrafficMetricRepositoryMemory) GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	platformCounts := make(map[string]int)
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			platformCounts[stat.OSFamily]++
+		}
+	}
+
+	return platformCounts, nil
+}
+
+// GetRequestCountByBrowser returns request counts grouped by browser within a date range.
+func (r *TrafficMetricRepositoryMemory) GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	browserCounts := make(map[string]int)
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			browserCounts[stat.BrowserFamily]++
+		}
+	}
+
+	return browserCounts, nil
+}

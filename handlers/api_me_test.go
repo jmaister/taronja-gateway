@@ -19,7 +19,7 @@ func TestGetCurrentUser(t *testing.T) {
 	userRepo := db.NewMemoryUserRepository()
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
-	s := handlers.NewStrictApiServer(sessionStore, userRepo)
+	s := handlers.NewStrictApiServer(sessionStore, userRepo, nil)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {
 		// Setup: Create a test user in the repository

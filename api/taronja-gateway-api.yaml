@@ -202,7 +202,7 @@ paths:
           required: true
           description: ID of the user to retrieve
           schema:
-            type: string # Assuming User ID is a string (e.g., UUID)
+            type: string
       responses:
         '200':
           description: User details
@@ -224,6 +224,50 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/statistics/requests:
+    get:
+      summary: Get request statistics
+      operationId: getRequestStatistics
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: false
+          description: Start date for filtering results (ISO 8601 format)
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-01T00:00:00Z"
+        - name: end_date
+          in: query
+          required: false
+          description: End date for filtering results (ISO 8601 format)
+          schema:
+            type: string
+            format: date-time
+            example: "2025-12-31T23:59:59Z"
+      responses:
+        '200':
+          description: Request statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestStatistics'
+        '401':
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -319,6 +363,84 @@ components:
         - username
         - createdAt
         - updatedAt
+    RequestStatistics:
+      type: object
+      properties:
+        totalRequests:
+          type: integer
+          example: 12345
+          description: Total number of requests
+        requestsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            200: 10000
+            404: 1500
+            500: 845
+          description: Number of requests grouped by HTTP status code
+        averageResponseTime:
+          type: number
+          format: float
+          example: 125.5
+          description: Average response time in milliseconds
+        averageResponseSize:
+          type: number
+          format: float
+          example: 2048.7
+          description: Average response size in bytes
+        requestsByCountry:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            US: 5000
+            ES: 3000
+            FR: 2000
+            UK: 1500
+            DE: 845
+          description: Number of requests grouped by country code
+        requestsByDeviceType:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            desktop: 8000
+            mobile: 3500
+            tablet: 800
+            unknown: 45
+          description: Number of requests grouped by device type
+        requestsByPlatform:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            Windows: 5000
+            Android: 3000
+            iOS: 2000
+            macOS: 1500
+            Linux: 845
+          description: Number of requests grouped by platform
+        requestsByBrowser:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            Chrome: 7000
+            Safari: 2500
+            Firefox: 1800
+            Edge: 1000
+            Other: 45
+          description: Number of requests grouped by browser
+      required:
+        - totalRequests
+        - requestsByStatus
+        - averageResponseTime
+        - averageResponseSize
+        - requestsByCountry
+        - requestsByDeviceType
+        - requestsByPlatform
+        - requestsByBrowser
   securitySchemes:
     cookieAuth:
       type: apiKey
