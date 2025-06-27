@@ -52,3 +52,11 @@
 * The componentes should not use the "React.FC" type, use the "function" type instead.
 * Create components in the "components" folder, and pages in the "pages" folder.
 * Create components as much as possible, to avoid code duplication.
+
+
+# Commands
+
+* `make api-codegen` to generate OpenAPI code.
+* `make run` to run the sample server.
+* `make build` to build the whole project (backend, frontend, and generated code).
+* `make test` to run the tests.

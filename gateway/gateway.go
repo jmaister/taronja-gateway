@@ -105,6 +105,19 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	// Configure the OAuth callback handler (can be done after user routes)
 	gateway.configureOAuthCallbackRoute()
 
+	// Ensure admin user exists in database if configured
+	if config.Management.Admin.Enabled {
+		err = userRepository.EnsureAdminUser(
+			config.Management.Admin.Username,
+			config.Management.Admin.Email,
+			config.Management.Admin.Password,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error ensuring admin user exists: %w", err)
+		}
+		log.Printf("Admin user ensured in database: %s", config.Management.Admin.Username)
+	}
+
 	return gateway, nil
 }
 

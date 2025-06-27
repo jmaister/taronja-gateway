@@ -170,3 +170,75 @@ func (r *MemoryUserRepository) GetAllUsers() ([]*User, error) {
 	})
 	return users, nil
 }
+
+// EnsureAdminUser creates or updates an admin user based on config
+func (r *MemoryUserRepository) EnsureAdminUser(username, email, password string) error {
+	if username == "" || password == "" {
+		return errors.New("admin username and password cannot be empty")
+	}
+
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// Try to find existing user by username or email
+	var existingUser *User
+	for _, user := range r.users {
+		if user.Username == username || (email != "" && user.Email == email) {
+			existingUser = user
+			break
+		}
+	}
+
+	if existingUser != nil {
+		// User exists, update password
+		if !encryption.IsPasswordHashed(password) {
+			hashedPassword, err := encryption.GeneratePasswordHash(password)
+			if err != nil {
+				return err
+			}
+			existingUser.Password = hashedPassword
+		} else {
+			existingUser.Password = password
+		}
+		if email != "" {
+			// Update email mapping if email changed
+			if existingUser.Email != "" {
+				delete(r.emails, existingUser.Email)
+			}
+			existingUser.Email = email
+			r.emails[email] = existingUser.ID
+		}
+		existingUser.EmailConfirmed = true // Admin users are always confirmed
+		return nil
+	}
+
+	// User doesn't exist, create new admin user
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+
+	hashedPassword := password
+	if !encryption.IsPasswordHashed(password) {
+		hashedPassword, err = encryption.GeneratePasswordHash(password)
+		if err != nil {
+			return err
+		}
+	}
+
+	adminUser := &User{
+		ID:             newId,
+		Username:       username,
+		Email:          email,
+		Password:       hashedPassword,
+		EmailConfirmed: true,          // Admin users are always confirmed
+		Provider:       AdminProvider, // Mark as config-based user
+	}
+
+	r.users[adminUser.ID] = adminUser
+	if email != "" {
+		r.emails[email] = adminUser.ID
+	}
+
+	return nil
+}

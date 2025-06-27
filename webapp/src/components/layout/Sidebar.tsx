@@ -43,6 +43,7 @@ const Sidebar = ({
         { name: 'Create New', path: '/users/new' }
       ]
     },
+    { name: 'Requests Details', icon: '📝', path: '/statistics/requests-details' },
   ];
 
   return (

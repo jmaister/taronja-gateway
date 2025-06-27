@@ -9,6 +9,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// Provider constants
+const AdminProvider = "tg_admin_provider"
+
 // ClientInfo contains common client and geographical information
 type ClientInfo struct {
 	IPAddress string `gorm:"type:varchar(45)"`  // IP address of the client

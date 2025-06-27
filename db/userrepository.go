@@ -8,4 +8,5 @@ type UserRepository interface {
 	GetAllUsers() ([]*User, error)
 	UpdateUser(user *User) error
 	DeleteUser(id string) error
+	EnsureAdminUser(username, email, password string) error
 }

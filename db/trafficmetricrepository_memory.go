@@ -219,3 +219,52 @@ func (r *TrafficMetricRepositoryMemory) GetRequestCountByBrowser(startDate, endD
 
 	return browserCounts, nil
 }
+
+// GetRequestCountByUser returns request counts grouped by user within a date range.
+func (r *TrafficMetricRepositoryMemory) GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	userCounts := make(map[string]int)
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			user := stat.UserID
+			if user == "" {
+				user = "guest"
+			}
+			userCounts[user]++
+		}
+	}
+
+	return userCounts, nil
+}
+
+// ListRequestDetails returns all request details in a date range (or all if nil)
+func (r *TrafficMetricRepositoryMemory) ListRequestDetails(start, end *time.Time) ([]TrafficMetric, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	var result []TrafficMetric
+	for _, stat := range r.stats {
+		if start != nil && end != nil {
+			if stat.Timestamp.After(*start) && stat.Timestamp.Before(*end) {
+				result = append(result, stat)
+			}
+		} else if start != nil {
+			if stat.Timestamp.After(*start) {
+				result = append(result, stat)
+			}
+		} else if end != nil {
+			if stat.Timestamp.Before(*end) {
+				result = append(result, stat)
+			}
+		} else {
+			result = append(result, stat)
+		}
+	}
+	// Sort by timestamp descending
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Timestamp.After(result[j].Timestamp)
+	})
+	return result, nil
+}

@@ -278,6 +278,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /_/api/statistics/requests/details:
+    get:
+      summary: Retrieve detailed information about requests made to the gateway
+      operationId: getRequestDetails
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+          required: false
+          description: Optional start date for filtering results (YYYY-MM-DD)
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+          required: false
+          description: Optional end date for filtering results (YYYY-MM-DD)
+      responses:
+        '200':
+          description: List of requests with detailed information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RequestDetail'
+                required:
+                  - requests
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -451,6 +494,38 @@ components:
         - requestsByPlatform
         - requestsByBrowser
         - requestsByUser
+    RequestDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        status_code:
+          type: integer
+        response_time:
+          type: number
+        response_size:
+          type: number
+        country:
+          type: string
+        device_type:
+          type: string
+        platform:
+          type: string
+        browser:
+          type: string
+      required:
+        - id
+        - timestamp
+        - status_code
+        - response_time
+        - response_size
+        - country
+        - device_type
+        - platform
+        - browser
   securitySchemes:
     cookieAuth:
       type: apiKey

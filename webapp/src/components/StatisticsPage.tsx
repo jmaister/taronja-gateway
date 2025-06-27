@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RequestStatistics, fetchRequestStatistics } from '../services/api';
-import { startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, format } from 'date-fns';
+import { StatisticsDateRange, timePeriods, DateRange } from './StatisticsDateRange';
 
 interface StatCard {
   title: string;
@@ -71,134 +71,12 @@ function DataTable({ title, data, color }: DataTableProps) {
   );
 }
 
-interface TimePeriod {
-  label: string;
-  value: string;
-  getDateRange: () => { startDate: string; endDate: string };
-}
-
-// Use a fixed 'today' for all calculations in this render
-const todayDate = new Date();
-todayDate.setHours(0,0,0,0); // Remove time part for consistency
-
-const timePeriods: TimePeriod[] = [
-  {
-    label: 'Today',
-    value: 'today',
-    getDateRange: () => {
-      const dateStr = format(todayDate, 'yyyy-MM-dd');
-      return { startDate: dateStr, endDate: dateStr };
-    }
-  },
-  {
-    label: 'Yesterday',
-    value: 'yesterday',
-    getDateRange: () => {
-      const yesterday = new Date(todayDate);
-      yesterday.setDate(todayDate.getDate() - 1);
-      const dateStr = format(yesterday, 'yyyy-MM-dd');
-      return { startDate: dateStr, endDate: dateStr };
-    }
-  },
-  {
-    label: 'This Week',
-    value: 'thisWeek',
-    getDateRange: () => {
-      const start = startOfWeek(todayDate, { weekStartsOn: 1 });
-      const end = endOfWeek(todayDate, { weekStartsOn: 1 });
-      return {
-        startDate: format(start, 'yyyy-MM-dd'),
-        endDate: format(end, 'yyyy-MM-dd')
-      };
-    }
-  },
-  {
-    label: 'Last Week',
-    value: 'lastWeek',
-    getDateRange: () => {
-      const lastWeek = subWeeks(todayDate, 1);
-      const start = startOfWeek(lastWeek, { weekStartsOn: 1 });
-      const end = endOfWeek(lastWeek, { weekStartsOn: 1 });
-      return {
-        startDate: format(start, 'yyyy-MM-dd'),
-        endDate: format(end, 'yyyy-MM-dd')
-      };
-    }
-  },
-  {
-    label: 'This Month',
-    value: 'thisMonth',
-    getDateRange: () => {
-      const start = startOfMonth(todayDate);
-      const end = endOfMonth(todayDate);
-      return {
-        startDate: format(start, 'yyyy-MM-dd'),
-        endDate: format(end, 'yyyy-MM-dd')
-      };
-    }
-  },
-  {
-    label: 'Last Month',
-    value: 'lastMonth',
-    getDateRange: () => {
-      const lastMonth = subMonths(todayDate, 1);
-      const start = startOfMonth(lastMonth);
-      const end = endOfMonth(lastMonth);
-      return {
-        startDate: format(start, 'yyyy-MM-dd'),
-        endDate: format(end, 'yyyy-MM-dd')
-      };
-    }
-  },
-  {
-    label: 'This Year',
-    value: 'thisYear',
-    getDateRange: () => {
-      const start = startOfYear(todayDate);
-      const end = endOfYear(todayDate);
-      return {
-        startDate: format(start, 'yyyy-MM-dd'),
-        endDate: format(end, 'yyyy-MM-dd')
-      };
-    }
-  },
-  {
-    label: 'Other...',
-    value: 'other',
-    getDateRange: () => {
-      const dateStr = format(todayDate, 'yyyy-MM-dd');
-      return { startDate: dateStr, endDate: dateStr };
-    }
-  }
-];
-
 export function StatisticsPage() {
   const [statistics, setStatistics] = useState<RequestStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('today');
-  const [dateRange, setDateRange] = useState(() => {
-    const today = timePeriods.find(p => p.value === 'today');
-    return today ? today.getDateRange() : {
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: new Date().toISOString().split('T')[0]
-    };
-  });
-
-  const handlePeriodChange = (period: string) => {
-    setSelectedPeriod(period);
-    if (period !== 'other') {
-      const timePeriod = timePeriods.find(p => p.value === period);
-      if (timePeriod) {
-        setDateRange(timePeriod.getDateRange());
-      }
-    }
-    // For 'other', keep the current dateRange and let user modify it
-  };
-
-  const handleDateChange = (field: 'startDate' | 'endDate', value: string) => {
-    setDateRange(prev => ({ ...prev, [field]: value }));
-  };
+  const [dateRange, setDateRange] = useState<DateRange>(() => timePeriods[0].getDateRange());
 
   const loadStatistics = async () => {
     try {
@@ -218,6 +96,7 @@ export function StatisticsPage() {
 
   useEffect(() => {
     loadStatistics();
+    // eslint-disable-next-line
   }, [dateRange]);
 
   if (loading) {
@@ -260,63 +139,19 @@ export function StatisticsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Request Statistics</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Request Statistics</h1>
           <p className="text-gray-600 mt-1">Monitor gateway performance and traffic patterns</p>
         </div>
-        
-        {/* Time Period Selector */}
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <label htmlFor="timePeriod" className="text-sm font-medium text-gray-700">Time Period:</label>
-            <select
-              id="timePeriod"
-              value={selectedPeriod}
-              onChange={(e) => handlePeriodChange(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              {timePeriods.map((period) => (
-                <option key={period.value} value={period.value}>
-                  {period.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          {selectedPeriod === 'other' ? (
-            <>
-              <div className="flex items-center space-x-2">
-                <label htmlFor="startDate" className="text-sm font-medium text-gray-700">From:</label>
-                <input
-                  type="date"
-                  id="startDate"
-                  value={dateRange.startDate}
-                  onChange={(e) => handleDateChange('startDate', e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <label htmlFor="endDate" className="text-sm font-medium text-gray-700">To:</label>
-                <input
-                  type="date"
-                  id="endDate"
-                  value={dateRange.endDate}
-                  onChange={(e) => handleDateChange('endDate', e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </>
-          ) : (
-            <div className="text-sm text-gray-500">
-              {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
-            </div>
-          )}
-        </div>
+        <StatisticsDateRange
+          dateRange={dateRange}
+          setDateRange={setDateRange}
+          selectedPeriod={selectedPeriod}
+          setSelectedPeriod={setSelectedPeriod}
+        />
       </div>
-
       {/* Key Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatisticCard
@@ -348,7 +183,6 @@ export function StatisticsPage() {
           color="#EF4444"
         />
       </div>
-
       {/* Data Tables Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <DataTable

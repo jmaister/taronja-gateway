@@ -10,6 +10,7 @@ import { HomePage } from './components/HomePage';
 import { ProfilePage } from './components/ProfilePage';
 import { NotFoundPage } from './components/NotFoundPage';
 import { StatisticsPage } from './components/StatisticsPage';
+import RequestsDetailsPage from './pages/RequestsDetailsPage';
 
 // Authentication components
 import { useAuth } from './contexts/AuthContext';
@@ -92,6 +93,7 @@ function App() {
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<CreateUserPage />} />
                     <Route path="/users/:userId" element={<UserInfoPage />} />
+                    <Route path="/statistics/requests-details" element={<RequestsDetailsPage />} />
                     {/* Add other admin routes that should use MainLayout here */}
                 </Route>
 

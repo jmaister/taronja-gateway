@@ -109,24 +109,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			return
 		}
 
-		// Check if this is the admin user from config
-		if gatewayConfig.Management.Admin.Enabled && gatewayConfig.Management.Admin.Username == username {
-			matches, err := encryption.ComparePassword(password, gatewayConfig.Management.Admin.Password)
-			if err != nil {
-				log.Printf("Admin password comparison failed: %v", err)
-				http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-				return
-			}
-			if matches {
-				log.Printf("Admin user login successful")
-				// Create a session for the admin user (create a temporary user object)
-				adminUser := session.NewAdminUser(gatewayConfig.Management.Admin.Username, gatewayConfig.Management.Admin.Password)
-				createSessionAndRedirect(w, r, adminUser, sessionStore)
-				return
-			}
-			// If admin credentials don't match, fall through to regular user check
-		}
-
+		// Find user from database (this now includes admin users)
 		user, err := userRepo.FindUserByIdOrUsername("", username, username)
 		if err != nil && err != gorm.ErrRecordNotFound {
 			log.Printf("Error finding user: %v", err)
@@ -137,6 +120,14 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		if user == nil {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
+		}
+
+		// Check if this is an admin user from config
+		isAdminFromConfig := gatewayConfig.Management.Admin.Enabled &&
+			gatewayConfig.Management.Admin.Username == username
+
+		if isAdminFromConfig {
+			log.Printf("Admin user login attempt for: %s", username)
 		}
 
 		matches, err := encryption.ComparePassword(password, user.Password)

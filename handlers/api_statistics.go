@@ -156,3 +156,43 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 
 	return api.GetRequestStatistics200JSONResponse(response), nil
 }
+
+// GetRequestDetails implements GET /_/api/statistics/requests/details
+func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequestDetailsRequestObject) (api.GetRequestDetailsResponseObject, error) {
+	// Check if user is authenticated and is admin
+	sessionData, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sessionData == nil || !sessionData.IsAuthenticated {
+		return api.GetRequestDetails401JSONResponse{}, nil
+	}
+	if !sessionData.IsAdmin {
+		return api.GetRequestDetails401JSONResponse{}, nil
+	}
+	var start, end *time.Time
+	if req.Params.StartDate != nil {
+		t := req.Params.StartDate.Time
+		start = &t
+	}
+	if req.Params.EndDate != nil {
+		t := req.Params.EndDate.Time
+		end = &t
+	}
+	metrics, err := s.trafficMetricRepo.ListRequestDetails(start, end)
+	if err != nil {
+		return nil, err
+	}
+	var details []api.RequestDetail
+	for _, m := range metrics {
+		details = append(details, api.RequestDetail{
+			Id:           fmt.Sprintf("%v", m.ID),
+			Timestamp:    m.Timestamp,
+			StatusCode:   m.HttpStatus,
+			ResponseTime: float32(m.ResponseTimeNs) / 1e6, // convert ns to ms
+			ResponseSize: float32(m.ResponseSize),
+			Country:      m.Country,
+			DeviceType:   m.DeviceFamily,
+			Platform:     m.OSFamily,
+			Browser:      m.BrowserFamily,
+		})
+	}
+	return api.GetRequestDetails200JSONResponse{Requests: details}, nil
+}

@@ -84,7 +84,7 @@ func TestGetCurrentUser(t *testing.T) {
 			UserID:          "admin",
 			Username:        "admin",
 			Email:           "",
-			Provider:        session.AdminProvider,
+			Provider:        db.AdminProvider,
 			IsAuthenticated: true,
 			IsAdmin:         true, // Admin user
 			ValidUntil:      time.Now().Add(1 * time.Hour),
@@ -107,7 +107,7 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.Equal(t, "admin", *userResp.Username)
 		assert.Nil(t, userResp.Email) // Admin user has no email, so email should be nil
 		assert.NotNil(t, userResp.Provider)
-		assert.Equal(t, session.AdminProvider, *userResp.Provider)
+		assert.Equal(t, db.AdminProvider, *userResp.Provider)
 		assert.NotNil(t, userResp.IsAdmin)
 		assert.True(t, *userResp.IsAdmin)
 		assert.NotNil(t, userResp.Timestamp)
