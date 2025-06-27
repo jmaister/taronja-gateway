@@ -278,7 +278,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /_/api/statistics/requests/details:
+  /api/statistics/requests/details:
     get:
       summary: Retrieve detailed information about requests made to the gateway
       operationId: getRequestDetails
@@ -291,16 +291,18 @@ paths:
           name: start_date
           schema:
             type: string
-            format: date
+            format: date-time
           required: false
-          description: Optional start date for filtering results (YYYY-MM-DD)
+          description: Optional start date for filtering results (ISO 8601 format)
+          example: "2025-01-01T00:00:00Z"
         - in: query
           name: end_date
           schema:
             type: string
-            format: date
+            format: date-time
           required: false
-          description: Optional end date for filtering results (YYYY-MM-DD)
+          description: Optional end date for filtering results (ISO 8601 format)
+          example: "2025-12-31T23:59:59Z"
       responses:
         '200':
           description: List of requests with detailed information

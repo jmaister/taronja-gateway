@@ -209,7 +209,7 @@ func (r *MemoryUserRepository) EnsureAdminUser(username, email, password string)
 			existingUser.Email = email
 			r.emails[email] = existingUser.ID
 		}
-		existingUser.EmailConfirmed = true // Admin users are always confirmed
+		existingUser.EmailConfirmed = true    // Admin users are always confirmed
 		existingUser.Provider = AdminProvider // Mark as admin provider
 		return nil
 	}

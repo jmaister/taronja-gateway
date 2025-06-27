@@ -17,8 +17,8 @@ export default function RequestsDetailsPage() {
         setLoading(true);
         let url = "/_/api/statistics/requests/details";
         const params = [];
-        if (dateRange.startDate) params.push(`start_date=${dateRange.startDate}`);
-        if (dateRange.endDate) params.push(`end_date=${dateRange.endDate}`);
+        if (dateRange.startDate) params.push(`start_date=${dateRange.startDate}T00:00:00Z`);
+        if (dateRange.endDate) params.push(`end_date=${dateRange.endDate}T23:59:59Z`);
         if (params.length) url += `?${params.join("&")}`;
         fetch(url)
             .then((res) => res.json())

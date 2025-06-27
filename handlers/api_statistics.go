@@ -169,12 +169,10 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 	}
 	var start, end *time.Time
 	if req.Params.StartDate != nil {
-		t := req.Params.StartDate.Time
-		start = &t
+		start = req.Params.StartDate
 	}
 	if req.Params.EndDate != nil {
-		t := req.Params.EndDate.Time
-		end = &t
+		end = req.Params.EndDate
 	}
 	metrics, err := s.trafficMetricRepo.ListRequestDetails(start, end)
 	if err != nil {
