@@ -190,7 +190,8 @@ func (r *MemoryUserRepository) EnsureAdminUser(username, email, password string)
 	}
 
 	if existingUser != nil {
-		// User exists, update password
+		// User exists, update password and username
+		existingUser.Username = username // Update username to match config
 		if !encryption.IsPasswordHashed(password) {
 			hashedPassword, err := encryption.GeneratePasswordHash(password)
 			if err != nil {
@@ -209,6 +210,7 @@ func (r *MemoryUserRepository) EnsureAdminUser(username, email, password string)
 			r.emails[email] = existingUser.ID
 		}
 		existingUser.EmailConfirmed = true // Admin users are always confirmed
+		existingUser.Provider = AdminProvider // Mark as admin provider
 		return nil
 	}
 
