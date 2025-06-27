@@ -120,3 +120,9 @@ type TrafficMetric struct {
 	// Embed common client and geographical information
 	ClientInfo
 }
+
+// TrafficMetricWithUser combines TrafficMetric with User information for detailed reports
+type TrafficMetricWithUser struct {
+	TrafficMetric
+	User *User `gorm:"foreignKey:UserID;references:ID"`
+}

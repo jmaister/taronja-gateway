@@ -15,7 +15,7 @@ func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
 	userRepo := db.NewMemoryUserRepository()
-	statsRepo := db.NewMemoryTrafficMetricRepository()
+	statsRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 
 	server := NewStrictApiServer(sessionStore, userRepo, statsRepo)
 	return server, statsRepo

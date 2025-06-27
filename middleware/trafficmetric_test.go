@@ -16,7 +16,7 @@ import (
 func TestTrafficMetricMiddleware(t *testing.T) {
 	t.Run("records successful request metrics", func(t *testing.T) {
 		// Create memory repository for testing
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a simple handler
@@ -68,7 +68,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records error request metrics", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a handler that returns an error
@@ -110,7 +110,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records session information when available", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create handler
@@ -147,7 +147,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("handles long error messages by truncating", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a handler that returns a very long error message
@@ -182,7 +182,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("measures response time accurately", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a handler that sleeps to create measurable response time
@@ -215,7 +215,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("handles nil session gracefully", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +247,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records mobile device information correctly", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +287,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records Android device information correctly", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository()
+		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

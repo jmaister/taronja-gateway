@@ -21,7 +21,7 @@ type TrafficMetricRepository interface {
 	GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) // NEW
-	ListRequestDetails(start, end *time.Time) ([]TrafficMetric, error)
+	ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error)
 }
 
 // TrafficMetricRepositoryDB implements TrafficMetricRepository using GORM.
@@ -277,9 +277,9 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate tim
 }
 
 // ListRequestDetails returns all request details in a date range (or all if nil)
-func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time) ([]TrafficMetric, error) {
-	var stats []TrafficMetric
-	query := r.DB.Model(&TrafficMetric{})
+func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error) {
+	var stats []TrafficMetricWithUser
+	query := r.DB.Model(&TrafficMetric{}).Preload("User")
 	if start != nil && end != nil {
 		query = query.Where("timestamp BETWEEN ? AND ?", *start, *end)
 	} else if start != nil {

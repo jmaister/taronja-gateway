@@ -180,16 +180,31 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 	}
 	var details []api.RequestDetail
 	for _, m := range metrics {
+		var username *string
+		if m.User != nil {
+			username = &m.User.Username
+		}
+
+		var userID *string
+		if m.TrafficMetric.UserID != "" {
+			userID = &m.TrafficMetric.UserID
+		}
+
 		details = append(details, api.RequestDetail{
-			Id:           fmt.Sprintf("%v", m.ID),
-			Timestamp:    m.Timestamp,
-			StatusCode:   m.HttpStatus,
-			ResponseTime: float32(m.ResponseTimeNs) / 1e6, // convert ns to ms
-			ResponseSize: float32(m.ResponseSize),
-			Country:      m.Country,
-			DeviceType:   m.DeviceFamily,
-			Platform:     m.OSFamily,
-			Browser:      m.BrowserFamily,
+			Id:              fmt.Sprintf("%v", m.TrafficMetric.ID),
+			Timestamp:       m.TrafficMetric.Timestamp,
+			Path:            m.TrafficMetric.Path,
+			UserId:          userID,
+			Username:        username,
+			StatusCode:      m.TrafficMetric.HttpStatus,
+			ResponseTime:    float32(m.TrafficMetric.ResponseTimeNs) / 1e6, // convert ns to ms
+			ResponseSize:    float32(m.TrafficMetric.ResponseSize),
+			Country:         m.TrafficMetric.Country,
+			DeviceType:      m.TrafficMetric.DeviceFamily,
+			Platform:        m.TrafficMetric.OSFamily,
+			PlatformVersion: m.TrafficMetric.OSVersion,
+			Browser:         m.TrafficMetric.BrowserFamily,
+			BrowserVersion:  m.TrafficMetric.BrowserVersion,
 		})
 	}
 	return api.GetRequestDetails200JSONResponse{Requests: details}, nil

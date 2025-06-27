@@ -86,7 +86,7 @@ func TestGetClientIP(t *testing.T) {
 }
 
 func TestConditionalStatisticsMiddleware(t *testing.T) {
-	statsRepo := db.NewMemoryTrafficMetricRepository()
+	statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 	middleware := ConditionalStatisticsMiddleware(statsRepo)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -35,15 +35,30 @@ type HealthResponse struct {
 
 // RequestDetail defines model for RequestDetail.
 type RequestDetail struct {
-	Browser      string    `json:"browser"`
-	Country      string    `json:"country"`
-	DeviceType   string    `json:"device_type"`
-	Id           string    `json:"id"`
-	Platform     string    `json:"platform"`
-	ResponseSize float32   `json:"response_size"`
-	ResponseTime float32   `json:"response_time"`
-	StatusCode   int       `json:"status_code"`
-	Timestamp    time.Time `json:"timestamp"`
+	Browser string `json:"browser"`
+
+	// BrowserVersion Version of the browser
+	BrowserVersion string `json:"browser_version"`
+	Country        string `json:"country"`
+	DeviceType     string `json:"device_type"`
+	Id             string `json:"id"`
+
+	// Path The requested URL path
+	Path     string `json:"path"`
+	Platform string `json:"platform"`
+
+	// PlatformVersion Version of the operating system/platform
+	PlatformVersion string    `json:"platform_version"`
+	ResponseSize    float32   `json:"response_size"`
+	ResponseTime    float32   `json:"response_time"`
+	StatusCode      int       `json:"status_code"`
+	Timestamp       time.Time `json:"timestamp"`
+
+	// UserId ID of the authenticated user making the request
+	UserId *string `json:"user_id"`
+
+	// Username Username of the authenticated user making the request
+	Username *string `json:"username"`
 }
 
 // RequestStatistics defines model for RequestStatistics.

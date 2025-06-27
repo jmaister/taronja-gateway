@@ -8,17 +8,19 @@ import (
 
 // TrafficMetricRepositoryMemory implements TrafficMetricRepository using in-memory storage for testing.
 type TrafficMetricRepositoryMemory struct {
-	stats  []TrafficMetric
-	mutex  sync.RWMutex
-	nextID uint
+	stats    []TrafficMetric
+	mutex    sync.RWMutex
+	nextID   uint
+	userRepo UserRepository
 }
 
 // NewMemoryTrafficMetricRepository creates a new TrafficMetricRepositoryMemory instance.
-func NewMemoryTrafficMetricRepository() *TrafficMetricRepositoryMemory {
+func NewMemoryTrafficMetricRepository(userRepo UserRepository) *TrafficMetricRepositoryMemory {
 	return &TrafficMetricRepositoryMemory{
-		stats:  make([]TrafficMetric, 0),
-		mutex:  sync.RWMutex{},
-		nextID: 1,
+		stats:    make([]TrafficMetric, 0),
+		mutex:    sync.RWMutex{},
+		nextID:   1,
+		userRepo: userRepo,
 	}
 }
 
@@ -241,30 +243,47 @@ func (r *TrafficMetricRepositoryMemory) GetRequestCountByUser(startDate, endDate
 }
 
 // ListRequestDetails returns all request details in a date range (or all if nil)
-func (r *TrafficMetricRepositoryMemory) ListRequestDetails(start, end *time.Time) ([]TrafficMetric, error) {
+func (r *TrafficMetricRepositoryMemory) ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	var result []TrafficMetric
+	var result []TrafficMetricWithUser
 	for _, stat := range r.stats {
+		include := false
 		if start != nil && end != nil {
 			if stat.Timestamp.After(*start) && stat.Timestamp.Before(*end) {
-				result = append(result, stat)
+				include = true
 			}
 		} else if start != nil {
 			if stat.Timestamp.After(*start) {
-				result = append(result, stat)
+				include = true
 			}
 		} else if end != nil {
 			if stat.Timestamp.Before(*end) {
-				result = append(result, stat)
+				include = true
 			}
 		} else {
-			result = append(result, stat)
+			include = true
+		}
+
+		if include {
+			metricWithUser := TrafficMetricWithUser{
+				TrafficMetric: stat,
+			}
+
+			// Fetch user if UserID is set
+			if stat.UserID != "" && r.userRepo != nil {
+				user, err := r.userRepo.FindUserByIdOrUsername(stat.UserID, "", "")
+				if err == nil && user != nil {
+					metricWithUser.User = user
+				}
+			}
+
+			result = append(result, metricWithUser)
 		}
 	}
 	// Sort by timestamp descending
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Timestamp.After(result[j].Timestamp)
+		return result[i].TrafficMetric.Timestamp.After(result[j].TrafficMetric.Timestamp)
 	})
 	return result, nil
 }

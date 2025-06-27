@@ -504,6 +504,17 @@ components:
         timestamp:
           type: string
           format: date-time
+        path:
+          type: string
+          description: The requested URL path
+        user_id:
+          type: string
+          nullable: true
+          description: ID of the authenticated user making the request
+        username:
+          type: string
+          nullable: true
+          description: Username of the authenticated user making the request
         status_code:
           type: integer
         response_time:
@@ -516,18 +527,28 @@ components:
           type: string
         platform:
           type: string
+        platform_version:
+          type: string
+          description: Version of the operating system/platform
         browser:
           type: string
+        browser_version:
+          type: string
+          description: Version of the browser
       required:
         - id
         - timestamp
+        - path
+        - user_id
         - status_code
         - response_time
         - response_size
         - country
         - device_type
         - platform
+        - platform_version
         - browser
+        - browser_version
   securitySchemes:
     cookieAuth:
       type: apiKey
