@@ -274,13 +274,13 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		var errorWithResponse *middleware.ErrorWithResponse
 		if errors.As(err, &errorWithResponse) {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			responseText := "Unauthorized" // Default response text
-			if errorWithResponse.Message != "" {
-				responseText = errorWithResponse.Message
+			w.WriteHeader(errorWithResponse.Code)
+			responseText := errorWithResponse.Message
+			if responseText == "" {
+				responseText = "Error" // Default response text
 			}
 			encodeErr := json.NewEncoder(w).Encode(api.Error{
-				Code:    http.StatusUnauthorized,
+				Code:    errorWithResponse.Code,
 				Message: responseText,
 			})
 			if encodeErr != nil {

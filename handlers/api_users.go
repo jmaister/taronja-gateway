@@ -34,11 +34,21 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 		providerPtr = &dbUser.Provider
 	}
 
-	email := openapi_types.Email(dbUser.Email)
+	// Handle email conversion safely - only include if it's a valid email
+	var emailPtr *openapi_types.Email
+	if dbUser.Email != "" {
+		email := openapi_types.Email(dbUser.Email)
+		// Test if the email is valid by trying to marshal it
+		if _, err := email.MarshalJSON(); err == nil {
+			emailPtr = &email
+		}
+		// If email is invalid, we leave emailPtr as nil
+	}
+
 	return api.UserResponse{
 		Id:        dbUser.ID, // Corrected: Directly use dbUser.ID
 		Username:  dbUser.Username,
-		Email:     &email,
+		Email:     emailPtr,
 		Name:      namePtr,
 		Picture:   picturePtr,
 		Provider:  providerPtr,
