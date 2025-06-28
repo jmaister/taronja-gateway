@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { RequestsDetailsTable, RequestDetail } from "../components/RequestsDetailsTable";
 import { StatisticsDateRange, timePeriods, DateRange } from "../components/StatisticsDateRange";
-import { RequestsWorldMap } from "../components/RequestsWorldMap";
+import { LazyRequestsWorldMap } from "../components/LazyRequestsWorldMap";
 
 export default function RequestsDetailsPage() {
     const [requests, setRequests] = useState<RequestDetail[]>([]);
@@ -46,7 +46,7 @@ export default function RequestsDetailsPage() {
                 <div className="text-center py-8 text-gray-500">Loading...</div>
             ) : (
                 <div className="w-full space-y-6">
-                    <RequestsWorldMap requests={requests} />
+                    <LazyRequestsWorldMap requests={requests} />
                     <RequestsDetailsTable requests={requests} />
                 </div>
             )}

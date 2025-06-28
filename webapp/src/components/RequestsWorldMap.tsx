@@ -1,41 +1,157 @@
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
-import { useState } from "react";
+import { useRef, useMemo } from "react";
+import { Map, Source, Layer } from "react-map-gl/maplibre";
 import { RequestDetail } from "./RequestsDetailsTable";
+import { getCountryCoordinates } from "../utils/countryCoordinates";
+import maplibreStyleJson from "../assets/maplibre-style.json";
 
-const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+import type { MapRef, MapMouseEvent } from "react-map-gl/maplibre";
+import type { GeoJSONSource } from "maplibre-gl";
+import type { LayerProps } from "react-map-gl/maplibre";
+import type { StyleSpecification } from "maplibre-gl";
 
 interface RequestsWorldMapProps {
     requests: RequestDetail[];
 }
 
+// Cast the imported JSON to the correct type
+const maplibreStyle = maplibreStyleJson as StyleSpecification;
+
+// Layer definitions following the exact pattern from react-map-gl clusters example
+export const clusterLayer: LayerProps = {
+    id: 'clusters',
+    type: 'circle',
+    source: 'requests',
+    filter: ['has', 'point_count'],
+    paint: {
+        'circle-color': ['step', ['get', 'point_count'], '#86efac', 5, '#4ade80', 10, '#22c55e', 20, '#16a34a', 30, '#15803d', 50, '#166534'],
+        'circle-radius': ['step', ['get', 'point_count'], 12, 5, 16, 10, 20, 20, 24, 30, 28]
+    }
+};
+
+export const clusterCountLayer: LayerProps = {
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'requests',
+    filter: ['has', 'point_count'],
+    layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 12
+    },
+    paint: {
+        'text-color': [
+            'step',
+            ['get', 'point_count'],
+            '#166534', // Dark green text for light green circles (1-4)
+            5, '#166534', // Dark green text for medium-light circles (5-9)
+            10, '#166534', // Dark green text for medium circles (10-19)
+            20, '#ffffff', // White text for medium-dark circles (20-29)
+            30, '#ffffff', // White text for dark circles (30-49)
+            50, '#ffffff'  // White text for darkest circles (50+)
+        ],
+        'text-halo-color': [
+            'step',
+            ['get', 'point_count'],
+            '#ffffff', // White halo for dark text on light circles
+            5, '#ffffff',
+            10, '#ffffff',
+            20, '#000000', // Black halo for white text on dark circles
+            30, '#000000',
+            50, '#000000'
+        ],
+        'text-halo-width': 1.5,
+        'text-halo-blur': 0.5
+    }
+};
+
+export const unclusteredPointLayer: LayerProps = {
+    id: 'unclustered-point',
+    type: 'circle',
+    source: 'requests',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+        'circle-color': '#86efac',
+        'circle-radius': 3,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#fff'
+    }
+};
+
 export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
-    const [tooltip, setTooltip] = useState<string | null>(null);
+    const mapRef = useRef<MapRef>(null);
     
-    // Count requests by country
-    const countryData = requests.reduce((acc, request) => {
-        const country = request.country || "Unknown";
-        acc[country] = (acc[country] || 0) + 1;
-        return acc;
-    }, {} as Record<string, number>);
+    // Convert requests to GeoJSON points with coordinates from our lightweight lookup
+    const geoJsonData = useMemo(() => {
+        const features = requests.map((request, index) => {
+            const country = request.country || "Unknown";
+            const baseCoords = getCountryCoordinates(country);
+            
+            // Ensure coordinates are within valid bounds
+            const longitude = Math.max(-180, Math.min(180, baseCoords[0]));
+            const latitude = Math.max(-85, Math.min(85, baseCoords[1]));
+            
+            return {
+                type: "Feature" as const,
+                properties: {
+                    id: index,
+                    country: country,
+                    path: request.path,
+                    status_code: request.status_code,
+                    response_time: request.response_time,
+                    timestamp: request.timestamp,
+                    username: request.username || "Anonymous"
+                },
+                geometry: {
+                    type: "Point" as const,
+                    coordinates: [longitude, latitude]
+                }
+            };
+        });
 
-    // Get max count for color scaling
-    const maxCount = Math.max(...Object.values(countryData), 1);
+        return {
+            type: "FeatureCollection" as const,
+            features
+        };
+    }, [requests]);
 
-    // Function to get color intensity based on request count
-    const getCountryColor = (geoName: string) => {
-        const count = countryData[geoName] || 0;
-        if (count === 0) return "#f3f4f6"; // gray-100 for no requests
-        
-        const intensity = count / maxCount;
-        // Scale from light blue to dark blue
-        const alpha = Math.max(0.2, intensity);
-        return `rgba(59, 130, 246, ${alpha})`; // blue-500 with varying alpha
+    // Count requests by country for the statistics section
+    const countryData = useMemo(() => {
+        return requests.reduce((acc, request) => {
+            const country = request.country || "Unknown";
+            acc[country] = (acc[country] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+    }, [requests]);
+
+    // Click handler following the exact pattern from the example
+    const onClick = async (event: MapMouseEvent) => {
+        const feature = event.features?.[0];
+        if (!feature) {
+            return;
+        }
+        const clusterId = feature.properties?.cluster_id;
+
+        // If it's a cluster, zoom in to expand it
+        if (clusterId) {
+            const geojsonSource = mapRef.current?.getSource('requests') as GeoJSONSource;
+            if (geojsonSource && feature.geometry && 'coordinates' in feature.geometry) {
+                try {
+                    const zoom = await geojsonSource.getClusterExpansionZoom(clusterId);
+                    mapRef.current?.easeTo({
+                        center: feature.geometry.coordinates as [number, number],
+                        zoom,
+                        duration: 500
+                    });
+                } catch (error) {
+                    console.warn('Could not get cluster expansion zoom:', error);
+                }
+            }
+        }
     };
 
     if (requests.length === 0) {
         return (
             <div className="w-full bg-white border border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-4">Requests by Country</h3>
+                <h3 className="text-lg font-semibold mb-4">Request Clusters</h3>
                 <div className="text-center py-8 text-gray-500">
                     No request data available for the selected period
                 </div>
@@ -44,91 +160,65 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
     }
 
     return (
-        <div className="w-full bg-white border border-gray-200 rounded-lg p-4 relative">
-            <h3 className="text-lg font-semibold mb-4">Requests by Country</h3>
-            
-            {/* Tooltip */}
-            {tooltip && (
-                <div className="absolute top-2 right-2 z-10 bg-gray-900 text-white text-sm py-2 px-3 rounded shadow-lg pointer-events-none max-w-xs">
-                    {tooltip}
-                </div>
-            )}
+        <div className="w-full bg-white border border-gray-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold mb-4">Request Clusters</h3>
             
             {/* Legend */}
             <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                <span>Low</span>
-                <div className="flex gap-1">
-                    <div className="w-4 h-4 bg-blue-200 rounded"></div>
-                    <div className="w-4 h-4 bg-blue-300 rounded"></div>
-                    <div className="w-4 h-4 bg-blue-400 rounded"></div>
-                    <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                <span>Cluster Size:</span>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#86efac] rounded-full"></div>
+                    <span>1-4</span>
                 </div>
-                <span>High</span>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#4ade80] rounded-full"></div>
+                    <span>5-9</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#22c55e] rounded-full"></div>
+                    <span>10-19</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#16a34a] rounded-full"></div>
+                    <span>20-29</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#15803d] rounded-full"></div>
+                    <span>30-49</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#166534] rounded-full"></div>
+                    <span>50+</span>
+                </div>
                 <span className="ml-4">Total: {requests.length} requests</span>
             </div>
 
-            {/* Map */}
-            <div className="w-full overflow-hidden">
-                <ComposableMap
-                    projection="geoMercator"
-                    projectionConfig={{
-                        scale: 140,
-                        center: [0, 20]
+            {/* Map following the exact pattern from the example */}
+            <div className="w-full h-[500px] overflow-hidden rounded-lg">
+                <Map
+                    initialViewState={{
+                        latitude: 20,
+                        longitude: 0,
+                        zoom: 1.0
                     }}
-                    width={800}
-                    height={400}
-                    style={{ width: "100%", height: "auto", maxHeight: "400px" }}
+                    mapStyle={maplibreStyle}
+                    interactiveLayerIds={[clusterLayer.id!]}
+                    onClick={onClick}
+                    ref={mapRef}
                 >
-                    <Geographies geography={geoUrl}>
-                        {({ geographies }: { geographies: any[] }) =>
-                            geographies.map((geo: any) => {
-                                // Get country name from available properties
-                                const props = geo.properties || {};
-                                const countryName = props.NAME || 
-                                                  props.NAME_LONG || 
-                                                  props.ADMIN || 
-                                                  props.name ||
-                                                  props.NAME_EN ||
-                                                  props.COUNTRY ||
-                                                  props.sovereignt ||
-                                                  props.NAME_SORT ||
-                                                  'Unknown Country';
-                                
-                                const requestCount = countryData[countryName] || 0;
-                                
-                                return (
-                                    <Geography
-                                        key={geo.rsmKey}
-                                        geography={geo}
-                                        fill={getCountryColor(countryName)}
-                                        stroke="#e5e7eb"
-                                        strokeWidth={0.5}
-                                        style={{
-                                            default: { outline: "none" },
-                                            hover: { 
-                                                outline: "none",
-                                                fill: "#3b82f6",
-                                                cursor: "pointer"
-                                            },
-                                            pressed: { outline: "none" }
-                                        }}
-                                        onMouseEnter={() => {
-                                            // Use the same country name logic as above
-                                            const displayName = countryName || 'Unknown Country';
-                                            const tooltipContent = requestCount > 0 
-                                                ? `${displayName}: ${requestCount} requests`
-                                                : `${displayName}: No requests`;
-                                            setTooltip(tooltipContent);
-                                        }}
-                                        onMouseLeave={() => {
-                                            setTooltip(null);
-                                        }}
-                                    />
-                                );
-                            })
-                        }
-                    </Geographies>
-                </ComposableMap>
+                    <Source
+                        id="requests"
+                        type="geojson"
+                        data={geoJsonData}
+                        cluster={true}
+                        clusterMaxZoom={14}
+                        clusterRadius={50}
+                    >
+                        <Layer {...clusterLayer} />
+                        <Layer {...clusterCountLayer} />
+                        <Layer {...unclusteredPointLayer} />
+                    </Source>
+                </Map>
             </div>
 
             {/* Country statistics */}

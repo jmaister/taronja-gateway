@@ -10,6 +10,21 @@ export default defineConfig({
         react(),
         tailwindcss(),
     ],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // Separate heavy mapping libraries into their own chunk
+                    'maplibre': ['maplibre-gl'],
+                    // Separate chart libraries
+                    'charts': ['chart.js', 'react-chartjs-2'],
+                    // React and core libraries
+                    'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+                }
+            }
+        },
+        chunkSizeWarningLimit: 1000, // Increase warning limit for map chunks
+    },
     test: {
         globals: true,
         environment: 'jsdom',
