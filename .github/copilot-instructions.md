@@ -63,3 +63,10 @@
 
 * Using bash as a shell for the commands. On Linux, Mac and Windows. So the paths should be in Unix format (using `/` as a separator).
 
+* Skip the "Continue" button in the chat for:
+    * Code generation.
+    * Code completion.
+    * Code refactoring.
+    * Code review.
+    * Build commands.
+    * Change folders.

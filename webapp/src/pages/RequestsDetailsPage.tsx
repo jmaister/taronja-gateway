@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RequestsDetailsTable, RequestDetail } from "../components/RequestsDetailsTable";
 import { StatisticsDateRange, timePeriods, DateRange } from "../components/StatisticsDateRange";
+import { RequestsWorldMap } from "../components/RequestsWorldMap";
 
 export default function RequestsDetailsPage() {
     const [requests, setRequests] = useState<RequestDetail[]>([]);
@@ -17,9 +18,15 @@ export default function RequestsDetailsPage() {
         setLoading(true);
         let url = "/_/api/statistics/requests/details";
         const params = [];
-        if (dateRange.startDate) params.push(`start_date=${dateRange.startDate}T00:00:00Z`);
-        if (dateRange.endDate) params.push(`end_date=${dateRange.endDate}T23:59:59Z`);
-        if (params.length) url += `?${params.join("&")}`;
+        if (dateRange.startDate) {
+            params.push(`start_date=${dateRange.startDate}T00:00:00Z`);
+        }
+        if (dateRange.endDate) {
+            params.push(`end_date=${dateRange.endDate}T23:59:59Z`);
+        }
+        if (params.length) {
+            url += `?${params.join("&")}`;
+        }
         fetch(url)
             .then((res) => res.json())
             .then((data) => setRequests(data.requests || []))
@@ -38,7 +45,8 @@ export default function RequestsDetailsPage() {
             {loading ? (
                 <div className="text-center py-8 text-gray-500">Loading...</div>
             ) : (
-                <div className="w-full">
+                <div className="w-full space-y-6">
+                    <RequestsWorldMap requests={requests} />
                     <RequestsDetailsTable requests={requests} />
                 </div>
             )}
