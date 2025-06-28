@@ -29,37 +29,39 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
     });
     
     return (
-        <div className="overflow-x-auto">
+        <div className="w-full">
             <div className="mb-2 text-sm text-gray-600">
                 Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
             </div>
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-4 py-2">ID</th>
-                        <th className="px-4 py-2">Timestamp</th>
-                        <th className="px-4 py-2">Path</th>
-                        <th className="px-4 py-2">User</th>
-                        <th className="px-4 py-2">Status</th>
-                        <th className="px-4 py-2 text-right">Resp. Time (ms)</th>
-                        <th className="px-4 py-2 text-right">Resp. Size (B)</th>
-                        <th className="px-4 py-2">Country</th>
-                        <th className="px-4 py-2">Device</th>
-                        <th className="px-4 py-2">Platform</th>
-                        <th className="px-4 py-2">Browser</th>
-                    </tr>
-                </thead>
+            <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-36">Timestamp</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-48">Path</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">User</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Status</th>
+                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Time (ms)</th>
+                            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Size (B)</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Country</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-20">Device</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Platform</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Browser</th>
+                        </tr>
+                    </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {requests.map((req) => (
                         <tr key={req.id}>
-                            <td className="px-4 py-2 whitespace-nowrap">{req.id}</td>
-                            <td className="px-4 py-2 whitespace-nowrap">{dateFormatter.format(new Date(req.timestamp))}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-blue-600 hover:underline">
-                                <a href={req.path} target="_blank" rel="noopener noreferrer">
-                                    {req.path}
-                                </a>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm">{dateFormatter.format(new Date(req.timestamp))}</td>
+                            <td className="px-3 py-2 text-sm">
+                                <div className="max-w-48 truncate">
+                                    <a href={req.path} target="_blank" rel="noopener noreferrer" 
+                                       className="text-blue-600 hover:underline" title={req.path}>
+                                        {req.path}
+                                    </a>
+                                </div>
                             </td>
-                            <td className="px-4 py-2 whitespace-nowrap">
+                            <td className="px-3 py-2 whitespace-nowrap text-sm">
                                 {req.username ? (
                                     <a 
                                         href={`/_admin/users/${req.user_id}`} 
@@ -72,21 +74,28 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                                     <span className="text-gray-400">-</span>
                                 )}
                             </td>
-                            <td className="px-4 py-2 whitespace-nowrap">{req.status_code}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-right">{decimalFormatter.format(req.response_time)}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-right">{numberFormatter.format(req.response_size)}</td>
-                            <td className="px-4 py-2 whitespace-nowrap">{req.country}</td>
-                            <td className="px-4 py-2 whitespace-nowrap" title={req.device_type}>{req.device_type}</td>
-                            <td className="px-4 py-2 whitespace-nowrap" title={`${req.platform} ${req.platform_version}`}>
-                                {req.platform} {req.platform_version && `v${req.platform_version}`}
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.status_code}</td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{decimalFormatter.format(req.response_time)}</td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{numberFormatter.format(req.response_size)}</td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.country}</td>
+                            <td className="px-2 py-2 text-sm" title={req.device_type}>
+                                <div className="max-w-20 truncate">{req.device_type}</div>
                             </td>
-                            <td className="px-4 py-2 whitespace-nowrap" title={`${req.browser} ${req.browser_version}`}>
-                                {req.browser} {req.browser_version && `v${req.browser_version}`}
+                            <td className="px-2 py-2 text-sm" title={`${req.platform} ${req.platform_version}`}>
+                                <div className="max-w-24 truncate">
+                                    {req.platform} {req.platform_version && `v${req.platform_version}`}
+                                </div>
+                            </td>
+                            <td className="px-2 py-2 text-sm" title={`${req.browser} ${req.browser_version}`}>
+                                <div className="max-w-24 truncate">
+                                    {req.browser} {req.browser_version && `v${req.browser_version}`}
+                                </div>
                             </td>
                         </tr>
                     ))}
                 </tbody>
             </table>
+        </div>
         </div>
     );
 }

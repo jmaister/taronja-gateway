@@ -3,13 +3,13 @@ import './App.css'; // Keep if it has essential base styles not covered by Tailw
 
 // Layout and Page Components
 import MainLayout from './components/layout/MainLayout';
-import { UsersListPage } from './components/UsersListPage';
-import { CreateUserPage } from './components/CreateUserPage';
-import { UserInfoPage } from './components/UserInfoPage';
-import { HomePage } from './components/HomePage';
-import { ProfilePage } from './components/ProfilePage';
-import { NotFoundPage } from './components/NotFoundPage';
-import { StatisticsPage } from './components/StatisticsPage';
+import { UsersListPage } from './pages/UsersListPage';
+import { CreateUserPage } from './pages/CreateUserPage';
+import { UserInfoPage } from './pages/UserInfoPage';
+import { HomePage } from './pages/HomePage';
+import { ProfilePage } from './pages/ProfilePage';
+import { NotFoundPage } from './pages/NotFoundPage';
+import { StatisticsPage } from './pages/StatisticsPage';
 import RequestsDetailsPage from './pages/RequestsDetailsPage';
 
 // Authentication components

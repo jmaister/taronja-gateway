@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RequestStatistics, fetchRequestStatistics } from '../services/api';
-import { StatisticsDateRange, timePeriods, DateRange } from './StatisticsDateRange';
+import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
 
 interface StatCard {
   title: string;

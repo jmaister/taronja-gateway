@@ -60,3 +60,6 @@
 * `make run` to run the sample server.
 * `make build` to build the whole project (backend, frontend, and generated code).
 * `make test` to run the tests.
+
+* Using bash as a shell for the commands. On Linux, Mac and Windows. So the paths should be in Unix format (using `/` as a separator).
+

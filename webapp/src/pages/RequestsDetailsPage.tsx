@@ -27,7 +27,7 @@ export default function RequestsDetailsPage() {
     }
 
     return (
-        <div className="p-6">
+        <div className="p-6 w-full">
             <h1 className="text-2xl font-bold mb-4">Request Details</h1>
             <StatisticsDateRange
                 dateRange={dateRange}
@@ -38,7 +38,9 @@ export default function RequestsDetailsPage() {
             {loading ? (
                 <div className="text-center py-8 text-gray-500">Loading...</div>
             ) : (
-                <RequestsDetailsTable requests={requests} />
+                <div className="w-full">
+                    <RequestsDetailsTable requests={requests} />
+                </div>
             )}
         </div>
     );
