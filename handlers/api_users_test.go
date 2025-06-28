@@ -18,7 +18,7 @@ func setupTestServer() *StrictApiServer {
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
 
-	return NewStrictApiServer(sessionStore, userRepo)
+	return NewStrictApiServer(sessionStore, userRepo, nil)
 }
 
 func TestCreateUser(t *testing.T) {

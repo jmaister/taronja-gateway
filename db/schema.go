@@ -9,6 +9,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// Provider constants
+const AdminProvider = "tg_admin_provider"
+
 // ClientInfo contains common client and geographical information
 type ClientInfo struct {
 	IPAddress string `gorm:"type:varchar(45)"`  // IP address of the client
@@ -116,4 +119,10 @@ type TrafficMetric struct {
 	SessionID      string    `gorm:"type:varchar(255)"`          // ID of the session, if applicable
 	// Embed common client and geographical information
 	ClientInfo
+}
+
+// TrafficMetricWithUser combines TrafficMetric with User information for detailed reports
+type TrafficMetricWithUser struct {
+	TrafficMetric
+	User *User `gorm:"foreignKey:UserID;references:ID"`
 }

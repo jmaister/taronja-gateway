@@ -33,6 +33,64 @@ type HealthResponse struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// RequestDetail defines model for RequestDetail.
+type RequestDetail struct {
+	Browser string `json:"browser"`
+
+	// BrowserVersion Version of the browser
+	BrowserVersion string `json:"browser_version"`
+	Country        string `json:"country"`
+	DeviceType     string `json:"device_type"`
+	Id             string `json:"id"`
+
+	// Path The requested URL path
+	Path     string `json:"path"`
+	Platform string `json:"platform"`
+
+	// PlatformVersion Version of the operating system/platform
+	PlatformVersion string    `json:"platform_version"`
+	ResponseSize    float32   `json:"response_size"`
+	ResponseTime    float32   `json:"response_time"`
+	StatusCode      int       `json:"status_code"`
+	Timestamp       time.Time `json:"timestamp"`
+
+	// UserId ID of the authenticated user making the request
+	UserId *string `json:"user_id"`
+
+	// Username Username of the authenticated user making the request
+	Username *string `json:"username"`
+}
+
+// RequestStatistics defines model for RequestStatistics.
+type RequestStatistics struct {
+	// AverageResponseSize Average response size in bytes
+	AverageResponseSize float32 `json:"averageResponseSize"`
+
+	// AverageResponseTime Average response time in milliseconds
+	AverageResponseTime float32 `json:"averageResponseTime"`
+
+	// RequestsByBrowser Number of requests grouped by browser
+	RequestsByBrowser map[string]int `json:"requestsByBrowser"`
+
+	// RequestsByCountry Number of requests grouped by country code
+	RequestsByCountry map[string]int `json:"requestsByCountry"`
+
+	// RequestsByDeviceType Number of requests grouped by device type
+	RequestsByDeviceType map[string]int `json:"requestsByDeviceType"`
+
+	// RequestsByPlatform Number of requests grouped by platform
+	RequestsByPlatform map[string]int `json:"requestsByPlatform"`
+
+	// RequestsByStatus Number of requests grouped by HTTP status code
+	RequestsByStatus map[string]int `json:"requestsByStatus"`
+
+	// RequestsByUser Number of requests grouped by user (username or user ID)
+	RequestsByUser map[string]int `json:"requestsByUser"`
+
+	// TotalRequests Total number of requests
+	TotalRequests int `json:"totalRequests"`
+}
+
 // UserCreateRequest defines model for UserCreateRequest.
 type UserCreateRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -52,6 +110,24 @@ type UserResponse struct {
 	Username  string               `json:"username"`
 }
 
+// GetRequestStatisticsParams defines parameters for GetRequestStatistics.
+type GetRequestStatisticsParams struct {
+	// StartDate Start date for filtering results (ISO 8601 format)
+	StartDate *time.Time `form:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// EndDate End date for filtering results (ISO 8601 format)
+	EndDate *time.Time `form:"end_date,omitempty" json:"end_date,omitempty"`
+}
+
+// GetRequestDetailsParams defines parameters for GetRequestDetails.
+type GetRequestDetailsParams struct {
+	// StartDate Optional start date for filtering results (ISO 8601 format)
+	StartDate *time.Time `form:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// EndDate Optional end date for filtering results (ISO 8601 format)
+	EndDate *time.Time `form:"end_date,omitempty" json:"end_date,omitempty"`
+}
+
 // LogoutUserParams defines parameters for LogoutUser.
 type LogoutUserParams struct {
 	// Redirect URL to redirect to after successful logout
@@ -66,6 +142,12 @@ type CreateUserJSONRequestBody = UserCreateRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get request statistics
+	// (GET /api/statistics/requests)
+	GetRequestStatistics(w http.ResponseWriter, r *http.Request, params GetRequestStatisticsParams)
+	// Retrieve detailed information about requests made to the gateway
+	// (GET /api/statistics/requests/details)
+	GetRequestDetails(w http.ResponseWriter, r *http.Request, params GetRequestDetailsParams)
 	// List all users
 	// (GET /api/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -94,6 +176,88 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetRequestStatistics operation middleware
+func (siw *ServerInterfaceWrapper) GetRequestStatistics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRequestStatisticsParams
+
+	// ------------- Optional query parameter "start_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start_date", r.URL.Query(), &params.StartDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_date", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "end_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end_date", r.URL.Query(), &params.EndDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRequestStatistics(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRequestDetails operation middleware
+func (siw *ServerInterfaceWrapper) GetRequestDetails(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRequestDetailsParams
+
+	// ------------- Optional query parameter "start_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start_date", r.URL.Query(), &params.StartDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_date", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "end_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end_date", r.URL.Query(), &params.EndDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRequestDetails(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
@@ -362,6 +526,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
+	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc("GET "+options.BaseURL+"/api/users", wrapper.ListUsers)
 	m.HandleFunc("POST "+options.BaseURL+"/api/users", wrapper.CreateUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/users/{userId}", wrapper.GetUserById)
@@ -370,6 +536,69 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/me", wrapper.GetCurrentUser)
 
 	return m
+}
+
+type GetRequestStatisticsRequestObject struct {
+	Params GetRequestStatisticsParams
+}
+
+type GetRequestStatisticsResponseObject interface {
+	VisitGetRequestStatisticsResponse(w http.ResponseWriter) error
+}
+
+type GetRequestStatistics200JSONResponse RequestStatistics
+
+func (response GetRequestStatistics200JSONResponse) VisitGetRequestStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRequestStatistics401JSONResponse Error
+
+func (response GetRequestStatistics401JSONResponse) VisitGetRequestStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRequestStatistics500JSONResponse Error
+
+func (response GetRequestStatistics500JSONResponse) VisitGetRequestStatisticsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRequestDetailsRequestObject struct {
+	Params GetRequestDetailsParams
+}
+
+type GetRequestDetailsResponseObject interface {
+	VisitGetRequestDetailsResponse(w http.ResponseWriter) error
+}
+
+type GetRequestDetails200JSONResponse struct {
+	Requests []RequestDetail `json:"requests"`
+}
+
+func (response GetRequestDetails200JSONResponse) VisitGetRequestDetailsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRequestDetails401JSONResponse Error
+
+func (response GetRequestDetails401JSONResponse) VisitGetRequestDetailsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type ListUsersRequestObject struct {
@@ -583,6 +812,12 @@ func (response GetCurrentUser401JSONResponse) VisitGetCurrentUserResponse(w http
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Get request statistics
+	// (GET /api/statistics/requests)
+	GetRequestStatistics(ctx context.Context, request GetRequestStatisticsRequestObject) (GetRequestStatisticsResponseObject, error)
+	// Retrieve detailed information about requests made to the gateway
+	// (GET /api/statistics/requests/details)
+	GetRequestDetails(ctx context.Context, request GetRequestDetailsRequestObject) (GetRequestDetailsResponseObject, error)
 	// List all users
 	// (GET /api/users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -630,6 +865,58 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetRequestStatistics operation middleware
+func (sh *strictHandler) GetRequestStatistics(w http.ResponseWriter, r *http.Request, params GetRequestStatisticsParams) {
+	var request GetRequestStatisticsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRequestStatistics(ctx, request.(GetRequestStatisticsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRequestStatistics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRequestStatisticsResponseObject); ok {
+		if err := validResponse.VisitGetRequestStatisticsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRequestDetails operation middleware
+func (sh *strictHandler) GetRequestDetails(w http.ResponseWriter, r *http.Request, params GetRequestDetailsParams) {
+	var request GetRequestDetailsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRequestDetails(ctx, request.(GetRequestDetailsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRequestDetails")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRequestDetailsResponseObject); ok {
+		if err := validResponse.VisitGetRequestDetailsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListUsers operation middleware

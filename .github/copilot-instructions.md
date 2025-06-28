@@ -8,6 +8,16 @@
 * Use Unix line endings (LF).
 * Use UTF-8 encoding.
 
+# Naming Conventions
+
+* Keep consistency of field naming, the field names should be related with their types:
+    * `UserRepository` for a repository that manages users.
+    * `TrafficMetricRepository` for a repository that manages traffic metrics.
+    * `SessionStore` for a session store.
+    * `GatewayConfig` for the gateway configuration.
+* Keep consistency, do not use for example `StatsRepository` for the table TrafficMetric. It should be `TrafficMetricRepository` instead.
+* Consistency on file names, for Go and for TypeScript, between what the file contains and its name.
+
 # Taronja Gateway
 
 * The project is done with Go language.
@@ -42,3 +52,21 @@
 * The componentes should not use the "React.FC" type, use the "function" type instead.
 * Create components in the "components" folder, and pages in the "pages" folder.
 * Create components as much as possible, to avoid code duplication.
+
+
+# Commands
+
+* `make api-codegen` to generate OpenAPI code.
+* `make run` to run the sample server.
+* `make build` to build the whole project (backend, frontend, and generated code).
+* `make test` to run the tests.
+
+* Using bash as a shell for the commands. On Linux, Mac and Windows. So the paths should be in Unix format (using `/` as a separator).
+
+* Skip the "Continue" button in the chat for:
+    * Code generation.
+    * Code completion.
+    * Code refactoring.
+    * Code review.
+    * Build commands.
+    * Change folders.

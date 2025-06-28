@@ -17,7 +17,7 @@ func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
 
-	return NewStrictApiServer(sessionStore, userRepo), sessionRepo
+	return NewStrictApiServer(sessionStore, userRepo, nil), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {

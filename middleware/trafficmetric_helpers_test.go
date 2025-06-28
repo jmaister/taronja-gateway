@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,118 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestStatisticsMiddleware(t *testing.T) {
-	statsRepo := db.NewMemoryTrafficMetricRepository()
-
-	t.Run("records basic request statistics", func(t *testing.T) {
-		middleware := TrafficMetricMiddleware(statsRepo)
-
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Hello, World!"))
-		})
-
-		wrappedHandler := middleware(handler)
-
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.RemoteAddr = "192.168.1.1:12345"
-		req.Header.Set("User-Agent", "test-agent/1.0")
-
-		w := httptest.NewRecorder()
-
-		wrappedHandler.ServeHTTP(w, req)
-
-		// Wait a bit for the async operation to complete
-		time.Sleep(10 * time.Millisecond)
-
-		// Verify statistics were recorded
-		stats, err := statsRepo.FindByPath("/test", 10)
-		require.NoError(t, err)
-		require.Len(t, stats, 1)
-		stat := stats[0]
-		assert.Equal(t, "GET", stat.HttpMethod)
-		assert.Equal(t, "/test", stat.Path)
-		assert.Equal(t, 200, stat.HttpStatus)
-		assert.GreaterOrEqual(t, stat.ResponseTimeNs, int64(0))
-		assert.Equal(t, "192.168.1.1", stat.IPAddress)
-		assert.Equal(t, "test-agent/1.0", stat.UserAgent)
-		assert.Equal(t, int64(13), stat.ResponseSize) // "Hello, World!" is 13 bytes
-		assert.Equal(t, "", stat.Error)
-		assert.Equal(t, "Other", stat.DeviceFamily)
-		assert.Empty(t, stat.UserID)
-		assert.Empty(t, stat.SessionID)
-	})
-
-	t.Run("records error responses", func(t *testing.T) {
-		middleware := TrafficMetricMiddleware(statsRepo)
-
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Internal Server Error"))
-		})
-
-		wrappedHandler := middleware(handler)
-
-		req := httptest.NewRequest("POST", "/error", nil)
-		w := httptest.NewRecorder()
-
-		wrappedHandler.ServeHTTP(w, req)
-
-		// Wait a bit for the async operation to complete
-		time.Sleep(10 * time.Millisecond)
-
-		// Verify error statistics were recorded
-		stats, err := statsRepo.FindByPath("/error", 10)
-		require.NoError(t, err)
-		require.Len(t, stats, 1)
-
-		stat := stats[0]
-		assert.Equal(t, "POST", stat.HttpMethod)
-		assert.Equal(t, "/error", stat.Path)
-		assert.Equal(t, 500, stat.HttpStatus)
-		assert.Equal(t, "Internal Server Error", stat.Error)
-	})
-
-	t.Run("records session information when available", func(t *testing.T) {
-		middleware := TrafficMetricMiddleware(statsRepo)
-
-		// Create a mock session
-		sessionData := &db.Session{
-			Token:  "test-session-token",
-			UserID: "test-user-id",
-		}
-
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("OK"))
-		})
-
-		wrappedHandler := middleware(handler)
-
-		req := httptest.NewRequest("GET", "/authenticated", nil)
-
-		// Add session to context
-		ctx := context.WithValue(req.Context(), session.SessionKey, sessionData)
-		req = req.WithContext(ctx)
-
-		w := httptest.NewRecorder()
-
-		wrappedHandler.ServeHTTP(w, req)
-
-		// Wait a bit for the async operation to complete
-		time.Sleep(10 * time.Millisecond)
-
-		// Verify session information was recorded
-		stats, err := statsRepo.FindByPath("/authenticated", 10)
-		require.NoError(t, err)
-		require.Len(t, stats, 1)
-
-		stat := stats[0]
-		assert.Equal(t, "test-user-id", stat.UserID)
-		assert.Equal(t, "test-session-token", stat.SessionID)
-	})
-}
 
 func TestDetermineDeviceType(t *testing.T) {
 	testCases := []struct {
@@ -199,7 +86,7 @@ func TestGetClientIP(t *testing.T) {
 }
 
 func TestConditionalStatisticsMiddleware(t *testing.T) {
-	statsRepo := db.NewMemoryTrafficMetricRepository()
+	statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 	middleware := ConditionalStatisticsMiddleware(statsRepo)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

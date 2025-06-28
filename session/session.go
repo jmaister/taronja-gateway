@@ -18,8 +18,6 @@ const SessionKey contextKey = "session"
 const TokenLength = 32
 const SessionCookieName = "tg_session_token"
 
-const AdminProvider = "admin_tg_provider"
-
 // SessionStore defines the interface for session validation and retrieval, decoupled from persistence.
 type SessionStore interface {
 	ValidateSession(r *http.Request) (*db.Session, bool)
@@ -84,7 +82,7 @@ func (s *SessionStoreDB) NewSession(req *http.Request, user *db.User, provider s
 		Username:        user.Username,
 		Email:           user.Email,
 		IsAuthenticated: true,
-		IsAdmin:         user.Provider == AdminProvider, // Set IsAdmin to true if this is the admin user
+		IsAdmin:         user.Provider == db.AdminProvider, // Set IsAdmin to true if this is the admin user
 		ValidUntil:      time.Now().Add(validityDuration),
 		Provider:        provider,
 	}
@@ -115,17 +113,4 @@ func (s *SessionStoreDB) FindSessionsByUserID(userID string) ([]db.Session, erro
 		return nil, err
 	}
 	return sessions, nil
-}
-
-func NewAdminUser(username string, password string) *db.User {
-	adminUser := &db.User{
-		ID:       "admin",
-		Username: username,
-		// Must be hashed
-		Password: password,
-		Name:     "Administrator",
-		Email:    "",
-		Provider: AdminProvider,
-	}
-	return adminUser
 }

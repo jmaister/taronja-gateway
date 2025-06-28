@@ -65,6 +65,7 @@ type AdminConfig struct {
 	Enabled  bool   `yaml:"enabled"`  // Enable admin access
 	Username string `yaml:"username"` // Admin username
 	Password string `yaml:"password"` // Admin password (will be hashed)
+	Email    string `yaml:"email"`    // Admin email for notifications
 }
 
 // New: Management API Configuration Structs

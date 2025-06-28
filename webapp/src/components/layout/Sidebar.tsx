@@ -42,6 +42,14 @@ const Sidebar = ({
         { name: 'Create New', path: '/users/new' }
       ]
     },
+    { 
+      name: 'Statistics', 
+      icon: '📊', 
+      submenu: [
+        { name: 'Summary', path: '/statistics/request-summary' },
+        { name: 'Details', path: '/statistics/requests-details' }
+      ]
+    },
   ];
 
   return (

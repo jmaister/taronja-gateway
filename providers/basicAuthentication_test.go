@@ -187,6 +187,11 @@ func TestRegisterBasicAuth(t *testing.T) {
 				},
 			},
 		}
+
+		// Ensure admin user exists in repository (simulating gateway initialization)
+		err = mockUserRepo.EnsureAdminUser("configadmin", "admin@example.com", hashedPassword)
+		require.NoError(t, err)
+
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig)
 
 		formData := url.Values{
@@ -213,7 +218,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		sessionObj, err := realSessionRepo.FindSessionByToken(sessionCookie.Value)
 		require.NoError(t, err)
 		assert.Equal(t, "configadmin", sessionObj.Username)
-		assert.Equal(t, "", sessionObj.Email)
+		assert.Equal(t, "admin@example.com", sessionObj.Email)
 		assert.True(t, sessionObj.IsAuthenticated)
 	})
 

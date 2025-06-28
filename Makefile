@@ -73,6 +73,7 @@ tidy:
 	go mod tidy
 
 api-codegen:
+	@echo "Generating OpenAPI code..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
 
 install: build

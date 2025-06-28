@@ -3,12 +3,14 @@ import './App.css'; // Keep if it has essential base styles not covered by Tailw
 
 // Layout and Page Components
 import MainLayout from './components/layout/MainLayout';
-import { UsersListPage } from './components/UsersListPage';
-import { CreateUserPage } from './components/CreateUserPage';
-import { UserInfoPage } from './components/UserInfoPage';
-import { HomePage } from './components/HomePage';
-import { ProfilePage } from './components/ProfilePage';
-import { NotFoundPage } from './components/NotFoundPage';
+import { UsersListPage } from './pages/UsersListPage';
+import { CreateUserPage } from './pages/CreateUserPage';
+import { UserInfoPage } from './pages/UserInfoPage';
+import { HomePage } from './pages/HomePage';
+import { ProfilePage } from './pages/ProfilePage';
+import { NotFoundPage } from './pages/NotFoundPage';
+import { RequestSummaryPage } from './pages/RequestSummaryPage';
+import { RequestsDetailsPage } from './pages/RequestsDetailsPage';
 
 // Authentication components
 import { useAuth } from './contexts/AuthContext';
@@ -87,9 +89,11 @@ function App() {
                 <Route element={<AdminLayoutRoutes />}>
                     <Route path="/home" element={<HomePage />} />
                     <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/statistics/request-summary" element={<RequestSummaryPage />} />
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<CreateUserPage />} />
                     <Route path="/users/:userId" element={<UserInfoPage />} />
+                    <Route path="/statistics/requests-details" element={<RequestsDetailsPage />} />
                     {/* Add other admin routes that should use MainLayout here */}
                 </Route>
 

@@ -40,6 +40,19 @@ export interface CurrentUser extends User {
   // For now, assuming it's the same as User for simplicity
 }
 
+// RequestStatistics from OpenAPI spec
+// Add requestsByUser to the statistics interface
+export interface RequestStatistics {
+  totalRequests: number;
+  requestsByStatus: Record<string, number>;
+  averageResponseTime: number;
+  averageResponseSize: number;
+  requestsByCountry: Record<string, number>;
+  requestsByDeviceType: Record<string, number>;
+  requestsByPlatform: Record<string, number>;
+  requestsByBrowser: Record<string, number>;
+  requestsByUser?: Record<string, number>; // Optional for backward compatibility
+}
 
 // Helper function to process API responses with generics for return type
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -122,4 +135,23 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
     },
   });
   return handleResponse<CurrentUser>(response);
+}
+
+// Fetch request statistics
+export async function fetchRequestStatistics(startDate?: string, endDate?: string): Promise<RequestStatistics> {
+  const url = new URL('/_/api/statistics/requests', window.location.origin);
+  if (startDate) {
+    url.searchParams.append('start_date', startDate);
+  }
+  if (endDate) {
+    url.searchParams.append('end_date', endDate);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+  return handleResponse<RequestStatistics>(response);
 }

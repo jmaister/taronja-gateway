@@ -12,6 +12,9 @@ const getPageTitleFromPath = (path: string): string => {
   if (path.startsWith('/users/new')) return 'Create New User';
   if (path.startsWith('/users/')) return 'User Details'; // Could be more specific if an ID or name is available
   if (path.startsWith('/users')) return 'User Management';
+  if (path.startsWith('/statistics/request-summary')) return 'Request Summary';
+  if (path.startsWith('/statistics/requests-details')) return 'Request Details';
+  if (path.startsWith('/statistics')) return 'Statistics';
   if (path.startsWith('/profile')) return 'Profile Settings';
   if (path.startsWith('/home')) return 'Home';
   // Add more specific titles as needed
@@ -55,7 +58,7 @@ const MainLayout = ({ children }: MainLayoutProps) => {
           isCollapsed={isCollapsed}
           toggleCollapse={toggleCollapse}
         />
-        <main className="flex-1 p-6 bg-base-100">
+        <main className="flex-1 p-6 bg-base-100 overflow-x-auto">
           {children}
         </main>
       </div>

@@ -27,13 +27,14 @@ import (
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server         *http.Server
-	GatewayConfig  *config.GatewayConfig
-	Mux            *http.ServeMux
-	SessionStore   session.SessionStore
-	UserRepository db.UserRepository
-	templates      map[string]*template.Template
-	WebappEmbedFS  *embed.FS
+	Server            *http.Server
+	GatewayConfig     *config.GatewayConfig
+	Mux               *http.ServeMux
+	SessionStore      session.SessionStore
+	UserRepository    db.UserRepository
+	TrafficMetricRepo db.TrafficMetricRepository
+	templates         map[string]*template.Template
+	WebappEmbedFS     *embed.FS
 }
 
 // --- NewGateway Function ---
@@ -72,6 +73,9 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 
+	// Initialize traffic metrics repository
+	statsRepository := db.NewTrafficMetricRepository(db.GetConnection())
+
 	// Initialize and parse templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
@@ -79,13 +83,14 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	}
 
 	gateway := &Gateway{
-		Server:         server,
-		GatewayConfig:  config,
-		Mux:            mux,
-		SessionStore:   sessionStore,
-		UserRepository: userRepository,
-		templates:      templates,
-		WebappEmbedFS:  webappEmbedFS,
+		Server:            server,
+		GatewayConfig:     config,
+		Mux:               mux,
+		SessionStore:      sessionStore,
+		UserRepository:    userRepository,
+		TrafficMetricRepo: statsRepository,
+		templates:         templates,
+		WebappEmbedFS:     webappEmbedFS,
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -99,6 +104,19 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 
 	// Configure the OAuth callback handler (can be done after user routes)
 	gateway.configureOAuthCallbackRoute()
+
+	// Ensure admin user exists in database if configured
+	if config.Management.Admin.Enabled {
+		err = userRepository.EnsureAdminUser(
+			config.Management.Admin.Username,
+			config.Management.Admin.Email,
+			config.Management.Admin.Password,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error ensuring admin user exists: %w", err)
+		}
+		log.Printf("Admin user ensured in database: %s", config.Management.Admin.Username)
+	}
 
 	return gateway, nil
 }
@@ -245,6 +263,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	strictApiServer := handlers.NewStrictApiServer(
 		g.SessionStore,
 		g.UserRepository,
+		g.TrafficMetricRepo,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
@@ -255,13 +274,13 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		var errorWithResponse *middleware.ErrorWithResponse
 		if errors.As(err, &errorWithResponse) {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			responseText := "Unauthorized" // Default response text
-			if errorWithResponse.Message != "" {
-				responseText = errorWithResponse.Message
+			w.WriteHeader(errorWithResponse.Code)
+			responseText := errorWithResponse.Message
+			if responseText == "" {
+				responseText = "Error" // Default response text
 			}
 			encodeErr := json.NewEncoder(w).Encode(api.Error{
-				Code:    http.StatusUnauthorized,
+				Code:    errorWithResponse.Code,
 				Message: responseText,
 			})
 			if encodeErr != nil {
