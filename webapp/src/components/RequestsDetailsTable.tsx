@@ -27,11 +27,36 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
         minute: '2-digit',
         second: '2-digit'
     });
+
+    // Calculate summary statistics
+    const totalRequests = requests.length;
+    const totalTime = requests.reduce((sum, req) => sum + req.response_time, 0);
+    const totalBytes = requests.reduce((sum, req) => sum + req.response_size, 0);
+
+    // Format bytes with appropriate units
+    const formatBytes = (bytes: number): string => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    // Format time with appropriate units
+    const formatTime = (ms: number): string => {
+        if (ms < 1000) return `${decimalFormatter.format(ms)} ms`;
+        if (ms < 60000) return `${decimalFormatter.format(ms / 1000)} s`;
+        if (ms < 3600000) return `${decimalFormatter.format(ms / 60000)} min`;
+        return `${decimalFormatter.format(ms / 3600000)} h`;
+    };
     
     return (
         <div className="w-full">
-            <div className="mb-2 text-sm text-gray-600">
-                Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+            <div className="mb-2 text-sm text-gray-600 flex flex-wrap gap-4">
+                <span>Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+                <span>Requests: {numberFormatter.format(totalRequests)}</span>
+                <span>Total Time: {formatTime(totalTime)}</span>
+                <span>Total Size: {formatBytes(totalBytes)}</span>
             </div>
             <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
                 <table className="min-w-full divide-y divide-gray-200">

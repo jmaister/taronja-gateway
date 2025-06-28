@@ -3,7 +3,7 @@ import { RequestsDetailsTable, RequestDetail } from "../components/RequestsDetai
 import { StatisticsDateRange, timePeriods, DateRange } from "../components/StatisticsDateRange";
 import { LazyRequestsWorldMap } from "../components/LazyRequestsWorldMap";
 
-export default function RequestsDetailsPage() {
+export function RequestsDetailsPage() {
     const [requests, setRequests] = useState<RequestDetail[]>([]);
     const [selectedPeriod, setSelectedPeriod] = useState<string>("today");
     const [dateRange, setDateRange] = useState<DateRange>(() => timePeriods[0].getDateRange());

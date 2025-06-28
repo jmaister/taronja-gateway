@@ -71,7 +71,7 @@ function DataTable({ title, data, color }: DataTableProps) {
   );
 }
 
-export function StatisticsPage() {
+export function RequestSummaryPage() {
   const [statistics, setStatistics] = useState<RequestStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +104,7 @@ export function StatisticsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading statistics...</p>
+          <p className="text-gray-600">Loading request summary...</p>
         </div>
       </div>
     );
@@ -115,7 +115,7 @@ export function StatisticsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Statistics</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Request Summary</h1>
           <p className="text-gray-600 mb-4">{error}</p>
           <button
             onClick={loadStatistics}
@@ -132,7 +132,7 @@ export function StatisticsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">No statistics available</p>
+          <p className="text-gray-600">No request summary available</p>
         </div>
       </div>
     );
@@ -142,7 +142,7 @@ export function StatisticsPage() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Request Statistics</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Request Summary</h1>
           <p className="text-gray-600 mt-1">Monitor gateway performance and traffic patterns</p>
         </div>
         <StatisticsDateRange

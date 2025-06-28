@@ -33,7 +33,6 @@ const Sidebar = ({
 
   const navItems = [
     { name: 'Home', icon: '🏠', path: '/home' },
-    { name: 'Statistics', icon: '📊', path: '/statistics' },
     { name: 'Profile', icon: '👤', path: '/profile' },
     { 
       name: 'Users', 
@@ -43,7 +42,14 @@ const Sidebar = ({
         { name: 'Create New', path: '/users/new' }
       ]
     },
-    { name: 'Requests Details', icon: '📝', path: '/statistics/requests-details' },
+    { 
+      name: 'Statistics', 
+      icon: '📊', 
+      submenu: [
+        { name: 'Summary', path: '/statistics/request-summary' },
+        { name: 'Details', path: '/statistics/requests-details' }
+      ]
+    },
   ];
 
   return (

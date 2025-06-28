@@ -9,8 +9,8 @@ import { UserInfoPage } from './pages/UserInfoPage';
 import { HomePage } from './pages/HomePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { StatisticsPage } from './pages/StatisticsPage';
-import RequestsDetailsPage from './pages/RequestsDetailsPage';
+import { RequestSummaryPage } from './pages/RequestSummaryPage';
+import { RequestsDetailsPage } from './pages/RequestsDetailsPage';
 
 // Authentication components
 import { useAuth } from './contexts/AuthContext';
@@ -89,7 +89,7 @@ function App() {
                 <Route element={<AdminLayoutRoutes />}>
                     <Route path="/home" element={<HomePage />} />
                     <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/statistics" element={<StatisticsPage />} />
+                    <Route path="/statistics/request-summary" element={<RequestSummaryPage />} />
                     <Route path="/users" element={<UsersListPage />} />
                     <Route path="/users/new" element={<CreateUserPage />} />
                     <Route path="/users/:userId" element={<UserInfoPage />} />
