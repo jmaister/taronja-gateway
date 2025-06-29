@@ -10,6 +10,7 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway"
+	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
@@ -112,6 +113,9 @@ func runGateway(configFilePath string) {
 		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}
 	log.Printf("Configuration loaded successfully: %s", config.Name)
+
+	// 1.5. Set geolocation configuration
+	session.SetGeolocationConfig(&config.Geolocation)
 
 	// 2. Create Gateway Instance
 	gateway, err := gateway.NewGateway(config, &webappEmbedFS)
