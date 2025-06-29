@@ -47,6 +47,11 @@ The Taronja Gateway CLI provides the following commands:
     ```
     This command creates a new user in the database with the provided username, email, and password.
 
+*   **Show the current version:**
+    ```bash
+    ./tg version
+    ```
+
 ## Building and Releasing
 
 ### Development Builds
