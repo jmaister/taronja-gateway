@@ -16,4 +16,8 @@ coverage.html
 
 # DB files
 *.db
+*.db-shm
+*.db-wal
+
+# Node.js dependencies
 webapp/node_modules/
