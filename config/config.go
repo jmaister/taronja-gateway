@@ -154,6 +154,11 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		log.Printf("Admin access is disabled")
 	}
 
+	// Validate authentication providers
+	if !config.HasAnyAuthentication() {
+		log.Printf("WARNING: No authentication providers are configured. Consider enabling at least one authentication method:")
+	}
+
 	// Resolve static route paths
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -222,7 +227,8 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
-		c.AuthenticationProviders.Github.ClientId != ""
+		c.AuthenticationProviders.Github.ClientId != "" ||
+		c.Management.Admin.Enabled
 }
 
 // LoginPageData is the data structure for the login.html template
@@ -248,7 +254,7 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) LoginPag
 		RedirectURL:      redirectURL,
 		ManagementPrefix: gatewayConfig.Management.Prefix,
 	}
-	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled
+	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
 	return data

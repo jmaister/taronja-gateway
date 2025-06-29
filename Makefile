@@ -11,7 +11,7 @@ endif
 build: api-codegen
 	@echo "Building $(PROJECT_NAME)..."
 	cd webapp && npm install && npm run build
-	go build -o $(BINARY_NAME) .
+	CGO_ENABLED=0 go build -tags=purego -o $(BINARY_NAME) .
 
 # Run target
 run: build

@@ -18,6 +18,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -tags=purego
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.buildOS={{.Os}} -X main.buildArch={{.Arch}}
     main: ./main.go
