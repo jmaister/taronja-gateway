@@ -2,6 +2,7 @@ package session
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -9,6 +10,16 @@ import (
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/ua-parser/uap-go/uaparser"
 )
+
+// stripPort removes the port from an IP address if present
+func stripPort(ip string) string {
+	host, _, err := net.SplitHostPort(ip)
+	if err != nil {
+		// If SplitHostPort fails, it might be just an IP without port
+		return ip
+	}
+	return host
+}
 
 // GetClientIP extracts the real client IP address from the request
 func GetClientIP(r *http.Request) string {
@@ -18,31 +29,33 @@ func GetClientIP(r *http.Request) string {
 		// X-Forwarded-For can contain multiple IPs, take the first one
 		ips := strings.Split(xForwardedFor, ",")
 		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
+			return stripPort(strings.TrimSpace(ips[0]))
 		}
 	}
 
 	// Check X-Real-IP header (from reverse proxies)
 	xRealIP := r.Header.Get("X-Real-IP")
 	if xRealIP != "" {
-		return xRealIP
+		return stripPort(xRealIP)
 	}
 
 	// Check X-Client-IP header
 	xClientIP := r.Header.Get("X-Client-IP")
 	if xClientIP != "" {
-		return xClientIP
+		return stripPort(xClientIP)
 	}
 
 	// Fall back to RemoteAddr
 	ip := r.RemoteAddr
 
-	// Remove port if present
-	if lastColon := strings.LastIndex(ip, ":"); lastColon != -1 {
-		ip = ip[:lastColon]
+	// Remove port if present using net.SplitHostPort
+	host, _, err := net.SplitHostPort(ip)
+	if err != nil {
+		// If SplitHostPort fails, it might be just an IP without port
+		return ip
 	}
 
-	return ip
+	return host
 }
 
 // NewClientInfo creates a ClientInfo instance from an HTTP request and geolocation data
