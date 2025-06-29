@@ -50,7 +50,7 @@ type AuthProvider interface {
 func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
-	if gatewayConfig.AuthenticationProviders.Basic.Enabled {
+	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
 		log.Printf("Registering Basic Authentication provider")
 		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo, gatewayConfig)
 	}
