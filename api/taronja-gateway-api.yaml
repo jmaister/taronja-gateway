@@ -523,6 +523,16 @@ components:
           type: number
         country:
           type: string
+        city:
+          type: string
+        latitude:
+          type: number
+          nullable: true
+          description: GPS latitude coordinate
+        longitude:
+          type: number
+          nullable: true
+          description: GPS longitude coordinate
         device_type:
           type: string
         platform:
@@ -544,6 +554,7 @@ components:
         - response_time
         - response_size
         - country
+        - city
         - device_type
         - platform
         - platform_version

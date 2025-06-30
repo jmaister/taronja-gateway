@@ -39,9 +39,16 @@ type RequestDetail struct {
 
 	// BrowserVersion Version of the browser
 	BrowserVersion string `json:"browser_version"`
+	City           string `json:"city"`
 	Country        string `json:"country"`
 	DeviceType     string `json:"device_type"`
 	Id             string `json:"id"`
+
+	// Latitude GPS latitude coordinate
+	Latitude *float32 `json:"latitude"`
+
+	// Longitude GPS longitude coordinate
+	Longitude *float32 `json:"longitude"`
 
 	// Path The requested URL path
 	Path     string `json:"path"`

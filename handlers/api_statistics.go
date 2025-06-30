@@ -190,6 +190,16 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 			userID = &m.TrafficMetric.UserID
 		}
 
+		var latitude, longitude *float32
+		if m.TrafficMetric.Latitude != 0 {
+			lat := float32(m.TrafficMetric.Latitude)
+			latitude = &lat
+		}
+		if m.TrafficMetric.Longitude != 0 {
+			lon := float32(m.TrafficMetric.Longitude)
+			longitude = &lon
+		}
+
 		details = append(details, api.RequestDetail{
 			Id:              fmt.Sprintf("%v", m.TrafficMetric.ID),
 			Timestamp:       m.TrafficMetric.Timestamp,
@@ -200,6 +210,9 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 			ResponseTime:    float32(m.TrafficMetric.ResponseTimeNs) / 1e6, // convert ns to ms
 			ResponseSize:    float32(m.TrafficMetric.ResponseSize),
 			Country:         m.TrafficMetric.Country,
+			City:            m.TrafficMetric.City,
+			Latitude:        latitude,
+			Longitude:       longitude,
 			DeviceType:      m.TrafficMetric.DeviceFamily,
 			Platform:        m.TrafficMetric.OSFamily,
 			PlatformVersion: m.TrafficMetric.OSVersion,

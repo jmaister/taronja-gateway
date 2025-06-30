@@ -193,9 +193,9 @@ func getGeoDataFromIPLocate(ip, apiKey string) (GeoData, error) {
 // formatGeoLocation formats the location string for display
 func formatGeoLocation(geoData *GeoData) {
 	if geoData.City != "" && geoData.Region != "" && geoData.Country != "" {
-		geoData.FormattedLoc = fmt.Sprintf("%s, %s, %s", geoData.City, geoData.Region, geoData.Country)
+		geoData.FormattedLoc = fmt.Sprintf("%s, %s, %s", geoData.Country, geoData.Region, geoData.City)
 	} else if geoData.City != "" && geoData.Country != "" {
-		geoData.FormattedLoc = fmt.Sprintf("%s, %s", geoData.City, geoData.Country)
+		geoData.FormattedLoc = fmt.Sprintf("%s, %s", geoData.Country, geoData.City)
 	} else if geoData.Country != "" {
 		geoData.FormattedLoc = geoData.Country
 	} else {
