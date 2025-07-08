@@ -1,3 +1,5 @@
+version: 2
+
 project_name: taronja-gateway
 
 before:
@@ -9,7 +11,8 @@ before:
     - bash -c "cd webapp && npm run build"
 
 builds:
-  - env:
+  - id: default
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -26,7 +29,7 @@ builds:
     binary: tg
 
 archives:
-  - format: tar.gz
+  - id: default
     # this name template makes the OS and Arch compatible with the results of uname.
     name_template: >-
       {{ .ProjectName }}_
@@ -35,10 +38,6 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-    - goos: windows
-      format: zip
     files:
       - LICENSE*
       - README*
@@ -48,7 +47,7 @@ checksum:
   name_template: 'checksums.txt'
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
