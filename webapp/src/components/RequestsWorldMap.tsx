@@ -82,23 +82,40 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
     // Convert requests to GeoJSON points with coordinates from our lightweight lookup
     const geoJsonData = useMemo(() => {
         const features = requests.map((request, index) => {
-            const country = request.country || "Unknown";
-            const baseCoords = getCountryCoordinates(country);
+            let longitude: number;
+            let latitude: number;
+            
+            // Use actual coordinates from the request if available, otherwise fallback to country lookup
+            if (request.latitude != null && request.longitude != null && 
+                request.latitude !== 0 && request.longitude !== 0) {
+                // Use the actual geolocation coordinates
+                longitude = request.longitude;
+                latitude = request.latitude;
+            } else {
+                // Fallback to country-based coordinates
+                const country = request.country || "Unknown";
+                const baseCoords = getCountryCoordinates(country);
+                longitude = baseCoords[0];
+                latitude = baseCoords[1];
+            }
             
             // Ensure coordinates are within valid bounds
-            const longitude = Math.max(-180, Math.min(180, baseCoords[0]));
-            const latitude = Math.max(-85, Math.min(85, baseCoords[1]));
+            longitude = Math.max(-180, Math.min(180, longitude));
+            latitude = Math.max(-85, Math.min(85, latitude));
             
             return {
                 type: "Feature" as const,
                 properties: {
                     id: index,
-                    country: country,
+                    country: request.country || "Unknown",
+                    city: request.city,
                     path: request.path,
                     status_code: request.status_code,
                     response_time: request.response_time,
                     timestamp: request.timestamp,
-                    username: request.username || "Anonymous"
+                    username: request.username || "Anonymous",
+                    hasActualCoordinates: request.latitude != null && request.longitude != null && 
+                                         request.latitude !== 0 && request.longitude !== 0
                 },
                 geometry: {
                     type: "Point" as const,
@@ -236,6 +253,23 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
                                 </div>
                             ))
                         }
+                    </div>
+                    
+                    {/* Coordinate accuracy note */}
+                    <div className="mt-3 text-xs text-gray-500">
+                        {(() => {
+                            const actualCoords = requests.filter(r => r.latitude != null && r.longitude != null && 
+                                                                   r.latitude !== 0 && r.longitude !== 0).length;
+                            const fallbackCoords = requests.length - actualCoords;
+                            
+                            if (actualCoords > 0 && fallbackCoords > 0) {
+                                return `📍 ${actualCoords} precise locations, ${fallbackCoords} country-based approximations`;
+                            } else if (actualCoords > 0) {
+                                return `📍 All locations show precise coordinates`;
+                            } else {
+                                return `📍 All locations are country-based approximations`;
+                            }
+                        })()}
                     </div>
                 </div>
             )}

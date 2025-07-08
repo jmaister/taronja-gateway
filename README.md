@@ -15,6 +15,7 @@ Features table, shows what is implemented and what is planned.
 | Management Dashboard          | ✅       |
 | Logging                       | ✅       |
 | Analytics and Traffic metrics | ✅       |
+| - User Geo-location           | ✅       |
 | Sessions (Persistent)         | ✅       |
 | User management               | ✅       |
 | Authentication                | ✅       |
@@ -31,7 +32,25 @@ Features table, shows what is implemented and what is planned.
 | robots.txt                    | 🚧       |
 | more...                       | 🚧       |
 
-## Commands
+# Installation
+
+### Quick Install (All Platforms)
+
+```bash
+curl -fsSL https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.sh | bash
+```
+
+This script detects your OS and architecture, downloads the latest release, and installs it to your system path.
+
+### Windows Installation
+
+```bat
+powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.bat' -OutFile 'install.bat'" && install.bat
+```
+
+The Windows installer places the binary in `%USERPROFILE%\bin`. Add this directory to your PATH to use `tg` from anywhere.
+
+# Commands
 
 The Taronja Gateway CLI provides the following commands:
 
@@ -52,9 +71,9 @@ The Taronja Gateway CLI provides the following commands:
     ./tg version
     ```
 
-## Building and Releasing
+# Building and Releasing
 
-### Development Builds
+## Development Builds
 
 ```bash
 # Build the binary
@@ -70,7 +89,7 @@ make cover
 make dev
 ```
 
-### Release Process
+## Release Process
 
 Taronja Gateway uses [GoReleaser](https://goreleaser.com/) for building and publishing releases.
 
@@ -88,7 +107,7 @@ make release-local
 make release-docker
 ```
 
-### GitHub Releases
+## GitHub Releases
 
 When a new version is ready to be released:
 
@@ -106,29 +125,17 @@ When a new version is ready to be released:
    - Generate coverage reports
    - Publish all artifacts to the GitHub release
 
-## Installation
+## Geolocation Configuration
 
-### Quick Install (All Platforms)
+Configure IP geolocation services in your `config.yaml`:
 
-```bash
-curl -fsSL https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.sh | bash
+```yaml
+geolocation:
+  iplocateApiKey: ${IPLOCATE_IO_API_KEY}  # Optional: Use iplocate.io
 ```
 
-This script detects your OS and architecture, downloads the latest release, and installs it to your system path.
+- **With API key**: Uses [iplocate.io](https://www.iplocate.io) (more accurate, requires API key)
+- **Without API key**: Uses [freeipapi.com](https://freeipapi.com) (free, basic accuracy)
 
-### Windows Installation
-
-```bat
-powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.bat' -OutFile 'install.bat'" && install.bat
-```
-
-The Windows installer places the binary in `%USERPROFILE%\bin`. Add this directory to your PATH to use `tg` from anywhere.
-
-## Version Information
-
-You can check the current version of your installation:
-
-```bash
-./tg version
-```
+Geolocation data is cached for 7 days to optimize performance and reduce API calls.
 

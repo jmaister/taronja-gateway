@@ -65,6 +65,9 @@ authenticationProviders:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
 
+geolocation:
+  iplocateApiKey: ${IPLOCATE_IO_API_KEY}
+
 notification:
   email:
     enabled: true

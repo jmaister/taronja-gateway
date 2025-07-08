@@ -76,6 +76,11 @@ type ManagementConfig struct {
 	Admin     AdminConfig `yaml:"admin"`     // Admin access configuration
 }
 
+// Geolocation configuration for IP geolocation services
+type GeolocationConfig struct {
+	IPLocateAPIKey string `yaml:"iplocateApiKey"` // API key for iplocate.io service
+}
+
 // Main GatewayConfig Struct including Management API config
 type GatewayConfig struct {
 	Name                    string                  `yaml:"name"`
@@ -83,6 +88,7 @@ type GatewayConfig struct {
 	Management              ManagementConfig        `yaml:"management"` // Add management config
 	Routes                  []RouteConfig           `yaml:"routes"`
 	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"`
+	Geolocation             GeolocationConfig       `yaml:"geolocation"`
 	Notification            NotificationConfig      `yaml:"notification"`
 }
 

@@ -9,6 +9,9 @@ export type RequestDetail = {
     response_time: number;
     response_size: number;
     country: string;
+    city: string;
+    latitude?: number | null;
+    longitude?: number | null;
     device_type: string;
     platform: string;
     platform_version: string;
@@ -69,6 +72,7 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                             <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Time (ms)</th>
                             <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Size (B)</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Country</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">City</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-20">Device</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Platform</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Browser</th>
@@ -103,6 +107,7 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{decimalFormatter.format(req.response_time)}</td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{numberFormatter.format(req.response_size)}</td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.country}</td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.city}</td>
                             <td className="px-2 py-2 text-sm" title={req.device_type}>
                                 <div className="max-w-20 truncate">{req.device_type}</div>
                             </td>
