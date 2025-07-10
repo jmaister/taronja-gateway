@@ -25,6 +25,7 @@ Features table, shows what is implemented and what is planned.
 | - OAuth2: Google              | ✅       |
 | Authentication: JWT           | 🚧       |
 | Authorization using RBAC      | 🚧       |
+| Feature Flags                 | 🚧       |
 | Rate Limiting                 | 🚧       |
 | Circuit breaker               | 🚧       |
 | Caching                       | 🚧       |
