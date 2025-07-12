@@ -1,7 +1,6 @@
 package fingerprint
 
 import (
-	"context"
 	"net/http"
 )
 
@@ -11,18 +10,10 @@ type JA4HKeyType string
 // JA4HKey is the key used for storing JA4H fingerprints in request context
 const JA4HKey JA4HKeyType = "ja4h_fingerprint"
 
-// GetJA4FromContext retrieves the JA4H fingerprint from the request context
-func GetJA4FromContext(ctx context.Context) string {
-	if fingerprint, ok := ctx.Value(JA4HKey).(string); ok {
-		return fingerprint
-	}
-	return ""
-}
+// JA4HHeaderName is the HTTP header name used to store JA4H fingerprints
+const JA4HHeaderName = "X-Taronja-JA4H"
 
-// GetJA4FromRequest retrieves the JA4H fingerprint from the HTTP request context
+// GetJA4FromRequest retrieves the JA4H fingerprint from the HTTP request headers
 func GetJA4FromRequest(req *http.Request) string {
-	if ctx := req.Context(); ctx != nil {
-		return GetJA4FromContext(ctx)
-	}
-	return ""
+	return req.Header.Get(JA4HHeaderName)
 }

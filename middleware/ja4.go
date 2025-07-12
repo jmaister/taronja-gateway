@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"log"
 	"net/http"
 
@@ -22,9 +21,8 @@ func JA4Middleware(next http.Handler) http.Handler {
 			log.Printf("JA4H fingerprint for request %s %s: %s", r.Method, r.URL.Path, ja4hFingerprint)
 		}
 
-		// Store the fingerprint in the request context
-		ctx := context.WithValue(r.Context(), fingerprint.JA4HKey, ja4hFingerprint)
-		r = r.WithContext(ctx)
+		// Store the fingerprint in a custom header
+		r.Header.Set(fingerprint.JA4HHeaderName, ja4hFingerprint)
 
 		next.ServeHTTP(w, r)
 	})
