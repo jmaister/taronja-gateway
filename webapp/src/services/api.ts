@@ -52,6 +52,7 @@ export interface RequestStatistics {
   requestsByPlatform: Record<string, number>;
   requestsByBrowser: Record<string, number>;
   requestsByUser?: Record<string, number>; // Optional for backward compatibility
+  requestsByJA4Fingerprint: Record<string, number>;
 }
 
 // Helper function to process API responses with generics for return type

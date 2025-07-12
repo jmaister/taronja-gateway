@@ -21,6 +21,7 @@ type TrafficMetricRepository interface {
 	GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) // NEW
+	GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error)
 	ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error)
 }
 
@@ -274,6 +275,32 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate tim
 	}
 
 	return userCounts, nil
+}
+
+// GetRequestCountByJA4Fingerprint returns request counts grouped by JA4 fingerprint within a date range.
+func (r *TrafficMetricRepositoryDB) GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error) {
+	var results []struct {
+		JA4Fingerprint string
+		Count          int
+	}
+
+	err := r.DB.Model(&TrafficMetric{}).
+		Select("ja4_fingerprint, COUNT(*) as count").
+		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
+		Group("ja4_fingerprint").
+		Scan(&results).Error
+
+	if err != nil {
+		log.Printf("Error getting request count by JA4 fingerprint: %v", err)
+		return nil, err
+	}
+
+	ja4Counts := make(map[string]int)
+	for _, result := range results {
+		ja4Counts[result.JA4Fingerprint] = result.Count
+	}
+
+	return ja4Counts, nil
 }
 
 // ListRequestDetails returns all request details in a date range (or all if nil)

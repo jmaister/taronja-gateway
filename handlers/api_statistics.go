@@ -100,6 +100,13 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
 
+	// Get requests by JA4 fingerprint
+	requestsByJA4Fingerprint, err := s.trafficMetricRepo.GetRequestCountByJA4Fingerprint(startDate, endDate)
+	if err != nil {
+		log.Printf("Error getting requests by JA4 fingerprint: %v", err)
+		return api.GetRequestStatistics500JSONResponse{}, nil
+	}
+
 	// Convert maps to the expected format for the API response
 	statusMap := make(map[string]int)
 	for status, count := range requestsByStatus {
@@ -141,17 +148,25 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		}
 	}
 
+	ja4FingerprintMap := make(map[string]int)
+	for ja4Fingerprint, count := range requestsByJA4Fingerprint {
+		if ja4Fingerprint != "" {
+			ja4FingerprintMap[ja4Fingerprint] = count
+		}
+	}
+
 	// Create the response
 	response := api.RequestStatistics{
-		TotalRequests:        int(totalRequests),
-		RequestsByStatus:     statusMap,
-		AverageResponseTime:  float32(avgResponseTimeMs),
-		AverageResponseSize:  float32(avgResponseSize),
-		RequestsByCountry:    countryMap,
-		RequestsByDeviceType: deviceMap,
-		RequestsByPlatform:   platformMap,
-		RequestsByBrowser:    browserMap,
-		RequestsByUser:       userMap,
+		TotalRequests:            int(totalRequests),
+		RequestsByStatus:         statusMap,
+		AverageResponseTime:      float32(avgResponseTimeMs),
+		AverageResponseSize:      float32(avgResponseSize),
+		RequestsByCountry:        countryMap,
+		RequestsByDeviceType:     deviceMap,
+		RequestsByPlatform:       platformMap,
+		RequestsByBrowser:        browserMap,
+		RequestsByUser:           userMap,
+		RequestsByJA4Fingerprint: ja4FingerprintMap,
 	}
 
 	return api.GetRequestStatistics200JSONResponse(response), nil

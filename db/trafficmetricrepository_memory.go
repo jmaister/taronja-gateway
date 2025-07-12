@@ -242,6 +242,25 @@ func (r *TrafficMetricRepositoryMemory) GetRequestCountByUser(startDate, endDate
 	return userCounts, nil
 }
 
+// GetRequestCountByJA4Fingerprint returns request counts grouped by JA4 fingerprint within a date range.
+func (r *TrafficMetricRepositoryMemory) GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	ja4Counts := make(map[string]int)
+
+	for _, stat := range r.stats {
+		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
+			fingerprint := stat.ClientInfo.JA4Fingerprint
+			if fingerprint != "" {
+				ja4Counts[fingerprint]++
+			}
+		}
+	}
+
+	return ja4Counts, nil
+}
+
 // ListRequestDetails returns all request details in a date range (or all if nil)
 func (r *TrafficMetricRepositoryMemory) ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error) {
 	r.mutex.RLock()
