@@ -37,6 +37,9 @@ type ClientInfo struct {
 	CountryCode string  `gorm:"type:varchar(3)"`    // ISO country code
 	Region      string  `gorm:"type:varchar(100)"`  // State/Province/Region
 	Continent   string  `gorm:"type:varchar(50)"`   // Continent name
+
+	// JA4H HTTP fingerprint
+	JA4Fingerprint string `gorm:"type:varchar(100)"`
 }
 
 // User struct definition

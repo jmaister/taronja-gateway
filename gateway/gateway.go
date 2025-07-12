@@ -50,6 +50,9 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 
 	// Apply analytics middleware if enabled
 	if config.Management.Analytics {
+		// Apply JA4H fingerprinting middleware first so fingerprint is available for other middlewares
+		log.Printf("JA4H fingerprinting enabled")
+		handler = middleware.JA4Middleware(handler)
 		log.Printf("Request/response analytics collection enabled")
 		trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
 		handler = middleware.TrafficMetricMiddleware(trafficMetricRepo)(handler)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/ua-parser/uap-go/uaparser"
 )
 
@@ -75,6 +76,9 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 		}
 	}
 
+	// Extract JA4H fingerprint from request context (set by JA4 middleware)
+	ja4Fingerprint := fingerprint.GetJA4FromRequest(req)
+
 	return &db.ClientInfo{
 		IPAddress:      ipAddress,
 		UserAgent:      req.UserAgent(),
@@ -96,6 +100,8 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 		CountryCode: geoData.CountryCode,
 		Region:      geoData.Region,
 		Continent:   geoData.Continent,
+		// JA4H fingerprinting
+		JA4Fingerprint: ja4Fingerprint,
 	}
 }
 
