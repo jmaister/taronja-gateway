@@ -85,6 +85,9 @@ type RequestStatistics struct {
 	// RequestsByDeviceType Number of requests grouped by device type
 	RequestsByDeviceType map[string]int `json:"requestsByDeviceType"`
 
+	// RequestsByJA4Fingerprint Number of requests grouped by JA4 HTTP fingerprint
+	RequestsByJA4Fingerprint map[string]int `json:"requestsByJA4Fingerprint"`
+
 	// RequestsByPlatform Number of requests grouped by platform
 	RequestsByPlatform map[string]int `json:"requestsByPlatform"`
 

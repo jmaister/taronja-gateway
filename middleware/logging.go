@@ -1,4 +1,3 @@
-// filepath: c:\dev\workspace\taronja-gateway\middleware\logging.go
 package middleware
 
 import (

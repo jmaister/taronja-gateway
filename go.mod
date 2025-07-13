@@ -64,6 +64,7 @@ require (
 require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lucsky/cuid v1.2.1
+	github.com/lum8rjack/go-ja4h v0.0.0-20250606032308-3a989c6635be
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0

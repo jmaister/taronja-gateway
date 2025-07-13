@@ -31,6 +31,7 @@
 
 * For Go tests, use Testify (https://github.com/stretchr/testify) for the assertions. Use the Go testing package for the tests.
 * Do not use mocks for testing, use the memory versions of the repositories.
+* Do not create "debug" files with a main for testing the changes. Just use tests.
 
 * Use the Makefile for commands:
     * `make test` to run the tests

@@ -217,6 +217,11 @@ export function RequestSummaryPage() {
             color="#0EA5E9"
           />
         )}
+        <DataTable
+          title="Requests by JA4 Fingerprint"
+          data={statistics.requestsByJA4Fingerprint}
+          color="#8B5A2B"
+        />
       </div>
     </div>
   );
