@@ -234,6 +234,119 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  
+  /api/tokens:
+    get:
+      summary: List user's API tokens
+      operationId: listTokens
+      tags:
+        - Token
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: A list of user's tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a new API token
+      operationId: createToken
+      tags:
+        - Token
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenCreateRequest'
+      responses:
+        '201':
+          description: Token created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenCreateResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tokens/{tokenId}:
+    get:
+      summary: Get token details
+      operationId: getToken
+      tags:
+        - Token
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          description: ID of the token to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/statistics/requests:
     get:
       summary: Get request statistics
@@ -570,8 +683,94 @@ components:
         - platform_version
         - browser
         - browser_version
+    
+    TokenResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the token
+        name:
+          type: string
+          description: User-defined name for the token
+        is_active:
+          type: boolean
+          description: Whether the token is active
+        created_at:
+          type: string
+          format: date-time
+          description: When the token was created
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token expires (null if no expiration)
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token was last used
+        usage_count:
+          type: integer
+          description: Number of times the token has been used
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Permissions/scopes for the token
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token was revoked (null if not revoked)
+      required:
+        - id
+        - name
+        - is_active
+        - created_at
+        - usage_count
+        - scopes
+
+    TokenCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: User-defined name for the token
+          minLength: 1
+          maxLength: 100
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token should expire (null for no expiration)
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Permissions/scopes for the token
+          default: []
+      required:
+        - name
+
+    TokenCreateResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The actual token string (only returned on creation)
+        token_info:
+          $ref: '#/components/schemas/TokenResponse'
+      required:
+        - token
+        - token_info
+
   securitySchemes:
     cookieAuth:
       type: apiKey
       in: cookie
       name: tg_session_token # Ensure this is your actual session cookie name
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

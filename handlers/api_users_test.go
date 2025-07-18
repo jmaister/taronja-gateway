@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -17,8 +18,11 @@ func setupTestServer() *StrictApiServer {
 	userRepo := db.NewMemoryUserRepository()
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
+	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
+	tokenRepo := db.NewTokenRepositoryMemory()
+	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	return NewStrictApiServer(sessionStore, userRepo, nil)
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService)
 }
 
 func TestCreateUser(t *testing.T) {

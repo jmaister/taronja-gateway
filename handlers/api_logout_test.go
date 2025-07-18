@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
@@ -16,8 +17,11 @@ func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
 	userRepo := db.NewMemoryUserRepository()
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
+	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
+	tokenRepo := db.NewTokenRepositoryMemory()
+	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	return NewStrictApiServer(sessionStore, userRepo, nil), sessionRepo
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {

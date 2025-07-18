@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
@@ -33,6 +34,8 @@ type Gateway struct {
 	SessionStore      session.SessionStore
 	UserRepository    db.UserRepository
 	TrafficMetricRepo db.TrafficMetricRepository
+	TokenRepository   db.TokenRepository
+	TokenService      *auth.TokenService
 	templates         map[string]*template.Template
 	WebappEmbedFS     *embed.FS
 }
@@ -79,6 +82,12 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	// Initialize traffic metrics repository
 	statsRepository := db.NewTrafficMetricRepository(db.GetConnection())
 
+	// Initialize token repository
+	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())
+
+	// Initialize token service
+	tokenService := auth.NewTokenService(tokenRepository, userRepository)
+
 	// Initialize and parse templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
@@ -92,6 +101,8 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		SessionStore:      sessionStore,
 		UserRepository:    userRepository,
 		TrafficMetricRepo: statsRepository,
+		TokenRepository:   tokenRepository,
+		TokenService:      tokenService,
 		templates:         templates,
 		WebappEmbedFS:     webappEmbedFS,
 	}
@@ -267,6 +278,8 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.SessionStore,
 		g.UserRepository,
 		g.TrafficMetricRepo,
+		g.TokenRepository,
+		g.TokenService,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
