@@ -21,6 +21,28 @@ func createTestSessionStore() session.SessionStore {
 	return session.NewSessionStore(memoryRepo)
 }
 
+// Mock TokenService for testing
+type mockTokenService struct{}
+
+func (m *mockTokenService) ValidateToken(token string) (*db.User, *db.Token, error) {
+	// Simple mock that accepts any token for testing
+	user := &db.User{
+		ID:       "test-user-id",
+		Username: "testuser",
+		Email:    "test@example.com",
+		Provider: "basic",
+	}
+	tokenData := &db.Token{
+		ID:   "test-token-id",
+		Name: "test-token",
+	}
+	return user, tokenData, nil
+}
+
+func createMockTokenService() session.TokenService {
+	return &mockTokenService{}
+}
+
 // Test helper to create a test user
 func createTestUser() *db.User {
 	return &db.User{
@@ -63,6 +85,7 @@ func verifySessionInContext(ctx context.Context, expectedSession *db.Session) bo
 
 func TestStrictSessionMiddleware(t *testing.T) {
 	store := createTestSessionStore()
+	tokenService := createMockTokenService()
 	user := createTestUser()
 	loginRedirectBase := "/_/login"
 
@@ -70,7 +93,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		// Test operations that are in OperationWithNoSecurity list
 		for _, operationID := range OperationWithNoSecurity {
 			t.Run(operationID, func(t *testing.T) {
-				middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
+				middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
 				handlerCalled := false
 				mockHandler := mockStrictHandler("success", nil)
 
@@ -95,7 +118,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 	t.Run("operation with valid session", func(t *testing.T) {
 		sessionData, cookie := createValidSessionAndCookie(t, store, user)
 
-		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
+		middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
 		handlerCalled := false
 		var receivedCtx context.Context
 
@@ -119,7 +142,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 	})
 
 	t.Run("operation requiring auth with no session cookie", func(t *testing.T) {
-		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
+		middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -135,11 +158,11 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		var errorWithResponse *ErrorWithResponse
 		assert.ErrorAs(t, err, &errorWithResponse)
 		assert.Equal(t, http.StatusUnauthorized, errorWithResponse.Code)
-		assert.Equal(t, "Unauthorized, no session found or invalid.", errorWithResponse.Message)
+		assert.Equal(t, "Unauthorized, no valid session or token found", errorWithResponse.Message)
 	})
 
 	t.Run("operation requiring auth with invalid session token", func(t *testing.T) {
-		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
+		middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -159,7 +182,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		var errorWithResponse *ErrorWithResponse
 		assert.ErrorAs(t, err, &errorWithResponse)
 		assert.Equal(t, http.StatusUnauthorized, errorWithResponse.Code)
-		assert.Equal(t, "Unauthorized, no session found or invalid.", errorWithResponse.Message)
+		assert.Equal(t, "Unauthorized, no valid session or token found", errorWithResponse.Message)
 	})
 
 	t.Run("operation requiring auth with expired session", func(t *testing.T) {
@@ -168,7 +191,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		expiredSession, err := store.NewSession(req, user, "test-provider", -time.Hour) // Expired 1 hour ago
 		require.NoError(t, err)
 
-		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
+		middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -188,7 +211,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		var errorWithResponse *ErrorWithResponse
 		assert.ErrorAs(t, err, &errorWithResponse)
 		assert.Equal(t, http.StatusUnauthorized, errorWithResponse.Code)
-		assert.Equal(t, "Unauthorized, no session found or invalid.", errorWithResponse.Message)
+		assert.Equal(t, "Unauthorized, no valid session or token found", errorWithResponse.Message)
 	})
 
 	t.Run("operation requiring auth with closed session", func(t *testing.T) {
@@ -197,7 +220,7 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		err := store.EndSession(sessionData.Token)
 		require.NoError(t, err)
 
-		middleware := StrictSessionMiddleware(store, loginRedirectBase, false)
+		middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
 
 		wrappedHandler := middleware(mockStrictHandler("success", nil), "TestOperation")
 
@@ -217,12 +240,49 @@ func TestStrictSessionMiddleware(t *testing.T) {
 		var errorWithResponse *ErrorWithResponse
 		assert.ErrorAs(t, err, &errorWithResponse)
 		assert.Equal(t, http.StatusUnauthorized, errorWithResponse.Code)
-		assert.Equal(t, "Unauthorized, no session found or invalid.", errorWithResponse.Message)
+		assert.Equal(t, "Unauthorized, no valid session or token found", errorWithResponse.Message)
+	})
+
+	t.Run("operation with token authentication fallback", func(t *testing.T) {
+		// Test that when cookie auth fails, token auth is tried as fallback
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.Header.Set("Authorization", "Bearer valid-token")
+
+		// Call ValidateTokenAuth on the store directly to verify the interface works
+		sessionFromToken, isValid := store.ValidateTokenAuth(req, tokenService)
+
+		// Since our mock always returns success, this should work
+		assert.True(t, isValid)
+		assert.NotNil(t, sessionFromToken)
+		assert.Equal(t, "testuser", sessionFromToken.Username)
+		assert.Equal(t, "token_auth", sessionFromToken.CreatedFrom)
+
+		// Now test with the middleware
+		middleware := StrictSessionMiddleware(store, tokenService, loginRedirectBase, false)
+		handlerCalled := false
+		var capturedSession *db.Session
+
+		wrappedHandler := middleware(func(ctx context.Context, w http.ResponseWriter, r *http.Request, requestObject interface{}) (interface{}, error) {
+			handlerCalled = true
+			capturedSession = ctx.Value(session.SessionKey).(*db.Session)
+			return "success", nil
+		}, "TestOperation")
+
+		w := httptest.NewRecorder()
+		result, err := wrappedHandler(context.Background(), w, req, nil)
+
+		assert.True(t, handlerCalled)
+		assert.NoError(t, err)
+		assert.Equal(t, "success", result)
+		assert.NotNil(t, capturedSession)
+		assert.Equal(t, "testuser", capturedSession.Username)
+		assert.Equal(t, "token_auth", capturedSession.CreatedFrom)
 	})
 }
 
 func TestSessionMiddleware(t *testing.T) {
 	store := createTestSessionStore()
+	tokenService := createMockTokenService()
 	user := createTestUser()
 	managementPrefix := "/_"
 
@@ -237,7 +297,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, true, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/static/file.html", nil)
 		req.AddCookie(cookie)
@@ -271,7 +331,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		req.AddCookie(cookie)
@@ -301,7 +361,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, true, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/static/file.html", nil)
 		w := httptest.NewRecorder()
@@ -323,7 +383,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		w := httptest.NewRecorder()
@@ -342,7 +402,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, true, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/static/file.html", nil)
 		req.AddCookie(&http.Cookie{
@@ -368,7 +428,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		req.AddCookie(&http.Cookie{
@@ -396,7 +456,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, true, managementPrefix, false)
 
 		testReq := httptest.NewRequest("GET", "/static/file.html", nil)
 		testReq.AddCookie(&http.Cookie{
@@ -427,7 +487,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, false)
 
 		testReq := httptest.NewRequest("GET", "/api/users", nil)
 		testReq.AddCookie(&http.Cookie{
@@ -456,7 +516,7 @@ func TestSessionMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, false)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		req.AddCookie(cookie)
@@ -480,6 +540,7 @@ func TestSessionMiddleware(t *testing.T) {
 
 func TestSessionMiddlewareFunc(t *testing.T) {
 	store := createTestSessionStore()
+	tokenService := createMockTokenService()
 	user := createTestUser()
 	managementPrefix := "/_"
 
@@ -492,7 +553,7 @@ func TestSessionMiddlewareFunc(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middlewareFunc := SessionMiddlewareFunc(store, false, managementPrefix, false)
+		middlewareFunc := SessionMiddlewareFunc(store, tokenService, false, managementPrefix, false)
 		wrappedHandler := middlewareFunc(nextHandler)
 
 		req := httptest.NewRequest("GET", "/api/test", nil)
@@ -512,7 +573,7 @@ func TestSessionMiddlewareFunc(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		middlewareFunc := SessionMiddlewareFunc(store, false, managementPrefix, false)
+		middlewareFunc := SessionMiddlewareFunc(store, tokenService, false, managementPrefix, false)
 		wrappedHandler := middlewareFunc(nextHandler)
 
 		req := httptest.NewRequest("GET", "/api/test", nil)

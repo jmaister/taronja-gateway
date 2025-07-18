@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'; // Removed React import
 import { useParams, Link } from 'react-router-dom'; 
 import { fetchUser, User } from '../services/api'; 
+import { UserTokensSection } from '../components/UserTokensSection'; 
 
 interface UserInfoPageProps {
   // Props are empty for now
@@ -96,6 +97,9 @@ export function UserInfoPage({}: UserInfoPageProps) {
             <div className="mb-2.5">
               <span className="inline-block min-w-[100px] font-semibold text-gray-600">Updated At:</span> {formatDate(user.updatedAt)}
             </div>
+
+            {/* User Tokens Section */}
+            <UserTokensSection userId={user.id} />
           </div>
         )}
         

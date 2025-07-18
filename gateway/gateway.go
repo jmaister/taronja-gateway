@@ -265,7 +265,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.SessionStore, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.SessionStore, g.TokenService, true, g.GatewayConfig.Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -283,7 +283,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.TokenService, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -455,7 +455,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return middleware.SessionMiddleware(next, g.SessionStore, isStatic, g.GatewayConfig.Management.Prefix, false)
+	return middleware.SessionMiddleware(next, g.SessionStore, g.TokenService, isStatic, g.GatewayConfig.Management.Prefix, false)
 }
 
 // --- Route Handler Creation ---

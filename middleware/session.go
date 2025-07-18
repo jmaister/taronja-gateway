@@ -40,10 +40,12 @@ var OperationWithNoSecurity = []string{
 	"login", // TODO: fix name when implemented using OpenAPI
 	"LogoutUser",
 	"HealthCheck",
+	// Add any other operations that should not require authentication (cookie or token)
 }
 
 // StrictSessionMiddleware creates a strict middleware for session handling based on OpenAPI operation security requirements.
-func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase string, adminRequired bool) api.StrictMiddlewareFunc {
+// This middleware now supports both cookie-based sessions and bearer token authentication.
+func StrictSessionMiddleware(store session.SessionStore, tokenService session.TokenService, loginRedirectPathBase string, adminRequired bool) api.StrictMiddlewareFunc {
 	return func(f api.StrictHandlerFunc, operationID string) api.StrictHandlerFunc {
 		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, requestObject interface{}) (responseObject interface{}, err error) {
 
@@ -55,39 +57,50 @@ func StrictSessionMiddleware(store session.SessionStore, loginRedirectPathBase s
 
 			// If auth is not required, proceed to the next handler
 			if !authIsRequired {
-				log.Printf("SessionStrictMiddleware: Session not required for operation '%s' (path: %s). Proceeding without session.", operationID, r.URL.Path)
+				log.Printf("SessionStrictMiddleware: Authentication not required for operation '%s' (path: %s). Proceeding without authentication.", operationID, r.URL.Path)
 				return f(ctx, w, r, requestObject)
 			}
 
-			// Try to validate the session using the SessionStore's ValidateSession method
-			// This method should handle token extraction from the request (e.g., cookie)
+			// Try to validate the session using multiple authentication methods
 			var validSession *db.Session
 			var isAuthenticated bool
+			var authMethod string
 
-			// ValidateSession is expected to handle cookie extraction and validation.
-			// It returns the session data and a boolean indicating if the session is valid.
+			// Method 1: Try cookie-based session validation first
 			validSession, isAuthenticated = store.ValidateSession(r)
+			if isAuthenticated && validSession != nil {
+				authMethod = "cookie"
+			} else {
+				// Method 2: If cookie auth failed, try bearer token authentication
+				validSession, isAuthenticated = store.ValidateTokenAuth(r, tokenService)
+				if isAuthenticated && validSession != nil {
+					authMethod = "token"
+				}
+			}
 
-			if isAuthenticated && validSession != nil && ((adminRequired && validSession.IsAdmin) || !adminRequired) { // Valid session exists
+			// Check if we have a valid authentication and proper admin access if required
+			if isAuthenticated && validSession != nil && ((adminRequired && validSession.IsAdmin) || !adminRequired) {
 				// Enrich the context passed to the next handler with the session data.
-				newCtx := context.WithValue(ctx, session.SessionKey, validSession) // Corrected: Use SessionKey
-				log.Printf("SessionStrictMiddleware: Session valid for operation '%s' (path: %s). Proceeding with session.", operationID, r.URL.Path)
+				newCtx := context.WithValue(ctx, session.SessionKey, validSession)
+				log.Printf("SessionStrictMiddleware: Authentication successful via %s for operation '%s' (path: %s), user: %s", authMethod, operationID, r.URL.Path, validSession.Username)
 				return f(newCtx, w, r, requestObject)
 			}
 
-			// If we reach here, authIsRequired is true, and the session is not valid (isAuthenticated is false or validSession is nil).
-			// Therefore, a redirect is necessary.
-			log.Printf("SessionStrictMiddleware: Session required for operation '%s' (path: %s), but none found or invalid. Redirecting.", operationID, r.URL.Path)
+			// If we reach here, authentication is required but failed
+			if adminRequired && validSession != nil && !validSession.IsAdmin {
+				log.Printf("SessionStrictMiddleware: Admin access required for operation '%s' (path: %s), but user %s is not admin", operationID, r.URL.Path, validSession.UserID)
+				return nil, &ErrorWithResponse{Code: http.StatusForbidden, Message: "Admin access required"}
+			}
 
-			// These operations that are not authenticated return a 401 error
-			return nil, &ErrorWithResponse{Code: http.StatusUnauthorized, Message: "Unauthorized, no session found or invalid."}
+			log.Printf("SessionStrictMiddleware: Authentication required for operation '%s' (path: %s), but no valid session or token found", operationID, r.URL.Path)
+			return nil, &ErrorWithResponse{Code: http.StatusUnauthorized, Message: "Unauthorized, no valid session or token found"}
 
 		}
 	}
 }
 
-// SessionMiddleware validates that the session cookie is present and valid
-func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, isStatic bool, managementPrefix string, adminRequired bool) http.HandlerFunc {
+// SessionMiddleware validates that the session cookie is present and valid, with optional token fallback
+func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, tokenService session.TokenService, isStatic bool, managementPrefix string, adminRequired bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Add cache-control headers to prevent caching of authenticated content
 		w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
@@ -95,6 +108,16 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 		w.Header().Set("Expires", "0")
 
 		sessionObject, exists := sessionStore.ValidateSession(r)
+		authMethod := "cookie"
+
+		// If cookie auth failed, try token auth
+		if !exists {
+			sessionObject, exists = sessionStore.ValidateTokenAuth(r, tokenService)
+			if exists {
+				authMethod = "token"
+			}
+		}
+
 		if !exists {
 			if isStatic {
 				// Redirect to login page with the original URL as the redirect parameter
@@ -107,6 +130,8 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 			}
 			return
 		}
+
+		log.Printf("SessionMiddleware: Authentication successful via %s for path %s, user: %s", authMethod, r.URL.Path, sessionObject.Username)
 
 		// Check if admin access is required and user is not admin
 		if adminRequired && !sessionObject.IsAdmin {
@@ -131,10 +156,10 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 
 // SessionMiddlewareFunc creates an api.MiddlewareFunc from the existing SessionMiddleware.
 // This allows SessionMiddleware to be used with OpenAPI generated handlers that expect api.MiddlewareFunc.
-func SessionMiddlewareFunc(sessionStore session.SessionStore, isStatic bool, managementPrefix string, adminRequired bool) api.MiddlewareFunc {
+func SessionMiddlewareFunc(sessionStore session.SessionStore, tokenService session.TokenService, isStatic bool, managementPrefix string, adminRequired bool) api.MiddlewareFunc {
 	return func(nextHandler http.Handler) http.Handler {
 		// Adapt nextHandler (an http.Handler) to http.HandlerFunc for SessionMiddleware.
 		// The result of SessionMiddleware is an http.HandlerFunc, which satisfies the http.Handler interface.
-		return SessionMiddleware(http.HandlerFunc(nextHandler.ServeHTTP), sessionStore, isStatic, managementPrefix, adminRequired)
+		return SessionMiddleware(http.HandlerFunc(nextHandler.ServeHTTP), sessionStore, tokenService, isStatic, managementPrefix, adminRequired)
 	}
 }

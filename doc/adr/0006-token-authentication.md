@@ -20,7 +20,7 @@ The gateway needs to provide token-based authentication for API access, allowing
 - **Usage Tracking**: Each token access increments a usage counter
 - **Multiple Tokens**: Users can have multiple active tokens with different expiration times
 - **Bearer Authentication**: Tokens are provided via `Authorization: Bearer <token>` header
-- **Middleware**: `TokenAuthMiddleware` applied to all routes except login/registration
+- **Unified Middleware**: Token authentication is integrated into `SessionMiddleware` as a fallback when cookie authentication fails
 
 ### Token Lifecycle
 
@@ -29,9 +29,18 @@ The gateway needs to provide token-based authentication for API access, allowing
 3. **Expiration**: Tokens are marked as expired only when accessed past expiration date
 4. **Retention**: All tokens remain in database for audit and security analysis
 
+### Authentication Flow
+
+1. **Primary**: Cookie-based session authentication is attempted first
+2. **Fallback**: If cookie auth fails, Bearer token authentication is tried
+3. **Unified**: Both methods use the same `SessionMiddleware` for consistent handling
+4. **Context**: Successful authentication enriches request context with session data
+
 ## Consequences
 
 - Simplified token management with no update/delete operations
 - Enhanced security through permanent audit trail
 - Stateless authentication suitable for API clients
 - Reduced database maintenance overhead (no token cleanup required)
+- **Unified authentication flow** providing flexible client support (cookies or tokens)
+- **Single point of authentication** through SessionMiddleware eliminates duplicate logic
