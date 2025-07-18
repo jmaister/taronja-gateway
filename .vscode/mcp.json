@@ -1,0 +1,34 @@
+{
+    "servers": {
+        "sqlite-taronja-gateway-db": {
+            "type": "stdio",
+            "command": "npx",
+            "args": [
+                "-y",
+                "@executeautomation/database-server@1.1.0",
+                "/Users/jordi/workspace/taronja-gateway/gateway/taronja-gateway.db"
+            ],
+            "env": {}
+        },
+        "fetch": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@tokenizin/mcp-npx-fetch"
+            ],
+            "env": {}
+        },
+        "openapi": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@ivotoby/openapi-mcp-server"
+            ],
+            "env": {
+                "API_BASE_URL": "http://localhost:8080",
+                "OPENAPI_SPEC_PATH": "https://api.example.com/openapi.json",
+                "API_HEADERS": "Authorization:Bearer token123,X-API-Key:your-api-key"
+            }
+        }
+    }
+}

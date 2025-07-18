@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
@@ -21,9 +22,15 @@ const SessionCookieName = "tg_session_token"
 // SessionStore defines the interface for session validation and retrieval, decoupled from persistence.
 type SessionStore interface {
 	ValidateSession(r *http.Request) (*db.Session, bool)
+	ValidateTokenAuth(r *http.Request, tokenService TokenService) (*db.Session, bool)
 	NewSession(r *http.Request, user *db.User, provider string, validityDuration time.Duration) (*db.Session, error)
 	EndSession(token string) error
 	FindSessionsByUserID(userID string) ([]db.Session, error)
+}
+
+// TokenService interface to avoid circular imports
+type TokenService interface {
+	ValidateToken(token string) (*db.User, *db.Token, error)
 }
 
 // SessionStoreDB implements SessionStore and uses a SessionRepository to access session data.
@@ -57,6 +64,61 @@ func (s *SessionStoreDB) ValidateSession(r *http.Request) (*db.Session, bool) {
 	sessionData.LastActivity = now
 	_ = s.Repo.UpdateSession(sessionData)
 	return sessionData, true
+}
+
+// ValidateTokenAuth checks if a Bearer token is valid and creates a session-like object.
+// This allows token-based authentication to work alongside session-based authentication.
+func (s *SessionStoreDB) ValidateTokenAuth(r *http.Request, tokenService TokenService) (*db.Session, bool) {
+	// Extract bearer token from Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return nil, false // No authorization header
+	}
+
+	// Check if it's a Bearer token
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return nil, false // Not a bearer token
+	}
+
+	token := parts[1]
+	if token == "" {
+		return nil, false // Empty token
+	}
+
+	// Validate the token using the token service
+	user, tokenData, err := tokenService.ValidateToken(token)
+	if err != nil {
+		return nil, false // Invalid token
+	}
+
+	// Create a session-like object for compatibility with existing code
+	sessionObject := &db.Session{
+		Token:           tokenData.ID, // Use token ID as session token
+		UserID:          user.ID,
+		Username:        user.Username,
+		Email:           user.Email,
+		IsAuthenticated: true,
+		IsAdmin:         user.Provider == db.AdminProvider,
+		Provider:        user.Provider,
+		SessionName:     tokenData.Name,
+		CreatedFrom:     "token_auth",
+		LastActivity:    time.Now(),
+	}
+
+	// Set token expiry if available
+	if tokenData.ExpiresAt != nil {
+		sessionObject.ValidUntil = *tokenData.ExpiresAt
+	} else {
+		// If no expiry set, use a default long duration
+		sessionObject.ValidUntil = time.Now().Add(24 * time.Hour)
+	}
+
+	// Extract client information from the request
+	clientInfo := NewClientInfo(r)
+	sessionObject.ClientInfo = *clientInfo
+
+	return sessionObject, true
 }
 
 // GenerateToken generates a new random token.

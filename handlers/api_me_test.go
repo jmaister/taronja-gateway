@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/session"
@@ -19,7 +20,10 @@ func TestGetCurrentUser(t *testing.T) {
 	userRepo := db.NewMemoryUserRepository()
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
-	s := handlers.NewStrictApiServer(sessionStore, userRepo, nil)
+	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
+	tokenRepo := db.NewTokenRepositoryMemory()
+	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+	s := handlers.NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {
 		// Setup: Create a test user in the repository

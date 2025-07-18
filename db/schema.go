@@ -129,3 +129,34 @@ type TrafficMetricWithUser struct {
 	TrafficMetric
 	User *User `gorm:"foreignKey:UserID;references:ID"`
 }
+
+// Token struct definition for API tokens
+type Token struct {
+	ID          string     `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID      string     `gorm:"column:user_id;type:varchar(255);not null"`
+	TokenHash   string     `gorm:"type:varchar(255);not null;index"` // Hashed version of the token
+	Name        string     `gorm:"type:varchar(100);not null"`       // User-defined name for the token
+	IsActive    bool       `gorm:"default:true"`                     // Whether the token is active
+	ExpiresAt   *time.Time // When the token expires (nullable for no expiration)
+	UsageCount  int64      `gorm:"default:0"` // How many times the token has been used
+	LastUsedAt  *time.Time // When the token was last used
+	Scopes      string     `gorm:"type:text"`         // JSON array of scopes/permissions
+	CreatedFrom string     `gorm:"type:varchar(100)"` // How the token was created
+	RevokedAt   *time.Time // When the token was revoked
+	RevokedBy   string     `gorm:"type:varchar(255)"` // Who revoked the token
+	CreatedAt   time.Time  `gorm:"autoCreateTime"`    // When the token was created
+	UpdatedAt   time.Time  `gorm:"autoUpdateTime"`    // When the token was last updated
+
+	// Embed common client information from when the token was created
+	ClientInfo
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (t *Token) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	t.ID = newId
+	return nil
+}

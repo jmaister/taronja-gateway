@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/handlers"
@@ -33,6 +34,8 @@ type Gateway struct {
 	SessionStore      session.SessionStore
 	UserRepository    db.UserRepository
 	TrafficMetricRepo db.TrafficMetricRepository
+	TokenRepository   db.TokenRepository
+	TokenService      *auth.TokenService
 	templates         map[string]*template.Template
 	WebappEmbedFS     *embed.FS
 }
@@ -79,6 +82,12 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	// Initialize traffic metrics repository
 	statsRepository := db.NewTrafficMetricRepository(db.GetConnection())
 
+	// Initialize token repository
+	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())
+
+	// Initialize token service
+	tokenService := auth.NewTokenService(tokenRepository, userRepository)
+
 	// Initialize and parse templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
@@ -92,6 +101,8 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		SessionStore:      sessionStore,
 		UserRepository:    userRepository,
 		TrafficMetricRepo: statsRepository,
+		TokenRepository:   tokenRepository,
+		TokenService:      tokenService,
 		templates:         templates,
 		WebappEmbedFS:     webappEmbedFS,
 	}
@@ -254,7 +265,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.SessionStore, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.SessionStore, g.TokenService, true, g.GatewayConfig.Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -267,10 +278,12 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.SessionStore,
 		g.UserRepository,
 		g.TrafficMetricRepo,
+		g.TokenRepository,
+		g.TokenService,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.TokenService, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -442,7 +455,7 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return middleware.SessionMiddleware(next, g.SessionStore, isStatic, g.GatewayConfig.Management.Prefix, false)
+	return middleware.SessionMiddleware(next, g.SessionStore, g.TokenService, isStatic, g.GatewayConfig.Management.Prefix, false)
 }
 
 // --- Route Handler Creation ---

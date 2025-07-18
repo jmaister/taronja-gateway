@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
@@ -16,8 +17,10 @@ func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory
 	sessionStore := session.NewSessionStore(sessionRepo)
 	userRepo := db.NewMemoryUserRepository()
 	statsRepo := db.NewMemoryTrafficMetricRepository(userRepo)
+	tokenRepo := db.NewTokenRepositoryMemory()
+	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	server := NewStrictApiServer(sessionStore, userRepo, statsRepo)
+	server := NewStrictApiServer(sessionStore, userRepo, statsRepo, tokenRepo, tokenService)
 	return server, statsRepo
 }
 

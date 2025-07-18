@@ -41,18 +41,39 @@ export interface CurrentUser extends User {
 }
 
 // RequestStatistics from OpenAPI spec
-// Add requestsByUser to the statistics interface
 export interface RequestStatistics {
   totalRequests: number;
   requestsByStatus: Record<string, number>;
   averageResponseTime: number;
   averageResponseSize: number;
   requestsByCountry: Record<string, number>;
+  requestsByMethod: Record<string, number>;
+  requestsByPath: Record<string, number>;
   requestsByDeviceType: Record<string, number>;
-  requestsByPlatform: Record<string, number>;
-  requestsByBrowser: Record<string, number>;
-  requestsByUser?: Record<string, number>; // Optional for backward compatibility
-  requestsByJA4Fingerprint: Record<string, number>;
+}
+
+// Token interfaces from OpenAPI spec
+export interface TokenResponse {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  expires_at?: string | null;
+  last_used_at?: string | null;
+  usage_count: number;
+  scopes: string[];
+  revoked_at?: string | null;
+}
+
+export interface TokenCreateRequest {
+  name: string;
+  expires_at?: string | null;
+  scopes?: string[];
+}
+
+export interface TokenCreateResponse {
+  token: string;
+  token_info: TokenResponse;
 }
 
 // Helper function to process API responses with generics for return type
@@ -155,4 +176,69 @@ export async function fetchRequestStatistics(startDate?: string, endDate?: strin
     },
   });
   return handleResponse<RequestStatistics>(response);
+}
+
+// Token Management API Functions
+
+// Fetch all tokens for the current user
+export async function fetchUserTokens(): Promise<TokenResponse[]> {
+  const response = await fetch('/_/api/tokens', {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+  return handleResponse<TokenResponse[]>(response);
+}
+
+// Create a new token
+export async function createToken(tokenData: TokenCreateRequest): Promise<TokenCreateResponse> {
+  const response = await fetch('/_/api/tokens', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(tokenData),
+  });
+  return handleResponse<TokenCreateResponse>(response);
+}
+
+// Get token details by ID
+export async function fetchToken(tokenId: string): Promise<TokenResponse> {
+  const response = await fetch(`/_/api/tokens/${tokenId}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+  return handleResponse<TokenResponse>(response);
+}
+
+// Revoke a token
+export async function revokeToken(tokenId: string): Promise<void> {
+  const response = await fetch(`/_/api/tokens/${tokenId}`, {
+    method: 'DELETE',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to revoke token: ${response.status} ${response.statusText}`);
+  }
+}
+
+// Update token (e.g., activate/deactivate)
+export async function updateToken(tokenId: string, updates: Partial<Pick<TokenResponse, 'name' | 'is_active'>>): Promise<TokenResponse> {
+  const response = await fetch(`/_/api/tokens/${tokenId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  });
+  return handleResponse<TokenResponse>(response);
 }

@@ -13,8 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Helper functions (duplicated from session_test.go for simplicity)
+func createTestSessionStoreAdmin() session.SessionStore {
+	memoryRepo := db.NewMemorySessionRepository()
+	return session.NewSessionStore(memoryRepo)
+}
+
+func createMockTokenServiceAdmin() session.TokenService {
+	return &mockTokenService{}
+}
+
 func TestSessionMiddlewareAdminRequired(t *testing.T) {
-	store := createTestSessionStore()
+	store := createTestSessionStoreAdmin()
+	tokenService := createMockTokenServiceAdmin()
 	managementPrefix := "/_"
 
 	// Create a regular user
@@ -54,7 +65,7 @@ func TestSessionMiddlewareAdminRequired(t *testing.T) {
 		})
 
 		// Test with adminRequired = true
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, true)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, true, managementPrefix, true)
 
 		dashboardReq := httptest.NewRequest("GET", "/_/admin/dashboard", nil)
 		dashboardReq.AddCookie(cookie)
@@ -88,7 +99,7 @@ func TestSessionMiddlewareAdminRequired(t *testing.T) {
 		})
 
 		// Test API endpoint with adminRequired = true (isStatic = false)
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, true)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, true)
 
 		apiReq := httptest.NewRequest("GET", "/_/api/admin/users", nil)
 		apiReq.AddCookie(cookie)
@@ -124,7 +135,7 @@ func TestSessionMiddlewareAdminRequired(t *testing.T) {
 		})
 
 		// Test with adminRequired = true
-		middleware := SessionMiddleware(nextHandler, store, true, managementPrefix, true)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, true, managementPrefix, true)
 
 		dashboardReq := httptest.NewRequest("GET", "/_/admin/dashboard", nil)
 		dashboardReq.AddCookie(cookie)
@@ -163,7 +174,7 @@ func TestSessionMiddlewareAdminRequired(t *testing.T) {
 		})
 
 		// Test with adminRequired = false
-		middleware := SessionMiddleware(nextHandler, store, false, managementPrefix, false)
+		middleware := SessionMiddleware(nextHandler, store, tokenService, false, managementPrefix, false)
 
 		regularReq := httptest.NewRequest("GET", "/api/users", nil)
 		regularReq.AddCookie(cookie)

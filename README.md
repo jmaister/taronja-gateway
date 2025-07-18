@@ -23,6 +23,7 @@ Features table, shows what is implemented and what is planned.
 | Authentication: OAuth2        | ✅       |
 | - OAuth2: GitHub              | ✅       |
 | - OAuth2: Google              | ✅       |
+| Authentication: Token         | ✅       |
 | Authentication: JWT           | 🚧       |
 | Authorization using RBAC      | 🚧       |
 | Feature Flags                 | 🚧       |
