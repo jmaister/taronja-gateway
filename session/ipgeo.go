@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,9 +50,15 @@ var ipCache = &IPGeoCache{
 // GetGeoDataFromIP attempts to get comprehensive geolocation data for an IP address
 // Uses iplocate.io if config has API key set, otherwise falls back to freeipapi.com
 func GetGeoDataFromIP(ip string) (GeoData, error) {
+	// Clean up the IP address
+	ip = strings.TrimSpace(ip)
 	// Check if IP is empty
 	if ip == "" {
 		return GeoData{}, fmt.Errorf("IP address is empty")
+	}
+	// Check if IP is localhost or 127.x.x.x
+	if strings.Index(ip, "127.") == 0 || strings.Index(ip, "localhost") == 0 {
+		return GeoData{}, nil // Return empty GeoData for localhost or 127.x.x.x
 	}
 
 	// First check the cache
