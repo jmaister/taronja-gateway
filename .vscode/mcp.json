@@ -29,6 +29,13 @@
                 "OPENAPI_SPEC_PATH": "https://api.example.com/openapi.json",
                 "API_HEADERS": "Authorization:Bearer token123,X-API-Key:your-api-key"
             }
+        },
+        "puppeteer": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-puppeteer"
+            ]
         }
     }
 }
