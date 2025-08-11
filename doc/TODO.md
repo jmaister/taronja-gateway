@@ -1,4 +1,8 @@
 
+# FIX!!!
+
+* Token list show for every user. It must be filtered by user ID.
+
 # TODO tasks for the project
 
 * Return uptime on the /health endpoint
