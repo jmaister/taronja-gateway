@@ -180,6 +180,11 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Focus the first textbox (username) on page load
+            var usernameInput = document.querySelector('#loginForm input[type="text"]');
+            if (usernameInput) {
+                usernameInput.focus();
+            }
             const loginForm = document.getElementById('loginForm');
             const loginButton = document.getElementById('loginButton');
             const errorMessage = document.getElementById('errorMessage');

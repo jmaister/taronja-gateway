@@ -407,27 +407,40 @@ func (g *Gateway) configureUserRoutes() error {
 			handler = g.wrapWithAuth(handler, routeConfig.Static)
 		}
 
-		// Register the final handler
+		// Register the final handler for routeConfig.From
+		// To match /api with /api/hello and /api/foo, the pattern must be "/api/"
 		pattern := routeConfig.From
-		// Handle wildcard prefix matching for ServeMux
 		if strings.HasSuffix(pattern, "/*") {
-			pattern = strings.TrimSuffix(pattern, "*") // Keep the trailing slash: /api/v1/
-		}
-
-		g.Mux.HandleFunc(pattern, handler)
-
-		// Log registration details
-		if routeConfig.Static {
-			if routeConfig.ToFile != "" {
-				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s/%s | Auth: %t",
-					routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.ToFile, routeConfig.Authentication.Enabled)
-			} else {
-				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
-					routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.Authentication.Enabled)
-			}
+			// Register both the base and wildcard pattern for ServeMux
+			basePattern := strings.TrimSuffix(pattern, "*")
+			g.Mux.HandleFunc(basePattern, handler)
+			log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
+				routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, basePattern, pattern)
 		} else {
-			log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t",
-				routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled)
+			// For static file routes, register both with and without trailing slash to avoid redirects
+			if routeConfig.Static && routeConfig.ToFile != "" {
+				// Register without trailing slash
+				g.Mux.HandleFunc(routeConfig.From, handler)
+
+				// Also register with trailing slash
+				patternWithSlash := routeConfig.From
+				if !strings.HasSuffix(patternWithSlash, "/") {
+					patternWithSlash += "/"
+				}
+				g.Mux.HandleFunc(patternWithSlash, handler)
+
+				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
+					routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled,
+					routeConfig.From, patternWithSlash)
+			} else {
+				// For other routes, ensure the pattern ends with a slash for consistency
+				if !strings.HasSuffix(pattern, "/") {
+					pattern += "/"
+				}
+				g.Mux.HandleFunc(pattern, handler)
+				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (pattern: %s)",
+					routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, pattern)
+			}
 		}
 	}
 	return nil
@@ -458,58 +471,121 @@ func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.Handle
 	return middleware.SessionMiddleware(next, g.SessionStore, g.TokenService, isStatic, g.GatewayConfig.Management.Prefix, false)
 }
 
+// getSessionFromRequest extracts the session from a request if available
+func (g *Gateway) getSessionFromRequest(r *http.Request) *db.Session {
+	log.Printf("[auth] getSessionFromRequest called for path: %s", r.URL.Path)
+
+	// First check if session is already in context (set by middleware)
+	if r.Context() != nil {
+		if sessionObject, ok := r.Context().Value(session.SessionKey).(*db.Session); ok && sessionObject != nil {
+			log.Printf("[auth] Found session in context: %+v", sessionObject)
+			return sessionObject
+		} else {
+			log.Printf("[auth] No session found in context or wrong type")
+		}
+	}
+
+	// If not in context, try to validate from cookie directly
+	cookie, err := r.Cookie(session.SessionCookieName)
+	if err == nil && cookie != nil {
+		log.Printf("[auth] Found session cookie: %s", cookie.Value)
+
+		// Try to find session directly in memory for testing
+		// This is a direct lookup in the session store's repository
+		if memRepo, ok := g.SessionStore.(*session.SessionStoreDB); ok {
+			log.Printf("[auth] Using SessionStoreDB to validate session")
+			sessionObject, exists := memRepo.ValidateSession(r)
+			if exists && sessionObject != nil {
+				log.Printf("[auth] Validated session from cookie: %+v", sessionObject)
+				return sessionObject
+			} else {
+				log.Printf("[auth] Failed to validate session from cookie using SessionStoreDB")
+			}
+		} else {
+			log.Printf("[auth] SessionStore is not a SessionStoreDB, type: %T", g.SessionStore)
+		}
+	} else {
+		log.Printf("[auth] No session cookie found: %v", err)
+	}
+
+	// Try token auth as last resort
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		log.Printf("[auth] Found Authorization header: %s", authHeader)
+		sessionObject, exists := g.SessionStore.ValidateTokenAuth(r, g.TokenService)
+		if exists && sessionObject != nil {
+			log.Printf("[auth] Validated session from token: %+v", sessionObject)
+			return sessionObject
+		} else {
+			log.Printf("[auth] Failed to validate session from token")
+		}
+	}
+
+	log.Printf("[auth] No valid session found for request to: %s", r.URL.Path)
+	return nil
+}
+
 // --- Route Handler Creation ---
 // createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
 func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
+	// Create the proxy once when the handler is created
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req) // Base setup (scheme, host)
 
-		// Apply path stripping
+	// Store the original director
+	originalDirector := proxy.Director
+
+	// Create a custom director that modifies the request
+	proxy.Director = func(req *http.Request) {
+		// Call the original director first
+		originalDirector(req)
+
+		// Apply path stripping and join logic
 		if routeConfig.RemoveFromPath != "" {
-			// Use TrimPrefix for safer removal only from the beginning
 			if strings.HasPrefix(req.URL.Path, routeConfig.RemoveFromPath) {
 				req.URL.Path = strings.TrimPrefix(req.URL.Path, routeConfig.RemoveFromPath)
-				// Ensure the remaining path starts with a '/' if not empty
+
 				if len(req.URL.Path) > 0 && !strings.HasPrefix(req.URL.Path, "/") {
 					req.URL.Path = "/" + req.URL.Path
 				} else if len(req.URL.Path) == 0 {
-					req.URL.Path = "/" // Default to root if removing resulted in empty path
+					req.URL.Path = "/"
 				}
-			}
-		}
 
-		// Combine target base path and remaining request path
-		req.URL.Path = singleJoiningSlash(targetURL.Path, req.URL.Path)
-		req.URL.RawPath = req.URL.EscapedPath() // Update RawPath too
+				// When using RemoveFromPath, we should NOT join with targetURL.Path
+				// as that would reintroduce the prefix we just removed
+				req.URL.RawPath = req.URL.EscapedPath()
+			} else {
+				req.URL.Path = singleJoiningSlash(targetURL.Path, req.URL.Path)
+				req.URL.RawPath = req.URL.EscapedPath()
+			}
+		} else {
+			// No RemoveFromPath, just join as before
+			req.URL.Path = singleJoiningSlash(targetURL.Path, req.URL.Path)
+			req.URL.RawPath = req.URL.EscapedPath()
+		}
 
 		// Set forwarded headers
 		req.Header.Set("X-Forwarded-Host", req.Host)
-		// Determine scheme (consider X-Forwarded-Proto if gateway is behind another proxy)
 		scheme := "http"
 		if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
 			scheme = "https"
 		}
 		req.Header.Set("X-Forwarded-Proto", scheme)
-		// Set X-Forwarded-For
 		if clientIP := req.RemoteAddr; clientIP != "" {
-			// If header already exists, append
 			if prior, ok := req.Header["X-Forwarded-For"]; ok {
 				clientIP = strings.Join(prior, ", ") + ", " + clientIP
 			}
 			req.Header.Set("X-Forwarded-For", clientIP)
 		}
 
-		req.Host = targetURL.Host // Set Host header to target
+		req.Host = targetURL.Host
 
-		// Use a less verbose log level for routine proxying?
 		log.Printf("Proxying [%s]: %s -> %s%s", routeConfig.Name, req.URL.Path, targetURL.Scheme+"://"+targetURL.Host, req.URL.Path)
 	}
 
+	// Set up error handler
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, routeConfig.To, err)
-		// Avoid writing header if already written (e.g., by proxy director panic)
+		// Avoid writing header if already written
 		if h, ok := rw.(http.Hijacker); ok {
 			_, _, hijackErr := h.Hijack()
 			if hijackErr == nil {
@@ -522,8 +598,79 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		http.Error(rw, "Bad Gateway", http.StatusBadGateway)
 	}
 
-	// Return the raw proxy handler function
+	// Return the handler function
 	return func(w http.ResponseWriter, r *http.Request) {
+		// For authenticated routes, extract user ID and set header
+		if routeConfig.Authentication.Enabled {
+			log.Printf("[auth] Handling authenticated route %s", routeConfig.Name)
+
+			// Try to get session from request
+			var sessionObject *db.Session
+
+			// First check if session is in context
+			if r.Context() != nil {
+				if ctxSession, ok := r.Context().Value(session.SessionKey).(*db.Session); ok && ctxSession != nil {
+					log.Printf("[auth] Found session in context: %+v", ctxSession)
+					sessionObject = ctxSession
+				}
+			}
+
+			// If not in context, try to get from cookie
+			if sessionObject == nil {
+				cookie, err := r.Cookie(session.SessionCookieName)
+				if err == nil && cookie != nil {
+					log.Printf("[auth] Found session cookie: %s", cookie.Value)
+
+					// Try direct lookup in memory repository for test scenarios
+					if memStore, ok := g.SessionStore.(*session.SessionStoreDB); ok {
+						log.Printf("[auth] Using SessionStoreDB repository to find session")
+						session, err := memStore.Repo.FindSessionByToken(cookie.Value)
+						if err == nil && session != nil {
+							log.Printf("[auth] Found session in repository: %+v", session)
+							sessionObject = session
+						} else {
+							log.Printf("[auth] Session not found in repository: %v", err)
+						}
+					} else {
+						log.Printf("[auth] SessionStore is not a SessionStoreDB, type: %T", g.SessionStore)
+					}
+
+					// If still not found, try normal validation
+					if sessionObject == nil {
+						validSession, exists := g.SessionStore.ValidateSession(r)
+						if exists && validSession != nil {
+							log.Printf("[auth] Validated session from cookie: %+v", validSession)
+							sessionObject = validSession
+						} else {
+							log.Printf("[auth] Failed to validate session from cookie")
+						}
+					}
+				} else {
+					log.Printf("[auth] No session cookie found: %v", err)
+				}
+			}
+
+			if sessionObject != nil && sessionObject.UserID != "" {
+				// Modify the original request directly using header constants
+				r.Header.Set(session.UserIdHeader, sessionObject.UserID)
+				// Set X-User-Data header with serialized session object (JSON)
+				sessionJson, err := json.Marshal(sessionObject)
+				if err == nil {
+					r.Header.Set(session.UserDataHeader, string(sessionJson))
+					log.Printf("[auth] Setting %s header for user %s: %s", session.UserDataHeader, sessionObject.UserID, string(sessionJson))
+				} else {
+					log.Printf("[auth] Failed to serialize session object for user %s: %v", sessionObject.UserID, err)
+				}
+				log.Printf("[auth] Setting %s header to: %s for route %s", session.UserIdHeader, sessionObject.UserID, routeConfig.Name)
+
+				// Serve the request with the modified headers
+				proxy.ServeHTTP(w, r)
+				return
+			}
+			log.Printf("[auth] No valid session found for authenticated route %s", routeConfig.Name)
+		}
+
+		// For non-authenticated routes or if no session found
 		proxy.ServeHTTP(w, r)
 	}
 }
@@ -625,6 +772,8 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 		filePath := fsPath // Already cleaned in loadConfig
 		log.Printf("Static Route [%s]: Setting up single file serving - filePath: %s", routeConfig.Name, filePath)
 
+		// For single file routes, we need to handle both with and without trailing slash
+		// Register the handler for both patterns to avoid redirects
 		return func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Static Route [%s]: Single file request received - URL: %s, serving file: %s, RemoteAddr: %s",
 				routeConfig.Name, r.URL.Path, filePath, r.RemoteAddr)
