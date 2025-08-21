@@ -19,6 +19,10 @@ const SessionKey contextKey = "session"
 const TokenLength = 32
 const SessionCookieName = "tg_session_token"
 
+// Passing data headers
+const UserIdHeader = "X-User-Id"
+const UserDataHeader = "X-User-Data"
+
 // SessionStore defines the interface for session validation and retrieval, decoupled from persistence.
 type SessionStore interface {
 	ValidateSession(r *http.Request) (*db.Session, bool)

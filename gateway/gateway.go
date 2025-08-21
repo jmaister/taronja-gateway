@@ -40,9 +40,6 @@ type Gateway struct {
 	WebappEmbedFS     *embed.FS
 }
 
-const UserIdHeader = "X-User-Id"
-const UserDataHeader = "X-User-Data"
-
 // --- NewGateway Function ---
 
 func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
@@ -654,17 +651,17 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			}
 
 			if sessionObject != nil && sessionObject.UserID != "" {
-				// Modify the original request directly
-				r.Header.Set("X-User-Id", sessionObject.UserID)
+				// Modify the original request directly using header constants
+				r.Header.Set(session.UserIdHeader, sessionObject.UserID)
 				// Set X-User-Data header with serialized session object (JSON)
-				if sessionJson, err := json.Marshal(sessionObject); err == nil {
-					r.Header.Set("X-User-Data", string(sessionJson))
-					log.Printf("[auth] Setting X-User-Data header for user %s: %s", sessionObject.UserID, string(sessionJson))
+				sessionJson, err := json.Marshal(sessionObject)
+				if err == nil {
+					r.Header.Set(session.UserDataHeader, string(sessionJson))
+					log.Printf("[auth] Setting %s header for user %s: %s", session.UserDataHeader, sessionObject.UserID, string(sessionJson))
 				} else {
 					log.Printf("[auth] Failed to serialize session object for user %s: %v", sessionObject.UserID, err)
 				}
-				log.Printf("[auth] Setting X-User-Id header to: %s for route %s",
-					sessionObject.UserID, routeConfig.Name)
+				log.Printf("[auth] Setting %s header to: %s for route %s", session.UserIdHeader, sessionObject.UserID, routeConfig.Name)
 
 				// Serve the request with the modified headers
 				proxy.ServeHTTP(w, r)

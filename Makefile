@@ -77,7 +77,7 @@ api-codegen:
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
 
 install: build
-	cp $(BINARY_NAME) ~/bin/$(BINARY_NAME)
+	cp $(BINARY_NAME) ~/.local/bin/$(BINARY_NAME)
 
 # Default target
 .PHONY: all build build-windows run dev test cover clean fmt tidy

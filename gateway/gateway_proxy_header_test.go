@@ -42,8 +42,8 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 		}
 
 		// Check for X-User-Id header
-		receivedUserId = r.Header.Get("X-User-Id")
-		log.Printf("Backend received X-User-Id: %s", receivedUserId)
+		receivedUserId = r.Header.Get(session.UserIdHeader)
+		log.Printf("Backend received %s: %s", session.UserIdHeader, receivedUserId)
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
@@ -129,8 +129,8 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 	log.Printf("Test: X-Test-User-Id received by backend: %s", testUserIdReceived)
 
 	// Check if X-User-Id was received
-	userIdReceived := receivedHeaders.Get("X-User-Id")
-	log.Printf("Test: X-User-Id received by backend: %s", userIdReceived)
+	userIdReceived := receivedHeaders.Get(session.UserIdHeader)
+	log.Printf("Test: %s received by backend: %s", session.UserIdHeader, userIdReceived)
 
 	// Assert that the backend received the correct X-User-Id header
 	assert.Equal(t, testUser.ID, receivedUserId, "backend should receive correct X-User-Id header from gateway")
