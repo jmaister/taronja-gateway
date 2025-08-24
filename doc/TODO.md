@@ -1,6 +1,7 @@
 
 # FIX!!!
 
+- ...
 
 # TODO tasks for the project
 
@@ -31,6 +32,8 @@
     * Email-based 2FA?
     * SMS-based 2FA?
     * Authenticator app-based 2FA
+
+
 # Logs
 
 Show logs in the dashboard

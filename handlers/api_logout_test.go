@@ -21,7 +21,10 @@ func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService), sessionRepo
+	// For tests, we can use a nil database connection since we're using memory repositories
+	startTime := time.Now()
+
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {

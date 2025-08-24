@@ -113,11 +113,8 @@ func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTok
 		scopes = *request.Body.Scopes
 	}
 
-	// Get client info from session (if available)
-	var clientInfo *db.ClientInfo
-	if sessionObj != nil {
-		clientInfo = &sessionObj.ClientInfo
-	}
+	// Get client info from session
+	clientInfo := &sessionObj.ClientInfo
 
 	// Generate token for the specified user
 	tokenString, tokenData, err := s.tokenService.GenerateToken(

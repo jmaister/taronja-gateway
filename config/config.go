@@ -23,6 +23,11 @@ type ServerConfig struct {
 type AuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
+
+type RouteOptions struct {
+	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds, nil = no cache header, 0 = no-cache, >0 = max-age
+}
+
 type RouteConfig struct {
 	Name           string               `yaml:"name"`
 	From           string               `yaml:"from"`
@@ -33,6 +38,7 @@ type RouteConfig struct {
 	IsSPA          bool                 `yaml:"isSPA"` // Enable SPA routing (fallback to index.html)
 	RemoveFromPath string               `yaml:"removeFromPath"`
 	Authentication AuthenticationConfig `yaml:"authentication"`
+	Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options
 }
 type AuthProviderCredentials struct {
 	ClientId     string `yaml:"clientId"`
@@ -264,4 +270,37 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) LoginPag
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
 	return data
+}
+
+// --- RouteOptions Helper Methods ---
+
+// GetCacheControlHeader returns the appropriate Cache-Control header value based on the configuration.
+// Returns empty string if no cache header should be set.
+func (opts *RouteOptions) GetCacheControlHeader() string {
+	if opts == nil || opts.CacheControlSeconds == nil {
+		return "" // No cache header
+	}
+
+	if *opts.CacheControlSeconds == 0 {
+		return "no-cache" // Explicit no-cache
+	}
+
+	if *opts.CacheControlSeconds > 0 {
+		return fmt.Sprintf("max-age=%d", *opts.CacheControlSeconds)
+	}
+
+	return "" // Negative values mean no cache header
+}
+
+// GetCacheControlHeader returns the appropriate Cache-Control header value for this route.
+func (route *RouteConfig) GetCacheControlHeader() string {
+	if route.Options == nil {
+		return ""
+	}
+	return route.Options.GetCacheControlHeader()
+}
+
+// ShouldSetCacheHeader returns true if this route should set a Cache-Control header.
+func (route *RouteConfig) ShouldSetCacheHeader() bool {
+	return route.Options != nil && route.Options.CacheControlSeconds != nil && *route.Options.CacheControlSeconds >= 0
 }

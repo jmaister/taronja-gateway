@@ -283,7 +283,6 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.TokenRepository,
 		g.TokenService,
 		g.StartTime,
-		db.GetConnection(),
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
@@ -406,6 +405,9 @@ func (g *Gateway) configureUserRoutes() error {
 			handler = g.createProxyHandlerFunc(routeConfig, targetURL)
 		}
 
+		// Wrap with cache control for all routes
+		handler = g.wrapWithCacheControl(handler, routeConfig)
+
 		// Wrap the handler with authentication if enabled for this route
 		if routeConfig.Authentication.Enabled {
 			handler = g.wrapWithAuth(handler, routeConfig.Static)
@@ -473,6 +475,17 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 // wrapWithAuth applies the authentication check based on config.
 func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
 	return middleware.SessionMiddleware(next, g.SessionStore, g.TokenService, isStatic, g.GatewayConfig.Management.Prefix, false)
+}
+
+// wrapWithCacheControl applies cache control headers if configured
+func (g *Gateway) wrapWithCacheControl(next http.HandlerFunc, routeConfig config.RouteConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Set Cache-Control header if configured for this route
+		if routeConfig.ShouldSetCacheHeader() {
+			w.Header().Set("Cache-Control", routeConfig.GetCacheControlHeader())
+		}
+		next.ServeHTTP(w, r)
+	}
 }
 
 // getSessionFromRequest extracts the session from a request if available

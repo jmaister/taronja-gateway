@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
@@ -22,7 +23,10 @@ func setupTestServer() *StrictApiServer {
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService)
+	// For tests, we can use a nil database connection since we're using memory repositories
+	startTime := time.Now()
+
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
 }
 
 func TestCreateUser(t *testing.T) {

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"time"
+
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
@@ -18,16 +20,18 @@ type StrictApiServer struct {
 	trafficMetricRepo db.TrafficMetricRepository
 	tokenRepo         db.TokenRepository
 	tokenService      *auth.TokenService
+	startTime         time.Time
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, tokenService *auth.TokenService) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, tokenService *auth.TokenService, startTime time.Time) *StrictApiServer {
 	return &StrictApiServer{
 		sessionStore:      sessionStore,
 		userRepo:          userRepo,
 		trafficMetricRepo: trafficMetricRepo,
 		tokenRepo:         tokenRepo,
 		tokenService:      tokenService,
+		startTime:         startTime,
 	}
 }
 

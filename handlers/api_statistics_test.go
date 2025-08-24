@@ -20,7 +20,10 @@ func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	server := NewStrictApiServer(sessionStore, userRepo, statsRepo, tokenRepo, tokenService)
+	// For tests, we can use a nil database connection since we're using memory repositories
+	startTime := time.Now()
+
+	server := NewStrictApiServer(sessionStore, userRepo, statsRepo, tokenRepo, tokenService, startTime)
 	return server, statsRepo
 }
 
@@ -244,7 +247,8 @@ func TestStatisticsShowUsernames(t *testing.T) {
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	// Create test server
-	server := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService)
+	startTime := time.Now()
+	server := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
 
 	// Create test users
 	testUser1 := &db.User{

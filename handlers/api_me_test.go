@@ -23,7 +23,11 @@ func TestGetCurrentUser(t *testing.T) {
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
-	s := handlers.NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService)
+
+	// For tests, we can use a nil database connection since we're using memory repositories
+	startTime := time.Now()
+
+	s := handlers.NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {
 		// Setup: Create a test user in the repository

@@ -30,8 +30,16 @@ type Error struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
+	Database struct {
+		// OpenConnections Number of open database connections
+		OpenConnections *int   `json:"open_connections,omitempty"`
+		Status          string `json:"status"`
+	} `json:"database"`
 	Status    string    `json:"status"`
 	Timestamp time.Time `json:"timestamp"`
+
+	// Uptime Server uptime duration
+	Uptime string `json:"uptime"`
 }
 
 // RequestDetail defines model for RequestDetail.

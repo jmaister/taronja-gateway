@@ -16,6 +16,7 @@ Features table, shows what is implemented and what is planned.
 | Logging                       | ✅       |
 | Analytics and Traffic metrics | ✅       |
 | - User Geo-location           | ✅       |
+| - User fingerprint (JA4)      | ✅       |
 | Sessions (Persistent)         | ✅       |
 | User management               | ✅       |
 | Authentication                | ✅       |
@@ -26,6 +27,7 @@ Features table, shows what is implemented and what is planned.
 | Authentication: Token         | ✅       |
 | Authentication: JWT           | 🚧       |
 | Authorization using RBAC      | 🚧       |
+| HTTP Cache Control            | ✅       |
 | Feature Flags                 | 🚧       |
 | Rate Limiting                 | 🚧       |
 | Circuit breaker               | 🚧       |
