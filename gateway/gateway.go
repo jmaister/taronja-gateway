@@ -38,6 +38,7 @@ type Gateway struct {
 	TokenService      *auth.TokenService
 	templates         map[string]*template.Template
 	WebappEmbedFS     *embed.FS
+	StartTime         time.Time
 }
 
 // --- NewGateway Function ---
@@ -105,6 +106,7 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		TokenService:      tokenService,
 		templates:         templates,
 		WebappEmbedFS:     webappEmbedFS,
+		StartTime:         time.Now(),
 	}
 
 	// --- IMPORTANT: Register Management Routes FIRST ---
@@ -280,6 +282,8 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.TrafficMetricRepo,
 		g.TokenRepository,
 		g.TokenService,
+		g.StartTime,
+		db.GetConnection(),
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 

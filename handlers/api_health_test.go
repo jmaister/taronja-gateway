@@ -6,12 +6,27 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/auth"
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
 func TestHealthCheck(t *testing.T) {
-	// Create a new StrictApiServer instance
-	s := &StrictApiServer{}
+	// Create a new StrictApiServer instance with all required dependencies
+	userRepo := db.NewMemoryUserRepository()
+	sessionRepo := db.NewMemorySessionRepository()
+	sessionStore := session.NewSessionStore(sessionRepo)
+	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
+	tokenRepo := db.NewTokenRepositoryMemory()
+	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+
+	// For tests, we can use a nil database connection since we're using memory repositories
+	var mockDB *gorm.DB = nil
+	startTime := time.Now()
+
+	s := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime, mockDB)
 
 	t.Run("SuccessfulHealthCheck", func(t *testing.T) {
 		// Setup: Create a health check request
@@ -35,8 +50,14 @@ func TestHealthCheck(t *testing.T) {
 		healthResp, ok := resp.(api.HealthCheck200JSONResponse)
 		assert.True(t, ok, "Response should be HealthCheck200JSONResponse")
 
-		// Assert: Status should be "OK"
-		assert.Equal(t, "OK", healthResp.Status)
+		// Assert: Status should be "ok"
+		assert.Equal(t, "ok", healthResp.Status)
+
+		// Assert: Uptime should be present and non-empty
+		assert.NotEmpty(t, healthResp.Uptime)
+
+		// Assert: Database status should be present (should be "not_available" for tests)
+		assert.Equal(t, "not_available", healthResp.Database.Status)
 
 		// Assert: Timestamp should be within a reasonable range (between before and after the call)
 		assert.True(t, healthResp.Timestamp.After(beforeCall) || healthResp.Timestamp.Equal(beforeCall),

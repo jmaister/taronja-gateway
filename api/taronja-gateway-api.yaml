@@ -511,9 +511,27 @@ components:
           type: string
           format: date-time
           example: "2023-10-01T12:00:00Z"
+        uptime:
+          type: string
+          description: "Server uptime duration"
+          example: "2h30m45s"
+        database:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "ok"
+            open_connections:
+              type: integer
+              description: "Number of open database connections"
+              example: 5
+          required:
+            - status
       required:
         - status
         - timestamp
+        - uptime
+        - database
     Error:
       type: object
       properties:

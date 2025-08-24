@@ -1,13 +1,8 @@
 
 # FIX!!!
 
-* Token list show for every user. It must be filtered by user ID.
 
 # TODO tasks for the project
-
-* ~~Revoke token: fix~~ ✅ FIXED
-* ~~Tokens: show only from the user~~ ✅ FIXED - was already working correctly  
-* ~~Stats: not showing logged user~~ ✅ FIXED - now shows usernames instead of user IDs
 
 * Multi-login users
     - Handle "User account already exists with a different login method."
@@ -15,11 +10,7 @@
     - When logged in as user but logged as admin in the admin interface, it should allow to login.
     - When logged in as user but try to login as another regular user, it should allow.
 
-* Update users: sqlite3 taronja-gateway.db "UPDATE users SET email = 'jordi@example.com' WHERE email = 'jordiburgos@gmail.com';"
 
-* Return uptime on the /health endpoint
-* Add a health check for the database connection
-    * Open DB connections
 
 ## Stats
 
@@ -47,16 +38,6 @@ Show logs in the dashboard
 * Filter logs by severity level
 * Search logs by keyword
 
-# Token authentication
-
-* Implement token-based authentication
-* Token expiration and renewal
-* Secure token storage
-* Revoke tokens
-* One user can have multiple tokens with different expiration times
-* The tokens table do not get deleted, just set as inactive, also gets a count of how many times it has been used. The token is associated to a User.
-* The users get authenticated by using the "Authorization: Bearer <token>" header.
-* Middleware name is "TokenAuthMiddleware" and it should be applied to all routes except the login and registration routes.
 
 # Constants data
 
