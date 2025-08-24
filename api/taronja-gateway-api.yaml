@@ -235,15 +235,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   
-  /api/tokens:
+  /api/users/{userId}/tokens:
     get:
-      summary: List user's API tokens
+      summary: List API tokens for a specific user (admin only)
       operationId: listTokens
       tags:
         - Token
       security:
         - cookieAuth: []
         - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user whose tokens to retrieve
+          schema:
+            type: string
       responses:
         '200':
           description: A list of user's tokens
@@ -254,7 +261,13 @@ paths:
                 items:
                   $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Unauthorized
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
           content:
             application/json:
               schema:
@@ -266,13 +279,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      summary: Create a new API token
+      summary: Create a new API token for a specific user (admin only)
       operationId: createToken
       tags:
         - Token
       security:
         - cookieAuth: []
         - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user for whom to create a token
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -293,7 +313,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
           content:
             application/json:
               schema:
@@ -307,7 +333,7 @@ paths:
 
   /api/tokens/{tokenId}:
     get:
-      summary: Get token details
+      summary: Get token details (admin only)
       operationId: getToken
       tags:
         - Token
@@ -329,7 +355,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Unauthorized
+          description: Unauthorized (not logged in or not admin)
           content:
             application/json:
               schema:
@@ -347,7 +373,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
-      summary: Revoke/delete a token
+      summary: Revoke/delete a token (admin only)
       operationId: deleteToken
       tags:
         - Token
@@ -365,7 +391,7 @@ paths:
         '204':
           description: Token successfully revoked
         '401':
-          description: Unauthorized
+          description: Unauthorized (not logged in or not admin)
           content:
             application/json:
               schema:

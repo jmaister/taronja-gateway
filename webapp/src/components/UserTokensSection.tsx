@@ -27,7 +27,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
         try {
             setIsLoadingTokens(true);
             setError(null);
-            const tokenList = await fetchUserTokens();
+            const tokenList = await fetchUserTokens(userId);
             setTokens(tokenList);
         } catch (err) {
             console.error('Failed to load tokens:', err);
@@ -55,7 +55,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                 scopes: [] // Default to empty scopes for now
             };
 
-            const result = await createToken(tokenData);
+            const result = await createToken(userId, tokenData);
             setNewToken(result);
             
             // Refresh the tokens list

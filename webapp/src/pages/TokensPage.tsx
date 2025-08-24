@@ -3,7 +3,7 @@ import { fetchUserTokens, createToken, revokeToken, TokenResponse, TokenCreateRe
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * TokensPage component - Manage API tokens for the current user
+ * TokensPage component - Manage API tokens for the current admin user
  */
 export const TokensPage = () => {
     const { isAuthenticated, currentUser, isLoading } = useAuth();
@@ -21,30 +21,37 @@ export const TokensPage = () => {
 
     // Load tokens on component mount
     useEffect(() => {
-        if (isAuthenticated) {
+        if (isAuthenticated && currentUser?.username) {
             loadTokens();
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, currentUser]);
 
-    const loadTokens = async () => {
-        try {
-            setIsLoadingTokens(true);
-            setError(null);
-            const tokenList = await fetchUserTokens();
-            setTokens(tokenList);
-        } catch (err) {
-            console.error('Failed to load tokens:', err);
-            setError('Failed to load tokens. Please try again.');
-        } finally {
-            setIsLoadingTokens(false);
-        }
-    };
-
-    const handleCreateToken = async (e: React.FormEvent) => {
+        const loadTokens = async () => {
+            if (!currentUser?.username) {
+                console.error('No username available');
+                return;
+            }
+            
+            try {
+                setIsLoadingTokens(true);
+                const response = await fetchUserTokens(currentUser.username);
+                setTokens(response);
+            } catch (error) {
+                console.error('Failed to load tokens:', error);
+                setError('Failed to load tokens');
+            } finally {
+                setIsLoadingTokens(false);
+            }
+        };    const handleCreateToken = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (!tokenName.trim()) {
             setError('Token name is required');
+            return;
+        }
+
+        if (!currentUser?.username) {
+            setError('User not authenticated');
             return;
         }
 
@@ -58,7 +65,7 @@ export const TokensPage = () => {
                 scopes: [] // Default to empty scopes for now
             };
 
-            const result = await createToken(tokenData);
+            const result = await createToken(currentUser.username, tokenData);
             setNewToken(result);
             
             // Refresh the tokens list

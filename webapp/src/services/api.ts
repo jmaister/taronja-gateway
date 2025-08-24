@@ -178,11 +178,11 @@ export async function fetchRequestStatistics(startDate?: string, endDate?: strin
   return handleResponse<RequestStatistics>(response);
 }
 
-// Token Management API Functions
+// Token Management API Functions (Admin only)
 
-// Fetch all tokens for the current user
-export async function fetchUserTokens(): Promise<TokenResponse[]> {
-  const response = await fetch('/_/api/tokens', {
+// Fetch all tokens for a specific user (admin only)
+export async function fetchUserTokens(userId: string): Promise<TokenResponse[]> {
+  const response = await fetch(`/_/api/users/${userId}/tokens`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -191,9 +191,9 @@ export async function fetchUserTokens(): Promise<TokenResponse[]> {
   return handleResponse<TokenResponse[]>(response);
 }
 
-// Create a new token
-export async function createToken(tokenData: TokenCreateRequest): Promise<TokenCreateResponse> {
-  const response = await fetch('/_/api/tokens', {
+// Create a new token for a specific user (admin only)
+export async function createToken(userId: string, tokenData: TokenCreateRequest): Promise<TokenCreateResponse> {
+  const response = await fetch(`/_/api/users/${userId}/tokens`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -204,7 +204,7 @@ export async function createToken(tokenData: TokenCreateRequest): Promise<TokenC
   return handleResponse<TokenCreateResponse>(response);
 }
 
-// Get token details by ID
+// Get token details by ID (admin only)
 export async function fetchToken(tokenId: string): Promise<TokenResponse> {
   const response = await fetch(`/_/api/tokens/${tokenId}`, {
     method: 'GET',
@@ -215,7 +215,7 @@ export async function fetchToken(tokenId: string): Promise<TokenResponse> {
   return handleResponse<TokenResponse>(response);
 }
 
-// Revoke a token
+// Revoke a token (admin only)
 export async function revokeToken(tokenId: string): Promise<void> {
   const response = await fetch(`/_/api/tokens/${tokenId}`, {
     method: 'DELETE',
