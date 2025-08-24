@@ -10,7 +10,7 @@ import (
 	"github.com/jmaister/taronja-gateway/session"
 )
 
-// ListTokens handles GET /api/tokens
+// ListTokens handles GET /api/users/{userId}/tokens
 func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokensRequestObject) (api.ListTokensResponseObject, error) {
 	// Get session from context
 	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
@@ -22,10 +22,29 @@ func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokens
 		}, nil
 	}
 
+	// Check if user is admin
+	if !sessionObj.IsAdmin {
+		log.Printf("ListTokens: Non-admin user %s attempted to access tokens", sessionObj.UserID)
+		return api.ListTokens401JSONResponse{
+			Code:    401,
+			Message: "Unauthorized: Admin access required",
+		}, nil
+	}
+
+	// Validate that the user exists
+	user, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", "")
+	if err != nil || user == nil {
+		log.Printf("ListTokens: User not found with ID %s: %v", request.UserId, err)
+		return api.ListTokens404JSONResponse{
+			Code:    404,
+			Message: "User not found",
+		}, nil
+	}
+
 	// Get user tokens
-	tokens, err := s.tokenService.GetUserTokens(sessionObj.UserID)
+	tokens, err := s.tokenService.GetUserTokens(user.ID)
 	if err != nil {
-		log.Printf("ListTokens: Error getting tokens for user %s: %v", sessionObj.UserID, err)
+		log.Printf("ListTokens: Error getting tokens for user %s: %v", user.ID, err)
 		return api.ListTokens500JSONResponse{
 			Code:    500,
 			Message: "Internal server error: Failed to retrieve tokens",
@@ -41,7 +60,7 @@ func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokens
 	return api.ListTokens200JSONResponse(tokenResponses), nil
 }
 
-// CreateToken handles POST /api/tokens
+// CreateToken handles POST /api/users/{userId}/tokens
 func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTokenRequestObject) (api.CreateTokenResponseObject, error) {
 	// Get session from context
 	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
@@ -50,6 +69,25 @@ func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTok
 		return api.CreateToken401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized: No valid session found",
+		}, nil
+	}
+
+	// Check if user is admin
+	if !sessionObj.IsAdmin {
+		log.Printf("CreateToken: Non-admin user %s attempted to create token", sessionObj.UserID)
+		return api.CreateToken401JSONResponse{
+			Code:    401,
+			Message: "Unauthorized: Admin access required",
+		}, nil
+	}
+
+	// Validate that the user exists
+	user, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", "")
+	if err != nil || user == nil {
+		log.Printf("CreateToken: User not found with ID %s: %v", request.UserId, err)
+		return api.CreateToken404JSONResponse{
+			Code:    404,
+			Message: "User not found",
 		}, nil
 	}
 
@@ -81,17 +119,17 @@ func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTok
 		clientInfo = &sessionObj.ClientInfo
 	}
 
-	// Generate token
+	// Generate token for the specified user
 	tokenString, tokenData, err := s.tokenService.GenerateToken(
-		sessionObj.UserID,
+		user.ID,
 		request.Body.Name,
 		request.Body.ExpiresAt,
 		scopes,
-		"api_request",
+		"admin_api_request",
 		clientInfo,
 	)
 	if err != nil {
-		log.Printf("CreateToken: Error generating token for user %s: %v", sessionObj.UserID, err)
+		log.Printf("CreateToken: Error generating token for user %s: %v", user.ID, err)
 		return api.CreateToken500JSONResponse{
 			Code:    500,
 			Message: "Internal server error: Failed to create token",
@@ -119,33 +157,71 @@ func (s *StrictApiServer) GetToken(ctx context.Context, request api.GetTokenRequ
 		}, nil
 	}
 
-	// Get user tokens and find the requested one
-	tokens, err := s.tokenService.GetUserTokens(sessionObj.UserID)
-	if err != nil {
-		log.Printf("GetToken: Error getting tokens for user %s: %v", sessionObj.UserID, err)
-		return api.GetToken500JSONResponse{
-			Code:    500,
-			Message: "Internal server error: Failed to retrieve tokens",
+	// Check if user is admin
+	if !sessionObj.IsAdmin {
+		log.Printf("GetToken: Non-admin user %s attempted to access token", sessionObj.UserID)
+		return api.GetToken401JSONResponse{
+			Code:    401,
+			Message: "Unauthorized: Admin access required",
 		}, nil
 	}
 
-	// Find the specific token
-	var targetToken *db.Token
-	for _, token := range tokens {
-		if token.ID == request.TokenId {
-			targetToken = token
-			break
-		}
-	}
-
-	if targetToken == nil {
+	// Get the token directly by ID from the repository
+	token, err := s.tokenRepo.GetTokenByID(request.TokenId)
+	if err != nil {
+		log.Printf("GetToken: Token not found with ID %s: %v", request.TokenId, err)
 		return api.GetToken404JSONResponse{
 			Code:    404,
-			Message: "Not found: Token not found or does not belong to user",
+			Message: "Token not found",
 		}, nil
 	}
 
-	return api.GetToken200JSONResponse(convertTokenToResponse(targetToken)), nil
+	return api.GetToken200JSONResponse(convertTokenToResponse(token)), nil
+}
+
+// DeleteToken handles DELETE /api/tokens/{tokenId}
+func (s *StrictApiServer) DeleteToken(ctx context.Context, request api.DeleteTokenRequestObject) (api.DeleteTokenResponseObject, error) {
+	// Get session from context
+	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sessionObj == nil {
+		log.Printf("DeleteToken: No session found in context")
+		return api.DeleteToken401JSONResponse{
+			Code:    401,
+			Message: "Unauthorized: No valid session found",
+		}, nil
+	}
+
+	// Check if user is admin
+	if !sessionObj.IsAdmin {
+		log.Printf("DeleteToken: Non-admin user %s attempted to delete token", sessionObj.UserID)
+		return api.DeleteToken401JSONResponse{
+			Code:    401,
+			Message: "Unauthorized: Admin access required",
+		}, nil
+	}
+
+	// Get the token to check if it exists
+	_, err := s.tokenRepo.GetTokenByID(request.TokenId)
+	if err != nil {
+		log.Printf("DeleteToken: Token not found with ID %s: %v", request.TokenId, err)
+		return api.DeleteToken404JSONResponse{
+			Code:    404,
+			Message: "Token not found",
+		}, nil
+	}
+
+	// Revoke the token (admin can revoke any token)
+	err = s.tokenRepo.RevokeToken(request.TokenId, sessionObj.UserID)
+	if err != nil {
+		log.Printf("DeleteToken: Error revoking token %s by admin %s: %v", request.TokenId, sessionObj.UserID, err)
+		return api.DeleteToken500JSONResponse{
+			Code:    500,
+			Message: "Internal server error: Failed to revoke token",
+		}, nil
+	}
+
+	// Return success
+	return api.DeleteToken204Response{}, nil
 }
 
 // Helper function to convert db.Token to api.TokenResponse

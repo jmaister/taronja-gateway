@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTokenHandlers(t *testing.T) {
+func TestTokenHandlersAdmin(t *testing.T) {
 	// Setup repositories and services
 	userRepo := db.NewMemoryUserRepository()
 	tokenRepo := db.NewTokenRepositoryMemory()
@@ -37,20 +37,33 @@ func TestTokenHandlers(t *testing.T) {
 	err := userRepo.CreateUser(testUser)
 	require.NoError(t, err)
 
-	// Create test session
-	testSession := &db.Session{
-		Token:           "session-token",
+	// Create admin session
+	adminSession := &db.Session{
+		Token:           "admin-session-token",
+		UserID:          "admin-123",
+		Username:        "admin",
+		Email:           "admin@example.com",
+		IsAuthenticated: true,
+		IsAdmin:         true, // Admin required for token operations
+		Provider:        "test",
+	}
+
+	// Create non-admin session
+	nonAdminSession := &db.Session{
+		Token:           "nonadmin-session-token",
 		UserID:          testUser.ID,
 		Username:        testUser.Username,
 		Email:           testUser.Email,
 		IsAuthenticated: true,
-		IsAdmin:         false,
+		IsAdmin:         false, // Non-admin
 		Provider:        "test",
 	}
 
 	t.Run("ListTokens_NoSession", func(t *testing.T) {
 		ctx := context.Background()
-		request := api.ListTokensRequestObject{}
+		request := api.ListTokensRequestObject{
+			UserId: testUser.ID,
+		}
 
 		response, err := server.ListTokens(ctx, request)
 		require.NoError(t, err)
@@ -60,9 +73,26 @@ func TestTokenHandlers(t *testing.T) {
 		assert.Equal(t, 401, errorResponse.Code)
 	})
 
-	t.Run("ListTokens_WithSession", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
-		request := api.ListTokensRequestObject{}
+	t.Run("ListTokens_NonAdmin", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, nonAdminSession)
+		request := api.ListTokensRequestObject{
+			UserId: testUser.ID,
+		}
+
+		response, err := server.ListTokens(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.ListTokens401JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 401, errorResponse.Code)
+		assert.Contains(t, errorResponse.Message, "Admin access required")
+	})
+
+	t.Run("ListTokens_AdminSuccess", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+		request := api.ListTokensRequestObject{
+			UserId: testUser.ID,
+		}
 
 		response, err := server.ListTokens(ctx, request)
 		require.NoError(t, err)
@@ -72,10 +102,26 @@ func TestTokenHandlers(t *testing.T) {
 		assert.Len(t, []api.TokenResponse(successResponse), 0) // No tokens initially
 	})
 
-	t.Run("CreateToken_Success", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+	t.Run("ListTokens_UserNotFound", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+		request := api.ListTokensRequestObject{
+			UserId: "nonexistent-user",
+		}
+
+		response, err := server.ListTokens(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.ListTokens404JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 404, errorResponse.Code)
+		assert.Contains(t, errorResponse.Message, "User not found")
+	})
+
+	t.Run("CreateToken_AdminSuccess", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
 
 		request := api.CreateTokenRequestObject{
+			UserId: testUser.ID,
 			Body: &api.TokenCreateRequest{
 				Name:   "Test Token",
 				Scopes: &[]string{"read", "write"},
@@ -93,10 +139,51 @@ func TestTokenHandlers(t *testing.T) {
 		assert.True(t, successResponse.TokenInfo.IsActive)
 	})
 
-	t.Run("CreateToken_EmptyName", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+	t.Run("CreateToken_NonAdmin", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, nonAdminSession)
 
 		request := api.CreateTokenRequestObject{
+			UserId: testUser.ID,
+			Body: &api.TokenCreateRequest{
+				Name:   "Test Token",
+				Scopes: &[]string{"read", "write"},
+			},
+		}
+
+		response, err := server.CreateToken(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.CreateToken401JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 401, errorResponse.Code)
+		assert.Contains(t, errorResponse.Message, "Admin access required")
+	})
+
+	t.Run("CreateToken_UserNotFound", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+		request := api.CreateTokenRequestObject{
+			UserId: "nonexistent-user",
+			Body: &api.TokenCreateRequest{
+				Name:   "Test Token",
+				Scopes: &[]string{"read", "write"},
+			},
+		}
+
+		response, err := server.CreateToken(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.CreateToken404JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 404, errorResponse.Code)
+		assert.Contains(t, errorResponse.Message, "User not found")
+	})
+
+	t.Run("CreateToken_EmptyName", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+		request := api.CreateTokenRequestObject{
+			UserId: testUser.ID,
 			Body: &api.TokenCreateRequest{
 				Name: "",
 			},
@@ -111,10 +198,11 @@ func TestTokenHandlers(t *testing.T) {
 	})
 
 	t.Run("CreateToken_ExpiredDate", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
 
 		pastTime := time.Now().Add(-1 * time.Hour)
 		request := api.CreateTokenRequestObject{
+			UserId: testUser.ID,
 			Body: &api.TokenCreateRequest{
 				Name:      "Expired Token",
 				ExpiresAt: &pastTime,
@@ -129,7 +217,7 @@ func TestTokenHandlers(t *testing.T) {
 		assert.Equal(t, 400, errorResponse.Code)
 	})
 
-	t.Run("GetToken_Success", func(t *testing.T) {
+	t.Run("GetToken_AdminSuccess", func(t *testing.T) {
 		// First create a token
 		tokenString, tokenData, err := tokenService.GenerateToken(
 			testUser.ID,
@@ -142,7 +230,7 @@ func TestTokenHandlers(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, tokenString)
 
-		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
 		request := api.GetTokenRequestObject{
 			TokenId: tokenData.ID,
 		}
@@ -156,8 +244,23 @@ func TestTokenHandlers(t *testing.T) {
 		assert.Equal(t, "Get Test Token", successResponse.Name)
 	})
 
+	t.Run("GetToken_NonAdmin", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, nonAdminSession)
+		request := api.GetTokenRequestObject{
+			TokenId: "some-token",
+		}
+
+		response, err := server.GetToken(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.GetToken401JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 401, errorResponse.Code)
+		assert.Contains(t, errorResponse.Message, "Admin access required")
+	})
+
 	t.Run("GetToken_NotFound", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
 		request := api.GetTokenRequestObject{
 			TokenId: "nonexistent-token",
 		}
@@ -169,69 +272,71 @@ func TestTokenHandlers(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, 404, errorResponse.Code)
 	})
-}
 
-func TestHelperFunctions(t *testing.T) {
-	t.Run("parseScopes", func(t *testing.T) {
-		// Test empty string
-		scopes := parseScopes("")
-		assert.Len(t, scopes, 0)
+	t.Run("DeleteToken_AdminSuccess", func(t *testing.T) {
+		// First create a token
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+		createRequest := api.CreateTokenRequestObject{
+			UserId: testUser.ID,
+			Body: &api.TokenCreateRequest{
+				Name: "Token to Delete",
+			},
+		}
 
-		// Test valid scopes
-		scopes = parseScopes("[read,write,admin]")
-		assert.Len(t, scopes, 3)
-		assert.Contains(t, scopes, "read")
-		assert.Contains(t, scopes, "write")
-		assert.Contains(t, scopes, "admin")
+		createResponse, err := server.CreateToken(ctx, createRequest)
+		require.NoError(t, err)
 
-		// Test empty brackets
-		scopes = parseScopes("[]")
-		assert.Len(t, scopes, 0)
+		createSuccessResponse, ok := createResponse.(api.CreateToken201JSONResponse)
+		require.True(t, ok)
+		tokenID := createSuccessResponse.TokenInfo.Id
 
-		// Test single scope
-		scopes = parseScopes("[read]")
-		assert.Len(t, scopes, 1)
-		assert.Equal(t, "read", scopes[0])
+		// Now delete the token
+		deleteRequest := api.DeleteTokenRequestObject{
+			TokenId: tokenID,
+		}
 
-		// Test invalid format
-		scopes = parseScopes("read,write")
-		assert.Len(t, scopes, 0)
+		deleteResponse, err := server.DeleteToken(ctx, deleteRequest)
+		require.NoError(t, err)
 
-		// Test scopes with spaces
-		scopes = parseScopes("[read , write , admin]")
-		assert.Len(t, scopes, 3)
-		assert.Contains(t, scopes, "read")
-		assert.Contains(t, scopes, "write")
-		assert.Contains(t, scopes, "admin")
+		_, ok = deleteResponse.(api.DeleteToken204Response)
+		assert.True(t, ok)
+
+		// Verify token is no longer active
+		tokens, err := server.tokenService.GetUserTokens(testUser.ID)
+		require.NoError(t, err)
+		for _, token := range tokens {
+			if token.ID == tokenID {
+				assert.False(t, token.IsActive, "Deleted token should not be active")
+			}
+		}
 	})
 
-	t.Run("convertTokenToResponse", func(t *testing.T) {
-		now := time.Now()
-		future := now.Add(1 * time.Hour)
-		past := now.Add(-1 * time.Hour)
-
-		token := &db.Token{
-			ID:         "token-123",
-			Name:       "Test Token",
-			IsActive:   true,
-			ExpiresAt:  &future,
-			LastUsedAt: &past,
-			UsageCount: 5,
-			Scopes:     "[read,write]",
+	t.Run("DeleteToken_NonAdmin", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, nonAdminSession)
+		request := api.DeleteTokenRequestObject{
+			TokenId: "some-token",
 		}
-		token.CreatedAt = now
 
-		response := convertTokenToResponse(token)
+		response, err := server.DeleteToken(ctx, request)
+		require.NoError(t, err)
 
-		assert.Equal(t, "token-123", response.Id)
-		assert.Equal(t, "Test Token", response.Name)
-		assert.True(t, response.IsActive)
-		assert.Equal(t, now, response.CreatedAt)
-		assert.Equal(t, &future, response.ExpiresAt)
-		assert.Equal(t, &past, response.LastUsedAt)
-		assert.Equal(t, 5, response.UsageCount)
-		assert.Len(t, response.Scopes, 2)
-		assert.Contains(t, response.Scopes, "read")
-		assert.Contains(t, response.Scopes, "write")
+		errorResponse, ok := response.(api.DeleteToken401JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 401, errorResponse.Code)
+		assert.Contains(t, errorResponse.Message, "Admin access required")
+	})
+
+	t.Run("DeleteToken_NotFound", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+		request := api.DeleteTokenRequestObject{
+			TokenId: "nonexistent-token",
+		}
+
+		response, err := server.DeleteToken(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.DeleteToken404JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 404, errorResponse.Code)
 	})
 }

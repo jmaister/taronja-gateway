@@ -114,19 +114,45 @@ func TestTokenService(t *testing.T) {
 		assert.GreaterOrEqual(t, len(tokens), 2) // At least 2 tokens (might be more from other tests)
 	})
 
-	t.Run("GetActiveUserTokens", func(t *testing.T) {
-		// Get active tokens count before
-		activeTokensBefore, err := tokenService.GetActiveUserTokens(user.ID)
+	t.Run("RevokeToken", func(t *testing.T) {
+		// Generate a token to revoke
+		_, token, err := tokenService.GenerateToken(user.ID, "Token to Revoke", nil, nil, "test", nil)
 		require.NoError(t, err)
-		beforeCount := len(activeTokensBefore)
+		assert.True(t, token.IsActive)
 
-		// Generate a new active token
-		_, _, err = tokenService.GenerateToken(user.ID, "Active Token", nil, nil, "test", nil)
+		// Revoke the token
+		err = tokenService.RevokeToken(token.ID, user.ID, user.ID)
 		require.NoError(t, err)
 
-		// Get active tokens after
-		activeTokensAfter, err := tokenService.GetActiveUserTokens(user.ID)
+		// Verify token is revoked
+		updatedToken, err := tokenRepo.GetTokenByID(token.ID)
 		require.NoError(t, err)
-		assert.Equal(t, beforeCount+1, len(activeTokensAfter))
+		assert.False(t, updatedToken.IsActive)
+		assert.NotNil(t, updatedToken.RevokedAt)
+		assert.Equal(t, user.ID, updatedToken.RevokedBy)
+
+		// Try to revoke again - should fail
+		err = tokenService.RevokeToken(token.ID, user.ID, user.ID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "already revoked")
+	})
+
+	t.Run("RevokeToken_NotOwner", func(t *testing.T) {
+		// Generate a token for user1
+		_, token, err := tokenService.GenerateToken(user.ID, "Token owned by user1", nil, nil, "test", nil)
+		require.NoError(t, err)
+
+		// Try to revoke with different user - should fail
+		otherUserID := "other-user-id"
+		err = tokenService.RevokeToken(token.ID, otherUserID, otherUserID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "does not belong to user")
+	})
+
+	t.Run("RevokeToken_NotFound", func(t *testing.T) {
+		// Try to revoke non-existent token
+		err := tokenService.RevokeToken("non-existent-token", user.ID, user.ID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "token not found")
 	})
 }

@@ -197,11 +197,11 @@ type LogoutUserParams struct {
 	TgSessionToken *string `form:"tg_session_token,omitempty" json:"tg_session_token,omitempty"`
 }
 
-// CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
-type CreateTokenJSONRequestBody = TokenCreateRequest
-
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
+
+// CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
+type CreateTokenJSONRequestBody = TokenCreateRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -211,13 +211,10 @@ type ServerInterface interface {
 	// Retrieve detailed information about requests made to the gateway
 	// (GET /api/statistics/requests/details)
 	GetRequestDetails(w http.ResponseWriter, r *http.Request, params GetRequestDetailsParams)
-	// List user's API tokens
-	// (GET /api/tokens)
-	ListTokens(w http.ResponseWriter, r *http.Request)
-	// Create a new API token
-	// (POST /api/tokens)
-	CreateToken(w http.ResponseWriter, r *http.Request)
-	// Get token details
+	// Revoke/delete a token (admin only)
+	// (DELETE /api/tokens/{tokenId})
+	DeleteToken(w http.ResponseWriter, r *http.Request, tokenId string)
+	// Get token details (admin only)
 	// (GET /api/tokens/{tokenId})
 	GetToken(w http.ResponseWriter, r *http.Request, tokenId string)
 	// List all users
@@ -229,6 +226,12 @@ type ServerInterface interface {
 	// Get a user by ID
 	// (GET /api/users/{userId})
 	GetUserById(w http.ResponseWriter, r *http.Request, userId string)
+	// List API tokens for a specific user (admin only)
+	// (GET /api/users/{userId}/tokens)
+	ListTokens(w http.ResponseWriter, r *http.Request, userId string)
+	// Create a new API token for a specific user (admin only)
+	// (POST /api/users/{userId}/tokens)
+	CreateToken(w http.ResponseWriter, r *http.Request, userId string)
 	// Health check
 	// (GET /health)
 	HealthCheck(w http.ResponseWriter, r *http.Request)
@@ -331,31 +334,20 @@ func (siw *ServerInterfaceWrapper) GetRequestDetails(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
-// ListTokens operation middleware
-func (siw *ServerInterfaceWrapper) ListTokens(w http.ResponseWriter, r *http.Request) {
+// DeleteToken operation middleware
+func (siw *ServerInterfaceWrapper) DeleteToken(w http.ResponseWriter, r *http.Request) {
 
-	ctx := r.Context()
+	var err error
 
-	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+	// ------------- Path parameter "tokenId" -------------
+	var tokenId string
 
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTokens(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
+	err = runtime.BindStyledParameterWithOptions("simple", "tokenId", r.PathValue("tokenId"), &tokenId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tokenId", Err: err})
+		return
 	}
 
-	handler.ServeHTTP(w, r)
-}
-
-// CreateToken operation middleware
-func (siw *ServerInterfaceWrapper) CreateToken(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
@@ -365,7 +357,7 @@ func (siw *ServerInterfaceWrapper) CreateToken(w http.ResponseWriter, r *http.Re
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateToken(w, r)
+		siw.Handler.DeleteToken(w, r, tokenId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -464,6 +456,72 @@ func (siw *ServerInterfaceWrapper) GetUserById(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUserById(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListTokens(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTokens(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateToken(w, r, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -677,12 +735,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
-	m.HandleFunc("GET "+options.BaseURL+"/api/tokens", wrapper.ListTokens)
-	m.HandleFunc("POST "+options.BaseURL+"/api/tokens", wrapper.CreateToken)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
 	m.HandleFunc("GET "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.GetToken)
 	m.HandleFunc("GET "+options.BaseURL+"/api/users", wrapper.ListUsers)
 	m.HandleFunc("POST "+options.BaseURL+"/api/users", wrapper.CreateUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/users/{userId}", wrapper.GetUserById)
+	m.HandleFunc("GET "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.ListTokens)
+	m.HandleFunc("POST "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.CreateToken)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.HealthCheck)
 	m.HandleFunc("GET "+options.BaseURL+"/logout", wrapper.LogoutUser)
 	m.HandleFunc("GET "+options.BaseURL+"/me", wrapper.GetCurrentUser)
@@ -753,78 +812,43 @@ func (response GetRequestDetails401JSONResponse) VisitGetRequestDetailsResponse(
 	return json.NewEncoder(w).Encode(response)
 }
 
-type ListTokensRequestObject struct {
+type DeleteTokenRequestObject struct {
+	TokenId string `json:"tokenId"`
 }
 
-type ListTokensResponseObject interface {
-	VisitListTokensResponse(w http.ResponseWriter) error
+type DeleteTokenResponseObject interface {
+	VisitDeleteTokenResponse(w http.ResponseWriter) error
 }
 
-type ListTokens200JSONResponse []TokenResponse
-
-func (response ListTokens200JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
+type DeleteToken204Response struct {
 }
 
-type ListTokens401JSONResponse Error
-
-func (response ListTokens401JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-
-	return json.NewEncoder(w).Encode(response)
+func (response DeleteToken204Response) VisitDeleteTokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
-type ListTokens500JSONResponse Error
+type DeleteToken401JSONResponse Error
 
-func (response ListTokens500JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type CreateTokenRequestObject struct {
-	Body *CreateTokenJSONRequestBody
-}
-
-type CreateTokenResponseObject interface {
-	VisitCreateTokenResponse(w http.ResponseWriter) error
-}
-
-type CreateToken201JSONResponse TokenCreateResponse
-
-func (response CreateToken201JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type CreateToken400JSONResponse Error
-
-func (response CreateToken400JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type CreateToken401JSONResponse Error
-
-func (response CreateToken401JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+func (response DeleteToken401JSONResponse) VisitDeleteTokenResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type CreateToken500JSONResponse Error
+type DeleteToken404JSONResponse Error
 
-func (response CreateToken500JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+func (response DeleteToken404JSONResponse) VisitDeleteTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteToken500JSONResponse Error
+
+func (response DeleteToken500JSONResponse) VisitDeleteTokenResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -1006,6 +1030,104 @@ func (response GetUserById500JSONResponse) VisitGetUserByIdResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListTokensRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type ListTokensResponseObject interface {
+	VisitListTokensResponse(w http.ResponseWriter) error
+}
+
+type ListTokens200JSONResponse []TokenResponse
+
+func (response ListTokens200JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListTokens401JSONResponse Error
+
+func (response ListTokens401JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListTokens404JSONResponse Error
+
+func (response ListTokens404JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListTokens500JSONResponse Error
+
+func (response ListTokens500JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTokenRequestObject struct {
+	UserId string `json:"userId"`
+	Body   *CreateTokenJSONRequestBody
+}
+
+type CreateTokenResponseObject interface {
+	VisitCreateTokenResponse(w http.ResponseWriter) error
+}
+
+type CreateToken201JSONResponse TokenCreateResponse
+
+func (response CreateToken201JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateToken400JSONResponse Error
+
+func (response CreateToken400JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateToken401JSONResponse Error
+
+func (response CreateToken401JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateToken404JSONResponse Error
+
+func (response CreateToken404JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateToken500JSONResponse Error
+
+func (response CreateToken500JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type HealthCheckRequestObject struct {
 }
 
@@ -1092,13 +1214,10 @@ type StrictServerInterface interface {
 	// Retrieve detailed information about requests made to the gateway
 	// (GET /api/statistics/requests/details)
 	GetRequestDetails(ctx context.Context, request GetRequestDetailsRequestObject) (GetRequestDetailsResponseObject, error)
-	// List user's API tokens
-	// (GET /api/tokens)
-	ListTokens(ctx context.Context, request ListTokensRequestObject) (ListTokensResponseObject, error)
-	// Create a new API token
-	// (POST /api/tokens)
-	CreateToken(ctx context.Context, request CreateTokenRequestObject) (CreateTokenResponseObject, error)
-	// Get token details
+	// Revoke/delete a token (admin only)
+	// (DELETE /api/tokens/{tokenId})
+	DeleteToken(ctx context.Context, request DeleteTokenRequestObject) (DeleteTokenResponseObject, error)
+	// Get token details (admin only)
 	// (GET /api/tokens/{tokenId})
 	GetToken(ctx context.Context, request GetTokenRequestObject) (GetTokenResponseObject, error)
 	// List all users
@@ -1110,6 +1229,12 @@ type StrictServerInterface interface {
 	// Get a user by ID
 	// (GET /api/users/{userId})
 	GetUserById(ctx context.Context, request GetUserByIdRequestObject) (GetUserByIdResponseObject, error)
+	// List API tokens for a specific user (admin only)
+	// (GET /api/users/{userId}/tokens)
+	ListTokens(ctx context.Context, request ListTokensRequestObject) (ListTokensResponseObject, error)
+	// Create a new API token for a specific user (admin only)
+	// (POST /api/users/{userId}/tokens)
+	CreateToken(ctx context.Context, request CreateTokenRequestObject) (CreateTokenResponseObject, error)
 	// Health check
 	// (GET /health)
 	HealthCheck(ctx context.Context, request HealthCheckRequestObject) (HealthCheckResponseObject, error)
@@ -1202,54 +1327,25 @@ func (sh *strictHandler) GetRequestDetails(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// ListTokens operation middleware
-func (sh *strictHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
-	var request ListTokensRequestObject
+// DeleteToken operation middleware
+func (sh *strictHandler) DeleteToken(w http.ResponseWriter, r *http.Request, tokenId string) {
+	var request DeleteTokenRequestObject
+
+	request.TokenId = tokenId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListTokens(ctx, request.(ListTokensRequestObject))
+		return sh.ssi.DeleteToken(ctx, request.(DeleteTokenRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListTokens")
+		handler = middleware(handler, "DeleteToken")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListTokensResponseObject); ok {
-		if err := validResponse.VisitListTokensResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateToken operation middleware
-func (sh *strictHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
-	var request CreateTokenRequestObject
-
-	var body CreateTokenJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateToken(ctx, request.(CreateTokenRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateToken")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateTokenResponseObject); ok {
-		if err := validResponse.VisitCreateTokenResponse(w); err != nil {
+	} else if validResponse, ok := response.(DeleteTokenResponseObject); ok {
+		if err := validResponse.VisitDeleteTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1357,6 +1453,65 @@ func (sh *strictHandler) GetUserById(w http.ResponseWriter, r *http.Request, use
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserByIdResponseObject); ok {
 		if err := validResponse.VisitGetUserByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTokens operation middleware
+func (sh *strictHandler) ListTokens(w http.ResponseWriter, r *http.Request, userId string) {
+	var request ListTokensRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTokens(ctx, request.(ListTokensRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTokens")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTokensResponseObject); ok {
+		if err := validResponse.VisitListTokensResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateToken operation middleware
+func (sh *strictHandler) CreateToken(w http.ResponseWriter, r *http.Request, userId string) {
+	var request CreateTokenRequestObject
+
+	request.UserId = userId
+
+	var body CreateTokenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateToken(ctx, request.(CreateTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTokenResponseObject); ok {
+		if err := validResponse.VisitCreateTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
