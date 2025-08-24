@@ -11,4 +11,5 @@ type TokenRepository interface {
 	IncrementUsageCount(tokenID string, lastUsedAt time.Time) error
 	GetActiveTokensByUserID(userID string) ([]*Token, error)
 	ExpireToken(tokenID string) error // Mark token as expired when accessed after expiration
+	RevokeToken(tokenID string, revokedBy string) error // Revoke a token
 }

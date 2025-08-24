@@ -129,4 +129,46 @@ func TestTokenService(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, beforeCount+1, len(activeTokensAfter))
 	})
+
+	t.Run("RevokeToken", func(t *testing.T) {
+		// Generate a token to revoke
+		_, token, err := tokenService.GenerateToken(user.ID, "Token to Revoke", nil, nil, "test", nil)
+		require.NoError(t, err)
+		assert.True(t, token.IsActive)
+
+		// Revoke the token
+		err = tokenService.RevokeToken(token.ID, user.ID, user.ID)
+		require.NoError(t, err)
+
+		// Verify token is revoked
+		updatedToken, err := tokenRepo.GetTokenByID(token.ID)
+		require.NoError(t, err)
+		assert.False(t, updatedToken.IsActive)
+		assert.NotNil(t, updatedToken.RevokedAt)
+		assert.Equal(t, user.ID, updatedToken.RevokedBy)
+
+		// Try to revoke again - should fail
+		err = tokenService.RevokeToken(token.ID, user.ID, user.ID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "already revoked")
+	})
+
+	t.Run("RevokeToken_NotOwner", func(t *testing.T) {
+		// Generate a token for user1
+		_, token, err := tokenService.GenerateToken(user.ID, "Token owned by user1", nil, nil, "test", nil)
+		require.NoError(t, err)
+
+		// Try to revoke with different user - should fail
+		otherUserID := "other-user-id"
+		err = tokenService.RevokeToken(token.ID, otherUserID, otherUserID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "does not belong to user")
+	})
+
+	t.Run("RevokeToken_NotFound", func(t *testing.T) {
+		// Try to revoke non-existent token
+		err := tokenService.RevokeToken("non-existent-token", user.ID, user.ID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "token not found")
+	})
 }

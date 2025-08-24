@@ -156,6 +156,30 @@ func (s *TokenService) GetActiveUserTokens(userID string) ([]*db.Token, error) {
 	return s.tokenRepo.GetActiveTokensByUserID(userID)
 }
 
+// RevokeToken revokes a user's token, ensuring only the owner can revoke their own tokens
+func (s *TokenService) RevokeToken(tokenID string, userID string, revokedBy string) error {
+	// First, verify the token exists and belongs to the user
+	token, err := s.tokenRepo.GetTokenByID(tokenID)
+	if err != nil {
+		return fmt.Errorf("token not found: %w", err)
+	}
+
+	if token.UserID != userID {
+		return fmt.Errorf("token does not belong to user")
+	}
+
+	if token.RevokedAt != nil {
+		return fmt.Errorf("token is already revoked")
+	}
+
+	if !token.IsActive {
+		return fmt.Errorf("token is already inactive")
+	}
+
+	// Revoke the token
+	return s.tokenRepo.RevokeToken(tokenID, revokedBy)
+}
+
 // Helper function to join strings (simple implementation)
 func joinStrings(strings []string, separator string) string {
 	if len(strings) == 0 {

@@ -98,6 +98,23 @@ func (r *TokenRepositoryMemory) ExpireToken(tokenID string) error {
 	return nil
 }
 
+// RevokeToken marks a token as revoked
+func (r *TokenRepositoryMemory) RevokeToken(tokenID string, revokedBy string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	token, exists := r.tokens[tokenID]
+	if !exists {
+		return fmt.Errorf("token with ID %s not found", tokenID)
+	}
+
+	now := time.Now()
+	token.IsActive = false
+	token.RevokedAt = &now
+	token.RevokedBy = revokedBy
+	return nil
+}
+
 // IncrementUsageCount increments the usage count and updates last used time
 func (r *TokenRepositoryMemory) IncrementUsageCount(tokenID string, lastUsedAt time.Time) error {
 	r.mutex.Lock()

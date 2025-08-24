@@ -346,6 +346,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    delete:
+      summary: Revoke/delete a token
+      operationId: deleteToken
+      tags:
+        - Token
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          description: ID of the token to revoke
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Token successfully revoked
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/statistics/requests:
     get:

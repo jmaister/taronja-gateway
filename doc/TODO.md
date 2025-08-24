@@ -5,6 +5,18 @@
 
 # TODO tasks for the project
 
+* ~~Revoke token: fix~~ ✅ FIXED
+* ~~Tokens: show only from the user~~ ✅ FIXED - was already working correctly  
+* ~~Stats: not showing logged user~~ ✅ FIXED - now shows usernames instead of user IDs
+
+* Multi-login users
+    - Handle "User account already exists with a different login method."
+* Override user if a new login is done
+    - When logged in as user but logged as admin in the admin interface, it should allow to login.
+    - When logged in as user but try to login as another regular user, it should allow.
+
+* Update users: sqlite3 taronja-gateway.db "UPDATE users SET email = 'jordi@example.com' WHERE email = 'jordiburgos@gmail.com';"
+
 * Return uptime on the /health endpoint
 * Add a health check for the database connection
     * Open DB connections

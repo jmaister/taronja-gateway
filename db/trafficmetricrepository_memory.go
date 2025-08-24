@@ -231,11 +231,19 @@ func (r *TrafficMetricRepositoryMemory) GetRequestCountByUser(startDate, endDate
 
 	for _, stat := range r.stats {
 		if stat.Timestamp.After(startDate) && stat.Timestamp.Before(endDate) {
-			user := stat.UserID
-			if user == "" {
-				user = "guest"
+			username := "guest"
+			
+			// If we have a user ID, try to get the username
+			if stat.UserID != "" && r.userRepo != nil {
+				if user, err := r.userRepo.FindUserByIdOrUsername(stat.UserID, "", ""); err == nil {
+					username = user.Username
+				} else {
+					// Fallback to user ID if we can't find the user
+					username = stat.UserID
+				}
 			}
-			userCounts[user]++
+			
+			userCounts[username]++
 		}
 	}
 

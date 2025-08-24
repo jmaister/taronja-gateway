@@ -129,6 +129,69 @@ func TestTokenHandlers(t *testing.T) {
 		assert.Equal(t, 400, errorResponse.Code)
 	})
 
+	t.Run("DeleteToken_Success", func(t *testing.T) {
+		// First create a token
+		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+		createRequest := api.CreateTokenRequestObject{
+			Body: &api.TokenCreateRequest{
+				Name: "Token to Delete",
+			},
+		}
+
+		createResponse, err := server.CreateToken(ctx, createRequest)
+		require.NoError(t, err)
+		
+		createSuccessResponse, ok := createResponse.(api.CreateToken201JSONResponse)
+		require.True(t, ok)
+		tokenID := createSuccessResponse.TokenInfo.Id
+
+		// Now delete the token
+		deleteRequest := api.DeleteTokenRequestObject{
+			TokenId: tokenID,
+		}
+
+		deleteResponse, err := server.DeleteToken(ctx, deleteRequest)
+		require.NoError(t, err)
+
+		_, ok = deleteResponse.(api.DeleteToken204Response)
+		assert.True(t, ok)
+
+		// Verify token is no longer active in active tokens list
+		activeTokens, err := server.tokenService.GetActiveUserTokens(testUser.ID)
+		require.NoError(t, err)
+		for _, token := range activeTokens {
+			assert.NotEqual(t, tokenID, token.ID, "Deleted token should not be in active tokens")
+		}
+	})
+
+	t.Run("DeleteToken_NotFound", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), session.SessionKey, testSession)
+		request := api.DeleteTokenRequestObject{
+			TokenId: "non-existent-token",
+		}
+
+		response, err := server.DeleteToken(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.DeleteToken404JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 404, errorResponse.Code)
+	})
+
+	t.Run("DeleteToken_NoSession", func(t *testing.T) {
+		ctx := context.Background()
+		request := api.DeleteTokenRequestObject{
+			TokenId: "some-token",
+		}
+
+		response, err := server.DeleteToken(ctx, request)
+		require.NoError(t, err)
+
+		errorResponse, ok := response.(api.DeleteToken401JSONResponse)
+		assert.True(t, ok)
+		assert.Equal(t, 401, errorResponse.Code)
+	})
+
 	t.Run("GetToken_Success", func(t *testing.T) {
 		// First create a token
 		tokenString, tokenData, err := tokenService.GenerateToken(
@@ -168,6 +231,106 @@ func TestTokenHandlers(t *testing.T) {
 		errorResponse, ok := response.(api.GetToken404JSONResponse)
 		assert.True(t, ok)
 		assert.Equal(t, 404, errorResponse.Code)
+	})
+}
+
+func TestTokenHandlersUserIsolation(t *testing.T) {
+	// Setup repositories and services
+	userRepo := db.NewMemoryUserRepository()
+	tokenRepo := db.NewTokenRepositoryMemory()
+	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+
+	// Create test server
+	server := &StrictApiServer{
+		userRepo:     userRepo,
+		tokenRepo:    tokenRepo,
+		tokenService: tokenService,
+	}
+
+	// Create test users
+	user1 := &db.User{
+		ID:       "user-1",
+		Username: "testuser1",
+		Email:    "test1@example.com",
+		Name:     "Test User 1",
+		Provider: "test",
+	}
+	user2 := &db.User{
+		ID:       "user-2",
+		Username: "testuser2",
+		Email:    "test2@example.com",
+		Name:     "Test User 2",
+		Provider: "test",
+	}
+	
+	err := userRepo.CreateUser(user1)
+	require.NoError(t, err)
+	err = userRepo.CreateUser(user2)
+	require.NoError(t, err)
+
+	// Create test sessions
+	session1 := &db.Session{
+		Token:           "session-token-1",
+		UserID:          user1.ID,
+		Username:        user1.Username,
+		Email:           user1.Email,
+		IsAuthenticated: true,
+		IsAdmin:         false,
+		Provider:        "test",
+	}
+	
+	session2 := &db.Session{
+		Token:           "session-token-2",
+		UserID:          user2.ID,
+		Username:        user2.Username,
+		Email:           user2.Email,
+		IsAuthenticated: true,
+		IsAdmin:         false,
+		Provider:        "test",
+	}
+
+	t.Run("UsersOnlySeeTheirOwnTokens", func(t *testing.T) {
+		// Create tokens for user1
+		ctx1 := context.WithValue(context.Background(), session.SessionKey, session1)
+		createRequest1 := api.CreateTokenRequestObject{
+			Body: &api.TokenCreateRequest{
+				Name: "User 1 Token",
+			},
+		}
+		_, err := server.CreateToken(ctx1, createRequest1)
+		require.NoError(t, err)
+
+		// Create tokens for user2
+		ctx2 := context.WithValue(context.Background(), session.SessionKey, session2)
+		createRequest2 := api.CreateTokenRequestObject{
+			Body: &api.TokenCreateRequest{
+				Name: "User 2 Token",
+			},
+		}
+		_, err = server.CreateToken(ctx2, createRequest2)
+		require.NoError(t, err)
+
+		// User1 should only see their own token
+		listRequest1 := api.ListTokensRequestObject{}
+		response1, err := server.ListTokens(ctx1, listRequest1)
+		require.NoError(t, err)
+		
+		successResponse1, ok := response1.(api.ListTokens200JSONResponse)
+		require.True(t, ok)
+		tokens1 := []api.TokenResponse(successResponse1)
+		assert.Len(t, tokens1, 1)
+		assert.Equal(t, "User 1 Token", tokens1[0].Name)
+
+		// User2 should only see their own token
+		listRequest2 := api.ListTokensRequestObject{}
+		response2, err := server.ListTokens(ctx2, listRequest2)
+		require.NoError(t, err)
+		
+		successResponse2, ok := response2.(api.ListTokens200JSONResponse)
+		require.True(t, ok)
+		tokens2 := []api.TokenResponse(successResponse2)
+		assert.Len(t, tokens2, 1)
+		assert.Equal(t, "User 2 Token", tokens2[0].Name)
 	})
 }
 

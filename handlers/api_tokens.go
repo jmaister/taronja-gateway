@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -146,6 +147,45 @@ func (s *StrictApiServer) GetToken(ctx context.Context, request api.GetTokenRequ
 	}
 
 	return api.GetToken200JSONResponse(convertTokenToResponse(targetToken)), nil
+}
+
+// DeleteToken handles DELETE /api/tokens/{tokenId}
+func (s *StrictApiServer) DeleteToken(ctx context.Context, request api.DeleteTokenRequestObject) (api.DeleteTokenResponseObject, error) {
+	// Get session from context
+	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sessionObj == nil {
+		log.Printf("DeleteToken: No session found in context")
+		return api.DeleteToken401JSONResponse{
+			Code:    401,
+			Message: "Unauthorized: No valid session found",
+		}, nil
+	}
+
+	// Revoke the token
+	err := s.tokenService.RevokeToken(request.TokenId, sessionObj.UserID, sessionObj.UserID)
+	if err != nil {
+		log.Printf("DeleteToken: Error revoking token %s for user %s: %v", request.TokenId, sessionObj.UserID, err)
+		
+		// Check if it's a not found / not belonging to user error
+		errMsg := err.Error()
+		if errMsg == "token does not belong to user" || 
+		   errMsg == "token not found" || 
+		   errMsg == "token not found: record not found" ||
+		   strings.Contains(errMsg, "token with ID") && strings.Contains(errMsg, "not found") {
+			return api.DeleteToken404JSONResponse{
+				Code:    404,
+				Message: "Not found: Token not found or does not belong to user",
+			}, nil
+		}
+
+		return api.DeleteToken500JSONResponse{
+			Code:    500,
+			Message: "Internal server error: Failed to revoke token",
+		}, nil
+	}
+
+	// Return success
+	return api.DeleteToken204Response{}, nil
 }
 
 // Helper function to convert db.Token to api.TokenResponse
