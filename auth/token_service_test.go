@@ -114,8 +114,6 @@ func TestTokenService(t *testing.T) {
 		assert.GreaterOrEqual(t, len(tokens), 2) // At least 2 tokens (might be more from other tests)
 	})
 
-
-
 	t.Run("RevokeToken", func(t *testing.T) {
 		// Generate a token to revoke
 		_, token, err := tokenService.GenerateToken(user.ID, "Token to Revoke", nil, nil, "test", nil)

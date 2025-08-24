@@ -52,7 +52,6 @@ func testTokenRepository(t *testing.T, repo TokenRepository) {
 	assert.Equal(t, int64(1), updatedToken.UsageCount)
 	assert.NotNil(t, updatedToken.LastUsedAt)
 
-
 	// Test RevokeToken
 	err = repo.RevokeToken(token.ID, "user-123")
 	require.NoError(t, err)
@@ -142,7 +141,6 @@ func TestTokenRepositoryMemory_ExpirationHandling(t *testing.T) {
 
 	err = repo.CreateToken(activeToken)
 	require.NoError(t, err)
-
 
 	// Verify that both tokens still exist (expired tokens are kept)
 	expiredToken, err = repo.FindTokenByHash("expired-hash")

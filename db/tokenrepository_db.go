@@ -61,7 +61,6 @@ func (r *TokenRepositoryDB) IncrementUsageCount(tokenID string, lastUsedAt time.
 	}).Error
 }
 
-
 // RevokeToken marks a token as revoked
 func (r *TokenRepositoryDB) RevokeToken(tokenID string, revokedBy string) error {
 	now := time.Now()

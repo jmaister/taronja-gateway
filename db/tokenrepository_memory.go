@@ -129,4 +129,3 @@ func (r *TokenRepositoryMemory) IncrementUsageCount(tokenID string, lastUsedAt t
 	token.LastUsedAt = &lastUsedAt
 	return nil
 }
-

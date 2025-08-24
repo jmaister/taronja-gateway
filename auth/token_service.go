@@ -151,7 +151,6 @@ func (s *TokenService) GetUserTokens(userID string) ([]*db.Token, error) {
 	return s.tokenRepo.FindTokensByUserID(userID)
 }
 
-
 // RevokeToken revokes a user's token, ensuring only the owner can revoke their own tokens
 func (s *TokenService) RevokeToken(tokenID string, userID string, revokedBy string) error {
 	// First, verify the token exists and belongs to the user
