@@ -71,3 +71,6 @@
     * Code review.
     * Build commands.
     * Change folders.
+
+* Agent never does git commands.
+* Agent never commits to git. Never pushes to git.

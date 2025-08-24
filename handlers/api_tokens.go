@@ -165,13 +165,13 @@ func (s *StrictApiServer) DeleteToken(ctx context.Context, request api.DeleteTok
 	err := s.tokenService.RevokeToken(request.TokenId, sessionObj.UserID, sessionObj.UserID)
 	if err != nil {
 		log.Printf("DeleteToken: Error revoking token %s for user %s: %v", request.TokenId, sessionObj.UserID, err)
-		
+
 		// Check if it's a not found / not belonging to user error
 		errMsg := err.Error()
-		if errMsg == "token does not belong to user" || 
-		   errMsg == "token not found" || 
-		   errMsg == "token not found: record not found" ||
-		   strings.Contains(errMsg, "token with ID") && strings.Contains(errMsg, "not found") {
+		if errMsg == "token does not belong to user" ||
+			errMsg == "token not found" ||
+			errMsg == "token not found: record not found" ||
+			strings.Contains(errMsg, "token with ID") && strings.Contains(errMsg, "not found") {
 			return api.DeleteToken404JSONResponse{
 				Code:    404,
 				Message: "Not found: Token not found or does not belong to user",

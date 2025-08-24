@@ -114,21 +114,7 @@ func TestTokenService(t *testing.T) {
 		assert.GreaterOrEqual(t, len(tokens), 2) // At least 2 tokens (might be more from other tests)
 	})
 
-	t.Run("GetActiveUserTokens", func(t *testing.T) {
-		// Get active tokens count before
-		activeTokensBefore, err := tokenService.GetActiveUserTokens(user.ID)
-		require.NoError(t, err)
-		beforeCount := len(activeTokensBefore)
 
-		// Generate a new active token
-		_, _, err = tokenService.GenerateToken(user.ID, "Active Token", nil, nil, "test", nil)
-		require.NoError(t, err)
-
-		// Get active tokens after
-		activeTokensAfter, err := tokenService.GetActiveUserTokens(user.ID)
-		require.NoError(t, err)
-		assert.Equal(t, beforeCount+1, len(activeTokensAfter))
-	})
 
 	t.Run("RevokeToken", func(t *testing.T) {
 		// Generate a token to revoke

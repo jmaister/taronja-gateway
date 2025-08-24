@@ -255,7 +255,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		Provider: "test",
 	}
 	testUser2 := &db.User{
-		ID:       "user-2", 
+		ID:       "user-2",
 		Username: "bob",
 		Email:    "bob@example.com",
 		Name:     "Bob Test",
@@ -289,7 +289,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 
 	// Create traffic metrics for different users
 	now := time.Now()
-	
+
 	// Traffic for alice
 	aliceMetric := &db.TrafficMetric{
 		HttpMethod:     "GET",
@@ -301,7 +301,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		UserID:         testUser1.ID,
 		SessionID:      "alice-session",
 	}
-	
+
 	// Traffic for bob
 	bobMetric := &db.TrafficMetric{
 		HttpMethod:     "POST",
@@ -335,10 +335,10 @@ func TestStatisticsShowUsernames(t *testing.T) {
 
 	t.Run("StatisticsShowUsernamesNotUserIDs", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
-		
+
 		startDate := now.Add(-1 * time.Hour)
 		endDate := now.Add(1 * time.Hour)
-		
+
 		request := api.GetRequestStatisticsRequestObject{
 			Params: api.GetRequestStatisticsParams{
 				StartDate: &startDate,
@@ -360,7 +360,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		assert.Equal(t, 1, userStats["alice"])
 		assert.Equal(t, 1, userStats["bob"])
 		assert.Equal(t, 1, userStats["guest"])
-		
+
 		// Verify user IDs are NOT in the results
 		assert.NotContains(t, userStats, "user-1")
 		assert.NotContains(t, userStats, "user-2")

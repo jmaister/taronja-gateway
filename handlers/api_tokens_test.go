@@ -140,7 +140,7 @@ func TestTokenHandlers(t *testing.T) {
 
 		createResponse, err := server.CreateToken(ctx, createRequest)
 		require.NoError(t, err)
-		
+
 		createSuccessResponse, ok := createResponse.(api.CreateToken201JSONResponse)
 		require.True(t, ok)
 		tokenID := createSuccessResponse.TokenInfo.Id
@@ -157,10 +157,13 @@ func TestTokenHandlers(t *testing.T) {
 		assert.True(t, ok)
 
 		// Verify token is no longer active in active tokens list
-		activeTokens, err := server.tokenService.GetActiveUserTokens(testUser.ID)
+		// (GetActiveUserTokens removed, so just check all tokens are inactive)
+		tokens, err := server.tokenService.GetUserTokens(testUser.ID)
 		require.NoError(t, err)
-		for _, token := range activeTokens {
-			assert.NotEqual(t, tokenID, token.ID, "Deleted token should not be in active tokens")
+		for _, token := range tokens {
+			if token.ID == tokenID {
+				assert.False(t, token.IsActive, "Deleted token should not be active")
+			}
 		}
 	})
 
@@ -262,7 +265,7 @@ func TestTokenHandlersUserIsolation(t *testing.T) {
 		Name:     "Test User 2",
 		Provider: "test",
 	}
-	
+
 	err := userRepo.CreateUser(user1)
 	require.NoError(t, err)
 	err = userRepo.CreateUser(user2)
@@ -278,7 +281,7 @@ func TestTokenHandlersUserIsolation(t *testing.T) {
 		IsAdmin:         false,
 		Provider:        "test",
 	}
-	
+
 	session2 := &db.Session{
 		Token:           "session-token-2",
 		UserID:          user2.ID,
@@ -314,7 +317,7 @@ func TestTokenHandlersUserIsolation(t *testing.T) {
 		listRequest1 := api.ListTokensRequestObject{}
 		response1, err := server.ListTokens(ctx1, listRequest1)
 		require.NoError(t, err)
-		
+
 		successResponse1, ok := response1.(api.ListTokens200JSONResponse)
 		require.True(t, ok)
 		tokens1 := []api.TokenResponse(successResponse1)
@@ -325,7 +328,7 @@ func TestTokenHandlersUserIsolation(t *testing.T) {
 		listRequest2 := api.ListTokensRequestObject{}
 		response2, err := server.ListTokens(ctx2, listRequest2)
 		require.NoError(t, err)
-		
+
 		successResponse2, ok := response2.(api.ListTokens200JSONResponse)
 		require.True(t, ok)
 		tokens2 := []api.TokenResponse(successResponse2)

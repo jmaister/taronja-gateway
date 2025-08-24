@@ -52,10 +52,6 @@ func testTokenRepository(t *testing.T, repo TokenRepository) {
 	assert.Equal(t, int64(1), updatedToken.UsageCount)
 	assert.NotNil(t, updatedToken.LastUsedAt)
 
-	// Test GetActiveTokensByUserID
-	activeTokens, err := repo.GetActiveTokensByUserID("user-123")
-	require.NoError(t, err)
-	assert.Len(t, activeTokens, 1)
 
 	// Test RevokeToken
 	err = repo.RevokeToken(token.ID, "user-123")
@@ -68,15 +64,11 @@ func testTokenRepository(t *testing.T, repo TokenRepository) {
 	assert.NotNil(t, revokedToken.RevokedAt)
 	assert.Equal(t, "user-123", revokedToken.RevokedBy)
 
-	// Test GetActiveTokensByUserID after revocation
-	activeTokens, err = repo.GetActiveTokensByUserID("user-123")
-	require.NoError(t, err)
-	assert.Len(t, activeTokens, 0)
 }
 
 func TestTokenRepositoryUserIsolation(t *testing.T) {
 	repo := NewTokenRepositoryMemory()
-	
+
 	// Create tokens for different users
 	user1Token := &Token{
 		ID:          "token-user1",
@@ -87,7 +79,7 @@ func TestTokenRepositoryUserIsolation(t *testing.T) {
 		UsageCount:  0,
 		CreatedFrom: "test",
 	}
-	
+
 	user2Token := &Token{
 		ID:          "token-user2",
 		UserID:      "user-2",
@@ -97,37 +89,27 @@ func TestTokenRepositoryUserIsolation(t *testing.T) {
 		UsageCount:  0,
 		CreatedFrom: "test",
 	}
-	
+
 	// Create tokens
 	err := repo.CreateToken(user1Token)
 	require.NoError(t, err)
-	
+
 	err = repo.CreateToken(user2Token)
 	require.NoError(t, err)
-	
+
 	// Test that each user only sees their own tokens
 	user1Tokens, err := repo.FindTokensByUserID("user-1")
 	require.NoError(t, err)
 	assert.Len(t, user1Tokens, 1)
 	assert.Equal(t, "token-user1", user1Tokens[0].ID)
 	assert.Equal(t, "user-1", user1Tokens[0].UserID)
-	
+
 	user2Tokens, err := repo.FindTokensByUserID("user-2")
 	require.NoError(t, err)
 	assert.Len(t, user2Tokens, 1)
 	assert.Equal(t, "token-user2", user2Tokens[0].ID)
 	assert.Equal(t, "user-2", user2Tokens[0].UserID)
-	
-	// Test active tokens filtering
-	user1ActiveTokens, err := repo.GetActiveTokensByUserID("user-1")
-	require.NoError(t, err)
-	assert.Len(t, user1ActiveTokens, 1)
-	assert.Equal(t, "token-user1", user1ActiveTokens[0].ID)
-	
-	user2ActiveTokens, err := repo.GetActiveTokensByUserID("user-2")
-	require.NoError(t, err)
-	assert.Len(t, user2ActiveTokens, 1)
-	assert.Equal(t, "token-user2", user2ActiveTokens[0].ID)
+
 }
 
 func TestTokenRepositoryMemory_ExpirationHandling(t *testing.T) {
@@ -161,11 +143,6 @@ func TestTokenRepositoryMemory_ExpirationHandling(t *testing.T) {
 	err = repo.CreateToken(activeToken)
 	require.NoError(t, err)
 
-	// Test GetActiveTokensByUserID includes all active tokens (even expired ones)
-	// Tokens only expire when accessed, not when queried
-	activeTokens, err := repo.GetActiveTokensByUserID("user-123")
-	require.NoError(t, err)
-	assert.Len(t, activeTokens, 2) // Both tokens are still active until accessed
 
 	// Verify that both tokens still exist (expired tokens are kept)
 	expiredToken, err = repo.FindTokenByHash("expired-hash")

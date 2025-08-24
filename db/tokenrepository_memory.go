@@ -130,18 +130,3 @@ func (r *TokenRepositoryMemory) IncrementUsageCount(tokenID string, lastUsedAt t
 	return nil
 }
 
-// GetActiveTokensByUserID finds all active tokens for a specific user
-func (r *TokenRepositoryMemory) GetActiveTokensByUserID(userID string) ([]*Token, error) {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	var tokens []*Token
-	for _, token := range r.tokens {
-		if token.UserID == userID && token.IsActive {
-			// Create a copy to avoid external modifications
-			tokenCopy := *token
-			tokens = append(tokens, &tokenCopy)
-		}
-	}
-	return tokens, nil
-}

@@ -61,12 +61,6 @@ func (r *TokenRepositoryDB) IncrementUsageCount(tokenID string, lastUsedAt time.
 	}).Error
 }
 
-// GetActiveTokensByUserID finds all active tokens for a specific user
-func (r *TokenRepositoryDB) GetActiveTokensByUserID(userID string) ([]*Token, error) {
-	var tokens []*Token
-	err := r.db.Where("user_id = ? AND is_active = ?", userID, true).Find(&tokens).Error
-	return tokens, err
-}
 
 // RevokeToken marks a token as revoked
 func (r *TokenRepositoryDB) RevokeToken(tokenID string, revokedBy string) error {
