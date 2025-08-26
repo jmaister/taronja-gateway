@@ -6,11 +6,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-
 	"slices"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/db" // Import db for Session type
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -137,7 +137,22 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 		if adminRequired && !sessionObject.IsAdmin {
 			log.Printf("Admin access required but user %s (session %s) is not admin", sessionObject.UserID, sessionObject.Token)
 			if isStatic {
-				// Redirect to login page with error message
+				// Log out the user by ending their session
+				if sessionObject != nil && sessionObject.Token != "" {
+					_ = sessionStore.EndSession(sessionObject.Token)
+					// Remove session cookie
+					http.SetCookie(w, &http.Cookie{
+						Name:     "tg_session_token",
+						Value:    "",
+						Path:     "/",
+						Expires:  time.Unix(0, 0),
+						MaxAge:   -1,
+						HttpOnly: true,
+						Secure:   true,
+						SameSite: http.SameSiteLaxMode,
+					})
+				}
+				// Redirect to login page with the original URL as the redirect parameter
 				originalURL := r.URL.RequestURI()
 				redirectURL := managementPrefix + "/login?redirect=" + url.QueryEscape(originalURL)
 				http.Redirect(w, r, redirectURL, http.StatusFound)

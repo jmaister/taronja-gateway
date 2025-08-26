@@ -1,6 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+    // Early check: if already logged in, redirect immediately (avoid redirect loop)
+    (function() {
+        function getQueryParam(name) {
+            const url = new URL(window.location.href);
+            return url.searchParams.get(name);
+        }
+
+        // Only run on top window (avoid iframes)
+        if (window.self !== window.top) return;
+
+        fetch('{{.ManagementPrefix}}/me', { credentials: 'include' })
+            .then(function(response) {
+                if (!response.ok) return null;
+                return response.json();
+            })
+            .then(function(data) {
+                if (data && data.authenticated) {
+                    var redirect = getQueryParam('redirect');
+                    if (redirect && redirect !== '') {
+                        window.location.replace(redirect);
+                    } else {
+                        window.location.replace('/');
+                    }
+                }
+            })
+            .catch(function() { /* ignore errors, show login */ });
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
