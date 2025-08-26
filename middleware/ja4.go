@@ -17,8 +17,6 @@ func JA4Middleware(next http.Handler) http.Handler {
 
 		if ja4hFingerprint == "" {
 			log.Printf("Warning: JA4H fingerprint is empty for request %s %s", r.Method, r.URL.Path)
-		} else {
-			log.Printf("JA4H fingerprint for request %s %s: %s", r.Method, r.URL.Path, ja4hFingerprint)
 		}
 
 		// Store the fingerprint in a custom header
