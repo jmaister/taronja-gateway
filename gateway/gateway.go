@@ -488,60 +488,6 @@ func (g *Gateway) wrapWithCacheControl(next http.HandlerFunc, routeConfig config
 	}
 }
 
-// getSessionFromRequest extracts the session from a request if available
-func (g *Gateway) getSessionFromRequest(r *http.Request) *db.Session {
-	log.Printf("[auth] getSessionFromRequest called for path: %s", r.URL.Path)
-
-	// First check if session is already in context (set by middleware)
-	if r.Context() != nil {
-		if sessionObject, ok := r.Context().Value(session.SessionKey).(*db.Session); ok && sessionObject != nil {
-			log.Printf("[auth] Found session in context: %+v", sessionObject)
-			return sessionObject
-		} else {
-			log.Printf("[auth] No session found in context or wrong type")
-		}
-	}
-
-	// If not in context, try to validate from cookie directly
-	cookie, err := r.Cookie(session.SessionCookieName)
-	if err == nil && cookie != nil {
-		log.Printf("[auth] Found session cookie: %s", cookie.Value)
-
-		// Try to find session directly in memory for testing
-		// This is a direct lookup in the session store's repository
-		if memRepo, ok := g.SessionStore.(*session.SessionStoreDB); ok {
-			log.Printf("[auth] Using SessionStoreDB to validate session")
-			sessionObject, exists := memRepo.ValidateSession(r)
-			if exists && sessionObject != nil {
-				log.Printf("[auth] Validated session from cookie: %+v", sessionObject)
-				return sessionObject
-			} else {
-				log.Printf("[auth] Failed to validate session from cookie using SessionStoreDB")
-			}
-		} else {
-			log.Printf("[auth] SessionStore is not a SessionStoreDB, type: %T", g.SessionStore)
-		}
-	} else {
-		log.Printf("[auth] No session cookie found: %v", err)
-	}
-
-	// Try token auth as last resort
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		log.Printf("[auth] Found Authorization header: %s", authHeader)
-		sessionObject, exists := g.SessionStore.ValidateTokenAuth(r, g.TokenService)
-		if exists && sessionObject != nil {
-			log.Printf("[auth] Validated session from token: %+v", sessionObject)
-			return sessionObject
-		} else {
-			log.Printf("[auth] Failed to validate session from token")
-		}
-	}
-
-	log.Printf("[auth] No valid session found for request to: %s", r.URL.Path)
-	return nil
-}
-
 // --- Route Handler Creation ---
 // createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
 func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
