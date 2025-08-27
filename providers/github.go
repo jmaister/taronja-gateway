@@ -154,7 +154,7 @@ func fetchGitHubEmail(accessToken string) (string, error) {
 }
 
 // RegisterGithubAuth configures and registers GitHub OAuth2 authentication
-func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository, userLoginRepo db.UserLoginRepository) {
 	if gatewayConfig.AuthenticationProviders.Github.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret == "" {
 		return // Skip if not configured
@@ -179,6 +179,7 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		provider,
 		"GitHub",
 		userRepo,
+		userLoginRepo,
 		sessionStore,
 	)
 

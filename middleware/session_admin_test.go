@@ -33,16 +33,15 @@ func TestSessionMiddlewareAdminRequired(t *testing.T) {
 		ID:       "regular-user-id",
 		Username: "regularuser",
 		Email:    "regular@example.com",
-		Provider: "basic",
+		IsAdmin:  false,
 	}
 
 	// Create an admin user
 	adminUser := &db.User{
-		ID:       "admin-user-id",
+		ID:       "admin1",
 		Username: "admin",
 		Email:    "admin@example.com",
-		Provider: db.AdminProvider,
-		Password: "admin1234",
+		IsAdmin:  true,
 	}
 
 	t.Run("regular user blocked from admin dashboard", func(t *testing.T) {
@@ -116,7 +115,7 @@ func TestSessionMiddlewareAdminRequired(t *testing.T) {
 	t.Run("admin user allowed access to admin dashboard", func(t *testing.T) {
 		// Create session for admin user
 		req := httptest.NewRequest("GET", "/", nil)
-		sessionData, err := store.NewSession(req, adminUser, db.AdminProvider, time.Hour)
+		sessionData, err := store.NewSession(req, adminUser, "admin", time.Hour)
 		require.NoError(t, err)
 		require.NotNil(t, sessionData)
 		require.True(t, sessionData.IsAdmin, "Admin user session should be admin")

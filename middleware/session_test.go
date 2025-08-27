@@ -30,7 +30,7 @@ func (m *mockTokenService) ValidateToken(token string) (*db.User, *db.Token, err
 		ID:       "test-user-id",
 		Username: "testuser",
 		Email:    "test@example.com",
-		Provider: "basic",
+		IsAdmin:  false,
 	}
 	tokenData := &db.Token{
 		ID:   "test-token-id",

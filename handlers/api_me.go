@@ -58,13 +58,13 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 	authenticated := true
 	email := user.Email
 	username := user.Username
-	provider := user.Provider
+	provider := sessionObject.Provider // Get provider from session instead of user
 	isAdmin := sessionObject.IsAdmin
 	timestamp := time.Now().UTC()
 	name := user.Name
 	picture := user.Picture
-	givenName := user.GivenName
-	familyName := user.FamilyName
+	givenName := "" // These fields are now in UserLogin table
+	familyName := "" // These fields are now in UserLogin table
 
 	var emailPointer *openapi_types.Email
 	if email != "" {

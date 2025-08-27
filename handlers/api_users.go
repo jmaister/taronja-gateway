@@ -16,7 +16,7 @@ import (
 
 // dbUserToAPIUserResponse converts a db.User object to an API UserResponse object.
 // It handles the conversion of ID to string and formats timestamps to RFC3339.
-// Nullable fields (Name, Picture, Provider) are converted to pointers to strings.
+// Nullable fields (Name, Picture) are converted to pointers to strings.
 func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	// ID is already string in db.User and api.UserResponse
 	// CreatedAt and UpdatedAt are time.Time in db.User and api.UserResponse
@@ -28,10 +28,6 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	var picturePtr *string
 	if dbUser.Picture != "" {
 		picturePtr = &dbUser.Picture
-	}
-	var providerPtr *string
-	if dbUser.Provider != "" {
-		providerPtr = &dbUser.Provider
 	}
 
 	// Handle email conversion safely - only include if it's a valid email
@@ -51,7 +47,7 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 		Email:     emailPtr,
 		Name:      namePtr,
 		Picture:   picturePtr,
-		Provider:  providerPtr,
+		Provider:  nil, // Provider information is now in UserLogin table
 		CreatedAt: dbUser.CreatedAt, // Corrected: Assign directly
 		UpdatedAt: dbUser.UpdatedAt, // Corrected: Assign directly
 	}

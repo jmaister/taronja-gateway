@@ -22,6 +22,14 @@ const (
 	CookieAuthScopes = "cookieAuth.Scopes"
 )
 
+// Defines values for LinkUserLoginRequestProvider.
+const (
+	Facebook LinkUserLoginRequestProvider = "facebook"
+	Github   LinkUserLoginRequestProvider = "github"
+	Google   LinkUserLoginRequestProvider = "google"
+	Twitter  LinkUserLoginRequestProvider = "twitter"
+)
+
 // Error defines model for Error.
 type Error struct {
 	Code    int    `json:"code"`
@@ -41,6 +49,24 @@ type HealthResponse struct {
 	// Uptime Server uptime duration
 	Uptime string `json:"uptime"`
 }
+
+// LinkUserLoginRequest defines model for LinkUserLoginRequest.
+type LinkUserLoginRequest struct {
+	// Provider Social login provider name
+	Provider LinkUserLoginRequestProvider `json:"provider"`
+
+	// ProviderEmail Email address from the provider
+	ProviderEmail openapi_types.Email `json:"provider_email"`
+
+	// ProviderId Provider-specific user ID
+	ProviderId string `json:"provider_id"`
+
+	// ProviderUsername Username from the provider
+	ProviderUsername *string `json:"provider_username"`
+}
+
+// LinkUserLoginRequestProvider Social login provider name
+type LinkUserLoginRequestProvider string
 
 // RequestDetail defines model for RequestDetail.
 type RequestDetail struct {
@@ -166,6 +192,33 @@ type UserCreateRequest struct {
 	Username string              `json:"username"`
 }
 
+// UserLoginResponse defines model for UserLoginResponse.
+type UserLoginResponse struct {
+	// CreatedAt When this login method was linked
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Unique identifier for the login method
+	Id string `json:"id"`
+
+	// IsActive Whether this login method is active
+	IsActive bool `json:"is_active"`
+
+	// Picture Profile picture from this provider
+	Picture *string `json:"picture"`
+
+	// Provider Social login provider name (e.g., "google", "github")
+	Provider string `json:"provider"`
+
+	// ProviderEmail Email address from this provider
+	ProviderEmail openapi_types.Email `json:"provider_email"`
+
+	// ProviderUsername Username from this provider
+	ProviderUsername *string `json:"provider_username"`
+
+	// UpdatedAt When this login method was last updated
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
 	CreatedAt time.Time            `json:"createdAt"`
@@ -208,6 +261,9 @@ type LogoutUserParams struct {
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
 
+// LinkUserLoginJSONRequestBody defines body for LinkUserLogin for application/json ContentType.
+type LinkUserLoginJSONRequestBody = LinkUserLoginRequest
+
 // CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
 type CreateTokenJSONRequestBody = TokenCreateRequest
 
@@ -234,6 +290,15 @@ type ServerInterface interface {
 	// Get a user by ID
 	// (GET /api/users/{userId})
 	GetUserById(w http.ResponseWriter, r *http.Request, userId string)
+	// Get linked social login methods for a user
+	// (GET /api/users/{userId}/logins)
+	GetUserLogins(w http.ResponseWriter, r *http.Request, userId string)
+	// Link a new social login method to user account
+	// (POST /api/users/{userId}/logins)
+	LinkUserLogin(w http.ResponseWriter, r *http.Request, userId string)
+	// Unlink a social login method from user account
+	// (DELETE /api/users/{userId}/logins/{loginId})
+	UnlinkUserLogin(w http.ResponseWriter, r *http.Request, userId string, loginId string)
 	// List API tokens for a specific user (admin only)
 	// (GET /api/users/{userId}/tokens)
 	ListTokens(w http.ResponseWriter, r *http.Request, userId string)
@@ -464,6 +529,108 @@ func (siw *ServerInterfaceWrapper) GetUserById(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUserById(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUserLogins operation middleware
+func (siw *ServerInterfaceWrapper) GetUserLogins(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserLogins(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LinkUserLogin operation middleware
+func (siw *ServerInterfaceWrapper) LinkUserLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LinkUserLogin(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnlinkUserLogin operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkUserLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "loginId" -------------
+	var loginId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "loginId", r.PathValue("loginId"), &loginId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "loginId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkUserLogin(w, r, userId, loginId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -748,6 +915,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/users", wrapper.ListUsers)
 	m.HandleFunc("POST "+options.BaseURL+"/api/users", wrapper.CreateUser)
 	m.HandleFunc("GET "+options.BaseURL+"/api/users/{userId}", wrapper.GetUserById)
+	m.HandleFunc("GET "+options.BaseURL+"/api/users/{userId}/logins", wrapper.GetUserLogins)
+	m.HandleFunc("POST "+options.BaseURL+"/api/users/{userId}/logins", wrapper.LinkUserLogin)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/users/{userId}/logins/{loginId}", wrapper.UnlinkUserLogin)
 	m.HandleFunc("GET "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.ListTokens)
 	m.HandleFunc("POST "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.CreateToken)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.HealthCheck)
@@ -1038,6 +1208,184 @@ func (response GetUserById500JSONResponse) VisitGetUserByIdResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetUserLoginsRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type GetUserLoginsResponseObject interface {
+	VisitGetUserLoginsResponse(w http.ResponseWriter) error
+}
+
+type GetUserLogins200JSONResponse []UserLoginResponse
+
+func (response GetUserLogins200JSONResponse) VisitGetUserLoginsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserLogins401JSONResponse Error
+
+func (response GetUserLogins401JSONResponse) VisitGetUserLoginsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserLogins403JSONResponse Error
+
+func (response GetUserLogins403JSONResponse) VisitGetUserLoginsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserLogins404JSONResponse Error
+
+func (response GetUserLogins404JSONResponse) VisitGetUserLoginsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserLogins500JSONResponse Error
+
+func (response GetUserLogins500JSONResponse) VisitGetUserLoginsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LinkUserLoginRequestObject struct {
+	UserId string `json:"userId"`
+	Body   *LinkUserLoginJSONRequestBody
+}
+
+type LinkUserLoginResponseObject interface {
+	VisitLinkUserLoginResponse(w http.ResponseWriter) error
+}
+
+type LinkUserLogin201JSONResponse UserLoginResponse
+
+func (response LinkUserLogin201JSONResponse) VisitLinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LinkUserLogin400JSONResponse Error
+
+func (response LinkUserLogin400JSONResponse) VisitLinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LinkUserLogin401JSONResponse Error
+
+func (response LinkUserLogin401JSONResponse) VisitLinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LinkUserLogin403JSONResponse Error
+
+func (response LinkUserLogin403JSONResponse) VisitLinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LinkUserLogin409JSONResponse Error
+
+func (response LinkUserLogin409JSONResponse) VisitLinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LinkUserLogin500JSONResponse Error
+
+func (response LinkUserLogin500JSONResponse) VisitLinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UnlinkUserLoginRequestObject struct {
+	UserId  string `json:"userId"`
+	LoginId string `json:"loginId"`
+}
+
+type UnlinkUserLoginResponseObject interface {
+	VisitUnlinkUserLoginResponse(w http.ResponseWriter) error
+}
+
+type UnlinkUserLogin204Response struct {
+}
+
+func (response UnlinkUserLogin204Response) VisitUnlinkUserLoginResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnlinkUserLogin400JSONResponse Error
+
+func (response UnlinkUserLogin400JSONResponse) VisitUnlinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UnlinkUserLogin401JSONResponse Error
+
+func (response UnlinkUserLogin401JSONResponse) VisitUnlinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UnlinkUserLogin403JSONResponse Error
+
+func (response UnlinkUserLogin403JSONResponse) VisitUnlinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UnlinkUserLogin404JSONResponse Error
+
+func (response UnlinkUserLogin404JSONResponse) VisitUnlinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UnlinkUserLogin500JSONResponse Error
+
+func (response UnlinkUserLogin500JSONResponse) VisitUnlinkUserLoginResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListTokensRequestObject struct {
 	UserId string `json:"userId"`
 }
@@ -1237,6 +1585,15 @@ type StrictServerInterface interface {
 	// Get a user by ID
 	// (GET /api/users/{userId})
 	GetUserById(ctx context.Context, request GetUserByIdRequestObject) (GetUserByIdResponseObject, error)
+	// Get linked social login methods for a user
+	// (GET /api/users/{userId}/logins)
+	GetUserLogins(ctx context.Context, request GetUserLoginsRequestObject) (GetUserLoginsResponseObject, error)
+	// Link a new social login method to user account
+	// (POST /api/users/{userId}/logins)
+	LinkUserLogin(ctx context.Context, request LinkUserLoginRequestObject) (LinkUserLoginResponseObject, error)
+	// Unlink a social login method from user account
+	// (DELETE /api/users/{userId}/logins/{loginId})
+	UnlinkUserLogin(ctx context.Context, request UnlinkUserLoginRequestObject) (UnlinkUserLoginResponseObject, error)
 	// List API tokens for a specific user (admin only)
 	// (GET /api/users/{userId}/tokens)
 	ListTokens(ctx context.Context, request ListTokensRequestObject) (ListTokensResponseObject, error)
@@ -1461,6 +1818,92 @@ func (sh *strictHandler) GetUserById(w http.ResponseWriter, r *http.Request, use
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserByIdResponseObject); ok {
 		if err := validResponse.VisitGetUserByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUserLogins operation middleware
+func (sh *strictHandler) GetUserLogins(w http.ResponseWriter, r *http.Request, userId string) {
+	var request GetUserLoginsRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserLogins(ctx, request.(GetUserLoginsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserLogins")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserLoginsResponseObject); ok {
+		if err := validResponse.VisitGetUserLoginsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LinkUserLogin operation middleware
+func (sh *strictHandler) LinkUserLogin(w http.ResponseWriter, r *http.Request, userId string) {
+	var request LinkUserLoginRequestObject
+
+	request.UserId = userId
+
+	var body LinkUserLoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LinkUserLogin(ctx, request.(LinkUserLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LinkUserLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LinkUserLoginResponseObject); ok {
+		if err := validResponse.VisitLinkUserLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnlinkUserLogin operation middleware
+func (sh *strictHandler) UnlinkUserLogin(w http.ResponseWriter, r *http.Request, userId string, loginId string) {
+	var request UnlinkUserLoginRequestObject
+
+	request.UserId = userId
+	request.LoginId = loginId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnlinkUserLogin(ctx, request.(UnlinkUserLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnlinkUserLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnlinkUserLoginResponseObject); ok {
+		if err := validResponse.VisitUnlinkUserLoginResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

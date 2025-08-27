@@ -29,10 +29,6 @@ func createTestUser(suffix string) *User {
 		Email:          "test-" + suffix + "@example.com",
 		Username:       "testuser-" + suffix,
 		Name:           "Test User",
-		GivenName:      "Test",
-		FamilyName:     "User",
-		Provider:       "local",
-		ProviderId:     "test123",
 		Password:       "hashedpassword",
 		EmailConfirmed: true,
 	}
@@ -178,11 +174,7 @@ func TestUserSchema(t *testing.T) {
 		Username:                 "complete_user",
 		Picture:                  "https://example.com/pic.jpg",
 		Name:                     "Complete User",
-		GivenName:                "Complete",
-		FamilyName:               "User",
 		Locale:                   "en-US",
-		Provider:                 "google",
-		ProviderId:               "google123",
 		Password:                 "hashedpassword",
 		PasswordReset:            true,
 		PasswordResetCode:        "resetcode",
@@ -202,7 +194,6 @@ func TestUserSchema(t *testing.T) {
 	assert.Equal(t, user.Username, foundUser.Username)
 	assert.Equal(t, user.Picture, foundUser.Picture)
 	assert.Equal(t, user.Name, foundUser.Name)
-	assert.Equal(t, user.Provider, foundUser.Provider)
 	assert.Equal(t, user.PasswordReset, foundUser.PasswordReset)
 	assert.Equal(t, user.EmailConfirmed, foundUser.EmailConfirmed)
 }

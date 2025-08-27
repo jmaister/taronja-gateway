@@ -7,10 +7,27 @@
 
 * Multi-login users
     - Handle "User account already exists with a different login method."
-* Override user if a new login is done
-    - When logged in as user but logged as admin in the admin interface, it should allow to login.
-    - When logged in as user but try to login as another regular user, it should allow.
+    - There is a user profile page that shows linked social login methods, user can add or remove linked accounts
+    - Social login should be stored in a different table (e.g., UserLogins), not in the Users table
+    - Link social login accounts to existing user profiles
+    - The main user identifier is the email address
+    - Users must edit their user profile name when they create a new account, coming from any social login method, stored in the Users table
+    - Users can link multiple social login methods to a single account
+    - On the user profile page, users can manage linked social login methods: link, unlink social accounts even if they do no match with the email address
+    - Example:
+      - User: user@example.com
+        - Linked social logins:
+          - Google: user@gmail.com
+          - Facebook: user@example.com
+          - Twitter: user123
+      - User: anotheruser@example.com
+        - Linked social logins:
+          - Google: anotheruser@gmail.com
 
+## User profile
+
+- Gateway provides a page for user profile
+- The configuration allows for a list of fields and their types
 
 
 ## Stats

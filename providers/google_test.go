@@ -123,6 +123,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 		sessionRepo := db.NewMemorySessionRepository()
 		sessionStore := session.NewSessionStore(sessionRepo)
 		userRepo := db.NewMemoryUserRepository()
+		userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 
 		gatewayConfig := &config.GatewayConfig{
 			Server: config.ServerConfig{
@@ -139,7 +140,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 			},
 		}
 
-		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo, userLoginRepo)
 
 		// Test that the login endpoint is registered
 		loginReq := httptest.NewRequest("GET", "/_/auth/google/login", nil)
@@ -158,6 +159,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 		sessionRepo := db.NewMemorySessionRepository()
 		sessionStore := session.NewSessionStore(sessionRepo)
 		userRepo := db.NewMemoryUserRepository()
+		userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 
 		gatewayConfig := &config.GatewayConfig{
 			AuthenticationProviders: config.AuthenticationProviders{
@@ -168,7 +170,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 			},
 		}
 
-		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo, userLoginRepo)
 
 		// Test that no endpoints are registered
 		loginReq := httptest.NewRequest("GET", "/_/auth/google/login", nil)
@@ -183,6 +185,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 	t.Run("OAuth2 flow with mock fetcher", func(t *testing.T) {
 		// Setup test repositories
 		userRepo := db.NewMemoryUserRepository()
+		userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 		sessionRepo := db.NewMemorySessionRepository()
 		sessionStore := session.NewSessionStore(sessionRepo)
 
@@ -212,7 +215,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 
 		// Create authentication provider
 		provider := GoogleProvider{}
-		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore)
+		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, userLoginRepo, sessionStore)
 		authProvider.Fetcher = mockFetcher
 
 		// Register endpoints
@@ -243,6 +246,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 
 	t.Run("OAuth2 callback with invalid state", func(t *testing.T) {
 		userRepo := db.NewMemoryUserRepository()
+		userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 		sessionRepo := db.NewMemorySessionRepository()
 		sessionStore := session.NewSessionStore(sessionRepo)
 
@@ -252,7 +256,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		}
 
 		provider := GoogleProvider{}
-		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore)
+		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, userLoginRepo, sessionStore)
 
 		mux := http.NewServeMux()
 		authProvider.RegisterEndpoints(mux)

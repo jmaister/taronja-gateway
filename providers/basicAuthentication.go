@@ -56,7 +56,7 @@ func getRedirectURL(r *http.Request) string {
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
 func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.User, sessionStore session.SessionStore) {
-	sessionObject, err := sessionStore.NewSession(r, user, user.Provider, 24*time.Hour)
+	sessionObject, err := sessionStore.NewSession(r, user, "basic", 24*time.Hour)
 	if err != nil {
 		http.Error(w, "Internal Server Error: Could not create session", http.StatusInternalServerError)
 		return

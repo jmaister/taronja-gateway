@@ -103,8 +103,8 @@ func (s *SessionStoreDB) ValidateTokenAuth(r *http.Request, tokenService TokenSe
 		Username:        user.Username,
 		Email:           user.Email,
 		IsAuthenticated: true,
-		IsAdmin:         user.Provider == db.AdminProvider,
-		Provider:        user.Provider,
+		IsAdmin:         user.IsAdmin,
+		Provider:        "token", // Token-based authentication
 		SessionName:     tokenData.Name,
 		CreatedFrom:     "token_auth",
 		LastActivity:    time.Now(),
@@ -148,7 +148,7 @@ func (s *SessionStoreDB) NewSession(req *http.Request, user *db.User, provider s
 		Username:        user.Username,
 		Email:           user.Email,
 		IsAuthenticated: true,
-		IsAdmin:         user.Provider == db.AdminProvider, // Set IsAdmin to true if this is the admin user
+		IsAdmin:         user.IsAdmin, // Use the IsAdmin field from user
 		ValidUntil:      time.Now().Add(validityDuration),
 		Provider:        provider,
 	}

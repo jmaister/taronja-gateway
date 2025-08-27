@@ -128,9 +128,9 @@ func (r *UserRepositoryDB) EnsureAdminUser(username, email, password string) err
 	adminUser := &User{
 		Username:       username,
 		Email:          email,
-		Password:       password,      // Will be hashed by BeforeSave hook
-		EmailConfirmed: true,          // Admin users are always confirmed
-		Provider:       AdminProvider, // Mark as config-based user
+		Password:       password, // Will be hashed by BeforeSave hook
+		EmailConfirmed: true,     // Admin users are always confirmed
+		IsAdmin:        true,     // Mark as admin user
 	}
 
 	err = r.CreateUser(adminUser)

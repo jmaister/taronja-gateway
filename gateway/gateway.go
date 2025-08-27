@@ -33,6 +33,7 @@ type Gateway struct {
 	Mux               *http.ServeMux
 	SessionStore      session.SessionStore
 	UserRepository    db.UserRepository
+	UserLoginRepo     db.UserLoginRepository
 	TrafficMetricRepo db.TrafficMetricRepository
 	TokenRepository   db.TokenRepository
 	TokenService      *auth.TokenService
@@ -79,6 +80,7 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB())
 
 	userRepository := db.NewDBUserRepository(db.GetConnection())
+	userLoginRepo := db.NewUserLoginRepositoryDB(db.GetConnection())
 
 	// Initialize traffic metrics repository
 	statsRepository := db.NewTrafficMetricRepository(db.GetConnection())
@@ -101,6 +103,7 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		Mux:               mux,
 		SessionStore:      sessionStore,
 		UserRepository:    userRepository,
+		UserLoginRepo:     userLoginRepo,
 		TrafficMetricRepo: statsRepository,
 		TokenRepository:   tokenRepository,
 		TokenService:      tokenService,
@@ -279,6 +282,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	strictApiServer := handlers.NewStrictApiServer(
 		g.SessionStore,
 		g.UserRepository,
+		g.UserLoginRepo,
 		g.TrafficMetricRepo,
 		g.TokenRepository,
 		g.TokenService,
@@ -349,7 +353,7 @@ func (g *Gateway) registerLoginRoutes() {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository)
+		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository, g.UserLoginRepo)
 	}
 
 	// Login page handler

@@ -154,7 +154,7 @@ func HandleGetUser(w http.ResponseWriter, r *http.Request, userRepo db.UserRepos
 		"email":     user.Email,
 		"name":      user.Name,
 		"picture":   user.Picture,
-		"provider":  user.Provider,
+		"provider":  nil, // Provider information is now in UserLogin table
 		"createdAt": user.CreatedAt.Format(time.RFC1123), // Format dates for display
 		"updatedAt": user.UpdatedAt.Format(time.RFC1123),
 	}

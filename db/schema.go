@@ -47,22 +47,22 @@ type User struct {
 	gorm.Model
 	ID string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
 	// TODO: does this unique really work?
-	Email                    string `gorm:"unique"`
+	Email                    string `gorm:"unique"` // Primary email address for the user
 	Username                 string `gorm:"unique"`
-	Picture                  string
-	Name                     string
-	GivenName                string
-	FamilyName               string
-	Locale                   string
-	Provider                 string
-	ProviderId               string
-	Password                 string
+	Name                     string // Display name that user can edit
+	Picture                  string // Main profile picture (can be from any provider or uploaded)
+	Locale                   string // User's preferred locale
+	IsAdmin                  bool   `gorm:"default:false"` // Whether this user is an admin
+	Password                 string // For basic auth users
 	PasswordReset            bool
 	PasswordResetCode        string
 	PasswordResetExpires     *time.Time
 	EmailConfirmed           bool
 	EmailConfirmationCode    string
 	EmailConfirmationExpires *time.Time
+	
+	// Relationships
+	UserLogins []UserLogin `gorm:"foreignKey:UserID"` // Associated login methods
 }
 
 // BeforeCreate will set a CUID rather than numeric ID.
@@ -128,6 +128,37 @@ type TrafficMetric struct {
 type TrafficMetricWithUser struct {
 	TrafficMetric
 	User *User `gorm:"foreignKey:UserID;references:ID"`
+}
+
+// UserLogin struct definition for storing multiple social login methods per user
+type UserLogin struct {
+	gorm.Model
+	ID         string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID     string `gorm:"column:user_id;type:varchar(255);not null;index"` // Foreign key to User
+	Provider   string `gorm:"type:varchar(100);not null"`                      // e.g., "google", "facebook", "github"
+	ProviderId string `gorm:"type:varchar(255);not null"`                      // Provider-specific user ID
+	Email      string `gorm:"type:varchar(255)"`                               // Email from this provider (may differ from user's main email)
+	Username   string `gorm:"type:varchar(255)"`                               // Username from this provider
+	IsActive   bool   `gorm:"default:true"`                                    // Whether this login method is active
+
+	// Additional provider-specific data
+	Picture    string `gorm:"type:varchar(500)"` // Profile picture from provider
+	GivenName  string `gorm:"type:varchar(255)"` // Given name from provider
+	FamilyName string `gorm:"type:varchar(255)"` // Family name from provider
+	Locale     string `gorm:"type:varchar(10)"`  // Locale from provider
+
+	// Unique constraint to prevent duplicate provider logins for the same external account
+	// But allow the same user to have multiple accounts from the same provider (different emails)
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (ul *UserLogin) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	ul.ID = newId
+	return nil
 }
 
 // Token struct definition for API tokens

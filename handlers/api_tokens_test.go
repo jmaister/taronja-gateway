@@ -32,7 +32,7 @@ func TestTokenHandlersAdmin(t *testing.T) {
 		Username: "testuser",
 		Email:    "test@example.com",
 		Name:     "Test User",
-		Provider: "test",
+		IsAdmin:  false,
 	}
 	err := userRepo.CreateUser(testUser)
 	require.NoError(t, err)

@@ -15,12 +15,14 @@ import (
 )
 
 var testUserRepo db.UserRepository
+var testUserLoginRepo db.UserLoginRepository
 var testSessionStore session.SessionStore
 
 // TestMain sets up the test database and repositories.
 func TestMain(m *testing.M) {
 	db.InitForTest()
 	testUserRepo = db.NewDBUserRepository(db.GetConnection())
+	testUserLoginRepo = db.NewUserLoginRepositoryDB(db.GetConnection())
 	testSessionRepo := db.NewSessionRepositoryDB()
 	testSessionStore = session.NewSessionStore(testSessionRepo)
 	exitVal := m.Run()
@@ -36,7 +38,7 @@ func createTestAuthProvider() *AuthenticationProvider {
 		Scopes:       []string{"email", "profile"},
 	}
 
-	return NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore)
+	return NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testUserLoginRepo, testSessionStore)
 }
 
 func TestLogoutWithValidSession(t *testing.T) {
@@ -528,7 +530,7 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		},
 	}
 
-	authProvider := NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore)
+	authProvider := NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testUserLoginRepo, testSessionStore)
 
 	// Set mock fetcher
 	mockFetcher := &MockUserDataFetcher{
@@ -603,7 +605,7 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		assert.NotNil(t, createdUser)
 		assert.Equal(t, "newuser@example.com", createdUser.Email)
 		assert.Equal(t, "newuser", createdUser.Username)
-		assert.Equal(t, "test", createdUser.Provider)
+		assert.False(t, createdUser.IsAdmin) // Check IsAdmin instead of Provider
 		assert.True(t, createdUser.EmailConfirmed)
 	})
 

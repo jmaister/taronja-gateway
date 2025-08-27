@@ -235,6 +235,167 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   
+  /api/users/{userId}/logins:
+    get:
+      summary: Get linked social login methods for a user
+      operationId: getUserLogins
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user to retrieve login methods for
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of linked social login methods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserLoginResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - can only access own login methods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Link a new social login method to user account
+      operationId: linkUserLogin
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user to link the login method to
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkUserLoginRequest'
+      responses:
+        '201':
+          description: Login method linked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLoginResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - can only manage own login methods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Login method already linked to another account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{userId}/logins/{loginId}:
+    delete:
+      summary: Unlink a social login method from user account
+      operationId: unlinkUserLogin
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user
+          schema:
+            type: string
+        - name: loginId
+          in: path
+          required: true
+          description: ID of the login method to unlink
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Login method unlinked successfully
+        '400':
+          description: Bad Request - cannot unlink last login method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - can only manage own login methods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Login method not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/users/{userId}/tokens:
     get:
       summary: List API tokens for a specific user (admin only)
@@ -844,6 +1005,70 @@ components:
       required:
         - token
         - token_info
+
+    UserLoginResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the login method
+        provider:
+          type: string
+          description: Social login provider name (e.g., "google", "github")
+        provider_email:
+          type: string
+          format: email
+          description: Email address from this provider
+        provider_username:
+          type: string
+          nullable: true
+          description: Username from this provider
+        picture:
+          type: string
+          format: uri
+          nullable: true
+          description: Profile picture from this provider
+        created_at:
+          type: string
+          format: date-time
+          description: When this login method was linked
+        updated_at:
+          type: string
+          format: date-time
+          description: When this login method was last updated
+        is_active:
+          type: boolean
+          description: Whether this login method is active
+      required:
+        - id
+        - provider
+        - provider_email
+        - created_at
+        - updated_at
+        - is_active
+
+    LinkUserLoginRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+          description: Social login provider name
+          enum: ["google", "github", "facebook", "twitter"]
+        provider_id:
+          type: string
+          description: Provider-specific user ID
+        provider_email:
+          type: string
+          format: email
+          description: Email address from the provider
+        provider_username:
+          type: string
+          nullable: true
+          description: Username from the provider
+      required:
+        - provider
+        - provider_id
+        - provider_email
 
   securitySchemes:
     cookieAuth:

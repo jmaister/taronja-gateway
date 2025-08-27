@@ -72,7 +72,7 @@ func (f *GoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 }
 
 // RegisterGoogleAuth configures and registers Google OAuth2 authentication
-func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository, userLoginRepo db.UserLoginRepository) {
 	if gatewayConfig.AuthenticationProviders.Google.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Google.ClientSecret == "" {
 		return // Skip if not configured
@@ -97,6 +97,7 @@ func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		provider,
 		"Google",
 		userRepo,
+		userLoginRepo,
 		sessionStore,
 	)
 

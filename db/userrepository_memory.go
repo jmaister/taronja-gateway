@@ -209,8 +209,8 @@ func (r *MemoryUserRepository) EnsureAdminUser(username, email, password string)
 			existingUser.Email = email
 			r.emails[email] = existingUser.ID
 		}
-		existingUser.EmailConfirmed = true    // Admin users are always confirmed
-		existingUser.Provider = AdminProvider // Mark as admin provider
+		existingUser.EmailConfirmed = true // Admin users are always confirmed
+		existingUser.IsAdmin = true        // Mark as admin user
 		return nil
 	}
 
@@ -233,8 +233,8 @@ func (r *MemoryUserRepository) EnsureAdminUser(username, email, password string)
 		Username:       username,
 		Email:          email,
 		Password:       hashedPassword,
-		EmailConfirmed: true,          // Admin users are always confirmed
-		Provider:       AdminProvider, // Mark as config-based user
+		EmailConfirmed: true, // Admin users are always confirmed
+		IsAdmin:        true, // Mark as admin user
 	}
 
 	r.users[adminUser.ID] = adminUser

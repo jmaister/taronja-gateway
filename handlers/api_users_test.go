@@ -17,6 +17,7 @@ import (
 
 func setupTestServer() *StrictApiServer {
 	userRepo := db.NewMemoryUserRepository()
+	userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
@@ -26,7 +27,7 @@ func setupTestServer() *StrictApiServer {
 	// For tests, we can use a nil database connection since we're using memory repositories
 	startTime := time.Now()
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
+	return NewStrictApiServer(sessionStore, userRepo, userLoginRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
 }
 
 func TestCreateUser(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 func TestHealthCheck(t *testing.T) {
 	// Create a new StrictApiServer instance with all required dependencies
 	userRepo := db.NewMemoryUserRepository()
+	userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
@@ -24,7 +25,7 @@ func TestHealthCheck(t *testing.T) {
 	// For tests, we can use a nil database connection since we're using memory repositories
 	startTime := time.Now()
 
-	s := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
+	s := NewStrictApiServer(sessionStore, userRepo, userLoginRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
 
 	t.Run("SuccessfulHealthCheck", func(t *testing.T) {
 		// Setup: Create a health check request

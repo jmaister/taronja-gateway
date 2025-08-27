@@ -47,7 +47,7 @@ type AuthProvider interface {
 
 // RegisterProviders registers all enabled authentication providers.
 // It now accepts db.SessionRepository.
-func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository, userLoginRepo db.UserLoginRepository) {
 	log.Printf("Registering authentication providers...")
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
@@ -58,7 +58,7 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	if gatewayConfig.AuthenticationProviders.Github.ClientId != "" &&
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret != "" {
 		log.Printf("Registering GitHub Authentication provider")
-		RegisterGithubAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGithubAuth(mux, sessionStore, gatewayConfig, userRepo, userLoginRepo)
 	} else {
 		log.Printf("GitHub Authentication provider not configured, skipping registration")
 	}
@@ -66,7 +66,7 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	if gatewayConfig.AuthenticationProviders.Google.ClientId != "" &&
 		gatewayConfig.AuthenticationProviders.Google.ClientSecret != "" {
 		log.Printf("Registering Google Authentication provider")
-		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo, userLoginRepo)
 	} else {
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
@@ -87,12 +87,13 @@ func NewSimpleAuthProvider(name string) *SimpleAuthProvider {
 // AuthenticationProvider manages OAuth2 authentication flows.
 // It now uses db.SessionRepository.
 type AuthenticationProvider struct {
-	Provider     AuthProvider
-	LongName     string
-	OAuthConfig  *oauth2.Config
-	Fetcher      UserDataFetcher
-	UserRepo     db.UserRepository
-	SessionStore session.SessionStore
+	Provider        AuthProvider
+	LongName        string
+	OAuthConfig     *oauth2.Config
+	Fetcher         UserDataFetcher
+	UserRepo        db.UserRepository
+	UserLoginRepo   db.UserLoginRepository
+	SessionStore    session.SessionStore
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -107,17 +108,18 @@ func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProvid
 }
 
 // NewAuthenticationProvider creates a new AuthenticationProvider.
-// It now accepts db.SessionRepository.
-func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sessionStore session.SessionStore) *AuthenticationProvider {
+// It now accepts db.SessionRepository and db.UserLoginRepository.
+func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, ulr db.UserLoginRepository, sessionStore session.SessionStore) *AuthenticationProvider {
 	// baseUrl is not directly needed here if redirectURL is in oauthConfig
 	// log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
 
 	return &AuthenticationProvider{
-		Provider:     provider,
-		LongName:     longName,
-		OAuthConfig:  oauthConfig,
-		UserRepo:     ur,
-		SessionStore: sessionStore,
+		Provider:      provider,
+		LongName:      longName,
+		OAuthConfig:   oauthConfig,
+		UserRepo:      ur,
+		UserLoginRepo: ulr,
+		SessionStore:  sessionStore,
 	}
 }
 
@@ -162,8 +164,7 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, authCodeURL, http.StatusTemporaryRedirect)
 }
 
-// Callback handles the OAuth2 callback.
-// Uses db.SessionRepository methods.
+// Callback handles the OAuth2 callback with multi-login support.
 func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
@@ -202,55 +203,102 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	user, err := ap.UserRepo.FindUserByIdOrUsername("", "", userInfo.Email)
+	// Check if this provider login already exists
+	existingUser, err := ap.UserLoginRepo.FindUserByProviderLogin(ap.Provider.Name(), userInfo.ID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Printf("Error finding user: %v", err)
+		log.Printf("Error finding user by provider login: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if user == nil {
-		user = &db.User{
-			Email:          userInfo.Email,
-			Username:       userInfo.Username, // Or generate one if not provided/unique
-			Name:           userInfo.Name,
-			GivenName:      userInfo.GivenName,
-			FamilyName:     userInfo.FamilyName,
-			Picture:        userInfo.Picture,
-			Locale:         userInfo.Locale,
-			Provider:       ap.Provider.Name(),
-			ProviderId:     userInfo.ID,
-			EmailConfirmed: true, // Typically true for OAuth
+	var user *db.User
+
+	if existingUser != nil {
+		// User login already exists, log them in
+		user = existingUser
+		log.Printf("Existing user login found for %s, provider %s", userInfo.Email, ap.Provider.Name())
+		
+		// Update the provider login information
+		userLogin, err := ap.UserLoginRepo.FindUserLoginByProvider(ap.Provider.Name(), userInfo.ID)
+		if err == nil {
+			userLogin.Email = userInfo.Email
+			userLogin.Username = userInfo.Username
+			userLogin.Picture = userInfo.Picture
+			userLogin.GivenName = userInfo.GivenName
+			userLogin.FamilyName = userInfo.FamilyName
+			userLogin.Locale = userInfo.Locale
+			ap.UserLoginRepo.UpdateUserLogin(userLogin)
 		}
-		if user.Username == "" { // Fallback for username if not provided
-			user.Username = userInfo.Email
+		
+		// Update user's profile information if needed
+		if user.Name == "" && userInfo.Name != "" {
+			user.Name = userInfo.Name
 		}
-		err = ap.UserRepo.CreateUser(user)
+		if user.Picture == "" && userInfo.Picture != "" {
+			user.Picture = userInfo.Picture
+		}
+		if user.Locale == "" && userInfo.Locale != "" {
+			user.Locale = userInfo.Locale
+		}
+		ap.UserRepo.UpdateUser(user)
+	} else {
+		// This provider login doesn't exist yet
+		// Check if a user exists with this email address
+		user, err = ap.UserRepo.FindUserByIdOrUsername("", "", userInfo.Email)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("Error finding user by email: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if user == nil {
+			// No user exists with this email, create a new user
+			user = &db.User{
+				Email:          userInfo.Email,
+				Username:       userInfo.Username,
+				Name:           userInfo.Name,
+				Picture:        userInfo.Picture,
+				Locale:         userInfo.Locale,
+				EmailConfirmed: true, // OAuth providers typically verify email
+			}
+			
+			// Ensure username is unique
+			if user.Username == "" {
+				user.Username = userInfo.Email
+			}
+			
+			err = ap.UserRepo.CreateUser(user)
+			if err != nil {
+				log.Printf("Error creating user: %v", err)
+				http.Error(w, "Failed to create user", http.StatusInternalServerError)
+				return
+			}
+			log.Printf("Created new user: %s", user.Email)
+		} else {
+			log.Printf("Found existing user by email: %s, linking new provider %s", user.Email, ap.Provider.Name())
+		}
+
+		// Create the user login entry
+		userLogin := &db.UserLogin{
+			UserID:     user.ID,
+			Provider:   ap.Provider.Name(),
+			ProviderId: userInfo.ID,
+			Email:      userInfo.Email,
+			Username:   userInfo.Username,
+			Picture:    userInfo.Picture,
+			GivenName:  userInfo.GivenName,
+			FamilyName: userInfo.FamilyName,
+			Locale:     userInfo.Locale,
+			IsActive:   true,
+		}
+		
+		err = ap.UserLoginRepo.CreateUserLogin(userLogin)
 		if err != nil {
-			log.Printf("Error creating user: %v", err)
-			http.Error(w, "Failed to create user", http.StatusInternalServerError)
+			log.Printf("Error creating user login: %v", err)
+			http.Error(w, "Failed to link provider", http.StatusInternalServerError)
 			return
 		}
-	} else { // User exists
-		if user.Provider != ap.Provider.Name() {
-			// TODO: Handle case where user exists with a different provider, allow users to log with multiple providers
-			// User exists but with a different provider - this is a conflict.
-			log.Printf("User %s already exists with provider %s, attempted login with %s", userInfo.Email, user.Provider, ap.Provider.Name())
-			http.Error(w, "User account already exists with a different login method.", http.StatusConflict)
-			return
-		}
-		// User exists with the same provider, update details if necessary
-		user.Name = userInfo.Name
-		user.GivenName = userInfo.GivenName
-		user.FamilyName = userInfo.FamilyName
-		user.Picture = userInfo.Picture
-		user.Locale = userInfo.Locale
-		user.ProviderId = userInfo.ID // Update ProviderId in case it changed or wasn't set
-		user.EmailConfirmed = true    // Re-confirm email
-		if err := ap.UserRepo.UpdateUser(user); err != nil {
-			log.Printf("Error updating user %s: %v", user.Email, err)
-			// Non-critical, proceed with login
-		}
+		log.Printf("Linked provider %s to user %s", ap.Provider.Name(), user.Email)
 	}
 
 	if err := validateUserLogin(user); err != nil {

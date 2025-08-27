@@ -16,6 +16,7 @@ func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
 	userRepo := db.NewMemoryUserRepository()
+	userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 	statsRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
@@ -23,7 +24,7 @@ func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory
 	// For tests, we can use a nil database connection since we're using memory repositories
 	startTime := time.Now()
 
-	server := NewStrictApiServer(sessionStore, userRepo, statsRepo, tokenRepo, tokenService, startTime)
+	server := NewStrictApiServer(sessionStore, userRepo, userLoginRepo, statsRepo, tokenRepo, tokenService, startTime)
 	return server, statsRepo
 }
 
@@ -243,12 +244,13 @@ func TestStatisticsShowUsernames(t *testing.T) {
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	sessionRepo := db.NewMemorySessionRepository()
 	sessionStore := session.NewSessionStore(sessionRepo)
+	userLoginRepo := db.NewUserLoginRepositoryMemory(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	// Create test server
 	startTime := time.Now()
-	server := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
+	server := NewStrictApiServer(sessionStore, userRepo, userLoginRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
 
 	// Create test users
 	testUser1 := &db.User{
@@ -256,21 +258,21 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		Username: "alice",
 		Email:    "alice@example.com",
 		Name:     "Alice Test",
-		Provider: "test",
+		IsAdmin:  false,
 	}
 	testUser2 := &db.User{
 		ID:       "user-2",
 		Username: "bob",
 		Email:    "bob@example.com",
 		Name:     "Bob Test",
-		Provider: "test",
+		IsAdmin:  false,
 	}
 	adminUser := &db.User{
 		ID:       "admin-1",
 		Username: "admin",
 		Email:    "admin@example.com",
 		Name:     "Admin User",
-		Provider: "test",
+		IsAdmin:  true,
 	}
 
 	err := userRepo.CreateUser(testUser1)
