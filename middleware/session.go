@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -61,34 +60,20 @@ func StrictSessionMiddleware(store session.SessionStore, tokenService session.To
 				return f(ctx, w, r, requestObject)
 			}
 
-			// Try to validate the session using multiple authentication methods
-			var validSession *db.Session
-			var isAuthenticated bool
-			var authMethod string
-
-			// Method 1: Try cookie-based session validation first
-			validSession, isAuthenticated = store.ValidateSession(r)
-			if isAuthenticated && validSession != nil {
-				authMethod = "cookie"
-			} else {
-				// Method 2: If cookie auth failed, try bearer token authentication
-				validSession, isAuthenticated = store.ValidateTokenAuth(r, tokenService)
-				if isAuthenticated && validSession != nil {
-					authMethod = "token"
-				}
-			}
+			// Use shared session validation logic
+			result := ValidateSessionFromRequest(r, store, tokenService)
 
 			// Check if we have a valid authentication and proper admin access if required
-			if isAuthenticated && validSession != nil && ((adminRequired && validSession.IsAdmin) || !adminRequired) {
+			if result.IsAuthenticated && result.Session != nil && CheckAdminAccess(result.Session, adminRequired) {
 				// Enrich the context passed to the next handler with the session data.
-				newCtx := context.WithValue(ctx, session.SessionKey, validSession)
-				log.Printf("SessionStrictMiddleware: Authentication successful via %s for operation '%s' (path: %s), user: %s", authMethod, operationID, r.URL.Path, validSession.Username)
+				newCtx := AddSessionToContextValue(ctx, result.Session)
+				LogAuthenticationResult(result, operationID, r.URL.Path, true)
 				return f(newCtx, w, r, requestObject)
 			}
 
 			// If we reach here, authentication is required but failed
-			if adminRequired && validSession != nil && !validSession.IsAdmin {
-				log.Printf("SessionStrictMiddleware: Admin access required for operation '%s' (path: %s), but user %s is not admin", operationID, r.URL.Path, validSession.UserID)
+			if adminRequired && result.Session != nil && !result.Session.IsAdmin {
+				log.Printf("SessionStrictMiddleware: Admin access required for operation '%s' (path: %s), but user %s is not admin", operationID, r.URL.Path, result.Session.UserID)
 				return nil, &ErrorWithResponse{Code: http.StatusForbidden, Message: "Admin access required"}
 			}
 
@@ -107,18 +92,10 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
-		sessionObject, exists := sessionStore.ValidateSession(r)
-		authMethod := "cookie"
+		// Use shared session validation logic
+		result := ValidateSessionFromRequest(r, sessionStore, tokenService)
 
-		// If cookie auth failed, try token auth
-		if !exists {
-			sessionObject, exists = sessionStore.ValidateTokenAuth(r, tokenService)
-			if exists {
-				authMethod = "token"
-			}
-		}
-
-		if !exists {
+		if !result.IsAuthenticated {
 			if isStatic {
 				// Redirect to login page with the original URL as the redirect parameter
 				originalURL := r.URL.RequestURI()
@@ -131,15 +108,15 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 			return
 		}
 
-		log.Printf("SessionMiddleware: Authentication successful via %s for path %s, user: %s", authMethod, r.URL.Path, sessionObject.Username)
+		log.Printf("SessionMiddleware: Authentication successful via %s for path %s, user: %s", result.AuthMethod, r.URL.Path, result.Session.Username)
 
 		// Check if admin access is required and user is not admin
-		if adminRequired && !sessionObject.IsAdmin {
-			log.Printf("Admin access required but user %s (session %s) is not admin", sessionObject.UserID, sessionObject.Token)
+		if !CheckAdminAccess(result.Session, adminRequired) {
+			log.Printf("Admin access required but user %s (session %s) is not admin", result.Session.UserID, result.Session.Token)
 			if isStatic {
 				// Log out the user by ending their session
-				if sessionObject != nil && sessionObject.Token != "" {
-					_ = sessionStore.EndSession(sessionObject.Token)
+				if result.Session != nil && result.Session.Token != "" {
+					_ = sessionStore.EndSession(result.Session.Token)
 					// Remove session cookie
 					http.SetCookie(w, &http.Cookie{
 						Name:     "tg_session_token",
@@ -163,9 +140,9 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 			return
 		}
 
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, session.SessionKey, sessionObject)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		// Add session to request context and continue
+		r = AddSessionToContext(r, result.Session)
+		next.ServeHTTP(w, r)
 	}
 }
 

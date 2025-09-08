@@ -115,6 +115,7 @@ func (s *SessionStoreDB) ValidateTokenAuth(r *http.Request, tokenService TokenSe
 		sessionObject.ValidUntil = *tokenData.ExpiresAt
 	} else {
 		// If no expiry set, use a default long duration
+		// TODO: Make session duration configurable
 		sessionObject.ValidUntil = time.Now().Add(24 * time.Hour)
 	}
 
