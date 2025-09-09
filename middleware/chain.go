@@ -87,14 +87,13 @@ func NewRouteChainBuilder(authMiddleware *AuthMiddleware, cacheMiddleware *HttpC
 func (r *RouteChainBuilder) BuildRouteChain(handler http.HandlerFunc, routeConfig config.RouteConfig) http.HandlerFunc {
 	chain := NewChainBuilder()
 
-	// Add middlewares conditionally based on route configuration
-	// Cache control middleware (always applied)
-	chain.Add(r.cacheMiddleware.CacheControlMiddlewareFunc(routeConfig))
-
 	// Authentication middleware (if enabled for this route)
 	if routeConfig.Authentication.Enabled {
 		chain.Add(r.authMiddleware.AuthMiddlewareFunc(routeConfig.Static))
 	}
+
+	// Cache control middleware (always applied)
+	chain.Add(r.cacheMiddleware.CacheControlMiddlewareFunc(routeConfig))
 
 	return chain.Build(handler).(http.HandlerFunc)
 }

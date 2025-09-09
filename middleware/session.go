@@ -87,10 +87,12 @@ func StrictSessionMiddleware(store session.SessionStore, tokenService session.To
 // SessionMiddleware validates that the session cookie is present and valid, with optional token fallback
 func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore, tokenService session.TokenService, isStatic bool, managementPrefix string, adminRequired bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Add cache-control headers to prevent caching of authenticated content
-		w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
+		// Add cache-control headers to prevent caching of authenticated content, only if not already set
+		if w.Header().Get("Cache-Control") == "" {
+			w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
 
 		// Use shared session validation logic
 		result := ValidateSessionFromRequest(r, sessionStore, tokenService)
