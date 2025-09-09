@@ -93,7 +93,7 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                             <td className="px-3 py-2 whitespace-nowrap text-sm">
                                 {req.username ? (
                                     <a 
-                                        href={`/_admin/users/${req.user_id}`} 
+                                        href={`/_/admin/users/${req.user_id}`} 
                                         className="text-blue-600 hover:underline"
                                         title={`User ID: ${req.user_id}`}
                                     >
