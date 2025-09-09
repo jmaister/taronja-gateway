@@ -108,8 +108,6 @@ func SessionMiddleware(next http.HandlerFunc, sessionStore session.SessionStore,
 			return
 		}
 
-		log.Printf("SessionMiddleware: Authentication successful via %s for path %s, user: %s", result.AuthMethod, r.URL.Path, result.Session.Username)
-
 		// Check if admin access is required and user is not admin
 		if !CheckAdminAccess(result.Session, adminRequired) {
 			log.Printf("Admin access required but user %s (session %s) is not admin", result.Session.UserID, result.Session.Token)

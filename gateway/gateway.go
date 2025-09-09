@@ -286,17 +286,13 @@ func (g *Gateway) registerDashboard(prefix string) {
 		if path == "" || path == "/" || !isStaticAsset {
 			// Serve index.html for root requests or SPA routes (no file extension)
 			finalPath = "webapp/dist/index.html"
-			log.Printf("Dashboard: Serving SPA route '%s' with index.html", r.URL.Path)
 		} else {
 			// Try to serve the actual static asset
 			finalPath = "webapp/dist/" + path
 			data, err = g.WebappEmbedFS.ReadFile(finalPath)
 			if err != nil {
 				// Static asset not found, serve index.html for SPA routing
-				log.Printf("Dashboard: Static asset not found '%s', serving index.html for SPA routing", finalPath)
 				finalPath = "webapp/dist/index.html"
-			} else {
-				log.Printf("Dashboard: Serving static asset: %s", finalPath)
 			}
 		}
 
@@ -340,7 +336,6 @@ func (g *Gateway) registerDashboard(prefix string) {
 
 		w.Header().Set("Content-Type", contentType)
 		w.Write(data)
-		log.Printf("Dashboard request served: %s -> %s", r.URL.Path, finalPath)
 	}
 
 	// Wrap dashboard handler with admin session authentication
@@ -595,8 +590,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 
 		req.Host = targetURL.Host
-
-		log.Printf("Proxying [%s]: %s -> %s%s", routeConfig.Name, req.URL.Path, targetURL.Scheme+"://"+targetURL.Host, req.URL.Path)
 	}
 
 	// Set up error handler
@@ -619,7 +612,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	return func(w http.ResponseWriter, r *http.Request) {
 		// For authenticated routes, extract user ID and set header
 		if routeConfig.Authentication.Enabled {
-			log.Printf("[auth] Handling authenticated route %s", routeConfig.Name)
 
 			// Try to get session from request
 			var sessionObject *db.Session
@@ -627,7 +619,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			// First check if session is in context
 			if r.Context() != nil {
 				if ctxSession, ok := r.Context().Value(session.SessionKey).(*db.Session); ok && ctxSession != nil {
-					log.Printf("[auth] Found session in context: %+v", ctxSession)
 					sessionObject = ctxSession
 				}
 			}
@@ -636,14 +627,11 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			if sessionObject == nil {
 				cookie, err := r.Cookie(session.SessionCookieName)
 				if err == nil && cookie != nil {
-					log.Printf("[auth] Found session cookie: %s", cookie.Value)
 
 					// Try direct lookup in memory repository for test scenarios
 					if memStore, ok := g.SessionStore.(*session.SessionStoreDB); ok {
-						log.Printf("[auth] Using SessionStoreDB repository to find session")
 						session, err := memStore.Repo.FindSessionByToken(cookie.Value)
 						if err == nil && session != nil {
-							log.Printf("[auth] Found session in repository: %+v", session)
 							sessionObject = session
 						} else {
 							log.Printf("[auth] Session not found in repository: %v", err)
@@ -656,10 +644,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 					if sessionObject == nil {
 						validSession, exists := g.SessionStore.ValidateSession(r)
 						if exists && validSession != nil {
-							log.Printf("[auth] Validated session from cookie: %+v", validSession)
 							sessionObject = validSession
-						} else {
-							log.Printf("[auth] Failed to validate session from cookie")
 						}
 					}
 				} else {
@@ -674,11 +659,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				sessionJson, err := json.Marshal(sessionObject)
 				if err == nil {
 					r.Header.Set(session.UserDataHeader, string(sessionJson))
-					log.Printf("[auth] Setting %s header for user %s: %s", session.UserDataHeader, sessionObject.UserID, string(sessionJson))
-				} else {
-					log.Printf("[auth] Failed to serialize session object for user %s: %v", sessionObject.UserID, err)
 				}
-				log.Printf("[auth] Setting %s header to: %s for route %s", session.UserIdHeader, sessionObject.UserID, routeConfig.Name)
 
 				// Serve the request with the modified headers
 				proxy.ServeHTTP(w, r)
@@ -777,10 +758,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 		}
 
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Static Route [%s]: Request received - URL: %s, RemoteAddr: %s", routeConfig.Name, r.URL.Path, r.RemoteAddr)
-			log.Printf("Static Route [%s]: Route config - From: %s, ToFolder: %s, RemoveFromPath: %s, routePrefix: %s, preserveFullPath: %t, isSPA: %t",
-				routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.RemoveFromPath, routePrefix, shouldPreserveFullPath, routeConfig.IsSPA)
-
 			finalHandler.ServeHTTP(w, r)
 		}
 
@@ -792,8 +769,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 		// For single file routes, we need to handle both with and without trailing slash
 		// Register the handler for both patterns to avoid redirects
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Static Route [%s]: Single file request received - URL: %s, serving file: %s, RemoteAddr: %s",
-				routeConfig.Name, r.URL.Path, filePath, r.RemoteAddr)
 
 			// Check existence/type at request time
 			fileInfo, err := os.Stat(filePath)
@@ -813,7 +788,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 				return
 			}
 
-			log.Printf("Static Route [%s]: Successfully serving file: %s (size: %d bytes)", routeConfig.Name, filePath, fileInfo.Size())
 			http.ServeFile(w, r, filePath)
 		}
 	}
