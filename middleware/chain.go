@@ -51,7 +51,8 @@ func BuildGlobalChain(
 	// Add middlewares conditionally based on configuration
 	if gatewayConfig.Management.Analytics {
 		// JA4H fingerprinting middleware (first so fingerprint is available for other middlewares)
-		chain.Add(JA4Middleware)
+		// chain.Add(JA4Middleware)
+		chain.Add(OptimizedJA4Middleware(true))
 
 		// Session extraction middleware (before traffic metrics to capture user info)
 		chain.Add(SessionExtractionMiddleware(sessionStore, tokenService))
