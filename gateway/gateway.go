@@ -39,6 +39,10 @@ type Gateway struct {
 	templates         map[string]*template.Template
 	WebappEmbedFS     *embed.FS
 	StartTime         time.Time
+	// Middleware instances
+	AuthMiddleware      *middleware.AuthMiddleware
+	HttpCacheMiddleware *middleware.HttpCacheMiddleware
+	RouteChainBuilder   *middleware.RouteChainBuilder
 }
 
 // --- NewGateway Function ---
@@ -47,26 +51,122 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 	// Initialize the database connection
 	db.Init()
 
+	// Initialize repositories and services
+	deps, err := initializeDependencies(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize dependencies: %w", err)
+	}
+
+	// Validate middleware dependencies
+	if err := middleware.ValidateAllMiddleware(deps.MiddlewareDeps); err != nil {
+		return nil, fmt.Errorf("middleware validation failed: %w", err)
+	}
+
+	// Log middleware status
+	middleware.LogMiddlewareStatus(config)
+
+	// Create HTTP server with middleware chain
+	server, mux, err := createHTTPServer(config, deps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
+	}
+
+	// Initialize templates
+	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse templates: %w", err)
+	}
+
+	// Create gateway instance
+	gateway := &Gateway{
+		Server:              server,
+		GatewayConfig:       config,
+		Mux:                 mux,
+		SessionStore:        deps.SessionStore,
+		UserRepository:      deps.UserRepository,
+		TrafficMetricRepo:   deps.TrafficMetricRepo,
+		TokenRepository:     deps.TokenRepository,
+		TokenService:        deps.TokenService,
+		templates:           templates,
+		WebappEmbedFS:       webappEmbedFS,
+		StartTime:           time.Now(),
+		AuthMiddleware:      deps.AuthMiddleware,
+		HttpCacheMiddleware: deps.HttpCacheMiddleware,
+		RouteChainBuilder:   deps.RouteChainBuilder,
+	}
+
+	// Configure routes
+	if err := configureRoutes(gateway); err != nil {
+		return nil, fmt.Errorf("failed to configure routes: %w", err)
+	}
+
+	// Ensure admin user exists if configured
+	if err := ensureAdminUser(config, deps.UserRepository); err != nil {
+		return nil, fmt.Errorf("failed to ensure admin user: %w", err)
+	}
+
+	return gateway, nil
+}
+
+// GatewayDependencies holds all the dependencies needed for gateway initialization
+type GatewayDependencies struct {
+	SessionStore        session.SessionStore
+	UserRepository      db.UserRepository
+	TrafficMetricRepo   db.TrafficMetricRepository
+	TokenRepository     db.TokenRepository
+	TokenService        *auth.TokenService
+	AuthMiddleware      *middleware.AuthMiddleware
+	HttpCacheMiddleware *middleware.HttpCacheMiddleware
+	RouteChainBuilder   *middleware.RouteChainBuilder
+	MiddlewareDeps      *middleware.Dependencies
+}
+
+// initializeDependencies creates all repositories, services, and middleware instances
+func initializeDependencies(config *config.GatewayConfig) (*GatewayDependencies, error) {
+	// Initialize repositories
+	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB())
+	userRepository := db.NewDBUserRepository(db.GetConnection())
+	trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
+	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())
+
+	// Initialize services
+	tokenService := auth.NewTokenService(tokenRepository, userRepository)
+
+	// Initialize middleware instances
+	authMiddleware := middleware.NewAuthMiddleware(sessionStore, tokenService, config.Management.Prefix)
+	cacheMiddleware := middleware.NewHttpCacheMiddleware()
+	routeChainBuilder := middleware.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
+
+	// Create middleware dependencies for validation
+	middlewareDeps := &middleware.Dependencies{
+		SessionStore:      sessionStore,
+		TokenService:      tokenService,
+		UserRepository:    userRepository,
+		TrafficMetricRepo: trafficMetricRepo,
+		TokenRepository:   tokenRepository,
+		GatewayConfig:     config,
+	}
+
+	return &GatewayDependencies{
+		SessionStore:        sessionStore,
+		UserRepository:      userRepository,
+		TrafficMetricRepo:   trafficMetricRepo,
+		TokenRepository:     tokenRepository,
+		TokenService:        tokenService,
+		AuthMiddleware:      authMiddleware,
+		HttpCacheMiddleware: cacheMiddleware,
+		RouteChainBuilder:   routeChainBuilder,
+		MiddlewareDeps:      middlewareDeps,
+	}, nil
+}
+
+// createHTTPServer creates the HTTP server with middleware chain
+func createHTTPServer(config *config.GatewayConfig, deps *GatewayDependencies) (*http.Server, *http.ServeMux, error) {
 	mux := http.NewServeMux()
 
-	// Create server handler based on configuration
-	var handler http.Handler = mux
-
-	// Apply analytics middleware if enabled
-	if config.Management.Analytics {
-		// Apply JA4H fingerprinting middleware first so fingerprint is available for other middlewares
-		log.Printf("JA4H fingerprinting enabled")
-		handler = middleware.JA4Middleware(handler)
-		log.Printf("Request/response analytics collection enabled")
-		trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
-		handler = middleware.TrafficMetricMiddleware(trafficMetricRepo)(handler)
-	}
-
-	// Apply logging middleware if enabled
-	if config.Management.Logging {
-		log.Printf("Request logging enabled")
-		handler = middleware.LoggingMiddleware(handler)
-	}
+	// Build the global middleware chain
+	globalChain := middleware.BuildGlobalChain(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo)
+	handler := globalChain.Build(mux)
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
@@ -76,65 +176,42 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		Handler:      handler,
 	}
 
-	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB())
+	return server, mux, nil
+}
 
-	userRepository := db.NewDBUserRepository(db.GetConnection())
+// configureRoutes sets up all the gateway routes
+func configureRoutes(gateway *Gateway) error {
+	// Register Management Routes FIRST
+	gateway.configureManagementRoutes(static.StaticAssetsFS)
 
-	// Initialize traffic metrics repository
-	statsRepository := db.NewTrafficMetricRepository(db.GetConnection())
-
-	// Initialize token repository
-	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())
-
-	// Initialize token service
-	tokenService := auth.NewTokenService(tokenRepository, userRepository)
-
-	// Initialize and parse templates
-	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
-	if err != nil {
-		return nil, err // Propagate error from template parsing
+	// Configure the standard proxy/static routes
+	if err := gateway.configureUserRoutes(); err != nil {
+		return fmt.Errorf("error configuring user routes: %w", err)
 	}
 
-	gateway := &Gateway{
-		Server:            server,
-		GatewayConfig:     config,
-		Mux:               mux,
-		SessionStore:      sessionStore,
-		UserRepository:    userRepository,
-		TrafficMetricRepo: statsRepository,
-		TokenRepository:   tokenRepository,
-		TokenService:      tokenService,
-		templates:         templates,
-		WebappEmbedFS:     webappEmbedFS,
-		StartTime:         time.Now(),
-	}
-
-	// --- IMPORTANT: Register Management Routes FIRST ---
-	gateway.configureManagementRoutes(static.StaticAssetsFS) // Modified to pass it
-
-	// Configure the standard proxy/static routes (user-defined routes still use OS filesystem)
-	err = gateway.configureUserRoutes()
-	if err != nil {
-		return nil, fmt.Errorf("error configuring user routes: %w", err)
-	}
-
-	// Configure the OAuth callback handler (can be done after user routes)
+	// Configure the OAuth callback handler
 	gateway.configureOAuthCallbackRoute()
 
-	// Ensure admin user exists in database if configured
-	if config.Management.Admin.Enabled {
-		err = userRepository.EnsureAdminUser(
-			config.Management.Admin.Username,
-			config.Management.Admin.Email,
-			config.Management.Admin.Password,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error ensuring admin user exists: %w", err)
-		}
-		log.Printf("Admin user ensured in database: %s", config.Management.Admin.Username)
+	return nil
+}
+
+// ensureAdminUser creates the admin user if configured
+func ensureAdminUser(config *config.GatewayConfig, userRepository db.UserRepository) error {
+	if !config.Management.Admin.Enabled {
+		return nil
 	}
 
-	return gateway, nil
+	err := userRepository.EnsureAdminUser(
+		config.Management.Admin.Username,
+		config.Management.Admin.Email,
+		config.Management.Admin.Password,
+	)
+	if err != nil {
+		return fmt.Errorf("error ensuring admin user exists: %w", err)
+	}
+
+	log.Printf("Admin user ensured in database: %s", config.Management.Admin.Username)
+	return nil
 }
 
 // parseTemplates loads and parses HTML templates from an embedded FS.
@@ -209,17 +286,13 @@ func (g *Gateway) registerDashboard(prefix string) {
 		if path == "" || path == "/" || !isStaticAsset {
 			// Serve index.html for root requests or SPA routes (no file extension)
 			finalPath = "webapp/dist/index.html"
-			log.Printf("Dashboard: Serving SPA route '%s' with index.html", r.URL.Path)
 		} else {
 			// Try to serve the actual static asset
 			finalPath = "webapp/dist/" + path
 			data, err = g.WebappEmbedFS.ReadFile(finalPath)
 			if err != nil {
 				// Static asset not found, serve index.html for SPA routing
-				log.Printf("Dashboard: Static asset not found '%s', serving index.html for SPA routing", finalPath)
 				finalPath = "webapp/dist/index.html"
-			} else {
-				log.Printf("Dashboard: Serving static asset: %s", finalPath)
 			}
 		}
 
@@ -263,7 +336,6 @@ func (g *Gateway) registerDashboard(prefix string) {
 
 		w.Header().Set("Content-Type", contentType)
 		w.Write(data)
-		log.Printf("Dashboard request served: %s -> %s", r.URL.Path, finalPath)
 	}
 
 	// Wrap dashboard handler with admin session authentication
@@ -406,12 +478,7 @@ func (g *Gateway) configureUserRoutes() error {
 		}
 
 		// Wrap with cache control for all routes
-		handler = g.wrapWithCacheControl(handler, routeConfig)
-
-		// Wrap the handler with authentication if enabled for this route
-		if routeConfig.Authentication.Enabled {
-			handler = g.wrapWithAuth(handler, routeConfig.Static)
-		}
+		handler = g.RouteChainBuilder.BuildRouteChain(handler, routeConfig)
 
 		// Register the final handler for routeConfig.From
 		// To match /api with /api/hello and /api/foo, the pattern must be "/api/"
@@ -470,24 +537,6 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
 }
 
-// --- Authentication Middleware ---
-
-// wrapWithAuth applies the authentication check based on config.
-func (g *Gateway) wrapWithAuth(next http.HandlerFunc, isStatic bool) http.HandlerFunc {
-	return middleware.SessionMiddleware(next, g.SessionStore, g.TokenService, isStatic, g.GatewayConfig.Management.Prefix, false)
-}
-
-// wrapWithCacheControl applies cache control headers if configured
-func (g *Gateway) wrapWithCacheControl(next http.HandlerFunc, routeConfig config.RouteConfig) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Set Cache-Control header if configured for this route
-		if routeConfig.ShouldSetCacheHeader() {
-			w.Header().Set("Cache-Control", routeConfig.GetCacheControlHeader())
-		}
-		next.ServeHTTP(w, r)
-	}
-}
-
 // --- Route Handler Creation ---
 // createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
 func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
@@ -541,8 +590,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 
 		req.Host = targetURL.Host
-
-		log.Printf("Proxying [%s]: %s -> %s%s", routeConfig.Name, req.URL.Path, targetURL.Scheme+"://"+targetURL.Host, req.URL.Path)
 	}
 
 	// Set up error handler
@@ -565,7 +612,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	return func(w http.ResponseWriter, r *http.Request) {
 		// For authenticated routes, extract user ID and set header
 		if routeConfig.Authentication.Enabled {
-			log.Printf("[auth] Handling authenticated route %s", routeConfig.Name)
 
 			// Try to get session from request
 			var sessionObject *db.Session
@@ -573,7 +619,6 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			// First check if session is in context
 			if r.Context() != nil {
 				if ctxSession, ok := r.Context().Value(session.SessionKey).(*db.Session); ok && ctxSession != nil {
-					log.Printf("[auth] Found session in context: %+v", ctxSession)
 					sessionObject = ctxSession
 				}
 			}
@@ -582,14 +627,11 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			if sessionObject == nil {
 				cookie, err := r.Cookie(session.SessionCookieName)
 				if err == nil && cookie != nil {
-					log.Printf("[auth] Found session cookie: %s", cookie.Value)
 
 					// Try direct lookup in memory repository for test scenarios
 					if memStore, ok := g.SessionStore.(*session.SessionStoreDB); ok {
-						log.Printf("[auth] Using SessionStoreDB repository to find session")
 						session, err := memStore.Repo.FindSessionByToken(cookie.Value)
 						if err == nil && session != nil {
-							log.Printf("[auth] Found session in repository: %+v", session)
 							sessionObject = session
 						} else {
 							log.Printf("[auth] Session not found in repository: %v", err)
@@ -602,10 +644,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 					if sessionObject == nil {
 						validSession, exists := g.SessionStore.ValidateSession(r)
 						if exists && validSession != nil {
-							log.Printf("[auth] Validated session from cookie: %+v", validSession)
 							sessionObject = validSession
-						} else {
-							log.Printf("[auth] Failed to validate session from cookie")
 						}
 					}
 				} else {
@@ -620,11 +659,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				sessionJson, err := json.Marshal(sessionObject)
 				if err == nil {
 					r.Header.Set(session.UserDataHeader, string(sessionJson))
-					log.Printf("[auth] Setting %s header for user %s: %s", session.UserDataHeader, sessionObject.UserID, string(sessionJson))
-				} else {
-					log.Printf("[auth] Failed to serialize session object for user %s: %v", sessionObject.UserID, err)
 				}
-				log.Printf("[auth] Setting %s header to: %s for route %s", session.UserIdHeader, sessionObject.UserID, routeConfig.Name)
 
 				// Serve the request with the modified headers
 				proxy.ServeHTTP(w, r)
@@ -723,10 +758,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 		}
 
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Static Route [%s]: Request received - URL: %s, RemoteAddr: %s", routeConfig.Name, r.URL.Path, r.RemoteAddr)
-			log.Printf("Static Route [%s]: Route config - From: %s, ToFolder: %s, RemoveFromPath: %s, routePrefix: %s, preserveFullPath: %t, isSPA: %t",
-				routeConfig.Name, routeConfig.From, routeConfig.ToFolder, routeConfig.RemoveFromPath, routePrefix, shouldPreserveFullPath, routeConfig.IsSPA)
-
 			finalHandler.ServeHTTP(w, r)
 		}
 
@@ -738,8 +769,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 		// For single file routes, we need to handle both with and without trailing slash
 		// Register the handler for both patterns to avoid redirects
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Static Route [%s]: Single file request received - URL: %s, serving file: %s, RemoteAddr: %s",
-				routeConfig.Name, r.URL.Path, filePath, r.RemoteAddr)
 
 			// Check existence/type at request time
 			fileInfo, err := os.Stat(filePath)
@@ -759,7 +788,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 				return
 			}
 
-			log.Printf("Static Route [%s]: Successfully serving file: %s (size: %d bytes)", routeConfig.Name, filePath, fileInfo.Size())
 			http.ServeFile(w, r, filePath)
 		}
 	}

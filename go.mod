@@ -14,6 +14,7 @@ require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
+	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/cortesi/modd v0.8.1 // indirect
 	github.com/cortesi/moddwatch v0.1.0 // indirect
 	github.com/cortesi/termlog v0.0.0-20210222042314-a1eec763abec // indirect
@@ -39,6 +40,7 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/oapi-codegen/oapi-codegen/v2 v2.4.1 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rjeczalik/notify v0.9.3 // indirect
@@ -62,6 +64,7 @@ require (
 )
 
 require (
+	github.com/dgraph-io/ristretto v0.2.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lucsky/cuid v1.2.1
 	github.com/lum8rjack/go-ja4h v0.0.0-20250606032308-3a989c6635be

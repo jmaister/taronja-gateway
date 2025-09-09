@@ -1,9 +1,17 @@
 
 # FIX!!!
 
-- ...
+- User details does not show the logged user in the table. Then user summary counts all users as guests.
 
 # TODO tasks for the project
+
+* Login form improvements
+    - Setup a logo
+    - Change order to put social login first
+
+* Session length:
+    - Allow to configure how long a session token is valid
+    
 
 * Multi-login users
     - Handle "User account already exists with a different login method."
@@ -11,7 +19,26 @@
     - When logged in as user but logged as admin in the admin interface, it should allow to login.
     - When logged in as user but try to login as another regular user, it should allow.
 
+# Likes
 
+Create a like feature for any content based on their ID. Each like is associated with the logged user.
+Likes can't be repeated.
+
+POST /api/likes/<content_name>/<content_id> - Creates a like
+GET /api/likes/<content_name>/<content_id> - Returns the count
+DELETE /api/likes/<content_name>/<content_id> - Removes this like
+...
+GET /api/users/likes - Returns the list of likes for the logged user
+
+DB table:
+likes
+- id (PK)
+- user_id (FK)
+- content_name
+- content_id
+- created_at
+- updated_at
+- deleted_at
 
 ## Stats
 
@@ -93,3 +120,9 @@ Show logs in the dashboard
 * Time zoned data: https://github.com/dmfilipenko/timezones.json/blob/master/timezones.json
 
 
+## Storage
+
+* Add a storage system for user-uploaded files
+* Implement file versioning
+* Allow users to manage their files (upload, delete, rename)
+* Integrate with cloud storage providers (e.g., AWS S3, Google Cloud Storage)

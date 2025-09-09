@@ -259,6 +259,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// TODO: Make session duration configurable
 	sessionObj, err := ap.SessionStore.NewSession(r, user, ap.Provider.Name(), 24*time.Hour)
 	if err != nil {
 		log.Printf("Error creating session: %v", err)
@@ -272,7 +273,8 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
-		MaxAge:   int((24 * time.Hour).Seconds()), // 24 hours
+		// TODO: Make session duration configurable
+		MaxAge: int((24 * time.Hour).Seconds()), // 24 hours
 	})
 
 	redirectURL := "/"

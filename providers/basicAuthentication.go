@@ -56,6 +56,7 @@ func getRedirectURL(r *http.Request) string {
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
 func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.User, sessionStore session.SessionStore) {
+	// TODO: Make session duration configurable
 	sessionObject, err := sessionStore.NewSession(r, user, user.Provider, 24*time.Hour)
 	if err != nil {
 		http.Error(w, "Internal Server Error: Could not create session", http.StatusInternalServerError)
@@ -68,7 +69,8 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
-		MaxAge:   int((24 * time.Hour).Seconds()), // 24 hours
+		// TODO: Make session duration configurable
+		MaxAge: int((24 * time.Hour).Seconds()), // 24 hours
 	})
 
 	redirectURL := getRedirectURL(r)

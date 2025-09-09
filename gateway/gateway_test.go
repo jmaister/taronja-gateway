@@ -386,8 +386,8 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 					To:   "",
 				},
 			},
-			expectError: false, // Gateway should handle this gracefully and skip the route
-			description: "Empty 'to' field should be handled gracefully",
+			expectError: true, // Validation should catch this configuration error early
+			description: "Empty 'to' field should be caught by validation",
 		},
 		{
 			name: "Mixed valid routes",
