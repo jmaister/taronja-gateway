@@ -3,12 +3,18 @@ package db
 import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
 var conn *gorm.DB
 
 func Init() {
+	// Don't re-initialize if already done
+	if conn != nil {
+		return
+	}
+
 	// Use modernc.org/sqlite driver (pure Go, no CGO required)
 	// Configure SQLite for better concurrent access and performance
 	dsn := "taronja-gateway.db?" +
@@ -48,6 +54,11 @@ func Init() {
 }
 
 func InitForTest() {
+	// Don't re-initialize if already done
+	if conn != nil {
+		return
+	}
+
 	// Use modernc.org/sqlite driver for in-memory testing
 	// Configure SQLite for better concurrent access and performance
 	dsn := "file::memory:?cache=shared&" +
@@ -61,7 +72,9 @@ func InitForTest() {
 	db, err := gorm.Open(sqlite.Dialector{
 		DriverName: "sqlite",
 		DSN:        dsn,
-	}, &gorm.Config{})
+	}, &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		panic("Failed to connect database: " + err.Error())
 	}

@@ -1,29 +1,71 @@
 package gateway
 
 import (
-	"fmt"
+	"embed"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"runtime/pprof"
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
+var testBackendServerURL string
+
+// NewTestGateway creates a gateway instance for testing with silent database logging
+func NewTestGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
+	// Initialize the database connection for tests (with silent logging)
+	db.InitForTest()
+
+	// Use the normal gateway creation process
+	return NewGateway(config, webappEmbedFS)
+}
+
+// createTestSession creates a test session for authenticated benchmarks
+func createTestSession(gw *Gateway) *db.Session {
+	session := &db.Session{
+		Token:           "test-session-token",
+		UserID:          "1",
+		Username:        "testuser",
+		Email:           "test@example.com",
+		IsAuthenticated: true,
+		ValidUntil:      time.Now().Add(time.Hour),
+		Provider:        "test-provider",
+	}
+
+	// Create a new session repository directly
+	sessionRepo := db.NewSessionRepositoryDB()
+	err := sessionRepo.CreateSession(session.Token, session)
+	if err != nil {
+		panic("Failed to create test session: " + err.Error())
+	}
+
+	return session
+}
+
 // BenchmarkAPIRequest benchmarks the handling of API requests
 func BenchmarkAPIRequest(b *testing.B) {
+	// Disable logging for cleaner benchmark output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
 	// Set up test gateway with full middleware chain
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
 
 	// Create test request
-	req := httptest.NewRequest("GET", "/_/api/health", nil)
+	req := httptest.NewRequest("GET", "/_/health", nil)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -40,14 +82,19 @@ func BenchmarkAPIRequest(b *testing.B) {
 
 // BenchmarkStaticRequest benchmarks the handling of static file requests
 func BenchmarkStaticRequest(b *testing.B) {
+	// Disable logging for cleaner benchmark output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
 
 	// Create test request for static content
-	req := httptest.NewRequest("GET", "/_/static/style.css", nil)
+	req := httptest.NewRequest("GET", "/_/login", nil)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -56,27 +103,34 @@ func BenchmarkStaticRequest(b *testing.B) {
 		rr := httptest.NewRecorder()
 		gw.Mux.ServeHTTP(rr, req)
 
-		// Static files might return 404 if not found, that's ok for performance testing
-		if rr.Code != http.StatusOK && rr.Code != http.StatusNotFound {
-			b.Errorf("Expected status 200 or 404, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			b.Errorf("Expected status 200, got %d", rr.Code)
 		}
 	}
 }
 
-// BenchmarkAuthenticatedRequest benchmarks authenticated API requests
+// BenchmarkAuthenticatedRequest benchmarks requests with authentication middleware
 func BenchmarkAuthenticatedRequest(b *testing.B) {
+	// Disable logging for cleaner benchmark output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	cfg.Routes[0].Authentication.Enabled = true // Enable authentication for this route
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
 
+	// Create a test session first
+	session := createTestSession(gw)
+
 	// Create test request with session cookie
-	req := httptest.NewRequest("GET", "/_/api/me", nil)
-	// Add a mock session cookie
+	req := httptest.NewRequest("GET", "/api/test", nil)
 	req.AddCookie(&http.Cookie{
-		Name:  "sessionToken",
-		Value: "test-session-token",
+		Name:  "tg_session_token",
+		Value: session.Token,
 	})
 
 	b.ResetTimer()
@@ -86,9 +140,9 @@ func BenchmarkAuthenticatedRequest(b *testing.B) {
 		rr := httptest.NewRecorder()
 		gw.Mux.ServeHTTP(rr, req)
 
-		// This will likely return 401 without valid session, but we're testing performance
-		if rr.Code != http.StatusOK && rr.Code != http.StatusUnauthorized {
-			b.Errorf("Expected status 200 or 401, got %d", rr.Code)
+		// Should get 200 (mock backend returns OK)
+		if rr.Code != http.StatusOK {
+			b.Errorf("Expected status 200 (mock backend), got %d", rr.Code)
 		}
 	}
 }
@@ -112,11 +166,23 @@ func BenchmarkWithoutMiddleware(b *testing.B) {
 	}
 }
 
-// ProfileAPIRequest creates a CPU profile of API request handling
+// BenchmarkProfileAPIRequest creates a CPU profile of API request handling
 func BenchmarkProfileAPIRequest(b *testing.B) {
+	// Disable logging for cleaner benchmark output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
+	var profileFile *os.File
 	if !testing.Short() {
-		// Create CPU profile file
-		err := pprof.StartCPUProfile(nil)
+		var err error
+		profileFile, err = os.Create("api_request_profile.prof")
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer profileFile.Close()
+
+		err = pprof.StartCPUProfile(profileFile)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -124,12 +190,12 @@ func BenchmarkProfileAPIRequest(b *testing.B) {
 	}
 
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/_/api/health", nil)
+	req := httptest.NewRequest("GET", "/_/health", nil)
 
 	b.ResetTimer()
 
@@ -139,19 +205,24 @@ func BenchmarkProfileAPIRequest(b *testing.B) {
 	}
 
 	// Memory profile
-	if !testing.Short() {
+	if !testing.Short() && profileFile != nil {
 		runtime.GC()
 		memProfile := pprof.Lookup("heap")
 		if memProfile != nil {
-			memProfile.WriteTo(nil, 2)
+			memProfile.WriteTo(profileFile, 2)
 		}
 	}
 }
 
 // TestMemoryUsage measures memory usage during request processing
 func TestMemoryUsage(t *testing.T) {
+	// Disable logging for cleaner test output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -163,7 +234,7 @@ func TestMemoryUsage(t *testing.T) {
 	// Process multiple requests
 	numRequests := 1000
 	for i := 0; i < numRequests; i++ {
-		req := httptest.NewRequest("GET", "/_/api/health", nil)
+		req := httptest.NewRequest("GET", "/_/health", nil)
 		rr := httptest.NewRecorder()
 		gw.Mux.ServeHTTP(rr, req)
 	}
@@ -185,8 +256,13 @@ func TestMemoryUsage(t *testing.T) {
 
 // TestConcurrentRequests tests performance under concurrent load
 func TestConcurrentRequests(t *testing.T) {
+	// Disable logging for cleaner test output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -237,8 +313,13 @@ func TestConcurrentRequests(t *testing.T) {
 
 // TestRequestLatency measures detailed request latency
 func TestRequestLatency(t *testing.T) {
+	// Disable logging for cleaner test output
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
 	cfg := createTestConfig()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -283,6 +364,18 @@ func TestRequestLatency(t *testing.T) {
 	t.Logf("  Total: %v", total)
 }
 
+func TestMain(m *testing.M) {
+	// Start a local backend server to mock responses
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	testBackendServerURL = backend.URL
+	code := m.Run()
+	backend.Close()
+	os.Exit(code)
+}
+
 // createTestConfig creates a minimal configuration for testing
 func createTestConfig() *config.GatewayConfig {
 	return &config.GatewayConfig{
@@ -319,7 +412,7 @@ func createTestConfig() *config.GatewayConfig {
 			{
 				Name:   "test-api",
 				From:   "/api/*",
-				To:     "http://localhost:3000",
+				To:     testBackendServerURL,
 				Static: false,
 				Authentication: config.AuthenticationConfig{
 					Enabled: false,
@@ -327,25 +420,4 @@ func createTestConfig() *config.GatewayConfig {
 			},
 		},
 	}
-}
-
-// Helper function to run performance analysis
-func runPerformanceAnalysis() {
-	fmt.Println("Running performance analysis...")
-
-	fmt.Println("\n1. Running API request benchmark...")
-	result := testing.Benchmark(BenchmarkAPIRequest)
-	fmt.Printf("API Request: %s\n", result.String())
-
-	fmt.Println("\n2. Running static request benchmark...")
-	result = testing.Benchmark(BenchmarkStaticRequest)
-	fmt.Printf("Static Request: %s\n", result.String())
-
-	fmt.Println("\n3. Running authenticated request benchmark...")
-	result = testing.Benchmark(BenchmarkAuthenticatedRequest)
-	fmt.Printf("Authenticated Request: %s\n", result.String())
-
-	fmt.Println("\n4. Running no middleware benchmark...")
-	result = testing.Benchmark(BenchmarkWithoutMiddleware)
-	fmt.Printf("No Middleware: %s\n", result.String())
 }

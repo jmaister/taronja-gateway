@@ -29,6 +29,10 @@ test:
 	@echo "Running tests..."
 	go test -cover ./...
 
+bench:
+	@echo "Running benchmarks..."
+	go test -v ./gateway -bench=. -benchtime=2s
+
 # Generate coverage and treemap SVG
 cover:
 	@echo "Generating coverage report..."
@@ -80,5 +84,5 @@ install: build
 	cp $(BINARY_NAME) ~/.local/bin/$(BINARY_NAME)
 
 # Default target
-.PHONY: all build build-windows run dev test cover clean fmt tidy
+.PHONY: all build build-windows run dev test bench cover clean fmt tidy
 all: build
