@@ -172,12 +172,14 @@ func ValidateAdminAccess(deps *Dependencies) error {
 		}
 	}
 
-	if deps.GatewayConfig.Management.Admin.Email == "" {
-		return &ValidationError{
-			Middleware: "admin",
-			Message:    "admin email is required when admin is enabled",
+	/*
+		if deps.GatewayConfig.Management.Admin.Email == "" {
+			return &ValidationError{
+				Middleware: "admin",
+				Message:    "admin email is required when admin is enabled",
+			}
 		}
-	}
+	*/
 
 	log.Printf("Admin access configuration validated successfully")
 	return nil
