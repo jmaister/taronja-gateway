@@ -174,23 +174,6 @@
     <div class="login-container">
         <h1>Login</h1>
 
-        {{if .AuthenticationProviders.Basic.Enabled}}
-        <div id="errorMessage" class="error-message"></div>
-        <form id="loginForm" action="{{.ManagementPrefix}}/auth/basic/login" method="POST">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <input type="hidden" id="redirectInput" name="redirect" value="{{.RedirectURL}}">
-            <button type="submit" id="loginButton">Login</button>
-        </form>
-        {{end}}
-
-        {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled)}}
-        <div class="separator">
-            <span>or</span>
-        </div>
-        {{end}}
-
         <div class="oauth-buttons">
             {{if .AuthenticationProviders.Google.Enabled}}
             <a href="{{.ManagementPrefix}}/auth/google/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-google">
@@ -205,6 +188,25 @@
             </a>
             {{end}}
         </div>
+
+        {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
+        {{if and .AuthenticationProviders.Basic.Enabled}}
+        <div class="separator">
+            <span>or</span>
+        </div>
+        {{end}}
+
+
+        {{if .AuthenticationProviders.Basic.Enabled}}
+        <div id="errorMessage" class="error-message"></div>
+        <form id="loginForm" action="{{.ManagementPrefix}}/auth/basic/login" method="POST">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <input type="hidden" id="redirectInput" name="redirect" value="{{.RedirectURL}}">
+            <button type="submit" id="loginButton">Login</button>
+        </form>
+        {{end}}
+
     </div>
 
     <script>
