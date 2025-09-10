@@ -190,7 +190,7 @@
         </div>
 
         {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and .AuthenticationProviders.Basic.Enabled}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled)}}
         <div class="separator">
             <span>or</span>
         </div>

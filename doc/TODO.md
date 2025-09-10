@@ -7,7 +7,6 @@
 
 * Login form improvements
     - Setup a logo
-    - Change order to put social login first
 
 * Session length:
     - Allow to configure how long a session token is valid
