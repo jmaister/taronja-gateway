@@ -1,22 +1,12 @@
 
 # FIX!!!
 
-- User details does not show the logged user in the table. Then user summary counts all users as guests.
+All fixed.
 
 # TODO tasks for the project
 
-* Login form improvements
-    - Setup a logo
-
-* Session length:
-    - Allow to configure how long a session token is valid
-    
-
 * Multi-login users
     - Handle "User account already exists with a different login method."
-* Override user if a new login is done
-    - When logged in as user but logged as admin in the admin interface, it should allow to login.
-    - When logged in as user but try to login as another regular user, it should allow.
 
 # Likes
 

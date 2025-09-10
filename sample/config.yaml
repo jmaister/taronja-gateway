@@ -71,6 +71,9 @@ authenticationProviders:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
 
+branding:
+  logoUrl: /static/logo.png
+
 geolocation:
   iplocateApiKey: ${IPLOCATE_IO_API_KEY}
 

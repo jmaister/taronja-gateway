@@ -54,7 +54,6 @@
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
             width: 400px;
             text-align: center;
-            overflow: hidden;
         }
         .login-container h1 {
             margin-bottom: 25px;
@@ -167,11 +166,20 @@
         .loading:hover {
             background-color: #6c757d !important;
         }
+        .logo {
+            max-width: 200px;
+            max-height: 80px;
+            margin-bottom: 20px;
+            object-fit: contain;
+        }
 
     </style>
 </head>
 <body>
     <div class="login-container">
+        {{if .Branding.LogoUrl}}
+        <img src="{{.Branding.LogoUrl}}" alt="Logo" class="logo">
+        {{end}}
         <h1>Login</h1>
 
         <div class="oauth-buttons">
