@@ -16,7 +16,7 @@ import (
 // Helper functions (duplicated from session_test.go for simplicity)
 func createTestSessionStoreAdmin() session.SessionStore {
 	memoryRepo := db.NewMemorySessionRepository()
-	return session.NewSessionStore(memoryRepo)
+	return session.NewSessionStore(memoryRepo, 24*time.Hour)
 }
 
 func createMockTokenServiceAdmin() session.TokenService {

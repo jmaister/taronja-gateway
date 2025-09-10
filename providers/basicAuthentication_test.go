@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -27,6 +28,9 @@ func TestRegisterBasicAuth(t *testing.T) {
 		return &config.GatewayConfig{
 			Management: config.ManagementConfig{
 				Prefix: managementPrefix,
+				Session: config.SessionConfig{
+					SecondsDuration: 86400, // 24 hours
+				},
 				Admin: config.AdminConfig{
 					Enabled:  false,
 					Username: "",
@@ -57,7 +61,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo)
+		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds()))
 		mockUserRepo := setupUserAndRepo(t) // Create test user
 		testConfig := createTestConfig()
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED: Use real registration
@@ -100,7 +104,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo) // ADDED
+		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds())) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
 		testConfig := createTestConfig()
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED realSessionRepo to realSessionStore
@@ -135,7 +139,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo) // ADDED
+		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds())) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
 		testConfig := createTestConfig()
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED: Use real registration
@@ -168,7 +172,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo)
+		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds()))
 		mockUserRepo := setupUserAndRepo(t) // Regular user repo (admin won't be found here)
 
 		// Generate proper hash for the admin password

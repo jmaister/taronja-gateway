@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -121,7 +122,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 	t.Run("register with valid configuration", func(t *testing.T) {
 		mux := http.NewServeMux()
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		userRepo := db.NewMemoryUserRepository()
 
 		gatewayConfig := &config.GatewayConfig{
@@ -156,7 +157,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 	t.Run("skip registration with missing credentials", func(t *testing.T) {
 		mux := http.NewServeMux()
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		userRepo := db.NewMemoryUserRepository()
 
 		gatewayConfig := &config.GatewayConfig{
@@ -184,7 +185,16 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		// Setup test repositories
 		userRepo := db.NewMemoryUserRepository()
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
+
+		// Create mock gateway config
+		gatewayConfig := &config.GatewayConfig{
+			Management: config.ManagementConfig{
+				Session: config.SessionConfig{
+					SecondsDuration: 86400, // 24 hours
+				},
+			},
+		}
 
 		// Create OAuth2 config with dummy endpoint
 		oauthConfig := &oauth2.Config{
@@ -212,7 +222,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 
 		// Create authentication provider
 		provider := GoogleProvider{}
-		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore)
+		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore, gatewayConfig)
 		authProvider.Fetcher = mockFetcher
 
 		// Register endpoints
@@ -244,7 +254,16 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 	t.Run("OAuth2 callback with invalid state", func(t *testing.T) {
 		userRepo := db.NewMemoryUserRepository()
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
+
+		// Create mock gateway config
+		gatewayConfig := &config.GatewayConfig{
+			Management: config.ManagementConfig{
+				Session: config.SessionConfig{
+					SecondsDuration: 86400, // 24 hours
+				},
+			},
+		}
 
 		oauthConfig := &oauth2.Config{
 			ClientID:    "test-client-id",
@@ -252,7 +271,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		}
 
 		provider := GoogleProvider{}
-		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore)
+		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore, gatewayConfig)
 
 		mux := http.NewServeMux()
 		authProvider.RegisterEndpoints(mux)

@@ -98,6 +98,7 @@ func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		"Google",
 		userRepo,
 		sessionStore,
+		gatewayConfig,
 	)
 
 	// Set the fetcher

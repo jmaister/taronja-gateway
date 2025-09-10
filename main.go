@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -20,9 +21,9 @@ var webappEmbedFS embed.FS
 
 // Version information - will be injected during build by GoReleaser
 var (
-	version   = "dev"
+	version   = "Dev"
 	commit    = "none"
-	date      = "unknown"
+	date      = time.Now().Format(time.RFC3339)
 	buildOS   = "unknown"
 	buildArch = "unknown"
 )
@@ -69,7 +70,7 @@ var versionCmd = &cobra.Command{
 	Short: "Display version information",
 	Long:  `Shows the version, build date, commit hash, build OS, and architecture of the application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Taronja Gateway %s\n", version)
+		fmt.Printf("Taronja Gateway v%s\n", version)
 		fmt.Printf("  Commit: %s\n", commit)
 		fmt.Printf("  Built: %s\n", date)
 		fmt.Printf("  OS/Arch: %s/%s\n", buildOS, buildArch)
@@ -105,7 +106,7 @@ func runGateway(configFilePath string) {
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile) // Include file/line number
-	log.Println("Starting API Gateway...")
+	log.Printf("Starting Taronja Gateway v%s...", version)
 
 	// 1. Load Configuration
 	config, err := config.LoadConfig(configFilePath)

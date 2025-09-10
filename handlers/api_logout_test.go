@@ -16,7 +16,7 @@ import (
 func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
 	userRepo := db.NewMemoryUserRepository()
 	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo)
+	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)

@@ -16,7 +16,7 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 	t.Run("extracts session from cookie and adds to context", func(t *testing.T) {
 		// Set up repositories and services
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
 		// Create a user and session
@@ -74,7 +74,7 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 	t.Run("continues without session when no valid session found", func(t *testing.T) {
 		// Set up repositories and services
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
 		// Create the middleware
@@ -107,7 +107,7 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 	t.Run("extracts session from bearer token and adds to context", func(t *testing.T) {
 		// Set up repositories and services
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
 		// Create the middleware

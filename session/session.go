@@ -39,13 +39,15 @@ type TokenService interface {
 
 // SessionStoreDB implements SessionStore and uses a SessionRepository to access session data.
 type SessionStoreDB struct {
-	Repo db.SessionRepository
+	Repo            db.SessionRepository
+	SessionDuration time.Duration
 }
 
 // NewSessionStore creates a new SessionStoreDB instance with the provided session repository.
-func NewSessionStore(repo db.SessionRepository) *SessionStoreDB {
+func NewSessionStore(repo db.SessionRepository, duration time.Duration) *SessionStoreDB {
 	return &SessionStoreDB{
-		Repo: repo,
+		Repo:            repo,
+		SessionDuration: duration,
 	}
 }
 
@@ -115,8 +117,7 @@ func (s *SessionStoreDB) ValidateTokenAuth(r *http.Request, tokenService TokenSe
 		sessionObject.ValidUntil = *tokenData.ExpiresAt
 	} else {
 		// If no expiry set, use a default long duration
-		// TODO: Make session duration configurable
-		sessionObject.ValidUntil = time.Now().Add(24 * time.Hour)
+		sessionObject.ValidUntil = time.Now().Add(s.SessionDuration)
 	}
 
 	// Extract client information from the request

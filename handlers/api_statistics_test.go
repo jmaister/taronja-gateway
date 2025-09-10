@@ -14,7 +14,7 @@ import (
 
 func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory) {
 	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo)
+	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 	userRepo := db.NewMemoryUserRepository()
 	statsRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
@@ -242,7 +242,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 	userRepo := db.NewMemoryUserRepository()
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo)
+	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 

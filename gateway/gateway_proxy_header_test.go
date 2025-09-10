@@ -55,7 +55,7 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 
 	// Create a memory session repository for testing
 	testSessionRepo := db.NewMemorySessionRepository() // Use in-memory repo for test
-	testSessionStore := session.NewSessionStore(testSessionRepo)
+	testSessionStore := session.NewSessionStore(testSessionRepo, int64((24 * time.Hour).Seconds()))
 
 	// Create a new session
 	req := httptest.NewRequest("GET", "/", nil)

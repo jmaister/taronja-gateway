@@ -16,7 +16,7 @@ func TestHealthCheck(t *testing.T) {
 	// Create a new StrictApiServer instance with all required dependencies
 	userRepo := db.NewMemoryUserRepository()
 	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo)
+	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
@@ -53,7 +53,6 @@ func TestHealthCheck(t *testing.T) {
 
 		// Assert: Uptime should be present and non-empty
 		assert.NotEmpty(t, healthResp.Uptime)
-
 
 		// Assert: Timestamp should be within a reasonable range (between before and after the call)
 		assert.True(t, healthResp.Timestamp.After(beforeCall) || healthResp.Timestamp.Equal(beforeCall),

@@ -3,7 +3,6 @@ package providers
 import (
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -55,9 +54,8 @@ func getRedirectURL(r *http.Request) string {
 }
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
-func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.User, sessionStore session.SessionStore) {
-	// TODO: Make session duration configurable
-	sessionObject, err := sessionStore.NewSession(r, user, user.Provider, 24*time.Hour)
+func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.User, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) {
+	sessionObject, err := sessionStore.NewSession(r, user, user.Provider, gatewayConfig.Management.Session.GetDuration())
 	if err != nil {
 		http.Error(w, "Internal Server Error: Could not create session", http.StatusInternalServerError)
 		return
@@ -69,8 +67,7 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
-		// TODO: Make session duration configurable
-		MaxAge: int((24 * time.Hour).Seconds()), // 24 hours
+		MaxAge:   int(gatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
 	redirectURL := getRedirectURL(r)
@@ -144,7 +141,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			return
 		}
 
-		createSessionAndRedirect(w, r, user, sessionStore)
+		createSessionAndRedirect(w, r, user, sessionStore, gatewayConfig)
 	})
 
 	log.Printf("Registered Login Route: %-25s | Path: %s (POST)", "Basic Auth Login", basicLoginPath)

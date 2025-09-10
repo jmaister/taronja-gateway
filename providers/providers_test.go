@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func TestMain(m *testing.M) {
 	db.InitForTest()
 	testUserRepo = db.NewDBUserRepository(db.GetConnection())
 	testSessionRepo := db.NewSessionRepositoryDB()
-	testSessionStore = session.NewSessionStore(testSessionRepo)
+	testSessionStore = session.NewSessionStore(testSessionRepo, 24*time.Hour)
 	exitVal := m.Run()
 	os.Exit(exitVal)
 }
@@ -36,7 +37,16 @@ func createTestAuthProvider() *AuthenticationProvider {
 		Scopes:       []string{"email", "profile"},
 	}
 
-	return NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore)
+	// Create mock gateway config
+	gatewayConfig := &config.GatewayConfig{
+		Management: config.ManagementConfig{
+			Session: config.SessionConfig{
+				SecondsDuration: 86400, // 24 hours
+			},
+		},
+	}
+
+	return NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore, gatewayConfig)
 }
 
 func TestLogoutWithValidSession(t *testing.T) {
@@ -528,7 +538,16 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		},
 	}
 
-	authProvider := NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore)
+	// Create mock gateway config
+	gatewayConfig := &config.GatewayConfig{
+		Management: config.ManagementConfig{
+			Session: config.SessionConfig{
+				SecondsDuration: 86400, // 24 hours
+			},
+		},
+	}
+
+	authProvider := NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore, gatewayConfig)
 
 	// Set mock fetcher
 	mockFetcher := &MockUserDataFetcher{

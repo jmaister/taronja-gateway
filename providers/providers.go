@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -87,12 +86,13 @@ func NewSimpleAuthProvider(name string) *SimpleAuthProvider {
 // AuthenticationProvider manages OAuth2 authentication flows.
 // It now uses db.SessionRepository.
 type AuthenticationProvider struct {
-	Provider     AuthProvider
-	LongName     string
-	OAuthConfig  *oauth2.Config
-	Fetcher      UserDataFetcher
-	UserRepo     db.UserRepository
-	SessionStore session.SessionStore
+	Provider      AuthProvider
+	LongName      string
+	OAuthConfig   *oauth2.Config
+	Fetcher       UserDataFetcher
+	UserRepo      db.UserRepository
+	SessionStore  session.SessionStore
+	GatewayConfig *config.GatewayConfig
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -108,16 +108,17 @@ func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProvid
 
 // NewAuthenticationProvider creates a new AuthenticationProvider.
 // It now accepts db.SessionRepository.
-func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sessionStore session.SessionStore) *AuthenticationProvider {
+func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) *AuthenticationProvider {
 	// baseUrl is not directly needed here if redirectURL is in oauthConfig
-	// log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
+	log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
 
 	return &AuthenticationProvider{
-		Provider:     provider,
-		LongName:     longName,
-		OAuthConfig:  oauthConfig,
-		UserRepo:     ur,
-		SessionStore: sessionStore,
+		Provider:      provider,
+		LongName:      longName,
+		OAuthConfig:   oauthConfig,
+		UserRepo:      ur,
+		SessionStore:  sessionStore,
+		GatewayConfig: gatewayConfig,
 	}
 }
 
@@ -259,8 +260,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// TODO: Make session duration configurable
-	sessionObj, err := ap.SessionStore.NewSession(r, user, ap.Provider.Name(), 24*time.Hour)
+	sessionObj, err := ap.SessionStore.NewSession(r, user, ap.Provider.Name(), ap.GatewayConfig.Management.Session.GetDuration())
 	if err != nil {
 		log.Printf("Error creating session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -273,8 +273,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
-		// TODO: Make session duration configurable
-		MaxAge: int((24 * time.Hour).Seconds()), // 24 hours
+		MaxAge:   int(ap.GatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
 	redirectURL := "/"

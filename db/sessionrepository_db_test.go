@@ -73,7 +73,7 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 
 	// Create a new SessionStoreDB
 	repo := db.NewSessionRepositoryDB()
-	sessionStore := session.NewSessionStore(repo) // Create SessionStore to use ValidateSession
+	sessionStore := session.NewSessionStore(repo, 24*time.Hour) // Create SessionStore to use ValidateSession
 
 	// Generate a session token for a valid session
 	validToken, err := session.GenerateToken() // Changed to session.GenerateToken()

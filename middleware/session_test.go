@@ -18,7 +18,7 @@ import (
 // Test helper to create a test session store with memory repository
 func createTestSessionStore() session.SessionStore {
 	memoryRepo := db.NewMemorySessionRepository()
-	return session.NewSessionStore(memoryRepo)
+	return session.NewSessionStore(memoryRepo, 24*time.Hour)
 }
 
 // Mock TokenService for testing

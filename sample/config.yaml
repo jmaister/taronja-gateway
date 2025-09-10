@@ -7,6 +7,8 @@ management:
   prefix: _
   logging: true
   analytics: true
+  session:
+    secondsDuration: 86400  # Session duration in seconds (24 hours = 86400 seconds)
   admin:
     # Admin access to the dashboard
     # Only this user can access the /_/admin/ dashboard

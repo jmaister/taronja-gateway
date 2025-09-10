@@ -16,9 +16,9 @@ var testSessionStore SessionStore // Use the interface
 
 // TestMain sets up the test database and repository.
 func TestMain(m *testing.M) {
-	db.InitForTest()                                    // Initialize in-memory DB for tests
-	testSessionRepo = db.NewSessionRepositoryDB()       // Use the actual DB-backed repository from the db package
-	testSessionStore = NewSessionStore(testSessionRepo) // Initialize SessionStore
+	db.InitForTest()                                                  // Initialize in-memory DB for tests
+	testSessionRepo = db.NewSessionRepositoryDB()                     // Use the actual DB-backed repository from the db package
+	testSessionStore = NewSessionStore(testSessionRepo, 24*time.Hour) // Initialize SessionStore
 	exitVal := m.Run()
 	os.Exit(exitVal)
 }

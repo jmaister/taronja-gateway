@@ -124,7 +124,7 @@ type GatewayDependencies struct {
 // initializeDependencies creates all repositories, services, and middleware instances
 func initializeDependencies(config *config.GatewayConfig) (*GatewayDependencies, error) {
 	// Initialize repositories
-	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB())
+	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB(), 24*time.Hour)
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 	trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
 	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())

@@ -18,7 +18,7 @@ func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 	t.Run("traffic metrics capture session information when session extraction is applied first", func(t *testing.T) {
 		// Set up repositories and services
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 
@@ -96,7 +96,7 @@ func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 	t.Run("traffic metrics work without session when no session available", func(t *testing.T) {
 		// Set up repositories and services
 		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo)
+		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
 

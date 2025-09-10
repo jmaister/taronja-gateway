@@ -180,6 +180,7 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		"GitHub",
 		userRepo,
 		sessionStore,
+		gatewayConfig,
 	)
 
 	// Set the fetcher

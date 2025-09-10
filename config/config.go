@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/encryption"
 	yaml "gopkg.in/yaml.v3"
@@ -74,12 +75,22 @@ type AdminConfig struct {
 	Email    string `yaml:"email"`    // Admin email for notifications
 }
 
+// Session configuration for management API
+type SessionConfig struct {
+	SecondsDuration int `yaml:"secondsDuration"` // Session duration in seconds (default: 86400 = 24 hours)
+}
+
+func (s *SessionConfig) GetDuration() time.Duration {
+	return time.Duration(s.SecondsDuration) * time.Second
+}
+
 // New: Management API Configuration Structs
 type ManagementConfig struct {
-	Prefix    string      `yaml:"prefix"`    // e.g., "/_"
-	Logging   bool        `yaml:"logging"`   // Enable logging
-	Analytics bool        `yaml:"analytics"` // Enable request/response analytics collection
-	Admin     AdminConfig `yaml:"admin"`     // Admin access configuration
+	Prefix    string        `yaml:"prefix"`    // e.g., "/_"
+	Logging   bool          `yaml:"logging"`   // Enable logging
+	Analytics bool          `yaml:"analytics"` // Enable request/response analytics collection
+	Admin     AdminConfig   `yaml:"admin"`     // Admin access configuration
+	Session   SessionConfig `yaml:"session"`   // Session configuration
 }
 
 // Geolocation configuration for IP geolocation services
@@ -121,7 +132,8 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	config := &GatewayConfig{}
 
 	// Set defaults *before* unmarshalling
-	config.Management.Prefix = "/_" // Default prefix
+	config.Management.Prefix = "/_"                   // Default prefix
+	config.Management.Session.SecondsDuration = 86400 // Default 24 hours
 
 	err = yaml.Unmarshal([]byte(expandedData), config)
 	if err != nil {
