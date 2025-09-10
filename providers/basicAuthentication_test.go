@@ -61,7 +61,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds()))
+		realSessionStore := session.NewSessionStore(realSessionRepo, 24*time.Hour)
 		mockUserRepo := setupUserAndRepo(t) // Create test user
 		testConfig := createTestConfig()
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED: Use real registration
@@ -104,7 +104,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds())) // ADDED
+		realSessionStore := session.NewSessionStore(realSessionRepo, 24*time.Hour) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
 		testConfig := createTestConfig()
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED realSessionRepo to realSessionStore
@@ -139,7 +139,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds())) // ADDED
+		realSessionStore := session.NewSessionStore(realSessionRepo, 24*time.Hour) // ADDED
 		mockUserRepo := setupUserAndRepo(t)
 		testConfig := createTestConfig()
 		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig) // CHANGED: Use real registration
@@ -172,7 +172,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()
 		realSessionRepo := db.NewMemorySessionRepository()
-		realSessionStore := session.NewSessionStore(realSessionRepo, int64((24 * time.Hour).Seconds()))
+		realSessionStore := session.NewSessionStore(realSessionRepo, 24*time.Hour)
 		mockUserRepo := setupUserAndRepo(t) // Regular user repo (admin won't be found here)
 
 		// Generate proper hash for the admin password
