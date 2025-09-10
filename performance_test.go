@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -352,29 +351,4 @@ func createTestConfig() *config.GatewayConfig {
 			},
 		},
 	}
-}
-
-// Helper function to run performance analysis
-func runPerformanceAnalysis() {
-	fmt.Println("Running performance analysis...")
-
-	fmt.Println("\n1. Running API request benchmark...")
-	result := testing.Benchmark(BenchmarkAPIRequest)
-	fmt.Printf("API Request: %s\n", result.String())
-
-	fmt.Println("\n2. Running static request benchmark...")
-	result = testing.Benchmark(BenchmarkStaticRequest)
-	fmt.Printf("Static Request: %s\n", result.String())
-
-	fmt.Println("\n3. Running authenticated request benchmark...")
-	result = testing.Benchmark(BenchmarkAuthenticatedRequest)
-	fmt.Printf("Authenticated Request: %s\n", result.String())
-
-	fmt.Println("\n4. Running middleware chain benchmark...")
-	result = testing.Benchmark(BenchmarkMiddlewareChain)
-	fmt.Printf("Middleware Chain: %s\n", result.String())
-
-	fmt.Println("\n5. Running no middleware benchmark...")
-	result = testing.Benchmark(BenchmarkWithoutMiddleware)
-	fmt.Printf("No Middleware: %s\n", result.String())
 }
