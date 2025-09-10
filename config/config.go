@@ -53,6 +53,11 @@ type AuthenticationProviders struct {
 	Google AuthProviderCredentials   `yaml:"google"`
 	Github AuthProviderCredentials   `yaml:"github"`
 }
+
+type BrandingConfig struct {
+	LogoUrl string `yaml:"logoUrl,omitempty"`
+}
+
 type NotificationConfig struct {
 	Email struct {
 		Enabled bool `yaml:"enabled"`
@@ -105,6 +110,7 @@ type GatewayConfig struct {
 	Management              ManagementConfig        `yaml:"management"` // Add management config
 	Routes                  []RouteConfig           `yaml:"routes"`
 	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"`
+	Branding                BrandingConfig          `yaml:"branding,omitempty"`
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`
 	Notification            NotificationConfig      `yaml:"notification"`
 }
@@ -268,6 +274,7 @@ type LoginPageData struct {
 			Enabled bool
 		}
 	}
+	Branding         BrandingConfig
 	RedirectURL      string
 	ManagementPrefix string
 }
@@ -281,6 +288,7 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) LoginPag
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
+	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }
 

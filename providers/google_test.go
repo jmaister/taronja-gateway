@@ -137,7 +137,10 @@ func TestRegisterGoogleAuth(t *testing.T) {
 					ClientId:     "test-client-id",
 					ClientSecret: "test-client-secret",
 				},
+				Basic:  config.BasicAuthenticationConfig{},
+				Github: config.AuthProviderCredentials{},
 			},
+			Branding: config.BrandingConfig{},
 		}
 
 		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
@@ -166,7 +169,10 @@ func TestRegisterGoogleAuth(t *testing.T) {
 					ClientId:     "", // Empty credentials
 					ClientSecret: "",
 				},
+				Basic:  config.BasicAuthenticationConfig{},
+				Github: config.AuthProviderCredentials{},
 			},
+			Branding: config.BrandingConfig{},
 		}
 
 		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
