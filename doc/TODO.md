@@ -5,8 +5,9 @@ All fixed.
 
 # TODO tasks for the project
 
-* Multi-login users
-    - Handle "User account already exists with a different login method."
+# Stats
+
+Button to refresh stats.
 
 # Likes
 
