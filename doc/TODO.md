@@ -116,3 +116,16 @@ Show logs in the dashboard
 * Implement file versioning
 * Allow users to manage their files (upload, delete, rename)
 * Integrate with cloud storage providers (e.g., AWS S3, Google Cloud Storage)
+
+
+## Credits
+
+Handle user's credits for premium features or services.
+
+* Add and deduct credits for users
+* Display user's current credit balance
+* Allow users to purchase additional credits
+* Track credit transactions (additions and deductions)
+* Payment gateway integration for purchasing credits
+* Provide admin interface to manage user credits: view history, adjust balances, refund credits
+

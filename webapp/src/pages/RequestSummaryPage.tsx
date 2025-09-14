@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { RequestStatistics, fetchRequestStatistics } from '../services/api';
+import { useState } from 'react';
 import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
+import { useRequestStatistics } from '../services/services';
 
 interface StatCard {
   title: string;
@@ -72,32 +72,18 @@ function DataTable({ title, data, color }: DataTableProps) {
 }
 
 export function RequestSummaryPage() {
-  const [statistics, setStatistics] = useState<RequestStatistics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('today');
   const [dateRange, setDateRange] = useState<DateRange>(() => timePeriods[0].getDateRange());
 
-  const loadStatistics = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await fetchRequestStatistics(
-        `${dateRange.startDate}T00:00:00Z`,
-        `${dateRange.endDate}T23:59:59Z`
-      );
-      setStatistics(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load statistics');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const startDateStr = `${dateRange.startDate}T00:00:00Z`;
+  const endDateStr = `${dateRange.endDate}T23:59:59Z`;
 
-  useEffect(() => {
-    loadStatistics();
-    // eslint-disable-next-line
-  }, [dateRange]);
+  const { 
+    data: statistics, 
+    isLoading: loading, 
+    error, 
+    refetch 
+  } = useRequestStatistics(startDateStr, endDateStr);
 
   if (loading) {
     return (
@@ -116,9 +102,9 @@ export function RequestSummaryPage() {
         <div className="text-center">
           <div className="text-red-500 text-6xl mb-4">⚠️</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Request Summary</h1>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4">{error instanceof Error ? error.message : 'Unknown error'}</p>
           <button
-            onClick={loadStatistics}
+            onClick={() => refetch()}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
           >
             Retry
@@ -145,12 +131,24 @@ export function RequestSummaryPage() {
           <h1 className="text-2xl font-bold text-gray-900">Request Summary</h1>
           <p className="text-gray-600 mt-1">Monitor gateway performance and traffic patterns</p>
         </div>
-        <StatisticsDateRange
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-          selectedPeriod={selectedPeriod}
-          setSelectedPeriod={setSelectedPeriod}
-        />
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => refetch()}
+            disabled={loading}
+            className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <span className={`mr-2 ${loading ? 'animate-spin' : ''}`}>
+              {loading ? '⟳' : '🔄'}
+            </span>
+            Refresh
+          </button>
+          <StatisticsDateRange
+            dateRange={dateRange}
+            setDateRange={setDateRange}
+            selectedPeriod={selectedPeriod}
+            setSelectedPeriod={setSelectedPeriod}
+          />
+        </div>
       </div>
       {/* Key Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -1,5 +1,5 @@
+import { RequestDetail } from "@/apiclient";
 import { lazy, Suspense } from "react";
-import { RequestDetail } from "./RequestsDetailsTable";
 
 // Lazy load the heavy map component
 const RequestsWorldMapInternal = lazy(() => 

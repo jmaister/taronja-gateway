@@ -50,6 +50,10 @@ export interface RequestStatistics {
   requestsByMethod: Record<string, number>;
   requestsByPath: Record<string, number>;
   requestsByDeviceType: Record<string, number>;
+  requestsByPlatform: Record<string, number>;
+  requestsByBrowser: Record<string, number>;
+  requestsByUser?: Record<string, number>;
+  requestsByJA4Fingerprint: Record<string, number>;
 }
 
 // Token interfaces from OpenAPI spec
