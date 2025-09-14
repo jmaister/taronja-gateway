@@ -7,10 +7,15 @@ ifeq ($(OS),Windows_NT)
 	BINARY_NAME := tg.exe
 endif
 
+setup:
+	@echo "Setting up the project..."
+	go mod download
+	cd webapp && npm install
+
 # Build target
 build: gen
 	@echo "Building $(PROJECT_NAME)..."
-	cd webapp && npm install && npm run build
+	cd webapp && npm run build
 	CGO_ENABLED=0 go build -tags=purego -o $(BINARY_NAME) .
 
 # Run target
@@ -79,6 +84,8 @@ tidy:
 gen:
 	@echo "Generating OpenAPI code..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
+	@echo "Generating TypeScript SDK..."
+	npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
 
 install: build
 	cp $(BINARY_NAME) ~/.local/bin/$(BINARY_NAME)
