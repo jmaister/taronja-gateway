@@ -484,14 +484,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  requests:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/RequestDetail'
-                required:
-                  - requests
+                $ref: '#/components/schemas/RequestDetailsResponse'
         '401':
           description: Unauthorized
           content:
@@ -763,6 +756,15 @@ components:
         - platform_version
         - browser
         - browser_version
+    RequestDetailsResponse:
+      type: object
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestDetail'
+      required:
+        - requests
     
     TokenResponse:
       type: object

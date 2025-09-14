@@ -77,6 +77,11 @@ type RequestDetail struct {
 	Username *string `json:"username"`
 }
 
+// RequestDetailsResponse defines model for RequestDetailsResponse.
+type RequestDetailsResponse struct {
+	Requests []RequestDetail `json:"requests"`
+}
+
 // RequestStatistics defines model for RequestStatistics.
 type RequestStatistics struct {
 	// AverageResponseSize Average response size in bytes
@@ -800,9 +805,7 @@ type GetRequestDetailsResponseObject interface {
 	VisitGetRequestDetailsResponse(w http.ResponseWriter) error
 }
 
-type GetRequestDetails200JSONResponse struct {
-	Requests []RequestDetail `json:"requests"`
-}
+type GetRequestDetails200JSONResponse RequestDetailsResponse
 
 func (response GetRequestDetails200JSONResponse) VisitGetRequestDetailsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")

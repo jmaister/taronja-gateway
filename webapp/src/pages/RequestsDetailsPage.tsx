@@ -12,13 +12,14 @@ export function RequestsDetailsPage() {
     const endDateStr = `${dateRange.endDate}T23:59:59Z`;
 
     const { 
-        data: requestsData, 
+        data, 
         isLoading, 
         error, 
         refetch 
     } = useRequestDetails(startDateStr, endDateStr);
 
-    const requests = requestsData || [];
+    // Ensure we always have an array, even if the API returns unexpected data
+    const requests = data ? data.requests : [];
 
     return (
         <div className="p-6 w-full">
