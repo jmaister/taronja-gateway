@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { fetchUserTokens, createToken, revokeToken, TokenResponse, TokenCreateRequest, TokenCreateResponse } from '../services/api';
+import React, { useState } from 'react';
+import { useUserTokens, useCreateToken, useRevokeToken } from '../services/services';
+import { TokenCreateRequest, TokenCreateResponse, TokenResponse } from '@/apiclient';
 
 interface UserTokensSectionProps {
     userId: string;
 }
 
 export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
-    const [tokens, setTokens] = useState<TokenResponse[]>([]);
-    const [isLoadingTokens, setIsLoadingTokens] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [isCreating, setIsCreating] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newToken, setNewToken] = useState<TokenCreateResponse | null>(null);
     const [copied, setCopied] = useState(false);
@@ -19,48 +16,27 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     const [expiresAt, setExpiresAt] = useState('');
     const [neverExpires, setNeverExpires] = useState(false);
 
-    // Load tokens on component mount
-    useEffect(() => {
-        loadTokens();
-    }, [userId]);
-
-    const loadTokens = async () => {
-        try {
-            setIsLoadingTokens(true);
-            setError(null);
-            const tokenList = await fetchUserTokens(userId);
-            setTokens(tokenList);
-        } catch (err) {
-            console.error('Failed to load tokens:', err);
-            setError('Failed to load tokens. Please try again.');
-        } finally {
-            setIsLoadingTokens(false);
-        }
-    };
+    // TanStack Query hooks
+    const { data: tokens, isLoading: isLoadingTokens, error } = useUserTokens(userId);
+    const createTokenMutation = useCreateToken();
+    const revokeTokenMutation = useRevokeToken();
 
     const handleCreateToken = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (!tokenName.trim()) {
-            setError('Token name is required');
             return;
         }
 
+        const tokenData: TokenCreateRequest = {
+            name: tokenName.trim(),
+            expires_at: neverExpires ? null : (expiresAt || null),
+            scopes: [] // Default to empty scopes for now
+        };
+
         try {
-            setIsCreating(true);
-            setError(null);
-
-            const tokenData: TokenCreateRequest = {
-                name: tokenName.trim(),
-                expires_at: neverExpires ? null : (expiresAt || null),
-                scopes: [] // Default to empty scopes for now
-            };
-
-            const result = await createToken(userId, tokenData);
+            const result = await createTokenMutation.mutateAsync({ userId, tokenData });
             setNewToken(result);
-            
-            // Refresh the tokens list
-            await loadTokens();
             
             // Reset form
             setTokenName('');
@@ -69,26 +45,18 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
             setShowCreateModal(false);
         } catch (err) {
             console.error('Failed to create token:', err);
-            setError('Failed to create token. Please try again.');
-        } finally {
-            setIsCreating(false);
         }
     };
 
-    const handleRevokeToken = async (token: TokenResponse) => {
-        if (!confirm(`Are you sure you want to revoke the token "${token.name}"? This action cannot be undone.`)) {
+    const handleRevokeToken = async (tokenId: string, tokenName: string) => {
+        if (!confirm(`Are you sure you want to revoke the token "${tokenName}"? This action cannot be undone.`)) {
             return;
         }
 
         try {
-            setError(null);
-            await revokeToken(token.id);
-            
-            // Refresh the tokens list
-            await loadTokens();
+            await revokeTokenMutation.mutateAsync(tokenId);
         } catch (err) {
             console.error('Failed to revoke token:', err);
-            setError('Failed to revoke token. Please try again.');
         }
     };
 
@@ -114,6 +82,9 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
         setNewToken(null);
     };
 
+    // Show error message from mutations or queries
+    const errorMessage = error || createTokenMutation.error || revokeTokenMutation.error;
+
     return (
         <div className="mt-8">
             {/* Section Header */}
@@ -128,9 +99,9 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
             </div>
 
             {/* Error Message */}
-            {error && (
+            {errorMessage && (
                 <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                    {error}
+                    {String(errorMessage)}
                 </div>
             )}
 
@@ -191,10 +162,11 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                     <td className="px-4 py-3 border-b text-sm">
                                         {token.is_active && !token.revoked_at && (
                                             <button 
-                                                onClick={() => handleRevokeToken(token)}
-                                                className="text-red-600 hover:text-red-900 text-sm"
+                                                onClick={() => handleRevokeToken(token.id, token.name)}
+                                                disabled={revokeTokenMutation.isPending}
+                                                className="text-red-600 hover:text-red-900 text-sm disabled:opacity-50"
                                             >
-                                                Revoke
+                                                {revokeTokenMutation.isPending ? 'Revoking...' : 'Revoke'}
                                             </button>
                                         )}
                                     </td>
@@ -269,10 +241,10 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isCreating}
+                                    disabled={createTokenMutation.isPending}
                                     className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-700 rounded-md disabled:opacity-50"
                                 >
-                                    {isCreating ? 'Creating...' : 'Create Token'}
+                                    {createTokenMutation.isPending ? 'Creating...' : 'Create Token'}
                                 </button>
                             </div>
                         </form>

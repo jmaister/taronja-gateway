@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'; // Removed React import
 import { useParams, Link } from 'react-router-dom'; 
-import { fetchUser, User } from '../services/api'; 
 import { UserTokensSection } from '../components/UserTokensSection'; 
+import { useUser } from '@/services/services';
 
 interface UserInfoPageProps {
   // Props are empty for now
@@ -9,9 +8,8 @@ interface UserInfoPageProps {
 
 export function UserInfoPage({}: UserInfoPageProps) {
   const { userId } = useParams<{ userId: string }>(); 
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  
+  const {data:user, isLoading, isError, error} = useUser(userId || '');
 
   const formatDate = (dateString?: string | null): string => {
     if (!dateString) return 'N/A';
@@ -26,31 +24,6 @@ export function UserInfoPage({}: UserInfoPageProps) {
     }
   };
 
-  useEffect(() => {
-    if (!userId) {
-      setUser(null);
-      setError("No user ID provided. Please select a user.");
-      setLoading(false);
-      return;
-    }
-
-    const loadUser = async () => {
-      try {
-        setLoading(true);
-        setError(null); 
-        const fetchedUser = await fetchUser(userId);
-        setUser(fetchedUser);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch user details');
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUser();
-  }, [userId]); 
-
   return (
     <div className="font-sans m-5 bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center py-5">
       <div className="bg-white p-5 rounded-lg shadow-md max-w-3xl w-full my-5">
@@ -58,15 +31,15 @@ export function UserInfoPage({}: UserInfoPageProps) {
           User Information
         </h1>
 
-        {loading && (
+        {isLoading && (
           <p className="text-blue-500">Loading user details...</p>
         )}
 
-        {error && !loading && (
-          <p className="text-red-500 font-bold mb-4">{error}</p>
+        {isError && !isLoading && (
+          <p className="text-red-500 font-bold mb-4">{error.message}</p>
         )}
 
-        {!loading && !error && user && (
+        {!isLoading && !isError && user && (
           <div className="mb-6">
             <div className="mb-2.5">
               <span className="inline-block min-w-[100px] font-semibold text-gray-600">ID:</span> {user.id}
@@ -102,8 +75,8 @@ export function UserInfoPage({}: UserInfoPageProps) {
             <UserTokensSection userId={user.id} />
           </div>
         )}
-        
-        {!loading && !error && !user && (
+
+        {!isLoading && !isError && !user && (
           <p className="mt-5">User details are not available.</p>
         )}
 

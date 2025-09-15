@@ -19,7 +19,7 @@ export function RequestsDetailsPage() {
     } = useRequestDetails(startDateStr, endDateStr);
 
     // Ensure we always have an array, even if the API returns unexpected data
-    const requests = data ? data.requests : [];
+    const requests = data?.requests || [];
 
     return (
         <div className="p-6 w-full">
