@@ -35,10 +35,13 @@ func GetSessionToken(r *http.Request) (string, error) {
 	return cookie.Value, nil
 }
 
+// List of operation IDs that do not require authentication
+// Note that operation name is UpperCamelCase of the operationId in the OpenAPI spec
 var OperationWithNoSecurity = []string{
 	"login", // TODO: fix name when implemented using OpenAPI
 	"LogoutUser",
 	"HealthCheck",
+	"GetOpenApiYaml",
 	// Add any other operations that should not require authentication (cookie or token)
 }
 

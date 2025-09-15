@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -371,6 +372,9 @@ type ServerInterface interface {
 	// Get current logged user information
 	// (GET /me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
+	// Get OpenAPI specification of Taronja Gateway in YAML format
+	// (GET /openapi.yaml)
+	GetOpenApiYaml(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -896,6 +900,20 @@ func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetOpenApiYaml operation middleware
+func (siw *ServerInterfaceWrapper) GetOpenApiYaml(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOpenApiYaml(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1032,6 +1050,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.HealthCheck)
 	m.HandleFunc("GET "+options.BaseURL+"/logout", wrapper.LogoutUser)
 	m.HandleFunc("GET "+options.BaseURL+"/me", wrapper.GetCurrentUser)
+	m.HandleFunc("GET "+options.BaseURL+"/openapi.yaml", wrapper.GetOpenApiYaml)
 
 	return m
 }
@@ -1705,6 +1724,51 @@ func (response GetCurrentUser401JSONResponse) VisitGetCurrentUserResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetOpenApiYamlRequestObject struct {
+}
+
+type GetOpenApiYamlResponseObject interface {
+	VisitGetOpenApiYamlResponse(w http.ResponseWriter) error
+}
+
+type GetOpenApiYaml200ApplicationxYamlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetOpenApiYaml200ApplicationxYamlResponse) VisitGetOpenApiYamlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/x-yaml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOpenApiYaml200TextyamlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetOpenApiYaml200TextyamlResponse) VisitGetOpenApiYamlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/yaml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Get all users' credit balances (admin only)
@@ -1755,6 +1819,9 @@ type StrictServerInterface interface {
 	// Get current logged user information
 	// (GET /me)
 	GetCurrentUser(ctx context.Context, request GetCurrentUserRequestObject) (GetCurrentUserResponseObject, error)
+	// Get OpenAPI specification of Taronja Gateway in YAML format
+	// (GET /openapi.yaml)
+	GetOpenApiYaml(ctx context.Context, request GetOpenApiYamlRequestObject) (GetOpenApiYamlResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -2209,6 +2276,30 @@ func (sh *strictHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCurrentUserResponseObject); ok {
 		if err := validResponse.VisitGetCurrentUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOpenApiYaml operation middleware
+func (sh *strictHandler) GetOpenApiYaml(w http.ResponseWriter, r *http.Request) {
+	var request GetOpenApiYamlRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOpenApiYaml(ctx, request.(GetOpenApiYamlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOpenApiYaml")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOpenApiYamlResponseObject); ok {
+		if err := validResponse.VisitGetOpenApiYamlResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -118,6 +118,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /openapi.yaml:
+    get:
+      summary: Get OpenAPI specification of Taronja Gateway in YAML format
+      operationId: getOpenApiYaml
+      tags:
+        - Documentation
+      security:
+        - {}
+      responses:
+        '200':
+          description: OpenAPI specification in YAML format
+          content:
+            text/yaml:
+              schema:
+                type: string
+            application/x-yaml:
+              schema:
+                type: string
+
   /api/users:
     get:
       summary: List all users
