@@ -1,6 +1,5 @@
 import { useRef, useMemo } from "react";
 import { Map, Source, Layer } from "react-map-gl/maplibre";
-import { RequestDetail } from "./RequestsDetailsTable";
 import { getCountryCoordinates } from "../utils/countryCoordinates";
 import maplibreStyleJson from "../assets/maplibre-style.json";
 
@@ -8,6 +7,7 @@ import type { MapRef, MapMouseEvent } from "react-map-gl/maplibre";
 import type { GeoJSONSource } from "maplibre-gl";
 import type { LayerProps } from "react-map-gl/maplibre";
 import type { StyleSpecification } from "maplibre-gl";
+import { RequestDetail } from "@/apiclient";
 
 interface RequestsWorldMapProps {
     requests: RequestDetail[];

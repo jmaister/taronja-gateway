@@ -28,6 +28,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: webapp/package-lock.json
 
+      - name: Generate API client
+        run: npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
+
       - name: Set up GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
