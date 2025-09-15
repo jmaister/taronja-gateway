@@ -14,6 +14,10 @@ export const queryClient = new QueryClient({
   },
 });
 
+// TODO: this should be taken from config.Management.Prefix at runtime
+// mignt not be possible because we have to get that info from the server
+// at build time we don't have that info
+// for now we assume the prefix is always "/_"
 const customApiClient = createClient({
     baseUrl: '/_',
 });
