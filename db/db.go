@@ -45,7 +45,7 @@ func Init() {
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
 	// Migrate the schema
-	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{})
+	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{}, &Credit{})
 	if err2 != nil {
 		panic("Failed to migration DB: " + err2.Error())
 	}
@@ -91,7 +91,7 @@ func InitForTest() {
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
 	// Migrate the schema
-	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{})
+	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{}, &Credit{})
 	if err2 != nil {
 		panic("Failed to migration DB: " + err2.Error())
 	}

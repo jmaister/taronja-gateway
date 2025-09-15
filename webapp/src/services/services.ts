@@ -1,3 +1,15 @@
+import {
+  getAllUserCredits,
+  getUserCreditHistory,
+  adjustUserCredits,
+} from '@/apiclient/sdk.gen';
+import type {
+  AllUserCreditsResponse,
+  CreditHistoryResponse,
+  CreditAdjustmentRequest,
+} from '@/apiclient/types.gen';
+
+
 import { 
   TokenCreateRequest, 
   UserCreateRequest, 
@@ -19,13 +31,6 @@ import {
 } from '@/apiclient';
 import { createClient } from '@/apiclient/client';
 import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-
-export interface Session {
-  provider: string;
-  validUntil: string;
-  active: boolean;
-  closedOn?: string | null;
-}
 
 export interface CurrentUser extends UserResponse {}
 
@@ -195,6 +200,46 @@ export function useRevokeToken() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tokens'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+// Credits hooks
+export function useAllUserCredits() {
+  return useQuery<AllUserCreditsResponse, Error>({
+    queryKey: ['credits', 'allUsers'],
+    queryFn: async () => {
+      const response = await getAllUserCredits({ client: customApiClient });
+      return handleResponse<AllUserCreditsResponse>(response);
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useCreditHistory(userId: string | null) {
+  return useQuery<CreditHistoryResponse, Error>({
+    queryKey: ['credits', 'history', userId],
+    queryFn: async () => {
+      if (!userId) throw new Error('No user selected');
+      const response = await getUserCreditHistory({ path: { userId }, client: customApiClient });
+      return handleResponse<CreditHistoryResponse>(response);
+    },
+    enabled: !!userId,
+    staleTime: 30_000,
+  });
+}
+
+export function useAdjustCredits() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, adjustment }: { userId: string; adjustment: CreditAdjustmentRequest }) => {
+      const response = await adjustUserCredits({ path: { userId }, body: adjustment, client: customApiClient });
+      if (response.error) throw new Error(response.error.message);
+      return response.data;
+    },
+    onSuccess: (_, { userId }) => {
+      queryClient.invalidateQueries({ queryKey: ['credits', 'allUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['credits', 'history', userId] });
     },
   });
 }

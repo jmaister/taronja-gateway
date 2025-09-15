@@ -20,11 +20,12 @@ func TestHealthCheck(t *testing.T) {
 	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
 	tokenRepo := db.NewTokenRepositoryMemory()
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+	creditsRepo := db.NewMemoryCreditsRepository()
 
 	// For tests, we can use a nil database connection since we're using memory repositories
 	startTime := time.Now()
 
-	s := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, tokenService, startTime)
+	s := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime)
 
 	t.Run("SuccessfulHealthCheck", func(t *testing.T) {
 		// Setup: Create a health check request

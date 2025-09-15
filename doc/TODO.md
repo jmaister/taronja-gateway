@@ -128,4 +128,13 @@ Handle user's credits for premium features or services.
 * Track credit transactions (additions and deductions)
 * Payment gateway integration for purchasing credits
 * Provide admin interface to manage user credits: view history, adjust balances, refund credits
+* Table: credits
+  - id (PK)
+  - user_id (FK)
+  - amount (integer, positive or negative)
+  - balance_after (integer)
+  - description (string)
+  - created_at
+  - updated_at
+  - deleted_at
 

@@ -12,6 +12,7 @@ const getPageTitleFromPath = (path: string): string => {
   if (path.startsWith('/users/new')) return 'Create New User';
   if (path.startsWith('/users/')) return 'User Details'; // Could be more specific if an ID or name is available
   if (path.startsWith('/users')) return 'User Management';
+  if (path.startsWith('/credits')) return 'Credits Management';
   if (path.startsWith('/statistics/request-summary')) return 'Request Summary';
   if (path.startsWith('/statistics/requests-details')) return 'Request Details';
   if (path.startsWith('/statistics')) return 'Statistics';
