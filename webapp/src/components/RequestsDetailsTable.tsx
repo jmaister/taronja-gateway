@@ -1,23 +1,5 @@
+import { RequestDetail } from "@/apiclient";
 
-export type RequestDetail = {
-    id: string;
-    timestamp: string;
-    path: string;
-    user_id?: string | null;
-    username?: string | null;
-    status_code: number;
-    response_time: number;
-    response_size: number;
-    country: string;
-    city: string;
-    latitude?: number | null;
-    longitude?: number | null;
-    device_type: string;
-    platform: string;
-    platform_version: string;
-    browser: string;
-    browser_version: string;
-};
 
 export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }) {
     const numberFormatter = new Intl.NumberFormat(navigator.language);

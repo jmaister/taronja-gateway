@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'; // Removed React import
+import { useUsers } from '@/services/services';
 import { Link } from 'react-router-dom'; 
-import { fetchUsers, User } from '../services/api'; 
 
 // Props for UsersListPage
 interface UsersListPageProps {
@@ -8,26 +7,11 @@ interface UsersListPageProps {
 }
 
 export function UsersListPage({}: UsersListPageProps) {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: users, isLoading, isError } = useUsers();
 
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        setLoading(true);
-        const fetchedUsers = await fetchUsers();
-        setUsers(fetchedUsers);
-        setError(null);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch users');
-        setUsers([]); // Clear users on error
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadUsers();
-  }, []); // Empty dependency array to run only on mount
+  if (!users || isLoading) {
+    return <p className="text-blue-500">Loading users...</p>;
+  }
 
   return (
     <div className="w-full p-6">
@@ -43,15 +27,15 @@ export function UsersListPage({}: UsersListPageProps) {
         
         <div className="p-6">
 
-        {loading && (
+        {isLoading && (
           <p className="text-blue-500">Loading users...</p>
         )}
 
-        {error && !loading && (
-          <p className="text-red-500 font-bold mb-4">{error}</p>
+        {isError && !isLoading && (
+          <p className="text-red-500 font-bold mb-4">{isError}</p>
         )}
 
-        {!loading && !error && users.length > 0 && (
+        {!isLoading && !isError && users.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse mt-5">
               <thead>
@@ -85,7 +69,7 @@ export function UsersListPage({}: UsersListPageProps) {
           </div>
         )}
 
-        {!loading && !error && users.length === 0 && (
+        {!isLoading && !isError && users.length === 0 && (
           <p className="mt-5">No users found.</p>
         )}
 
