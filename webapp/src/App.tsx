@@ -11,6 +11,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { RequestSummaryPage } from './pages/RequestSummaryPage';
 import { RequestsDetailsPage } from './pages/RequestsDetailsPage';
+import { CreditsManagementPage } from './pages/CreditsManagementPage';
 
 // Authentication components
 import { useAuth } from './contexts/AuthContext';
@@ -94,6 +95,7 @@ function App() {
                     <Route path="/users/new" element={<CreateUserPage />} />
                     <Route path="/users/:userId" element={<UserInfoPage />} />
                     <Route path="/statistics/requests-details" element={<RequestsDetailsPage />} />
+                    <Route path="/credits" element={<CreditsManagementPage />} />
                     {/* Add other admin routes that should use MainLayout here */}
                 </Route>
 

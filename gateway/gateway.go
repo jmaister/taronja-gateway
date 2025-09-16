@@ -35,6 +35,7 @@ type Gateway struct {
 	UserRepository    db.UserRepository
 	TrafficMetricRepo db.TrafficMetricRepository
 	TokenRepository   db.TokenRepository
+	CreditsRepository db.CreditsRepository
 	TokenService      *auth.TokenService
 	templates         map[string]*template.Template
 	WebappEmbedFS     *embed.FS
@@ -86,6 +87,7 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 		UserRepository:      deps.UserRepository,
 		TrafficMetricRepo:   deps.TrafficMetricRepo,
 		TokenRepository:     deps.TokenRepository,
+		CreditsRepository:   deps.CreditsRepository,
 		TokenService:        deps.TokenService,
 		templates:           templates,
 		WebappEmbedFS:       webappEmbedFS,
@@ -114,6 +116,7 @@ type GatewayDependencies struct {
 	UserRepository      db.UserRepository
 	TrafficMetricRepo   db.TrafficMetricRepository
 	TokenRepository     db.TokenRepository
+	CreditsRepository   db.CreditsRepository
 	TokenService        *auth.TokenService
 	AuthMiddleware      *middleware.AuthMiddleware
 	HttpCacheMiddleware *middleware.HttpCacheMiddleware
@@ -128,6 +131,7 @@ func initializeDependencies(config *config.GatewayConfig) (*GatewayDependencies,
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 	trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
 	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())
+	creditsRepository := db.NewDBCreditsRepository(db.GetConnection())
 
 	// Initialize services
 	tokenService := auth.NewTokenService(tokenRepository, userRepository)
@@ -152,6 +156,7 @@ func initializeDependencies(config *config.GatewayConfig) (*GatewayDependencies,
 		UserRepository:      userRepository,
 		TrafficMetricRepo:   trafficMetricRepo,
 		TokenRepository:     tokenRepository,
+		CreditsRepository:   creditsRepository,
 		TokenService:        tokenService,
 		AuthMiddleware:      authMiddleware,
 		HttpCacheMiddleware: cacheMiddleware,
@@ -353,6 +358,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.UserRepository,
 		g.TrafficMetricRepo,
 		g.TokenRepository,
+		g.CreditsRepository,
 		g.TokenService,
 		g.StartTime,
 	)

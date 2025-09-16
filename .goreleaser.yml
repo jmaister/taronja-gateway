@@ -7,6 +7,7 @@ before:
     # You may remove this if you don't use go modules.
     - go mod tidy
     # Build the webapp before building the Go binary
+    - npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
     - bash -c "cd webapp && npm install"
     - bash -c "cd webapp && npm run build"
 

@@ -57,6 +57,10 @@
 
 # Commands
 
+* Never execute git commands.
+* Never commit to git.
+* Never push to git.
+
 * `make api-codegen` to generate OpenAPI code.
 * `make run` to run the sample server.
 * `make build` to build the whole project (backend, frontend, and generated code).
@@ -72,5 +76,4 @@
     * Build commands.
     * Change folders.
 
-* Agent never does git commands.
-* Agent never commits to git. Never pushes to git.
+

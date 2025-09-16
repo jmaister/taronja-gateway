@@ -160,3 +160,27 @@ func (t *Token) BeforeCreate(tx *gorm.DB) error {
 	t.ID = newId
 	return nil
 }
+
+// Credit struct definition for credit transactions
+type Credit struct {
+	gorm.Model
+
+	ID           string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID       string `gorm:"column:user_id;type:varchar(255);not null;index"` // Foreign key to User
+	Amount       int    `gorm:"not null"`                                        // Amount added (positive) or deducted (negative)
+	BalanceAfter int    `gorm:"not null"`                                        // Balance after this transaction
+	Description  string `gorm:"type:text;not null"`                              // Description of the credit transaction
+
+	// Reference to the user
+	User User `gorm:"foreignKey:UserID;references:ID"`
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (c *Credit) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	c.ID = newId
+	return nil
+}

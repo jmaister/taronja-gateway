@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -21,6 +22,72 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 	CookieAuthScopes = "cookieAuth.Scopes"
 )
+
+// AllUserCreditsResponse defines model for AllUserCreditsResponse.
+type AllUserCreditsResponse struct {
+	// Limit Maximum number of users returned
+	Limit int `json:"limit"`
+
+	// Offset Number of users skipped
+	Offset int `json:"offset"`
+
+	// TotalCount Total number of users (for pagination)
+	TotalCount int `json:"total_count"`
+
+	// Users List of users with their credit balances
+	Users []UserCreditsResponse `json:"users"`
+}
+
+// CreditAdjustmentRequest defines model for CreditAdjustmentRequest.
+type CreditAdjustmentRequest struct {
+	// Amount Amount to add (positive) or deduct (negative)
+	Amount int `json:"amount"`
+
+	// Description Description of the credit adjustment
+	Description string `json:"description"`
+}
+
+// CreditHistoryResponse defines model for CreditHistoryResponse.
+type CreditHistoryResponse struct {
+	// CurrentBalance Current credit balance
+	CurrentBalance int `json:"current_balance"`
+
+	// Limit Maximum number of transactions returned
+	Limit int `json:"limit"`
+
+	// Offset Number of transactions skipped
+	Offset int `json:"offset"`
+
+	// TotalCount Total number of transactions (for pagination)
+	TotalCount int `json:"total_count"`
+
+	// Transactions List of credit transactions
+	Transactions []CreditTransactionResponse `json:"transactions"`
+
+	// UserId ID of the user
+	UserId string `json:"user_id"`
+}
+
+// CreditTransactionResponse defines model for CreditTransactionResponse.
+type CreditTransactionResponse struct {
+	// Amount Amount added (positive) or deducted (negative)
+	Amount int `json:"amount"`
+
+	// BalanceAfter Balance after this transaction
+	BalanceAfter int `json:"balance_after"`
+
+	// CreatedAt When the transaction was created
+	CreatedAt time.Time `json:"created_at"`
+
+	// Description Description of the transaction
+	Description string `json:"description"`
+
+	// Id Transaction ID
+	Id string `json:"id"`
+
+	// UserId ID of the user
+	UserId string `json:"user_id"`
+}
 
 // Error defines model for Error.
 type Error struct {
@@ -171,6 +238,24 @@ type UserCreateRequest struct {
 	Username string              `json:"username"`
 }
 
+// UserCreditsResponse defines model for UserCreditsResponse.
+type UserCreditsResponse struct {
+	// Balance Current credit balance
+	Balance int `json:"balance"`
+
+	// Email Email of the user
+	Email *openapi_types.Email `json:"email,omitempty"`
+
+	// LastUpdated When the balance was last updated
+	LastUpdated time.Time `json:"last_updated"`
+
+	// UserId ID of the user
+	UserId string `json:"user_id"`
+
+	// Username Username of the user
+	Username *string `json:"username,omitempty"`
+}
+
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
 	CreatedAt time.Time            `json:"createdAt"`
@@ -181,6 +266,24 @@ type UserResponse struct {
 	Provider  *string              `json:"provider"`
 	UpdatedAt time.Time            `json:"updatedAt"`
 	Username  string               `json:"username"`
+}
+
+// GetAllUserCreditsParams defines parameters for GetAllUserCredits.
+type GetAllUserCreditsParams struct {
+	// Limit Maximum number of users to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of users to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetUserCreditHistoryParams defines parameters for GetUserCreditHistory.
+type GetUserCreditHistoryParams struct {
+	// Limit Maximum number of transactions to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of transactions to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetRequestStatisticsParams defines parameters for GetRequestStatistics.
@@ -210,6 +313,9 @@ type LogoutUserParams struct {
 	TgSessionToken *string `form:"tg_session_token,omitempty" json:"tg_session_token,omitempty"`
 }
 
+// AdjustUserCreditsJSONRequestBody defines body for AdjustUserCredits for application/json ContentType.
+type AdjustUserCreditsJSONRequestBody = CreditAdjustmentRequest
+
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
 
@@ -218,6 +324,18 @@ type CreateTokenJSONRequestBody = TokenCreateRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get all users' credit balances (admin only)
+	// (GET /api/admin/credits)
+	GetAllUserCredits(w http.ResponseWriter, r *http.Request, params GetAllUserCreditsParams)
+	// Get user's current credit balance
+	// (GET /api/credits/{userId})
+	GetUserCredits(w http.ResponseWriter, r *http.Request, userId string)
+	// Add or deduct credits for a user (admin only)
+	// (POST /api/credits/{userId})
+	AdjustUserCredits(w http.ResponseWriter, r *http.Request, userId string)
+	// Get user's credit transaction history
+	// (GET /api/credits/{userId}/history)
+	GetUserCreditHistory(w http.ResponseWriter, r *http.Request, userId string, params GetUserCreditHistoryParams)
 	// Get request statistics
 	// (GET /api/statistics/requests)
 	GetRequestStatistics(w http.ResponseWriter, r *http.Request, params GetRequestStatisticsParams)
@@ -254,6 +372,9 @@ type ServerInterface interface {
 	// Get current logged user information
 	// (GET /me)
 	GetCurrentUser(w http.ResponseWriter, r *http.Request)
+	// Get OpenAPI specification of Taronja Gateway in YAML format
+	// (GET /openapi.yaml)
+	GetOpenApiYaml(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -264,6 +385,159 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAllUserCredits operation middleware
+func (siw *ServerInterfaceWrapper) GetAllUserCredits(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAllUserCreditsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAllUserCredits(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUserCredits operation middleware
+func (siw *ServerInterfaceWrapper) GetUserCredits(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserCredits(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdjustUserCredits operation middleware
+func (siw *ServerInterfaceWrapper) AdjustUserCredits(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdjustUserCredits(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUserCreditHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetUserCreditHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetUserCreditHistoryParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserCreditHistory(w, r, userId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetRequestStatistics operation middleware
 func (siw *ServerInterfaceWrapper) GetRequestStatistics(w http.ResponseWriter, r *http.Request) {
@@ -626,6 +900,20 @@ func (siw *ServerInterfaceWrapper) GetCurrentUser(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetOpenApiYaml operation middleware
+func (siw *ServerInterfaceWrapper) GetOpenApiYaml(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOpenApiYaml(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -746,6 +1034,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/admin/credits", wrapper.GetAllUserCredits)
+	m.HandleFunc("GET "+options.BaseURL+"/api/credits/{userId}", wrapper.GetUserCredits)
+	m.HandleFunc("POST "+options.BaseURL+"/api/credits/{userId}", wrapper.AdjustUserCredits)
+	m.HandleFunc("GET "+options.BaseURL+"/api/credits/{userId}/history", wrapper.GetUserCreditHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
@@ -758,8 +1050,223 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.HealthCheck)
 	m.HandleFunc("GET "+options.BaseURL+"/logout", wrapper.LogoutUser)
 	m.HandleFunc("GET "+options.BaseURL+"/me", wrapper.GetCurrentUser)
+	m.HandleFunc("GET "+options.BaseURL+"/openapi.yaml", wrapper.GetOpenApiYaml)
 
 	return m
+}
+
+type GetAllUserCreditsRequestObject struct {
+	Params GetAllUserCreditsParams
+}
+
+type GetAllUserCreditsResponseObject interface {
+	VisitGetAllUserCreditsResponse(w http.ResponseWriter) error
+}
+
+type GetAllUserCredits200JSONResponse AllUserCreditsResponse
+
+func (response GetAllUserCredits200JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAllUserCredits401JSONResponse Error
+
+func (response GetAllUserCredits401JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAllUserCredits403JSONResponse Error
+
+func (response GetAllUserCredits403JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAllUserCredits500JSONResponse Error
+
+func (response GetAllUserCredits500JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCreditsRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type GetUserCreditsResponseObject interface {
+	VisitGetUserCreditsResponse(w http.ResponseWriter) error
+}
+
+type GetUserCredits200JSONResponse UserCreditsResponse
+
+func (response GetUserCredits200JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCredits401JSONResponse Error
+
+func (response GetUserCredits401JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCredits403JSONResponse Error
+
+func (response GetUserCredits403JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCredits404JSONResponse Error
+
+func (response GetUserCredits404JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCredits500JSONResponse Error
+
+func (response GetUserCredits500JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCreditsRequestObject struct {
+	UserId string `json:"userId"`
+	Body   *AdjustUserCreditsJSONRequestBody
+}
+
+type AdjustUserCreditsResponseObject interface {
+	VisitAdjustUserCreditsResponse(w http.ResponseWriter) error
+}
+
+type AdjustUserCredits200JSONResponse CreditTransactionResponse
+
+func (response AdjustUserCredits200JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCredits400JSONResponse Error
+
+func (response AdjustUserCredits400JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCredits401JSONResponse Error
+
+func (response AdjustUserCredits401JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCredits403JSONResponse Error
+
+func (response AdjustUserCredits403JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCredits404JSONResponse Error
+
+func (response AdjustUserCredits404JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCredits500JSONResponse Error
+
+func (response AdjustUserCredits500JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCreditHistoryRequestObject struct {
+	UserId string `json:"userId"`
+	Params GetUserCreditHistoryParams
+}
+
+type GetUserCreditHistoryResponseObject interface {
+	VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetUserCreditHistory200JSONResponse CreditHistoryResponse
+
+func (response GetUserCreditHistory200JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCreditHistory401JSONResponse Error
+
+func (response GetUserCreditHistory401JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCreditHistory403JSONResponse Error
+
+func (response GetUserCreditHistory403JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCreditHistory404JSONResponse Error
+
+func (response GetUserCreditHistory404JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCreditHistory500JSONResponse Error
+
+func (response GetUserCreditHistory500JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type GetRequestStatisticsRequestObject struct {
@@ -1217,8 +1724,65 @@ func (response GetCurrentUser401JSONResponse) VisitGetCurrentUserResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetOpenApiYamlRequestObject struct {
+}
+
+type GetOpenApiYamlResponseObject interface {
+	VisitGetOpenApiYamlResponse(w http.ResponseWriter) error
+}
+
+type GetOpenApiYaml200ApplicationxYamlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetOpenApiYaml200ApplicationxYamlResponse) VisitGetOpenApiYamlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/x-yaml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOpenApiYaml200TextyamlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetOpenApiYaml200TextyamlResponse) VisitGetOpenApiYamlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/yaml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Get all users' credit balances (admin only)
+	// (GET /api/admin/credits)
+	GetAllUserCredits(ctx context.Context, request GetAllUserCreditsRequestObject) (GetAllUserCreditsResponseObject, error)
+	// Get user's current credit balance
+	// (GET /api/credits/{userId})
+	GetUserCredits(ctx context.Context, request GetUserCreditsRequestObject) (GetUserCreditsResponseObject, error)
+	// Add or deduct credits for a user (admin only)
+	// (POST /api/credits/{userId})
+	AdjustUserCredits(ctx context.Context, request AdjustUserCreditsRequestObject) (AdjustUserCreditsResponseObject, error)
+	// Get user's credit transaction history
+	// (GET /api/credits/{userId}/history)
+	GetUserCreditHistory(ctx context.Context, request GetUserCreditHistoryRequestObject) (GetUserCreditHistoryResponseObject, error)
 	// Get request statistics
 	// (GET /api/statistics/requests)
 	GetRequestStatistics(ctx context.Context, request GetRequestStatisticsRequestObject) (GetRequestStatisticsResponseObject, error)
@@ -1255,6 +1819,9 @@ type StrictServerInterface interface {
 	// Get current logged user information
 	// (GET /me)
 	GetCurrentUser(ctx context.Context, request GetCurrentUserRequestObject) (GetCurrentUserResponseObject, error)
+	// Get OpenAPI specification of Taronja Gateway in YAML format
+	// (GET /openapi.yaml)
+	GetOpenApiYaml(ctx context.Context, request GetOpenApiYamlRequestObject) (GetOpenApiYamlResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -1284,6 +1851,118 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetAllUserCredits operation middleware
+func (sh *strictHandler) GetAllUserCredits(w http.ResponseWriter, r *http.Request, params GetAllUserCreditsParams) {
+	var request GetAllUserCreditsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAllUserCredits(ctx, request.(GetAllUserCreditsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAllUserCredits")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAllUserCreditsResponseObject); ok {
+		if err := validResponse.VisitGetAllUserCreditsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUserCredits operation middleware
+func (sh *strictHandler) GetUserCredits(w http.ResponseWriter, r *http.Request, userId string) {
+	var request GetUserCreditsRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserCredits(ctx, request.(GetUserCreditsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserCredits")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserCreditsResponseObject); ok {
+		if err := validResponse.VisitGetUserCreditsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AdjustUserCredits operation middleware
+func (sh *strictHandler) AdjustUserCredits(w http.ResponseWriter, r *http.Request, userId string) {
+	var request AdjustUserCreditsRequestObject
+
+	request.UserId = userId
+
+	var body AdjustUserCreditsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AdjustUserCredits(ctx, request.(AdjustUserCreditsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AdjustUserCredits")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AdjustUserCreditsResponseObject); ok {
+		if err := validResponse.VisitAdjustUserCreditsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUserCreditHistory operation middleware
+func (sh *strictHandler) GetUserCreditHistory(w http.ResponseWriter, r *http.Request, userId string, params GetUserCreditHistoryParams) {
+	var request GetUserCreditHistoryRequestObject
+
+	request.UserId = userId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserCreditHistory(ctx, request.(GetUserCreditHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserCreditHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserCreditHistoryResponseObject); ok {
+		if err := validResponse.VisitGetUserCreditHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetRequestStatistics operation middleware
@@ -1597,6 +2276,30 @@ func (sh *strictHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCurrentUserResponseObject); ok {
 		if err := validResponse.VisitGetCurrentUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOpenApiYaml operation middleware
+func (sh *strictHandler) GetOpenApiYaml(w http.ResponseWriter, r *http.Request) {
+	var request GetOpenApiYamlRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOpenApiYaml(ctx, request.(GetOpenApiYamlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOpenApiYaml")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOpenApiYamlResponseObject); ok {
+		if err := validResponse.VisitGetOpenApiYamlResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

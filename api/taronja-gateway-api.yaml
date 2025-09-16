@@ -118,6 +118,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /openapi.yaml:
+    get:
+      summary: Get OpenAPI specification of Taronja Gateway in YAML format
+      operationId: getOpenApiYaml
+      tags:
+        - Documentation
+      security:
+        - {}
+      responses:
+        '200':
+          description: OpenAPI specification in YAML format
+          content:
+            text/yaml:
+              schema:
+                type: string
+            application/x-yaml:
+              schema:
+                type: string
+
   /api/users:
     get:
       summary: List all users
@@ -492,6 +511,227 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/credits/{userId}:
+    get:
+      summary: Get user's current credit balance
+      operationId: getUserCredits
+      tags:
+        - Credits
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user to get credits for
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User's current credit balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCreditsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (user can only view own credits unless admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Add or deduct credits for a user (admin only)
+      operationId: adjustUserCredits
+      tags:
+        - Credits
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user to adjust credits for
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditAdjustmentRequest'
+      responses:
+        '200':
+          description: Credits adjusted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditTransactionResponse'
+        '400':
+          description: Bad Request (invalid amount or insufficient balance)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/credits/{userId}/history:
+    get:
+      summary: Get user's credit transaction history
+      operationId: getUserCreditHistory
+      tags:
+        - Credits
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user to get credit history for
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          required: false
+          description: Maximum number of transactions to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: false
+          description: Number of transactions to skip
+      responses:
+        '200':
+          description: User's credit transaction history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditHistoryResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (user can only view own history unless admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/credits:
+    get:
+      summary: Get all users' credit balances (admin only)
+      operationId: getAllUserCredits
+      tags:
+        - Credits
+        - Admin
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          required: false
+          description: Maximum number of users to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: false
+          description: Number of users to skip
+      responses:
+        '200':
+          description: List of all users' credit balances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllUserCreditsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     HealthResponse:
@@ -846,6 +1086,150 @@ components:
       required:
         - token
         - token_info
+
+    UserCreditsResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: ID of the user
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        username:
+            type: string
+            description: Username of the user
+            example: "testuser"
+        email:
+            type: string
+            format: email
+            description: Email of the user
+            example: "testuser@example.com"
+        balance:
+          type: integer
+          description: Current credit balance
+          example: 1500
+        last_updated:
+          type: string
+          format: date-time
+          description: When the balance was last updated
+          example: "2025-09-15T10:30:00Z"
+      required:
+        - user_id
+        - balance
+        - last_updated
+
+    CreditAdjustmentRequest:
+      type: object
+      properties:
+        amount:
+          type: integer
+          description: Amount to add (positive) or deduct (negative)
+          example: 100
+        description:
+          type: string
+          description: Description of the credit adjustment
+          maxLength: 255
+          example: "Admin adjustment - promotional credits"
+      required:
+        - amount
+        - description
+
+    CreditTransactionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Transaction ID
+          example: "456e7890-e12b-34c5-d678-901234567890"
+        user_id:
+          type: string
+          description: ID of the user
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        amount:
+          type: integer
+          description: Amount added (positive) or deducted (negative)
+          example: 100
+        balance_after:
+          type: integer
+          description: Balance after this transaction
+          example: 1600
+        description:
+          type: string
+          description: Description of the transaction
+          example: "Admin adjustment - promotional credits"
+        created_at:
+          type: string
+          format: date-time
+          description: When the transaction was created
+          example: "2025-09-15T10:30:00Z"
+      required:
+        - id
+        - user_id
+        - amount
+        - balance_after
+        - description
+        - created_at
+
+    CreditHistoryResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: ID of the user
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        current_balance:
+          type: integer
+          description: Current credit balance
+          example: 1500
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditTransactionResponse'
+          description: List of credit transactions
+        total_count:
+          type: integer
+          description: Total number of transactions (for pagination)
+          example: 25
+        limit:
+          type: integer
+          description: Maximum number of transactions returned
+          example: 50
+        offset:
+          type: integer
+          description: Number of transactions skipped
+          example: 0
+      required:
+        - user_id
+        - current_balance
+        - transactions
+        - total_count
+        - limit
+        - offset
+
+    AllUserCreditsResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserCreditsResponse'
+          description: List of users with their credit balances
+        total_count:
+          type: integer
+          description: Total number of users (for pagination)
+          example: 150
+        limit:
+          type: integer
+          description: Maximum number of users returned
+          example: 50
+        offset:
+          type: integer
+          description: Number of users skipped
+          example: 0
+      required:
+        - users
+        - total_count
+        - limit
+        - offset
 
   securitySchemes:
     cookieAuth:

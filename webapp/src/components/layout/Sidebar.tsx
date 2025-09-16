@@ -42,6 +42,7 @@ const Sidebar = ({
         { name: 'Create New', path: '/users/new' }
       ]
     },
+    { name: 'Credits', icon: '💰', path: '/credits' },
     { 
       name: 'Statistics', 
       icon: '📊', 
