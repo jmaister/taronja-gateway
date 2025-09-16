@@ -15,10 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test helper to create a test session store with memory repository
+// Test helper to create a test session store with database repository
 func createTestSessionStore() session.SessionStore {
-	memoryRepo := db.NewMemorySessionRepository()
-	return session.NewSessionStore(memoryRepo, 24*time.Hour)
+	// Initialize test database if not already done
+	db.SetupTestDB("TestSessionMiddleware")
+	sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+	return session.NewSessionStore(sessionRepo, 24*time.Hour)
 }
 
 // Mock TokenService for testing

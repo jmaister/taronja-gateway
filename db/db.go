@@ -53,16 +53,12 @@ func Init() {
 	conn = db
 }
 
-func InitForTest() {
-	// Don't re-initialize if already done
-	if conn != nil {
-		return
-	}
-
-	// Use modernc.org/sqlite driver for in-memory testing
-	// Configure SQLite for better concurrent access and performance
-	dsn := "file::memory:?cache=shared&" +
-		"_pragma=foreign_keys(1)&" +
+// SetupTestDB creates a new in-memory test database with all necessary tables
+func SetupTestDB(testName string) {
+	// Use a unique database name for each test to ensure isolation
+	// Remove cache=shared to ensure each test gets its own database
+	dbName := "file::memory:?_" + testName +
+		"&_pragma=foreign_keys(1)&" +
 		"_pragma=journal_mode(WAL)&" +
 		"_pragma=synchronous(NORMAL)&" +
 		"_pragma=cache_size(1000)&" +
@@ -71,12 +67,12 @@ func InitForTest() {
 
 	db, err := gorm.Open(sqlite.Dialector{
 		DriverName: "sqlite",
-		DSN:        dsn,
+		DSN:        dbName,
 	}, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+		Logger: logger.Default.LogMode(logger.Silent), // Suppress logging during tests
 	})
 	if err != nil {
-		panic("Failed to connect database: " + err.Error())
+		panic("Failed to connect to test database: " + err.Error())
 	}
 
 	// Configure connection pool
@@ -90,10 +86,16 @@ func InitForTest() {
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
-	// Migrate the schema
-	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{}, &Credit{})
-	if err2 != nil {
-		panic("Failed to migration DB: " + err2.Error())
+	// Migrate all schemas
+	err = db.AutoMigrate(
+		&User{},
+		&Session{},
+		&TrafficMetric{},
+		&Token{},
+		&Credit{},
+	)
+	if err != nil {
+		panic("Failed to migrate test database: " + err.Error())
 	}
 
 	conn = db
@@ -104,4 +106,15 @@ func GetConnection() *gorm.DB {
 		panic("Connection not initialized. Call db.Init() first.")
 	}
 	return conn
+}
+
+// ResetConnection forces a reset of the global connection
+// This is useful for testing to ensure a fresh database
+func ResetConnection() {
+	if conn != nil {
+		if sqlDB, err := conn.DB(); err == nil {
+			sqlDB.Close()
+		}
+	}
+	conn = nil
 }

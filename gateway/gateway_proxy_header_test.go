@@ -13,6 +13,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,9 +54,9 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 	// Setup a user and session
 	testUser := &db.User{ID: "user-123", Username: "testuser", Email: "test@example.com"}
 
-	// Create a memory session repository for testing
-	testSessionRepo := db.NewMemorySessionRepository() // Use in-memory repo for test
-	testSessionStore := session.NewSessionStore(testSessionRepo, 24*time.Hour)
+	// Create test dependencies using modern approach
+	d := deps.NewTestWithName("gateway_proxy_header_test")
+	testSessionStore := session.NewSessionStore(d.SessionRepo, 24*time.Hour)
 
 	// Create a new session
 	req := httptest.NewRequest("GET", "/", nil)
@@ -82,11 +83,14 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 	}
 
 	// Create a gateway with the test session store
-	gateway, err := NewGateway(gwConfig, nil)
+	deps, err := NewTestDependencies(gwConfig)
 	require.NoError(t, err)
 
-	// Replace the gateway's session store with our test session store
-	gateway.SessionStore = testSessionStore
+	// Replace the session store in dependencies with our test session store
+	deps.SessionStore = testSessionStore
+
+	gateway, err := NewGatewayWithDependencies(gwConfig, nil, deps)
+	require.NoError(t, err)
 
 	listener, err := net.Listen("tcp", gateway.Server.Addr)
 	require.NoError(t, err)

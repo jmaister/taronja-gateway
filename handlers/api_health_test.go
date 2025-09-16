@@ -6,26 +6,27 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestHealthCheck(t *testing.T) {
-	// Create a new StrictApiServer instance with all required dependencies
-	userRepo := db.NewMemoryUserRepository()
-	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
-	tokenRepo := db.NewTokenRepositoryMemory()
-	tokenService := auth.NewTokenService(tokenRepo, userRepo)
-	creditsRepo := db.NewMemoryCreditsRepository()
+	// Create test dependencies - uses test database instead of memory repositories
+	// Reset any existing DB connection to ensure clean state
+	db.ResetConnection()
+	testDeps := deps.NewTest()
 
-	// For tests, we can use a nil database connection since we're using memory repositories
-	startTime := time.Now()
-
-	s := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime)
+	// Create StrictApiServer using dependencies
+	s := NewStrictApiServer(
+		testDeps.SessionStore,
+		testDeps.UserRepo,
+		testDeps.TrafficMetricRepo,
+		testDeps.TokenRepo,
+		testDeps.CreditsRepo,
+		testDeps.TokenService,
+		testDeps.StartTime,
+	)
 
 	t.Run("SuccessfulHealthCheck", func(t *testing.T) {
 		// Setup: Create a health check request

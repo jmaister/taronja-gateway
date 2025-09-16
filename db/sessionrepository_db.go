@@ -12,11 +12,11 @@ type SessionStoreDB struct {
 	dbConn *gorm.DB
 }
 
-// NewSessionRepositoryDB creates a new SessionStoreDB.
-// It now returns SessionRepository directly.
-func NewSessionRepositoryDB() SessionRepository {
+// NewSessionRepositoryDB creates a new SessionStoreDB with a specific database connection.
+// This is useful for testing with isolated database instances.
+func NewSessionRepositoryDB(db *gorm.DB) SessionRepository {
 	return &SessionStoreDB{
-		dbConn: GetConnection(),
+		dbConn: db,
 	}
 }
 
@@ -54,7 +54,7 @@ func (s *SessionStoreDB) FindSessionByToken(token string) (*Session, error) {
 
 	// Check if the session has been closed
 	if sessionData.ClosedOn != nil && !sessionData.ClosedOn.IsZero() {
-		return nil, errors.New("session has been closed")
+		return nil, ErrSessionClosed
 	}
 
 	return &sessionData, nil

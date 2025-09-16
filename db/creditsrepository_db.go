@@ -24,7 +24,23 @@ type userCreditScan struct {
 
 // toUserCreditSummary converts userCreditScan to UserCreditSummary
 func (u *userCreditScan) toUserCreditSummary() (*UserCreditSummary, error) {
-	lastUpdated, err := time.Parse("2006-01-02 15:04:05.999999 -0700 MST", u.LastUpdated)
+	// Try parsing with RFC3339 first (SQLite default), then fallback to Go format
+	var lastUpdated time.Time
+	var err error
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999 -0700 MST",
+		"2006-01-02 15:04:05.999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		lastUpdated, err = time.Parse(layout, u.LastUpdated)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse LastUpdated for user %s: %w", u.UserID, err)
 	}

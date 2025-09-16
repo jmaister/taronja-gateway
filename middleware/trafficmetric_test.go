@@ -2,22 +2,35 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// setupTestTrafficRepo creates a test traffic metric repository with unique database isolation
+func setupTestTrafficRepo(t *testing.T) db.TrafficMetricRepository {
+	testName := fmt.Sprintf("trafficmetric_%s_%d", t.Name(), time.Now().UnixNano())
+	dependencies := deps.NewTestWithName(testName)
+	return dependencies.TrafficMetricRepo
+}
+
 func TestTrafficMetricMiddleware(t *testing.T) {
 	t.Run("records successful request metrics", func(t *testing.T) {
-		// Create memory repository for testing
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		// Generate a unique test name to ensure database isolation
+		testName := fmt.Sprintf("trafficmetric_test_%d", time.Now().UnixNano())
+
+		// Use the modern dependency injection approach with isolated database
+		dependencies := deps.NewTestWithName(testName)
+
+		middleware := TrafficMetricMiddleware(dependencies.TrafficMetricRepo)
 
 		// Create a simple handler
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +58,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		assert.Equal(t, "Success response", w.Body.String())
 
 		// Verify metrics were recorded
-		stats, err := statsRepo.FindByPath("/api/test", 10)
+		stats, err := dependencies.TrafficMetricRepo.FindByPath("/api/test", 10)
 		require.NoError(t, err)
 		require.Len(t, stats, 1)
 
@@ -68,7 +81,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records error request metrics", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a handler that returns an error
@@ -110,7 +123,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records session information when available", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create handler
@@ -147,7 +160,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("handles long error messages by truncating", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a handler that returns a very long error message
@@ -182,7 +195,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("measures response time accurately", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		// Create a handler that sleeps to create measurable response time
@@ -215,7 +228,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("handles nil session gracefully", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +260,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records mobile device information correctly", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +300,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 	})
 
 	t.Run("records Android device information correctly", func(t *testing.T) {
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		statsRepo := setupTestTrafficRepo(t)
 		middleware := TrafficMetricMiddleware(statsRepo)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

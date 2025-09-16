@@ -21,11 +21,14 @@ var testBackendServerURL string
 
 // NewTestGateway creates a gateway instance for testing with silent database logging
 func NewTestGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
-	// Initialize the database connection for tests (with silent logging)
-	db.InitForTest()
+	// Create test dependencies
+	deps, err := NewTestDependencies(config)
+	if err != nil {
+		return nil, err
+	}
 
-	// Use the normal gateway creation process
-	return NewGateway(config, webappEmbedFS)
+	// Use the new gateway creation process with dependencies
+	return NewGatewayWithDependencies(config, webappEmbedFS, deps)
 }
 
 // createTestSession creates a test session for authenticated benchmarks
@@ -41,7 +44,7 @@ func createTestSession(gw *Gateway) *db.Session {
 	}
 
 	// Create a new session repository directly
-	sessionRepo := db.NewSessionRepositoryDB()
+	sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 	err := sessionRepo.CreateSession(session.Token, session)
 	if err != nil {
 		panic("Failed to create test session: " + err.Error())

@@ -59,7 +59,6 @@ func StrictSessionMiddleware(store session.SessionStore, tokenService session.To
 
 			// If auth is not required, proceed to the next handler
 			if !authIsRequired {
-				log.Printf("SessionStrictMiddleware: Authentication not required for operation '%s' (path: %s). Proceeding without authentication.", operationID, r.URL.Path)
 				return f(ctx, w, r, requestObject)
 			}
 

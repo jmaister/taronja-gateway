@@ -144,11 +144,15 @@ func TestPerformanceMetrics(t *testing.T) {
 }
 
 // NewGatewayWithPerformanceConfig creates a gateway with performance optimizations
-// This is a placeholder - in the real implementation, you'd modify the actual NewGateway function
+// This is a placeholder - in the real implementation, you'd modify the actual NewGatewayWithDependencies function
 func NewGatewayWithPerformanceConfig(config *config.GatewayConfig, webappEmbedFS interface{}, perfConfig *middleware.PerformanceConfig) (*Gateway, error) {
-	// For now, just return a regular gateway
+	// For now, just return a regular gateway with test dependencies
 	// In the real implementation, this would use the optimized middleware chain
-	return NewGateway(config, &static.StaticAssetsFS)
+	deps, err := NewTestDependencies(config)
+	if err != nil {
+		return nil, err
+	}
+	return NewGatewayWithDependencies(config, &static.StaticAssetsFS, deps)
 }
 
 // TestStaticAssetDetection tests the static asset detection logic

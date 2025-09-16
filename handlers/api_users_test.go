@@ -2,36 +2,41 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func setupTestServer() *StrictApiServer {
-	userRepo := db.NewMemoryUserRepository()
-	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
-	tokenRepo := db.NewTokenRepositoryMemory()
-	creditsRepo := db.NewMemoryCreditsRepository()
-	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+	// Generate a unique test name to ensure database isolation
+	testName := fmt.Sprintf("test_%d", time.Now().UnixNano())
 
-	// For tests, we can use a nil database connection since we're using memory repositories
-	startTime := time.Now()
+	// Use the modern dependency injection approach with isolated database
+	dependencies := deps.NewTestWithName(testName)
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime)
+	return NewStrictApiServer(
+		dependencies.SessionStore,
+		dependencies.UserRepo,
+		dependencies.TrafficMetricRepo,
+		dependencies.TokenRepo,
+		dependencies.CreditsRepo,
+		dependencies.TokenService,
+		dependencies.StartTime,
+	)
 }
 
 func TestCreateUser(t *testing.T) {
 	s := setupTestServer()
+	defer db.ResetConnection()
+
 	ctx := context.Background()
 
 	t.Run("Success", func(t *testing.T) {
@@ -171,6 +176,8 @@ func TestCreateUser(t *testing.T) {
 
 func TestListUsers(t *testing.T) {
 	s := setupTestServer()
+	defer db.ResetConnection()
+
 	ctx := context.Background()
 
 	t.Run("NoUsers", func(t *testing.T) {
@@ -204,6 +211,8 @@ func TestListUsers(t *testing.T) {
 
 func TestGetUserById(t *testing.T) {
 	s := setupTestServer()
+	defer db.ResetConnection()
+
 	ctx := context.Background()
 
 	// Create a user to be fetched

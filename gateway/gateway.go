@@ -19,6 +19,7 @@ import (
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/providers"
@@ -28,36 +29,19 @@ import (
 
 // --- Gateway Struct ---
 type Gateway struct {
-	Server            *http.Server
-	GatewayConfig     *config.GatewayConfig
-	Mux               *http.ServeMux
-	SessionStore      session.SessionStore
-	UserRepository    db.UserRepository
-	TrafficMetricRepo db.TrafficMetricRepository
-	TokenRepository   db.TokenRepository
-	CreditsRepository db.CreditsRepository
-	TokenService      *auth.TokenService
-	templates         map[string]*template.Template
-	WebappEmbedFS     *embed.FS
-	StartTime         time.Time
-	// Middleware instances
-	AuthMiddleware      *middleware.AuthMiddleware
-	HttpCacheMiddleware *middleware.HttpCacheMiddleware
-	RouteChainBuilder   *middleware.RouteChainBuilder
+	Server        *http.Server
+	GatewayConfig *config.GatewayConfig
+	Mux           *http.ServeMux
+	Dependencies  *GatewayDependencies
+	templates     map[string]*template.Template
+	WebappEmbedFS *embed.FS
+	StartTime     time.Time
 }
 
-// --- NewGateway Function ---
+// --- NewGatewayWithDependencies Function ---
 
-func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
-	// Initialize the database connection
-	db.Init()
-
-	// Initialize repositories and services
-	deps, err := initializeDependencies(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize dependencies: %w", err)
-	}
-
+// NewGatewayWithDependencies creates a new gateway instance with pre-initialized dependencies
+func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *embed.FS, deps *GatewayDependencies) (*Gateway, error) {
 	// Validate middleware dependencies
 	if err := middleware.ValidateAllMiddleware(deps.MiddlewareDeps); err != nil {
 		return nil, fmt.Errorf("middleware validation failed: %w", err)
@@ -80,21 +64,13 @@ func NewGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway
 
 	// Create gateway instance
 	gateway := &Gateway{
-		Server:              server,
-		GatewayConfig:       config,
-		Mux:                 mux,
-		SessionStore:        deps.SessionStore,
-		UserRepository:      deps.UserRepository,
-		TrafficMetricRepo:   deps.TrafficMetricRepo,
-		TokenRepository:     deps.TokenRepository,
-		CreditsRepository:   deps.CreditsRepository,
-		TokenService:        deps.TokenService,
-		templates:           templates,
-		WebappEmbedFS:       webappEmbedFS,
-		StartTime:           time.Now(),
-		AuthMiddleware:      deps.AuthMiddleware,
-		HttpCacheMiddleware: deps.HttpCacheMiddleware,
-		RouteChainBuilder:   deps.RouteChainBuilder,
+		GatewayConfig: config,
+		Server:        server,
+		Mux:           mux,
+		Dependencies:  deps,
+		templates:     templates,
+		WebappEmbedFS: webappEmbedFS,
+		StartTime:     time.Now(),
 	}
 
 	// Configure routes
@@ -124,10 +100,10 @@ type GatewayDependencies struct {
 	MiddlewareDeps      *middleware.Dependencies
 }
 
-// initializeDependencies creates all repositories, services, and middleware instances
-func initializeDependencies(config *config.GatewayConfig) (*GatewayDependencies, error) {
+// NewProductionDependencies creates dependencies for production use
+func NewProductionDependencies(config *config.GatewayConfig) (*GatewayDependencies, error) {
 	// Initialize repositories
-	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB(), 24*time.Hour)
+	sessionStore := session.NewSessionStore(db.NewSessionRepositoryDB(db.GetConnection()), 24*time.Hour)
 	userRepository := db.NewDBUserRepository(db.GetConnection())
 	trafficMetricRepo := db.NewTrafficMetricRepository(db.GetConnection())
 	tokenRepository := db.NewTokenRepositoryDB(db.GetConnection())
@@ -157,6 +133,46 @@ func initializeDependencies(config *config.GatewayConfig) (*GatewayDependencies,
 		TrafficMetricRepo:   trafficMetricRepo,
 		TokenRepository:     tokenRepository,
 		CreditsRepository:   creditsRepository,
+		TokenService:        tokenService,
+		AuthMiddleware:      authMiddleware,
+		HttpCacheMiddleware: cacheMiddleware,
+		RouteChainBuilder:   routeChainBuilder,
+		MiddlewareDeps:      middlewareDeps,
+	}, nil
+}
+
+// NewTestDependencies creates dependencies for testing (using in-memory database)
+func NewTestDependencies(config *config.GatewayConfig) (*GatewayDependencies, error) {
+	// Create unique test database for this test
+	d := deps.NewTestWithName("gateway-test-" + time.Now().Format("20060102-150405.000000"))
+
+	// Use modern deps approach but create gateway-specific structure
+	sessionStore := session.NewSessionStore(d.SessionRepo, 24*time.Hour)
+
+	// Initialize services
+	tokenService := auth.NewTokenService(d.TokenRepo, d.UserRepo)
+
+	// Initialize middleware instances
+	authMiddleware := middleware.NewAuthMiddleware(sessionStore, tokenService, config.Management.Prefix)
+	cacheMiddleware := middleware.NewHttpCacheMiddleware()
+	routeChainBuilder := middleware.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
+
+	// Create middleware dependencies for validation
+	middlewareDeps := &middleware.Dependencies{
+		SessionStore:      sessionStore,
+		TokenService:      tokenService,
+		UserRepository:    d.UserRepo,
+		TrafficMetricRepo: d.TrafficMetricRepo,
+		TokenRepository:   d.TokenRepo,
+		GatewayConfig:     config,
+	}
+
+	return &GatewayDependencies{
+		SessionStore:        sessionStore,
+		UserRepository:      d.UserRepo,
+		TrafficMetricRepo:   d.TrafficMetricRepo,
+		TokenRepository:     d.TokenRepo,
+		CreditsRepository:   d.CreditsRepo,
 		TokenService:        tokenService,
 		AuthMiddleware:      authMiddleware,
 		HttpCacheMiddleware: cacheMiddleware,
@@ -344,7 +360,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.SessionStore, g.TokenService, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -354,17 +370,17 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	// --- Register OpenAPI Routes ---
 	// Use the new StrictApiServer
 	strictApiServer := handlers.NewStrictApiServer(
-		g.SessionStore,
-		g.UserRepository,
-		g.TrafficMetricRepo,
-		g.TokenRepository,
-		g.CreditsRepository,
-		g.TokenService,
+		g.Dependencies.SessionStore,
+		g.Dependencies.UserRepository,
+		g.Dependencies.TrafficMetricRepo,
+		g.Dependencies.TokenRepository,
+		g.Dependencies.CreditsRepository,
+		g.Dependencies.TokenService,
 		g.StartTime,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.SessionStore, g.TokenService, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -427,7 +443,7 @@ func (g *Gateway) registerLoginRoutes() {
 	// Register all providers - basic, OAuth, etc.
 	if g.GatewayConfig.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.SessionStore, g.GatewayConfig, g.UserRepository)
+		providers.RegisterProviders(g.Mux, g.Dependencies.SessionStore, g.GatewayConfig, g.Dependencies.UserRepository)
 	}
 
 	// Login page handler
@@ -484,7 +500,7 @@ func (g *Gateway) configureUserRoutes() error {
 		}
 
 		// Wrap with cache control for all routes
-		handler = g.RouteChainBuilder.BuildRouteChain(handler, routeConfig)
+		handler = g.Dependencies.RouteChainBuilder.BuildRouteChain(handler, routeConfig)
 
 		// Register the final handler for routeConfig.From
 		// To match /api with /api/hello and /api/foo, the pattern must be "/api/"
@@ -635,7 +651,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				if err == nil && cookie != nil {
 
 					// Try direct lookup in memory repository for test scenarios
-					if memStore, ok := g.SessionStore.(*session.SessionStoreDB); ok {
+					if memStore, ok := g.Dependencies.SessionStore.(*session.SessionStoreDB); ok {
 						session, err := memStore.Repo.FindSessionByToken(cookie.Value)
 						if err == nil && session != nil {
 							sessionObject = session
@@ -643,12 +659,12 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 							log.Printf("[auth] Session not found in repository: %v", err)
 						}
 					} else {
-						log.Printf("[auth] SessionStore is not a SessionStoreDB, type: %T", g.SessionStore)
+						log.Printf("[auth] SessionStore is not a SessionStoreDB, type: %T", g.Dependencies.SessionStore)
 					}
 
 					// If still not found, try normal validation
 					if sessionObject == nil {
-						validSession, exists := g.SessionStore.ValidateSession(r)
+						validSession, exists := g.Dependencies.SessionStore.ValidateSession(r)
 						if exists && validSession != nil {
 							sessionObject = validSession
 						}

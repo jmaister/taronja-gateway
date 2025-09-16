@@ -12,7 +12,13 @@ import (
 // BenchmarkStaticRequestNoAnalytics benchmarks static requests without analytics middleware
 func BenchmarkStaticRequestNoAnalytics(b *testing.B) {
 	cfg := createTestConfigNoAnalytics()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+
+	deps, err := NewTestDependencies(cfg)
+	if err != nil {
+		b.Fatalf("Failed to create test dependencies: %v", err)
+	}
+
+	gw, err := NewGatewayWithDependencies(cfg, &static.StaticAssetsFS, deps)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
