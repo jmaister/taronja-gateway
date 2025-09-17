@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -24,7 +25,9 @@ func TestGatewayLogout(t *testing.T) {
 	}
 
 	// Create a gateway instance.
-	gw, err := NewGateway(cfg, nil)
+	deps := deps.NewTest()
+
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -34,7 +37,7 @@ func TestGatewayLogout(t *testing.T) {
 
 	// Create a test session using SessionStore's NewSession
 	// NewSession handles token generation and creation in the repository.
-	sessionData, err := gw.SessionStore.NewSession(nil, testUser, "test-provider", time.Hour)
+	sessionData, err := gw.Dependencies.SessionStore.NewSession(nil, testUser, "test-provider", time.Hour)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -67,7 +70,7 @@ func TestGatewayLogout(t *testing.T) {
 	// Access Repo via type assertion on SessionStore if it's SessionStoreDB
 	var retrievedSession *db.Session
 	var errGet error
-	if storeDB, ok := gw.SessionStore.(*session.SessionStoreDB); ok {
+	if storeDB, ok := gw.Dependencies.SessionStore.(*session.SessionStoreDB); ok {
 		retrievedSession, errGet = storeDB.Repo.FindSessionByToken(sessionKey)
 	} else {
 		t.Fatalf("SessionStore is not of type *session.SessionStoreDB, cannot access Repo")
@@ -110,7 +113,9 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 		},
 	}
 
-	gw, err := NewGateway(cfg, nil)
+	deps := deps.NewTest()
+
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -154,7 +159,9 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 		},
 	}
 
-	gw, err := NewGateway(cfg, nil)
+	deps := deps.NewTest()
+
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -175,7 +182,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 		// Removed CreatedAt and UpdatedAt as they are not in db.Session based on previous errors
 	}
 	// Access Repo via type assertion on SessionStore if it's SessionStoreDB
-	if storeDB, ok := gw.SessionStore.(*session.SessionStoreDB); ok {
+	if storeDB, ok := gw.Dependencies.SessionStore.(*session.SessionStoreDB); ok {
 		err = storeDB.Repo.CreateSession(sessionKey, &sessionObject)
 	} else {
 		t.Fatalf("SessionStore is not of type *session.SessionStoreDB, cannot access Repo")
@@ -211,7 +218,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	// Access Repo via type assertion on SessionStore if it's SessionStoreDB
 	var retrievedSession *db.Session
 	var errGet error
-	if storeDB, ok := gw.SessionStore.(*session.SessionStoreDB); ok {
+	if storeDB, ok := gw.Dependencies.SessionStore.(*session.SessionStoreDB); ok {
 		retrievedSession, errGet = storeDB.Repo.FindSessionByToken(sessionKey)
 	} else {
 		t.Fatalf("SessionStore is not of type *session.SessionStoreDB, cannot access Repo")

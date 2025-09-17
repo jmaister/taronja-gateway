@@ -14,21 +14,26 @@ import (
 )
 
 func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
-	userRepo := db.NewMemoryUserRepository()
-	sessionRepo := db.NewMemorySessionRepository()
+	db.SetupTestDB("setupLogoutTestServer")
+	testDB := db.GetConnection()
+
+	// Create database repositories for testing
+	userRepo := db.NewDBUserRepository(testDB)
+	sessionRepo := db.NewSessionRepositoryDB(testDB)
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
-	tokenRepo := db.NewTokenRepositoryMemory()
-	creditsRepo := db.NewMemoryCreditsRepository()
+	trafficMetricRepo := db.NewTrafficMetricRepository(testDB)
+	tokenRepo := db.NewTokenRepositoryDB(testDB)
+	creditsRepo := db.NewDBCreditsRepository(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	// For tests, we can use a nil database connection since we're using memory repositories
 	startTime := time.Now()
 
 	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {
+	defer db.ResetConnection()
+
 	t.Run("LogoutWithValidSession", func(t *testing.T) {
 		s, sessionRepo := setupLogoutTestServer()
 		ctx := context.Background()

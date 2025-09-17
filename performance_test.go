@@ -10,14 +10,22 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/static"
 )
+
+// createTestGateway creates a gateway instance for performance testing
+func createTestGateway(cfg *config.GatewayConfig) (*gateway.Gateway, error) {
+	deps := deps.NewTest()
+
+	return gateway.NewGatewayWithDependencies(cfg, &static.StaticAssetsFS, deps)
+}
 
 // BenchmarkAPIRequest benchmarks the handling of API requests
 func BenchmarkAPIRequest(b *testing.B) {
 	// Set up test gateway with full middleware chain
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -41,7 +49,7 @@ func BenchmarkAPIRequest(b *testing.B) {
 // BenchmarkStaticRequest benchmarks the handling of static file requests
 func BenchmarkStaticRequest(b *testing.B) {
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -66,7 +74,7 @@ func BenchmarkStaticRequest(b *testing.B) {
 // BenchmarkAuthenticatedRequest benchmarks authenticated API requests
 func BenchmarkAuthenticatedRequest(b *testing.B) {
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -96,7 +104,7 @@ func BenchmarkAuthenticatedRequest(b *testing.B) {
 // BenchmarkMiddlewareChain benchmarks just the middleware chain without the final handler
 func BenchmarkMiddlewareChain(b *testing.B) {
 	cfg := createTestConfig()
-	_, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	_, err := createTestGateway(cfg)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -148,7 +156,7 @@ func ProfileAPIRequest(b *testing.B) {
 	}
 
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -175,7 +183,7 @@ func ProfileAPIRequest(b *testing.B) {
 // MemoryUsageTest measures memory usage during request processing
 func TestMemoryUsage(t *testing.T) {
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -210,7 +218,7 @@ func TestMemoryUsage(t *testing.T) {
 // ConcurrentRequestTest tests performance under concurrent load
 func TestConcurrentRequests(t *testing.T) {
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -262,7 +270,7 @@ func TestConcurrentRequests(t *testing.T) {
 // RequestLatencyTest measures detailed request latency
 func TestRequestLatency(t *testing.T) {
 	cfg := createTestConfig()
-	gw, err := gateway.NewGateway(cfg, &static.StaticAssetsFS)
+	gw, err := createTestGateway(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}

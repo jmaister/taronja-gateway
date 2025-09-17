@@ -11,6 +11,7 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -19,7 +20,7 @@ import (
 //go:embed webapp/dist
 var webappEmbedFS embed.FS
 
-// Version information - will be injected during build by GoReleaser
+// Version information (injected by GoReleaser)
 var (
 	version   = "Dev"
 	commit    = "none"
@@ -41,13 +42,9 @@ var runCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		configFilePath, err := cmd.Flags().GetString("config")
 		if err != nil {
-			// This error should ideally not happen if MarkFlagRequired works,
-			// but good to keep for unexpected issues.
-			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
 			os.Exit(1)
 		}
-		// No longer need to check if configFilePath is empty here,
-		// MarkFlagRequired handles it.
 		runGateway(configFilePath)
 	},
 }
@@ -56,7 +53,7 @@ var addUserCmd = &cobra.Command{
 	Use:   "adduser [username] [email] [password]",
 	Short: "Create a new user in the DB",
 	Long:  `Creates a new user in the database.`,
-	Args:  cobra.ExactArgs(3), // Expects exactly three arguments
+	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
 		username := args[0]
 		email := args[1]
@@ -78,7 +75,6 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
-	// Add flag for config file to runCmd
 	runCmd.Flags().String("config", "", "Path to the configuration file")
 	if err := runCmd.MarkFlagRequired("config"); err != nil {
 		log.Fatalf("Failed to mark 'config' flag as required for runCmd: %v", err)
@@ -87,10 +83,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(addUserCmd)
 	rootCmd.AddCommand(versionCmd)
-	// Future commands can be added here using rootCmd.AddCommand()
 }
-
-// --- Main Function ---
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -105,26 +98,25 @@ func runGateway(configFilePath string) {
 		log.Fatal(err)
 	}
 
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile) // Include file/line number
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Printf("Starting Taronja Gateway v%s...", version)
 
-	// 1. Load Configuration
 	config, err := config.LoadConfig(configFilePath)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}
 	log.Printf("Configuration loaded successfully: %s", config.Name)
 
-	// 1.5. Set geolocation configuration
 	session.SetGeolocationConfig(&config.Geolocation)
 
-	// 2. Create Gateway Instance
-	gateway, err := gateway.NewGateway(config, &webappEmbedFS)
+	// Initialize dependencies for production
+	gatewayDeps := deps.NewProduction()
+
+	gateway, err := gateway.NewGatewayWithDependencies(config, &webappEmbedFS, gatewayDeps)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}
 
-	// 3. Start the HTTP Server
 	log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
 	log.Printf("Gateway public URL set to: %s", config.Server.URL)
 	log.Printf("Management API prefix: %s", config.Management.Prefix)
@@ -138,31 +130,22 @@ func runGateway(configFilePath string) {
 }
 
 func addUser(username, email, password string) {
-	// 0. Load .env file
+	// Load .env file
 	err := godotenv.Load()
 	if err != nil {
 		log.Printf("Warning: Failed to load .env file: %v", err)
 	}
 
-	// 2. Initialize DB connection
-	db.Init()
+	appDependencies := deps.NewProduction()
 
-	// 3. Get DB connection
-	gormDB := db.GetConnection()
-
-	// 4. Initialize user repository
-	userRepo := db.NewDBUserRepository(gormDB) // Corrected: NewDBUserRepository returns 1 value
-
-	// 6. Creating the new user object
 	newUser := &db.User{
 		Username:       username,
 		Email:          email,
-		Password:       password, // Pass the plain password, GORM hook will hash it
-		EmailConfirmed: false,    // Default new users to not confirmed
+		Password:       password,
+		EmailConfirmed: false,
 	}
 
-	// 7. Inserting the new user
-	err = userRepo.CreateUser(newUser)
+	err = appDependencies.UserRepo.CreateUser(newUser)
 	if err != nil {
 		log.Fatalf("Failed to create user: %v", err)
 	}

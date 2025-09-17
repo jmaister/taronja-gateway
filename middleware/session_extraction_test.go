@@ -14,8 +14,13 @@ import (
 
 func TestSessionExtractionMiddleware(t *testing.T) {
 	t.Run("extracts session from cookie and adds to context", func(t *testing.T) {
+		// Initialize test database and reset after test
+		db.ResetConnection()
+		db.SetupTestDB("TestSessionExtractionMiddleware_Cookie")
+		defer db.ResetConnection()
+
 		// Set up repositories and services
-		sessionRepo := db.NewMemorySessionRepository()
+		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
@@ -72,8 +77,13 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 	})
 
 	t.Run("continues without session when no valid session found", func(t *testing.T) {
+		// Initialize test database and reset after test
+		db.ResetConnection()
+		db.SetupTestDB("TestSessionExtractionMiddleware_NoSession")
+		defer db.ResetConnection()
+
 		// Set up repositories and services
-		sessionRepo := db.NewMemorySessionRepository()
+		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
@@ -105,8 +115,13 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 	})
 
 	t.Run("extracts session from bearer token and adds to context", func(t *testing.T) {
+		// Initialize test database and reset after test
+		db.ResetConnection()
+		db.SetupTestDB("TestSessionExtractionMiddleware_BearerToken")
+		defer db.ResetConnection()
+
 		// Set up repositories and services
-		sessionRepo := db.NewMemorySessionRepository()
+		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 

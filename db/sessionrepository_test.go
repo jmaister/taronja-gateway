@@ -11,11 +11,11 @@ import (
 )
 
 func TestSessionStoreDB(t *testing.T) {
-	// Initialize the test DB
-	db.InitForTest()
+	// Setup isolated test database
+	db.SetupTestDB("TestSessionStoreDB")
 
-	// Create a new SessionStoreDB
-	store := db.NewSessionRepositoryDB()
+	// Create a new SessionStoreDB with the test database
+	store := db.NewSessionRepositoryDB(db.GetConnection())
 
 	// Generate a session token
 	token, err := session.GenerateToken() // Changed to session.GenerateToken()
@@ -68,11 +68,11 @@ func TestSessionStoreDB(t *testing.T) {
 }
 
 func TestSessionStoreDBValidateSession(t *testing.T) {
-	// Initialize the test DB
-	db.InitForTest()
+	// Setup isolated test database
+	db.SetupTestDB("TestSessionStoreDBValidateSession")
 
-	// Create a new SessionStoreDB
-	repo := db.NewSessionRepositoryDB()
+	// Create a new SessionStoreDB with the test database
+	repo := db.NewSessionRepositoryDB(db.GetConnection())
 	sessionStore := session.NewSessionStore(repo, 24*time.Hour) // Create SessionStore to use ValidateSession
 
 	// Generate a session token for a valid session
@@ -173,11 +173,11 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 }
 
 func TestSessionStoreDBCloseSession(t *testing.T) {
-	// Initialize the test DB
-	db.InitForTest()
+	// Setup isolated test database
+	db.SetupTestDB("TestSessionStoreDBCloseSession")
 
-	// Create a new SessionStoreDB
-	repo := db.NewSessionRepositoryDB()
+	// Create a new SessionStoreDB with the test database
+	repo := db.NewSessionRepositoryDB(db.GetConnection())
 
 	// Generate a session token
 	token, err := session.GenerateToken() // Changed to session.GenerateToken()

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/static"
 )
@@ -144,11 +145,13 @@ func TestPerformanceMetrics(t *testing.T) {
 }
 
 // NewGatewayWithPerformanceConfig creates a gateway with performance optimizations
-// This is a placeholder - in the real implementation, you'd modify the actual NewGateway function
+// This is a placeholder - in the real implementation, you'd modify the actual NewGatewayWithDependencies function
 func NewGatewayWithPerformanceConfig(config *config.GatewayConfig, webappEmbedFS interface{}, perfConfig *middleware.PerformanceConfig) (*Gateway, error) {
-	// For now, just return a regular gateway
+	// For now, just return a regular gateway with test dependencies
 	// In the real implementation, this would use the optimized middleware chain
-	return NewGateway(config, &static.StaticAssetsFS)
+	deps := deps.NewTest()
+
+	return NewGatewayWithDependencies(config, &static.StaticAssetsFS, deps)
 }
 
 // TestStaticAssetDetection tests the static asset detection logic
