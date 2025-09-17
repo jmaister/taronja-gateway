@@ -14,6 +14,12 @@ jobs:
   generate-and-push-clients:
     runs-on: ubuntu-latest
     steps:
+      - name: Ensure temp and repo folders exist
+        run: |
+          mkdir -p ./clients-temp/typescript
+          mkdir -p ./clients-temp/go
+          mkdir -p ./clients-repo/typescript
+          mkdir -p ./clients-repo/go
       - name: Checkout main repository
         uses: actions/checkout@v4
       
