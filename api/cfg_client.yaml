@@ -3,7 +3,6 @@ package: client
 output: ./clients-temp/go/apiclient.gen.go
 generate:
   models: true
-  std-http-server: true
   client: true
 
 
