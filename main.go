@@ -109,16 +109,8 @@ func runGateway(configFilePath string) {
 
 	session.SetGeolocationConfig(&config.Geolocation)
 
-	_ = deps.NewProduction()
-
-	// Initialize the database connection for production
-	db.Init()
-
 	// Initialize dependencies for production
-	gatewayDeps, err := gateway.NewProductionDependencies(config)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to initialize dependencies: %v", err)
-	}
+	gatewayDeps := deps.NewProduction()
 
 	gateway, err := gateway.NewGatewayWithDependencies(config, &webappEmbedFS, gatewayDeps)
 	if err != nil {

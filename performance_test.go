@@ -10,15 +10,14 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
 // createTestGateway creates a gateway instance for performance testing
 func createTestGateway(cfg *config.GatewayConfig) (*gateway.Gateway, error) {
-	deps, err := gateway.NewTestDependencies(cfg)
-	if err != nil {
-		return nil, err
-	}
+	deps := deps.NewTest()
+
 	return gateway.NewGatewayWithDependencies(cfg, &static.StaticAssetsFS, deps)
 }
 

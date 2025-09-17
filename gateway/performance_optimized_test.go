@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/static"
 )
@@ -148,10 +149,8 @@ func TestPerformanceMetrics(t *testing.T) {
 func NewGatewayWithPerformanceConfig(config *config.GatewayConfig, webappEmbedFS interface{}, perfConfig *middleware.PerformanceConfig) (*Gateway, error) {
 	// For now, just return a regular gateway with test dependencies
 	// In the real implementation, this would use the optimized middleware chain
-	deps, err := NewTestDependencies(config)
-	if err != nil {
-		return nil, err
-	}
+	deps := deps.NewTest()
+
 	return NewGatewayWithDependencies(config, &static.StaticAssetsFS, deps)
 }
 

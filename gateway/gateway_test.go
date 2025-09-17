@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,17 +57,13 @@ func TestNewGateway(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test dependencies
-			deps, depsErr := NewTestDependencies(tt.config)
-			if depsErr != nil && !tt.wantErr {
-				t.Fatalf("Failed to create test dependencies: %v", depsErr)
-			}
+			deps := deps.NewTest()
 
 			var got *Gateway
 			var err error
-			if depsErr == nil {
-				got, err = NewGatewayWithDependencies(tt.config, nil, deps)
-			} else {
-				err = depsErr
+			got, err = NewGatewayWithDependencies(tt.config, nil, deps)
+			if err != nil {
+				t.Error("NewGatewayWithDependencies() error = nil, wantErr true")
 			}
 
 			if tt.wantErr {
@@ -106,7 +103,7 @@ func TestNewGateway(t *testing.T) {
 			if got.Dependencies != nil && got.Dependencies.SessionStore == nil {
 				t.Error("NewGatewayWithDependencies() gateway.dependencies.sessionStore is nil")
 			}
-			if got.Dependencies != nil && got.Dependencies.UserRepository == nil {
+			if got.Dependencies != nil && got.Dependencies.UserRepo == nil {
 				t.Error("NewGatewayWithDependencies() gateway.dependencies.userRepository is nil")
 			}
 
@@ -282,8 +279,7 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			}
 
 			// Create a new gateway
-			deps, err := NewTestDependencies(gatewayConfig)
-			require.NoError(t, err, "Failed to create test dependencies")
+			deps := deps.NewTest()
 
 			gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, deps)
 			require.NoError(t, err, "Failed to create gateway")
@@ -448,15 +444,11 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 			}
 
 			// Create a new gateway
-			deps, depsErr := NewTestDependencies(gatewayConfig)
+			deps := deps.NewTest()
 			var gateway *Gateway
 			var err error
 
-			if depsErr != nil {
-				err = depsErr
-			} else {
-				gateway, err = NewGatewayWithDependencies(gatewayConfig, nil, deps)
-			}
+			gateway, err = NewGatewayWithDependencies(gatewayConfig, nil, deps)
 
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
@@ -519,8 +511,7 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 	}
 
 	// Create a new gateway
-	deps, err := NewTestDependencies(gatewayConfig)
-	require.NoError(t, err, "Failed to create test dependencies")
+	deps := deps.NewTest()
 
 	gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, deps)
 	require.NoError(t, err, "Failed to create gateway")
@@ -635,10 +626,7 @@ func TestHelloEndpoint(t *testing.T) {
 	}
 
 	// Create a new gateway
-	deps, err := NewTestDependencies(config)
-	if err != nil {
-		t.Fatalf("Failed to create test dependencies: %v", err)
-	}
+	deps := deps.NewTest()
 
 	gateway, err := NewGatewayWithDependencies(config, nil, deps)
 	if err != nil {
@@ -870,9 +858,7 @@ window.onload = function() {
 			}
 
 			// Create gateway
-			deps, err := NewTestDependencies(gatewayConfig)
-			require.NoError(t, err, "Failed to create test dependencies")
-
+			deps := deps.NewTest()
 			gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, deps)
 			require.NoError(t, err, "Failed to create gateway")
 

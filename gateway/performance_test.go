@@ -14,6 +14,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
@@ -22,10 +23,7 @@ var testBackendServerURL string
 // NewTestGateway creates a gateway instance for testing with silent database logging
 func NewTestGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
 	// Create test dependencies
-	deps, err := NewTestDependencies(config)
-	if err != nil {
-		return nil, err
-	}
+	deps := deps.NewTest()
 
 	// Use the new gateway creation process with dependencies
 	return NewGatewayWithDependencies(config, webappEmbedFS, deps)

@@ -83,8 +83,7 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 	}
 
 	// Create a gateway with the test session store
-	deps, err := NewTestDependencies(gwConfig)
-	require.NoError(t, err)
+	deps := deps.NewTest()
 
 	// Replace the session store in dependencies with our test session store
 	deps.SessionStore = testSessionStore

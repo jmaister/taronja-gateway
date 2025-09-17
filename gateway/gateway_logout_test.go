@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -24,10 +25,7 @@ func TestGatewayLogout(t *testing.T) {
 	}
 
 	// Create a gateway instance.
-	deps, err := NewTestDependencies(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create test dependencies: %v", err)
-	}
+	deps := deps.NewTest()
 
 	gw, err := NewGatewayWithDependencies(cfg, nil, deps)
 	if err != nil {
@@ -115,10 +113,7 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 		},
 	}
 
-	deps, err := NewTestDependencies(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create test dependencies: %v", err)
-	}
+	deps := deps.NewTest()
 
 	gw, err := NewGatewayWithDependencies(cfg, nil, deps)
 	if err != nil {
@@ -164,10 +159,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 		},
 	}
 
-	deps, err := NewTestDependencies(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create test dependencies: %v", err)
-	}
+	deps := deps.NewTest()
 
 	gw, err := NewGatewayWithDependencies(cfg, nil, deps)
 	if err != nil {
