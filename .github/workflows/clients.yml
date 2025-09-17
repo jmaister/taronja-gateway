@@ -19,6 +19,8 @@ jobs:
   generate-and-push-clients:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
       - name: Ensure temp and repo folders exist
         run: |
           mkdir -p ./clients-temp/typescript/
@@ -27,8 +29,6 @@ jobs:
           mkdir -p ./clients-repo/go/
       - name: Debug clients-temp/go directory
         run: ls -l ./clients-temp/go/
-      - name: Checkout main repository
-        uses: actions/checkout@v4
       
       # Set up environments for code generation
       - name: Set up Node.js
