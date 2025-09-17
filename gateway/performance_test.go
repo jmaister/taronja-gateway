@@ -14,6 +14,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
@@ -21,11 +22,11 @@ var testBackendServerURL string
 
 // NewTestGateway creates a gateway instance for testing with silent database logging
 func NewTestGateway(config *config.GatewayConfig, webappEmbedFS *embed.FS) (*Gateway, error) {
-	// Initialize the database connection for tests (with silent logging)
-	db.InitForTest()
+	// Create test dependencies
+	deps := deps.NewTest()
 
-	// Use the normal gateway creation process
-	return NewGateway(config, webappEmbedFS)
+	// Use the new gateway creation process with dependencies
+	return NewGatewayWithDependencies(config, webappEmbedFS, deps)
 }
 
 // createTestSession creates a test session for authenticated benchmarks
@@ -41,7 +42,7 @@ func createTestSession(gw *Gateway) *db.Session {
 	}
 
 	// Create a new session repository directly
-	sessionRepo := db.NewSessionRepositoryDB()
+	sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 	err := sessionRepo.CreateSession(session.Token, session)
 	if err != nil {
 		panic("Failed to create test session: " + err.Error())

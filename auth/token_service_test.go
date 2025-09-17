@@ -10,9 +10,13 @@ import (
 )
 
 func TestTokenService(t *testing.T) {
-	// Setup repositories
-	userRepo := db.NewMemoryUserRepository()
-	tokenRepo := db.NewTokenRepositoryMemory()
+	// Setup isolated test database
+	db.SetupTestDB("TestTokenService")
+	testDB := db.GetConnection()
+
+	// Setup repositories with test database
+	userRepo := db.NewDBUserRepository(testDB)
+	tokenRepo := db.NewTokenRepositoryDB(testDB)
 	tokenService := NewTokenService(tokenRepo, userRepo)
 
 	// Create a test user

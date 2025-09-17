@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,11 +18,15 @@ import (
 // followed by TrafficMetricMiddleware to ensure session information is captured in traffic metrics
 func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 	t.Run("traffic metrics capture session information when session extraction is applied first", func(t *testing.T) {
-		// Set up repositories and services
-		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-		tokenService := createMockTokenService()
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		// Generate unique test name for database isolation
+		testName := fmt.Sprintf("middleware_integration_test_%d", time.Now().UnixNano())
+
+		// Use modern dependency injection approach
+		dependencies := deps.NewTestWithName(testName)
+
+		sessionStore := dependencies.SessionStore
+		statsRepo := dependencies.TrafficMetricRepo
+		tokenService := dependencies.TokenService
 
 		// Create a user and session
 		user := &db.User{
@@ -38,7 +44,7 @@ func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 			ValidUntil:   time.Now().Add(24 * time.Hour), // Valid for 24 hours
 			LastActivity: time.Now(),
 		}
-		sessionRepo.CreateSession("integration-session-token", testSession)
+		dependencies.SessionRepo.CreateSession("integration-session-token", testSession)
 
 		// Create middlewares in the same order as the gateway
 		sessionExtractionMiddleware := SessionExtractionMiddleware(sessionStore, tokenService)
@@ -94,11 +100,15 @@ func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 	})
 
 	t.Run("traffic metrics work without session when no session available", func(t *testing.T) {
-		// Set up repositories and services
-		sessionRepo := db.NewMemorySessionRepository()
-		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-		tokenService := createMockTokenService()
-		statsRepo := db.NewMemoryTrafficMetricRepository(nil)
+		// Generate unique test name for database isolation
+		testName := fmt.Sprintf("middleware_integration_test_2_%d", time.Now().UnixNano())
+
+		// Use modern dependency injection approach
+		dependencies := deps.NewTestWithName(testName)
+
+		sessionStore := dependencies.SessionStore
+		statsRepo := dependencies.TrafficMetricRepo
+		tokenService := dependencies.TokenService
 
 		// Create middlewares in the same order as the gateway
 		sessionExtractionMiddleware := SessionExtractionMiddleware(sessionStore, tokenService)

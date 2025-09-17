@@ -121,9 +121,9 @@ func fetchGoogleUserDataWithCustomURL(f *GoogleUserDataFetcher, accessToken, bas
 func TestRegisterGoogleAuth(t *testing.T) {
 	t.Run("register with valid configuration", func(t *testing.T) {
 		mux := http.NewServeMux()
-		sessionRepo := db.NewMemorySessionRepository()
+		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-		userRepo := db.NewMemoryUserRepository()
+		userRepo := db.NewDBUserRepository(nil)
 
 		gatewayConfig := &config.GatewayConfig{
 			Server: config.ServerConfig{
@@ -159,9 +159,11 @@ func TestRegisterGoogleAuth(t *testing.T) {
 
 	t.Run("skip registration with missing credentials", func(t *testing.T) {
 		mux := http.NewServeMux()
-		sessionRepo := db.NewMemorySessionRepository()
+		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-		userRepo := db.NewMemoryUserRepository()
+		db.SetupTestDB("TestGoogleAuth")
+		gormDB := db.GetConnection()
+		userRepo := db.NewDBUserRepository(gormDB)
 
 		gatewayConfig := &config.GatewayConfig{
 			AuthenticationProviders: config.AuthenticationProviders{
@@ -189,8 +191,10 @@ func TestRegisterGoogleAuth(t *testing.T) {
 func TestGoogleOAuth2Flow(t *testing.T) {
 	t.Run("OAuth2 flow with mock fetcher", func(t *testing.T) {
 		// Setup test repositories
-		userRepo := db.NewMemoryUserRepository()
-		sessionRepo := db.NewMemorySessionRepository()
+		db.SetupTestDB("TestGoogleAuth")
+		gormDB := db.GetConnection()
+		userRepo := db.NewDBUserRepository(gormDB)
+		sessionRepo := db.NewSessionRepositoryDB(gormDB)
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 
 		// Create mock gateway config
@@ -258,8 +262,10 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 	})
 
 	t.Run("OAuth2 callback with invalid state", func(t *testing.T) {
-		userRepo := db.NewMemoryUserRepository()
-		sessionRepo := db.NewMemorySessionRepository()
+		db.SetupTestDB("TestGoogleAuth")
+		gormDB := db.GetConnection()
+		userRepo := db.NewDBUserRepository(gormDB)
+		sessionRepo := db.NewSessionRepositoryDB(gormDB)
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 
 		// Create mock gateway config

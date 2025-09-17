@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,49 +56,60 @@ func TestNewGateway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewGateway(tt.config, nil)
+			// Create test dependencies
+			deps := deps.NewTest()
+
+			var got *Gateway
+			var err error
+			got, err = NewGatewayWithDependencies(tt.config, nil, deps)
+			if err != nil {
+				t.Error("NewGatewayWithDependencies() error = nil, wantErr true")
+			}
 
 			if tt.wantErr {
 				if err == nil {
-					t.Error("NewGateway() error = nil, wantErr true")
+					t.Error("NewGatewayWithDependencies() error = nil, wantErr true")
 					return
 				}
 				if tt.errSubstr != "" && !contains(err.Error(), tt.errSubstr) {
-					t.Errorf("NewGateway() error = %v, want error containing %v", err, tt.errSubstr)
+					t.Errorf("NewGatewayWithDependencies() error = %v, want error containing %v", err, tt.errSubstr)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("NewGateway() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewGatewayWithDependencies() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if got == nil {
-				t.Error("NewGateway() returned nil gateway")
+				t.Error("NewGatewayWithDependencies() returned nil gateway")
 				return
 			}
 
 			// Check that the gateway was properly initialized
 			if got.GatewayConfig != tt.config {
-				t.Error("NewGateway() gateway.config not properly set")
+				t.Error("NewGatewayWithDependencies() gateway.config not properly set")
 			}
 			if got.Mux == nil {
-				t.Error("NewGateway() gateway.mux is nil")
+				t.Error("NewGatewayWithDependencies() gateway.mux is nil")
 			}
 			if got.Server == nil {
-				t.Error("NewGateway() gateway.server is nil")
+				t.Error("NewGatewayWithDependencies() gateway.server is nil")
 			}
-			if got.SessionStore == nil {
-				t.Error("NewGateway() gateway.sessionStore is nil")
+			if got.Dependencies == nil {
+				t.Error("NewGatewayWithDependencies() gateway.dependencies is nil")
 			}
-			if got.UserRepository == nil {
-				t.Error("NewGateway() gateway.userRepository is nil")
+			if got.Dependencies != nil && got.Dependencies.SessionStore == nil {
+				t.Error("NewGatewayWithDependencies() gateway.dependencies.sessionStore is nil")
+			}
+			if got.Dependencies != nil && got.Dependencies.UserRepo == nil {
+				t.Error("NewGatewayWithDependencies() gateway.dependencies.userRepository is nil")
 			}
 
 			// Check server configuration
 			if got.Server.Addr != "localhost:8080" {
-				t.Errorf("NewGateway() server.Addr = %v, want %v", got.Server.Addr, "localhost:8080")
+				t.Errorf("NewGatewayWithDependencies() server.Addr = %v, want %v", got.Server.Addr, "localhost:8080")
 			}
 		})
 	}
@@ -267,7 +279,9 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			}
 
 			// Create a new gateway
-			gateway, err := NewGateway(gatewayConfig, nil)
+			deps := deps.NewTest()
+
+			gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, deps)
 			require.NoError(t, err, "Failed to create gateway")
 
 			// Create a listener manually since we're using port 0
@@ -430,7 +444,11 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 			}
 
 			// Create a new gateway
-			gateway, err := NewGateway(gatewayConfig, nil)
+			deps := deps.NewTest()
+			var gateway *Gateway
+			var err error
+
+			gateway, err = NewGatewayWithDependencies(gatewayConfig, nil, deps)
 
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
@@ -493,7 +511,9 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 	}
 
 	// Create a new gateway
-	gateway, err := NewGateway(gatewayConfig, nil)
+	deps := deps.NewTest()
+
+	gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, deps)
 	require.NoError(t, err, "Failed to create gateway")
 
 	// Create a listener manually since we're using port 0
@@ -606,7 +626,9 @@ func TestHelloEndpoint(t *testing.T) {
 	}
 
 	// Create a new gateway
-	gateway, err := NewGateway(config, nil)
+	deps := deps.NewTest()
+
+	gateway, err := NewGatewayWithDependencies(config, nil, deps)
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
@@ -836,7 +858,8 @@ window.onload = function() {
 			}
 
 			// Create gateway
-			gateway, err := NewGateway(gatewayConfig, nil)
+			deps := deps.NewTest()
+			gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, deps)
 			require.NoError(t, err, "Failed to create gateway")
 
 			// Create test server

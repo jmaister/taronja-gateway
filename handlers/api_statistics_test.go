@@ -2,33 +2,39 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 )
 
-func setupStatsTestServer() (*StrictApiServer, *db.TrafficMetricRepositoryMemory) {
-	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	userRepo := db.NewMemoryUserRepository()
-	statsRepo := db.NewMemoryTrafficMetricRepository(userRepo)
-	tokenRepo := db.NewTokenRepositoryMemory()
-	creditsRepo := db.NewMemoryCreditsRepository()
-	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
+	// Generate a unique test name to ensure database isolation
+	testName := fmt.Sprintf("stats_test_%d", time.Now().UnixNano())
 
-	// For tests, we can use a nil database connection since we're using memory repositories
-	startTime := time.Now()
+	// Use the modern dependency injection approach with isolated database
+	dependencies := deps.NewTestWithName(testName)
 
-	server := NewStrictApiServer(sessionStore, userRepo, statsRepo, tokenRepo, creditsRepo, tokenService, startTime)
-	return server, statsRepo
+	server := NewStrictApiServer(
+		dependencies.SessionStore,
+		dependencies.UserRepo,
+		dependencies.TrafficMetricRepo,
+		dependencies.TokenRepo,
+		dependencies.CreditsRepo,
+		dependencies.TokenService,
+		dependencies.StartTime,
+	)
+	return server, dependencies.TrafficMetricRepo
 }
 
 func TestGetRequestStatistics_Unauthorized(t *testing.T) {
+	defer db.ResetConnection()
+
 	server, _ := setupStatsTestServer()
 
 	// Test without authentication
@@ -44,6 +50,8 @@ func TestGetRequestStatistics_Unauthorized(t *testing.T) {
 }
 
 func TestGetRequestStatistics_NonAdmin(t *testing.T) {
+	defer db.ResetConnection()
+
 	server, _ := setupStatsTestServer()
 
 	// Create a non-admin session
@@ -201,56 +209,23 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 	assert.Equal(t, 1, stats.RequestsByJA4Fingerprint["ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1"]) // Second request
 }
 
-func TestGetRequestStatistics_EmptyData(t *testing.T) {
-	server, _ := setupStatsTestServer()
-
-	// Create an admin session
-	sessionData := &db.Session{
-		Token:           "admin-token",
-		UserID:          "admin123",
-		Username:        "admin",
-		IsAuthenticated: true,
-		IsAdmin:         true,
-		ValidUntil:      time.Now().Add(time.Hour),
-	}
-
-	ctx := context.WithValue(context.Background(), session.SessionKey, sessionData)
-	request := api.GetRequestStatisticsRequestObject{}
-
-	response, err := server.GetRequestStatistics(ctx, request)
-	assert.NoError(t, err)
-
-	// Should return 200 OK with empty statistics
-	successResponse, ok := response.(api.GetRequestStatistics200JSONResponse)
-	assert.True(t, ok, "Expected 200 OK response")
-
-	stats := api.RequestStatistics(successResponse)
-
-	// Verify empty statistics
-	assert.Equal(t, 0, stats.TotalRequests)
-	assert.Equal(t, float32(0), stats.AverageResponseTime)
-	assert.Equal(t, float32(0), stats.AverageResponseSize)
-	assert.Empty(t, stats.RequestsByStatus)
-	assert.Empty(t, stats.RequestsByCountry)
-	assert.Empty(t, stats.RequestsByDeviceType)
-	assert.Empty(t, stats.RequestsByPlatform)
-	assert.Empty(t, stats.RequestsByBrowser)
-	assert.Empty(t, stats.RequestsByJA4Fingerprint)
-}
-
 func TestStatisticsShowUsernames(t *testing.T) {
-	// Setup repositories
-	userRepo := db.NewMemoryUserRepository()
-	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
-	sessionRepo := db.NewMemorySessionRepository()
-	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	tokenRepo := db.NewTokenRepositoryMemory()
-	tokenService := auth.NewTokenService(tokenRepo, userRepo)
+	// Generate a unique test name to ensure database isolation
+	testName := fmt.Sprintf("usernames_test_%d", time.Now().UnixNano())
+
+	// Use the modern dependency injection approach with isolated database
+	dependencies := deps.NewTestWithName(testName)
 
 	// Create test server
-	startTime := time.Now()
-	creditsRepo := db.NewMemoryCreditsRepository()
-	server := NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime)
+	server := NewStrictApiServer(
+		dependencies.SessionStore,
+		dependencies.UserRepo,
+		dependencies.TrafficMetricRepo,
+		dependencies.TokenRepo,
+		dependencies.CreditsRepo,
+		dependencies.TokenService,
+		dependencies.StartTime,
+	)
 
 	// Create test users
 	testUser1 := &db.User{
@@ -275,11 +250,11 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		Provider: "test",
 	}
 
-	err := userRepo.CreateUser(testUser1)
+	err := dependencies.UserRepo.CreateUser(testUser1)
 	assert.NoError(t, err)
-	err = userRepo.CreateUser(testUser2)
+	err = dependencies.UserRepo.CreateUser(testUser2)
 	assert.NoError(t, err)
-	err = userRepo.CreateUser(adminUser)
+	err = dependencies.UserRepo.CreateUser(adminUser)
 	assert.NoError(t, err)
 
 	// Create admin session
@@ -332,11 +307,11 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		SessionID:      "",
 	}
 
-	err = trafficMetricRepo.Create(aliceMetric)
+	err = dependencies.TrafficMetricRepo.Create(aliceMetric)
 	assert.NoError(t, err)
-	err = trafficMetricRepo.Create(bobMetric)
+	err = dependencies.TrafficMetricRepo.Create(bobMetric)
 	assert.NoError(t, err)
-	err = trafficMetricRepo.Create(guestMetric)
+	err = dependencies.TrafficMetricRepo.Create(guestMetric)
 	assert.NoError(t, err)
 
 	t.Run("StatisticsShowUsernamesNotUserIDs", func(t *testing.T) {

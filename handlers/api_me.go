@@ -11,14 +11,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// GetCurrentUser implements the GetCurrentUser operation for the api.StrictServerInterface.
-// It relies on SessionMiddleware to validate the session and put *db.Session into the context.
+// GetCurrentUser returns the current authenticated user info, using session from context.
 func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCurrentUserRequestObject) (api.GetCurrentUserResponseObject, error) {
 	sessionObject, ok := ctx.Value(session.SessionKey).(*db.Session)
 
 	if !ok || sessionObject == nil || !sessionObject.IsAuthenticated || sessionObject.ValidUntil.Before(time.Now()) {
-		// No valid authenticated session found by the middleware,
-		// or the type assertion failed, or session is not valid.
+		// No valid authenticated session found
 		return api.GetCurrentUser401JSONResponse{
 			Code:    http.StatusUnauthorized,
 			Message: "Unauthorized",
@@ -27,31 +25,14 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 
 	// Get full user information from the database
 	user, err := s.userRepo.FindUserByIdOrUsername(sessionObject.UserID, "", "")
-	if err != nil || user == nil {
-		// If user not found in database, still return session info
-		// This can happen if the user was deleted but session is still valid
-		authenticated := true
-		email := sessionObject.Email
-		username := sessionObject.Username
-		provider := sessionObject.Provider
-		isAdmin := sessionObject.IsAdmin
-		timestamp := time.Now().UTC()
-
-		var emailPointer *openapi_types.Email
-		if email != "" {
-			emailType := openapi_types.Email(email)
-			emailPointer = &emailType
-		}
-
-		response := api.GetCurrentUser200JSONResponse{
-			Authenticated: &authenticated,
-			Username:      &username,
-			Email:         emailPointer,
-			Provider:      &provider,
-			IsAdmin:       &isAdmin,
-			Timestamp:     &timestamp,
-		}
-		return response, nil
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return api.GetCurrentUser401JSONResponse{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized",
+		}, nil
 	}
 
 	// User found, return their information including additional fields
@@ -87,7 +68,7 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 	return response, nil
 }
 
-// Helper function to convert string to pointer, returns nil for empty strings
+// Converts string to pointer, returns nil for empty strings
 func stringToPointer(s string) *string {
 	if s == "" {
 		return nil

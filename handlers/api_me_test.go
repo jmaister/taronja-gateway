@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"context"
+	"math/big"
 	"net/http"
 	"testing"
 	"time"
@@ -13,29 +14,48 @@ import (
 	"github.com/jmaister/taronja-gateway/session"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
+
+	"crypto/rand"
 )
 
+func RndStr(n int) string {
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+	b := make([]rune, n)
+	for i := range b {
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			b[i] = letters[0]
+		} else {
+			b[i] = letters[nBig.Int64()]
+		}
+	}
+	return string(b)
+}
+
 func TestGetCurrentUser(t *testing.T) {
-	// Setup test server with proper repositories
-	userRepo := db.NewMemoryUserRepository()
-	sessionRepo := db.NewMemorySessionRepository()
+	// Setup isolated test database
+	db.SetupTestDB("TestGetCurrentUser")
+	testDB := db.GetConnection()
+
+	// Setup test server with database repositories
+	userRepo := db.NewDBUserRepository(testDB)
+	sessionRepo := db.NewSessionRepositoryDB(testDB)
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewMemoryTrafficMetricRepository(userRepo)
-	tokenRepo := db.NewTokenRepositoryMemory()
+	trafficMetricRepo := db.NewTrafficMetricRepository(testDB)
+	tokenRepo := db.NewTokenRepositoryDB(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
-	// For tests, we can use a nil database connection since we're using memory repositories
 	startTime := time.Now()
 
-	creditsRepo := db.NewMemoryCreditsRepository()
+	creditsRepo := db.NewDBCreditsRepository(testDB)
 	s := handlers.NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {
 		// Setup: Create a test user in the repository
+		rnd := RndStr(5)
 		testUser := &db.User{
-			ID:       "1",
-			Username: "testuser",
-			Email:    "testuser@example.com",
+			Username: "testuser" + rnd,
+			Email:    "testuser" + rnd + "@example.com",
 			Name:     "Test User",
 			Picture:  "https://example.com/avatar.jpg",
 			Provider: "testprovider",
@@ -46,7 +66,7 @@ func TestGetCurrentUser(t *testing.T) {
 		// Setup: Create a valid session
 		validSession := &db.Session{
 			Token:           "valid-session-id",
-			UserID:          "1",
+			UserID:          testUser.ID,
 			Username:        "testuser",
 			Email:           "testuser@example.com",
 			Provider:        "testprovider",
@@ -69,13 +89,11 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.NotNil(t, userResp.Authenticated)
 		assert.True(t, *userResp.Authenticated)
 		assert.NotNil(t, userResp.Username)
-		assert.Equal(t, "testuser", *userResp.Username)
+		assert.Equal(t, testUser.Username, *userResp.Username)
 		assert.NotNil(t, userResp.Email)
-		// Ensure comparison is type-consistent, assuming *userResp.Email might be a base string
-		// due to the casting in api_me.go.
-		assert.Equal(t, openapi_types.Email("testuser@example.com"), openapi_types.Email(*userResp.Email))
+		assert.Equal(t, openapi_types.Email(testUser.Email), openapi_types.Email(*userResp.Email))
 		assert.NotNil(t, userResp.Provider)
-		assert.Equal(t, "testprovider", *userResp.Provider)
+		assert.Equal(t, testUser.Provider, *userResp.Provider)
 		assert.NotNil(t, userResp.IsAdmin)
 		assert.False(t, *userResp.IsAdmin)
 		assert.NotNil(t, userResp.Timestamp)
@@ -87,15 +105,27 @@ func TestGetCurrentUser(t *testing.T) {
 	})
 
 	t.Run("AuthenticatedAdminUser", func(t *testing.T) {
+		// Setup: Create a test admin user in the repository
+		rnd := time.Now().String()
+		testAdmin := &db.User{
+			Username: "testuser" + rnd,
+			Email:    "",
+			Name:     "Test User",
+			Picture:  "https://example.com/avatar.jpg",
+			Provider: db.AdminProvider,
+		}
+		err := userRepo.CreateUser(testAdmin)
+		assert.NoError(t, err)
+
 		// Setup: Create a valid admin session
 		adminSession := &db.Session{
 			Token:           "admin-session-id",
-			UserID:          "admin",
-			Username:        "admin",
+			UserID:          testAdmin.ID,
+			Username:        testAdmin.Username,
 			Email:           "",
 			Provider:        db.AdminProvider,
 			IsAuthenticated: true,
-			IsAdmin:         true, // Admin user
+			IsAdmin:         true,
 			ValidUntil:      time.Now().Add(1 * time.Hour),
 		}
 		ctxWithAdminSession := context.WithValue(context.Background(), session.SessionKey, adminSession)
@@ -113,8 +143,9 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.NotNil(t, userResp.Authenticated)
 		assert.True(t, *userResp.Authenticated)
 		assert.NotNil(t, userResp.Username)
-		assert.Equal(t, "admin", *userResp.Username)
-		assert.Nil(t, userResp.Email) // Admin user has no email, so email should be nil
+		assert.Equal(t, testAdmin.Username, *userResp.Username)
+		// Email type is openapi_types.Email, but empty string should be handled as empty email
+		assert.Nil(t, userResp.Email)
 		assert.NotNil(t, userResp.Provider)
 		assert.Equal(t, db.AdminProvider, *userResp.Provider)
 		assert.NotNil(t, userResp.IsAdmin)

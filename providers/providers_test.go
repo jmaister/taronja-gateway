@@ -20,9 +20,9 @@ var testSessionStore session.SessionStore
 
 // TestMain sets up the test database and repositories.
 func TestMain(m *testing.M) {
-	db.InitForTest()
+	db.SetupTestDB("TestProviders")
 	testUserRepo = db.NewDBUserRepository(db.GetConnection())
-	testSessionRepo := db.NewSessionRepositoryDB()
+	testSessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
 	testSessionStore = session.NewSessionStore(testSessionRepo, 24*time.Hour)
 	exitVal := m.Run()
 	os.Exit(exitVal)

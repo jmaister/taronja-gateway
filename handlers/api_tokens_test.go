@@ -14,9 +14,13 @@ import (
 )
 
 func TestTokenHandlersAdmin(t *testing.T) {
-	// Setup repositories and services
-	userRepo := db.NewMemoryUserRepository()
-	tokenRepo := db.NewTokenRepositoryMemory()
+	// Setup isolated test database
+	db.SetupTestDB("TestTokenHandlersAdmin")
+	testDB := db.GetConnection()
+
+	// Setup repositories and services with database
+	userRepo := db.NewDBUserRepository(testDB)
+	tokenRepo := db.NewTokenRepositoryDB(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	// Create test server

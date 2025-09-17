@@ -6,13 +6,17 @@ import (
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
 // BenchmarkStaticRequestNoAnalytics benchmarks static requests without analytics middleware
 func BenchmarkStaticRequestNoAnalytics(b *testing.B) {
 	cfg := createTestConfigNoAnalytics()
-	gw, err := NewGateway(cfg, &static.StaticAssetsFS)
+
+	deps := deps.NewTest()
+
+	gw, err := NewGatewayWithDependencies(cfg, &static.StaticAssetsFS, deps)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
 	}

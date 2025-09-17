@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 )
 
 // ValidationError represents a middleware validation error
@@ -20,18 +18,8 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("middleware %s: %s", e.Middleware, e.Message)
 }
 
-// Dependencies represents the dependencies required for middleware initialization
-type Dependencies struct {
-	SessionStore      session.SessionStore
-	TokenService      *auth.TokenService
-	UserRepository    db.UserRepository
-	TrafficMetricRepo db.TrafficMetricRepository
-	TokenRepository   db.TokenRepository
-	GatewayConfig     *config.GatewayConfig
-}
-
 // ValidateDependencies validates that all required dependencies are available
-func ValidateDependencies(deps *Dependencies) error {
+func ValidateDependencies(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	if deps == nil {
 		return &ValidationError{
 			Middleware: "global",
@@ -39,7 +27,7 @@ func ValidateDependencies(deps *Dependencies) error {
 		}
 	}
 
-	if deps.GatewayConfig == nil {
+	if config == nil {
 		return &ValidationError{
 			Middleware: "global",
 			Message:    "gateway configuration is required",
@@ -50,8 +38,8 @@ func ValidateDependencies(deps *Dependencies) error {
 }
 
 // ValidateAnalyticsMiddleware validates analytics middleware configuration and dependencies
-func ValidateAnalyticsMiddleware(deps *Dependencies) error {
-	if !deps.GatewayConfig.Management.Analytics {
+func ValidateAnalyticsMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	if !config.Management.Analytics {
 		// Analytics not enabled, no validation needed
 		return nil
 	}
@@ -87,10 +75,10 @@ func ValidateAnalyticsMiddleware(deps *Dependencies) error {
 }
 
 // ValidateAuthenticationMiddleware validates authentication middleware configuration and dependencies
-func ValidateAuthenticationMiddleware(deps *Dependencies) error {
+func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	// Check if any routes require authentication
 	hasAuthRoutes := false
-	for _, route := range deps.GatewayConfig.Routes {
+	for _, route := range config.Routes {
 		if route.Authentication.Enabled {
 			hasAuthRoutes = true
 			break
@@ -121,7 +109,7 @@ func ValidateAuthenticationMiddleware(deps *Dependencies) error {
 	}
 
 	// Validate UserRepository for authentication
-	if deps.UserRepository == nil {
+	if deps.UserRepo == nil {
 		return &ValidationError{
 			Middleware: "authentication",
 			Message:    "user repository is required when authentication is enabled on routes",
@@ -129,7 +117,7 @@ func ValidateAuthenticationMiddleware(deps *Dependencies) error {
 	}
 
 	// Validate TokenRepository for authentication
-	if deps.TokenRepository == nil {
+	if deps.TokenRepo == nil {
 		return &ValidationError{
 			Middleware: "authentication",
 			Message:    "token repository is required when authentication is enabled on routes",
@@ -137,7 +125,7 @@ func ValidateAuthenticationMiddleware(deps *Dependencies) error {
 	}
 
 	// Validate management prefix for redirects
-	if deps.GatewayConfig.Management.Prefix == "" {
+	if config.Management.Prefix == "" {
 		return &ValidationError{
 			Middleware: "authentication",
 			Message:    "management prefix is required when authentication is enabled",
@@ -149,8 +137,8 @@ func ValidateAuthenticationMiddleware(deps *Dependencies) error {
 }
 
 // ValidateAdminAccess validates admin access configuration
-func ValidateAdminAccess(deps *Dependencies) error {
-	if !deps.GatewayConfig.Management.Admin.Enabled {
+func ValidateAdminAccess(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	if !config.Management.Admin.Enabled {
 		// Admin not enabled, no validation needed
 		return nil
 	}
@@ -158,14 +146,14 @@ func ValidateAdminAccess(deps *Dependencies) error {
 	log.Printf("Validating admin access configuration...")
 
 	// Validate admin credentials
-	if deps.GatewayConfig.Management.Admin.Username == "" {
+	if config.Management.Admin.Username == "" {
 		return &ValidationError{
 			Middleware: "admin",
 			Message:    "admin username is required when admin is enabled",
 		}
 	}
 
-	if deps.GatewayConfig.Management.Admin.Password == "" {
+	if config.Management.Admin.Password == "" {
 		return &ValidationError{
 			Middleware: "admin",
 			Message:    "admin password is required when admin is enabled",
@@ -186,10 +174,10 @@ func ValidateAdminAccess(deps *Dependencies) error {
 }
 
 // ValidateRouteConfiguration validates route-specific middleware configuration
-func ValidateRouteConfiguration(deps *Dependencies) error {
+func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	log.Printf("Validating route middleware configuration...")
 
-	for _, route := range deps.GatewayConfig.Routes {
+	for _, route := range config.Routes {
 		// Validate static routes
 		if route.Static {
 			if route.ToFile == "" && route.To == "" && route.ToFolder == "" {
@@ -224,31 +212,31 @@ func ValidateRouteConfiguration(deps *Dependencies) error {
 }
 
 // ValidateAllMiddleware validates all middleware configuration and dependencies
-func ValidateAllMiddleware(deps *Dependencies) error {
+func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	log.Printf("Starting comprehensive middleware validation...")
 
 	// Validate basic dependencies
-	if err := ValidateDependencies(deps); err != nil {
+	if err := ValidateDependencies(deps, config); err != nil {
 		return err
 	}
 
 	// Validate analytics middleware
-	if err := ValidateAnalyticsMiddleware(deps); err != nil {
+	if err := ValidateAnalyticsMiddleware(deps, config); err != nil {
 		return err
 	}
 
 	// Validate authentication middleware
-	if err := ValidateAuthenticationMiddleware(deps); err != nil {
+	if err := ValidateAuthenticationMiddleware(deps, config); err != nil {
 		return err
 	}
 
 	// Validate admin access
-	if err := ValidateAdminAccess(deps); err != nil {
+	if err := ValidateAdminAccess(deps, config); err != nil {
 		return err
 	}
 
 	// Validate route configuration
-	if err := ValidateRouteConfiguration(deps); err != nil {
+	if err := ValidateRouteConfiguration(deps, config); err != nil {
 		return err
 	}
 
