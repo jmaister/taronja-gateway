@@ -27,8 +27,6 @@ jobs:
           mkdir -p ./clients-temp/go/
           mkdir -p ./clients-repo/typescript/
           mkdir -p ./clients-repo/go/
-      - name: Debug clients-temp/go directory
-        run: ls -l ./clients-temp/go/
       
       # Set up environments for code generation
       - name: Set up Node.js
@@ -72,7 +70,7 @@ jobs:
       
       # Step 4: Commit and push changes (only on push, not on PR)
       - name: Commit and push changes
-        if: github.event_name != 'pull_request'
+        #if: github.event_name != 'pull_request'
         run: |
           cd ./clients-repo
           git config --global user.name "github-actions[bot]"
