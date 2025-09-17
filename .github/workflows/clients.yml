@@ -52,7 +52,7 @@ jobs:
           #  -i api/taronja-gateway-api.yaml \
           #  -g go \
           #  -o ./clients-temp/go
-          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_ci.yaml api/taronja-gateway-api.yaml
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_client.yaml api/taronja-gateway-api.yaml
       
       # Step 2: Checkout the separate clients repository
       - name: Checkout clients repository
