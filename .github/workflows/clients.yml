@@ -1,7 +1,6 @@
 name: Generate and Update Clients
 
 on:
-  # This workflow will run whenever you push to the main branch
   push:
     branches:
       - main
@@ -9,6 +8,12 @@ on:
       - 'api/taronja-gateway-api.yaml'
   #release:
   #  types: [published]
+
+  pull_request:
+    #paths:
+    #  - 'api/taronja-gateway-api.yaml'
+    branches:
+      - main
 
 jobs:
   generate-and-push-clients:
@@ -61,8 +66,9 @@ jobs:
           # rsync -av --delete ./clients-temp/typescript/ ./clients-repo/typescript/
           rsync -av --delete ./clients-temp/go/ ./clients-repo/go/
       
-      # Step 4: Commit and push changes
+      # Step 4: Commit and push changes (only on push, not on PR)
       - name: Commit and push changes
+        if: github.event_name != 'pull_request'
         run: |
           cd ./clients-repo
           git config --global user.name "github-actions[bot]"
