@@ -21,10 +21,10 @@ jobs:
     steps:
       - name: Ensure temp and repo folders exist
         run: |
-          mkdir -p ./clients-temp/typescript
-          mkdir -p ./clients-temp/go
-          mkdir -p ./clients-repo/typescript
-          mkdir -p ./clients-repo/go
+          mkdir -p ./clients-temp/typescript/
+          mkdir -p ./clients-temp/go/
+          mkdir -p ./clients-repo/typescript/
+          mkdir -p ./clients-repo/go/
       - name: Checkout main repository
         uses: actions/checkout@v4
       
@@ -48,11 +48,11 @@ jobs:
         run: |
           # npm install @openapitools/openapi-generator-cli
           # npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o ./clients-temp/typescript -c @hey-api/client-fetch
-          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_ci.yaml api/taronja-gateway-api.yaml
           # npx @openapitools/openapi-generator-cli generate \
           #  -i api/taronja-gateway-api.yaml \
           #  -g go \
           #  -o ./clients-temp/go
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_ci.yaml api/taronja-gateway-api.yaml
       
       # Step 2: Checkout the separate clients repository
       - name: Checkout clients repository
