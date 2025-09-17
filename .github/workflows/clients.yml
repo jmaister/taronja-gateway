@@ -1,0 +1,72 @@
+name: Generate and Update Clients
+
+on:
+  # This workflow will run whenever you push to the main branch
+  push:
+    branches:
+      - main
+    paths:
+      - 'api/taronja-gateway-api.yaml'
+  #release:
+  #  types: [published]
+
+jobs:
+  generate-and-push-clients:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure temp and repo folders exist
+        run: |
+          mkdir -p ./clients-temp/typescript
+          mkdir -p ./clients-temp/go
+          mkdir -p ./clients-repo/typescript
+          mkdir -p ./clients-repo/go
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+      
+      # Set up environments for code generation
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      # Step 1: Generate Clients to a temporary directory
+      - name: Generate all clients
+        run: |
+          # npm install @openapitools/openapi-generator-cli
+          # npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o ./clients-temp/typescript -c @hey-api/client-fetch
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config cfg.yaml api/taronja-gateway-api.yaml
+          # npx @openapitools/openapi-generator-cli generate \
+          #  -i api/taronja-gateway-api.yaml \
+          #  -g go \
+          #  -o ./clients-temp/go
+      
+      # Step 2: Checkout the separate clients repository
+      - name: Checkout clients repository
+        uses: actions/checkout@v4
+        with:
+          repository: jmaister/taronja-gateway-clients
+          path: ./clients-repo
+          token: ${{ secrets.CLIENTS_REPO_TOKEN }}
+      
+      # Step 3: Copy generated code into the clients repository
+      - name: Copy generated code to clients repository
+        run: |
+          # rsync -av --delete ./clients-temp/typescript/ ./clients-repo/typescript/
+          rsync -av --delete ./clients-temp/go/ ./clients-repo/go/
+      
+      # Step 4: Commit and push changes
+      - name: Commit and push changes
+        run: |
+          cd ./clients-repo
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "feat(ci): Auto-generated clients from new API spec" || true
+          git push
