@@ -60,7 +60,6 @@ jobs:
       
       # Step 4: Commit and push changes (only on push, not on PR)
       - name: Commit and push changes
-        #if: github.event_name != 'pull_request'
         run: |
           cd ./clients-repo
           git config --global user.name "github-actions[bot]"
@@ -69,9 +68,9 @@ jobs:
           git commit -m "feat(ci): Auto-generated clients from new API spec" || true
           git push
 
-          # Get the latest tag from the main repo and use it for the clients repo
+          # Get the latest tag from the main repo and use it for the clients repo, with go/ prefix for Go submodule
           cd ..
           LATEST_TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
           cd clients-repo
-          git tag "$LATEST_TAG"
-          git push origin "$LATEST_TAG"
+          git tag "go/$LATEST_TAG"
+          git push origin "go/$LATEST_TAG"
