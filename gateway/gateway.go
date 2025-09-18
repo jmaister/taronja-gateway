@@ -290,7 +290,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.Dependencies.UserRepo,
 		g.Dependencies.TrafficMetricRepo,
 		g.Dependencies.TokenRepo,
-		g.Dependencies.CreditsRepo,
+		g.Dependencies.CountersRepo,
 		g.Dependencies.TokenService,
 		g.StartTime,
 	)

@@ -23,12 +23,12 @@ func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 	trafficMetricRepo := db.NewTrafficMetricRepository(testDB)
 	tokenRepo := db.NewTokenRepositoryDB(testDB)
-	creditsRepo := db.NewDBCreditsRepository(testDB)
+	countersRepo := db.NewDBCountersRepository(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	startTime := time.Now()
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime), sessionRepo
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, countersRepo, tokenService, startTime), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {

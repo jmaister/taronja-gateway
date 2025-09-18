@@ -19,19 +19,19 @@ type StrictApiServer struct {
 	userRepo          db.UserRepository
 	trafficMetricRepo db.TrafficMetricRepository
 	tokenRepo         db.TokenRepository
-	creditsRepo       db.CreditsRepository
+	countersRepo      db.CountersRepository
 	tokenService      *auth.TokenService
 	startTime         time.Time
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, creditsRepo db.CreditsRepository, tokenService *auth.TokenService, startTime time.Time) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, tokenService *auth.TokenService, startTime time.Time) *StrictApiServer {
 	return &StrictApiServer{
 		sessionStore:      sessionStore,
 		userRepo:          userRepo,
 		trafficMetricRepo: trafficMetricRepo,
 		tokenRepo:         tokenRepo,
-		creditsRepo:       creditsRepo,
+		countersRepo:      countersRepo,
 		tokenService:      tokenService,
 		startTime:         startTime,
 	}

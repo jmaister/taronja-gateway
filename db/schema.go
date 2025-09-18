@@ -161,22 +161,23 @@ func (t *Token) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Credit struct definition for credit transactions
-type Credit struct {
+// Counter struct definition for counter transactions
+type Counter struct {
 	gorm.Model
 
 	ID           string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
-	UserID       string `gorm:"column:user_id;type:varchar(255);not null;index"` // Foreign key to User
-	Amount       int    `gorm:"not null"`                                        // Amount added (positive) or deducted (negative)
-	BalanceAfter int    `gorm:"not null"`                                        // Balance after this transaction
-	Description  string `gorm:"type:text;not null"`                              // Description of the credit transaction
+	UserID       string `gorm:"column:user_id;type:varchar(255);not null;index"`    // Foreign key to User
+	CounterID    string `gorm:"column:counter_id;type:varchar(255);not null;index"` // Type of counter (credits, coins, points, etc.)
+	Amount       int    `gorm:"not null"`                                           // Amount added (positive) or deducted (negative)
+	BalanceAfter int    `gorm:"not null"`                                           // Balance after this transaction
+	Description  string `gorm:"type:text;not null"`                                 // Description of the counter transaction
 
 	// Reference to the user
 	User User `gorm:"foreignKey:UserID;references:ID"`
 }
 
 // BeforeCreate will set a CUID rather than numeric ID.
-func (c *Credit) BeforeCreate(tx *gorm.DB) error {
+func (c *Counter) BeforeCreate(tx *gorm.DB) error {
 	newId, err := cuid.NewCrypto(rand.Reader)
 	if err != nil {
 		return err

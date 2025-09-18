@@ -508,28 +508,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/credits/{userId}:
+  /api/counters/{counterId}/{userId}:
     get:
-      summary: Get user's current credit balance
-      operationId: getUserCredits
+      summary: Get user's current counter balance
+      operationId: getUserCounters
       tags:
-        - Credits
+        - Counters
       security:
         - cookieAuth: []
       parameters:
+        - name: counterId
+          in: path
+          required: true
+          description: ID of the counter type (e.g., 'credits', 'coins', 'points')
+          schema:
+            type: string
         - name: userId
           in: path
           required: true
-          description: ID of the user to get credits for
+          description: ID of the user to get counter balance for
           schema:
             type: string
       responses:
         '200':
-          description: User's current credit balance
+          description: User's current counter balance
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserCreditsResponse'
+                $ref: '#/components/schemas/UserCountersResponse'
         '401':
           description: Unauthorized
           content:
@@ -537,13 +543,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Forbidden (user can only view own credits unless admin)
+          description: Forbidden (user can only view own counters unless admin)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: User not found
+          description: User or counter not found
           content:
             application/json:
               schema:
@@ -555,17 +561,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      summary: Add or deduct credits for a user (admin only)
-      operationId: adjustUserCredits
+      summary: Add or deduct counter values for a user (admin only)
+      operationId: adjustUserCounters
       tags:
-        - Credits
+        - Counters
       security:
         - cookieAuth: []
       parameters:
+        - name: counterId
+          in: path
+          required: true
+          description: ID of the counter type (e.g., 'credits', 'coins', 'points')
+          schema:
+            type: string
         - name: userId
           in: path
           required: true
-          description: ID of the user to adjust credits for
+          description: ID of the user to adjust counter for
           schema:
             type: string
       requestBody:
@@ -573,14 +585,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreditAdjustmentRequest'
+              $ref: '#/components/schemas/CounterAdjustmentRequest'
       responses:
         '200':
-          description: Credits adjusted successfully
+          description: Counter adjusted successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreditTransactionResponse'
+                $ref: '#/components/schemas/CounterTransactionResponse'
         '400':
           description: Bad Request (invalid amount or insufficient balance)
           content:
@@ -600,7 +612,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: User not found
+          description: User or counter not found
           content:
             application/json:
               schema:
@@ -612,19 +624,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/credits/{userId}/history:
+  /api/counters/{counterId}/{userId}/history:
     get:
-      summary: Get user's credit transaction history
-      operationId: getUserCreditHistory
+      summary: Get user's counter transaction history
+      operationId: getUserCounterHistory
       tags:
-        - Credits
+        - Counters
       security:
         - cookieAuth: []
       parameters:
+        - name: counterId
+          in: path
+          required: true
+          description: ID of the counter type (e.g., 'credits', 'coins', 'points')
+          schema:
+            type: string
         - name: userId
           in: path
           required: true
-          description: ID of the user to get credit history for
+          description: ID of the user to get counter history for
           schema:
             type: string
         - in: query
@@ -646,11 +664,11 @@ paths:
           description: Number of transactions to skip
       responses:
         '200':
-          description: User's credit transaction history
+          description: User's counter transaction history
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreditHistoryResponse'
+                $ref: '#/components/schemas/CounterHistoryResponse'
         '401':
           description: Unauthorized
           content:
@@ -664,7 +682,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: User not found
+          description: User or counter not found
           content:
             application/json:
               schema:
@@ -676,16 +694,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/admin/credits:
+  /api/admin/counters:
     get:
-      summary: Get all users' credit balances (admin only)
-      operationId: getAllUserCredits
+      summary: Get list of available counter types (admin only)
+      operationId: getAvailableCounters
       tags:
-        - Credits
+        - Counters
+        - Admin
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of available counter types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableCountersResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/counters/{counterId}:
+    get:
+      summary: Get all users' counter balances (admin only)
+      operationId: getAllUserCounters
+      tags:
+        - Counters
         - Admin
       security:
         - cookieAuth: []
       parameters:
+        - name: counterId
+          in: path
+          required: true
+          description: ID of the counter type (e.g., 'credits', 'coins', 'points')
+          schema:
+            type: string
         - in: query
           name: limit
           schema:
@@ -705,11 +764,11 @@ paths:
           description: Number of users to skip
       responses:
         '200':
-          description: List of all users' credit balances
+          description: List of all users' counter balances
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AllUserCreditsResponse'
+                $ref: '#/components/schemas/AllUserCountersResponse'
         '401':
           description: Unauthorized
           content:
@@ -718,6 +777,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Counter not found
           content:
             application/json:
               schema:
@@ -1084,7 +1149,7 @@ components:
         - token
         - token_info
 
-    UserCreditsResponse:
+    UserCountersResponse:
       type: object
       properties:
         user_id:
@@ -1100,9 +1165,13 @@ components:
             format: email
             description: Email of the user
             example: "testuser@example.com"
+        counter_id:
+          type: string
+          description: ID of the counter type
+          example: "credits"
         balance:
           type: integer
-          description: Current credit balance
+          description: Current counter balance
           example: 1500
         last_updated:
           type: string
@@ -1111,10 +1180,11 @@ components:
           example: "2025-09-15T10:30:00Z"
       required:
         - user_id
+        - counter_id
         - balance
         - last_updated
 
-    CreditAdjustmentRequest:
+    CounterAdjustmentRequest:
       type: object
       properties:
         amount:
@@ -1123,14 +1193,14 @@ components:
           example: 100
         description:
           type: string
-          description: Description of the credit adjustment
+          description: Description of the counter adjustment
           maxLength: 255
           example: "Admin adjustment - promotional credits"
       required:
         - amount
         - description
 
-    CreditTransactionResponse:
+    CounterTransactionResponse:
       type: object
       properties:
         id:
@@ -1141,6 +1211,10 @@ components:
           type: string
           description: ID of the user
           example: "123e4567-e89b-12d3-a456-426614174000"
+        counter_id:
+          type: string
+          description: ID of the counter type
+          example: "credits"
         amount:
           type: integer
           description: Amount added (positive) or deducted (negative)
@@ -1161,27 +1235,32 @@ components:
       required:
         - id
         - user_id
+        - counter_id
         - amount
         - balance_after
         - description
         - created_at
 
-    CreditHistoryResponse:
+    CounterHistoryResponse:
       type: object
       properties:
         user_id:
           type: string
           description: ID of the user
           example: "123e4567-e89b-12d3-a456-426614174000"
+        counter_id:
+          type: string
+          description: ID of the counter type
+          example: "credits"
         current_balance:
           type: integer
-          description: Current credit balance
+          description: Current counter balance
           example: 1500
         transactions:
           type: array
           items:
-            $ref: '#/components/schemas/CreditTransactionResponse'
-          description: List of credit transactions
+            $ref: '#/components/schemas/CounterTransactionResponse'
+          description: List of counter transactions
         total_count:
           type: integer
           description: Total number of transactions (for pagination)
@@ -1196,20 +1275,25 @@ components:
           example: 0
       required:
         - user_id
+        - counter_id
         - current_balance
         - transactions
         - total_count
         - limit
         - offset
 
-    AllUserCreditsResponse:
+    AllUserCountersResponse:
       type: object
       properties:
+        counter_id:
+          type: string
+          description: ID of the counter type
+          example: "credits"
         users:
           type: array
           items:
-            $ref: '#/components/schemas/UserCreditsResponse'
-          description: List of users with their credit balances
+            $ref: '#/components/schemas/UserCountersResponse'
+          description: List of users with their counter balances
         total_count:
           type: integer
           description: Total number of users (for pagination)
@@ -1223,10 +1307,23 @@ components:
           description: Number of users skipped
           example: 0
       required:
+        - counter_id
         - users
         - total_count
         - limit
         - offset
+
+    AvailableCountersResponse:
+      type: object
+      properties:
+        counters:
+          type: array
+          items:
+            type: string
+          description: List of available counter type IDs
+          example: ["credits", "coins", "points", "tokens"]
+      required:
+        - counters
 
   securitySchemes:
     cookieAuth:
