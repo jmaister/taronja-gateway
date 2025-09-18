@@ -6,10 +6,17 @@ import {
   useAllUserCounters,
   useCounterHistory,
   useAdjustCounters,
+  useAvailableCounters,
 } from '@/services/services';
 
 export function CountersManagementPage() {
   const [counterId, setCounterId] = useState<string>('credits');
+  // Fetch available counters
+  const {
+    data: availableCounters,
+    isLoading: loadingAvailableCounters,
+    error: errorAvailableCounters,
+  } = useAvailableCounters();
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [adjustmentForm, setAdjustmentForm] = useState<CounterAdjustmentRequest>({ amount: 0, description: '' });
   
@@ -36,24 +43,51 @@ export function CountersManagementPage() {
         <p className="text-gray-600 mt-2">Manage user counters and view transaction history</p>
       </div>
 
+      {/* Available Counters Buttons */}
+      <div className="mb-4">
+        {loadingAvailableCounters && (
+          <div className="text-blue-500">Loading available counters...</div>
+        )}
+        {errorAvailableCounters && (
+          <div className="text-red-500">Error loading counters: {errorAvailableCounters.message}</div>
+        )}
+        {availableCounters && availableCounters.counters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {availableCounters.counters.map((counter) => (
+              <button
+                key={counter}
+                type="button"
+                className={`px-3 py-1 rounded border ${counterId === counter ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-blue-100'}`}
+                onClick={() => {
+                  setCounterId(counter);
+                  setSelectedUser(null);
+                }}
+              >
+                {counter}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Counter Type Selection */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Counter ID</h2>
-          </div>
-          <div className="p-6">
-            <input
-              type="text"
-              value={counterId}
-              onChange={(e) => {
-                setCounterId(e.target.value);
-                setSelectedUser(null); // Reset selected user when changing counter type
-              }}
-              className="w-full p-3 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
-            />
-          </div>
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Counter ID</h2>
         </div>
+        <div className="p-6">
+          <input
+            type="text"
+            value={counterId}
+            onChange={(e) => {
+              setCounterId(e.target.value);
+              setSelectedUser(null); // Reset selected user when changing counter type
+            }}
+            className="w-full p-3 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
+          />
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
