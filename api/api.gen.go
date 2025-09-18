@@ -1750,25 +1750,6 @@ func (response GetOpenApiYaml200ApplicationxYamlResponse) VisitGetOpenApiYamlRes
 	return err
 }
 
-type GetOpenApiYaml200TextyamlResponse struct {
-	Body          io.Reader
-	ContentLength int64
-}
-
-func (response GetOpenApiYaml200TextyamlResponse) VisitGetOpenApiYamlResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "text/yaml")
-	if response.ContentLength != 0 {
-		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
-	}
-	w.WriteHeader(200)
-
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	_, err := io.Copy(w, response.Body)
-	return err
-}
-
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Get all users' credit balances (admin only)

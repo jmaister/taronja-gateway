@@ -130,9 +130,6 @@ paths:
         '200':
           description: OpenAPI specification in YAML format
           content:
-            text/yaml:
-              schema:
-                type: string
             application/x-yaml:
               schema:
                 type: string
