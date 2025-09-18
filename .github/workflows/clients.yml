@@ -1,11 +1,6 @@
 name: Generate and Update Clients
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'api/taronja-gateway-api.yaml'
   release:
     types: [published]
 
