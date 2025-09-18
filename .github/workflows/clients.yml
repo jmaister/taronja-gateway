@@ -72,5 +72,5 @@ jobs:
           cd ..
           LATEST_TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
           cd clients-repo
-          git tag "go/$LATEST_TAG"
-          git push origin "go/$LATEST_TAG"
+          git tag "$LATEST_TAG"
+          git push origin "$LATEST_TAG"
