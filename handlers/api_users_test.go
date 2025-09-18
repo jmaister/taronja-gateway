@@ -27,7 +27,7 @@ func setupTestServer() *StrictApiServer {
 		dependencies.UserRepo,
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
-		dependencies.CreditsRepo,
+		dependencies.CountersRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 	)
