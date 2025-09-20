@@ -19,7 +19,7 @@ type Dependencies struct {
 	SessionRepo       db.SessionRepository
 	TrafficMetricRepo db.TrafficMetricRepository
 	TokenRepo         db.TokenRepository
-	CreditsRepo       db.CreditsRepository
+	CountersRepo      db.CountersRepository
 
 	// Services
 	SessionStore session.SessionStore
@@ -40,7 +40,7 @@ func NewProduction() *Dependencies {
 	sessionRepo := db.NewSessionRepositoryDB(gormDB)
 	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
-	creditsRepo := db.NewDBCreditsRepository(gormDB)
+	countersRepo := db.NewDBCountersRepository(gormDB)
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -54,7 +54,7 @@ func NewProduction() *Dependencies {
 		SessionRepo:       sessionRepo,
 		TrafficMetricRepo: trafficMetricRepo,
 		TokenRepo:         tokenRepo,
-		CreditsRepo:       creditsRepo,
+		CountersRepo:      countersRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		StartTime:         time.Now(),
@@ -77,7 +77,7 @@ func NewTestWithName(testName string) *Dependencies {
 	sessionRepo := db.NewSessionRepositoryDB(gormDB)
 	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
-	creditsRepo := db.NewDBCreditsRepository(gormDB)
+	countersRepo := db.NewDBCountersRepository(gormDB)
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)
@@ -91,7 +91,7 @@ func NewTestWithName(testName string) *Dependencies {
 		SessionRepo:       sessionRepo,
 		TrafficMetricRepo: trafficMetricRepo,
 		TokenRepo:         tokenRepo,
-		CreditsRepo:       creditsRepo,
+		CountersRepo:      countersRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		StartTime:         time.Now(),

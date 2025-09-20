@@ -1,37 +1,112 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 
-import type { CreditAdjustmentRequest } from '@/apiclient/types.gen';
+import type { CounterAdjustmentRequest } from '@/apiclient/types.gen';
 import {
-  useAllUserCredits,
-  useCreditHistory,
-  useAdjustCredits,
+  useAllUserCounters,
+  useCounterHistory,
+  useAdjustCounters,
+  useAvailableCounters,
 } from '@/services/services';
 
-export function CreditsManagementPage() {
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [adjustmentForm, setAdjustmentForm] = useState<CreditAdjustmentRequest>({ amount: 0, description: '' });
+export function CountersManagementPage() {
+  const [counterId, setCounterId] = useState<string>('credits');
+  // Fetch available counters
   const {
-    data: allUserCredits,
+    data: availableCounters,
+    isLoading: loadingAvailableCounters,
+    error: errorAvailableCounters,
+    refetch: refetchAvailableCounters,
+  } = useAvailableCounters();
+  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [adjustmentForm, setAdjustmentForm] = useState<CounterAdjustmentRequest>({ amount: 0, description: '' });
+  
+  const {
+    data: allUserCounters,
     isLoading: loadingUsers,
     error: errorUsers,
     refetch: refetchUsers,
-  } = useAllUserCredits();
+  } = useAllUserCounters(counterId);
+  
   const {
-    data: creditHistory,
+    data: counterHistory,
     error: errorHistory,
-  } = useCreditHistory(selectedUser);
-  const adjustCreditsMutation = useAdjustCredits();
-  const mutationLoading = adjustCreditsMutation.status === 'pending';
-  const error = errorUsers?.message || errorHistory?.message || (adjustCreditsMutation.error instanceof Error ? adjustCreditsMutation.error.message : null);
+  } = useCounterHistory(counterId, selectedUser);
+  
+  const adjustCountersMutation = useAdjustCounters();
+  const mutationLoading = adjustCountersMutation.status === 'pending';
+  const error = errorAvailableCounters?.message || errorUsers?.message || errorHistory?.message || (adjustCountersMutation.error instanceof Error ? adjustCountersMutation.error.message : null);
 
   return (
     <div className="w-full p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Credits Management</h1>
-        <p className="text-gray-600 mt-2">Manage user credits and view transaction history</p>
+        <h1 className="text-3xl font-bold text-gray-900">Counters Management</h1>
+        <p className="text-gray-600 mt-2">Manage user counters and view transaction history</p>
       </div>
 
+      {/* Available Counters Buttons */}
+      <div className="mb-4">
+        {loadingAvailableCounters && (
+          <div className="text-blue-500">Loading available counters...</div>
+        )}
+        {errorAvailableCounters && (
+          <div className="text-red-500 bg-red-50 border border-red-200 rounded p-3 mb-4">
+            <div className="font-semibold">Error loading available counters:</div>
+            <div className="text-sm mt-1">{errorAvailableCounters.message}</div>
+            <div className="text-xs mt-2 text-red-400">
+              Please check your connection and try refreshing the page. If you're not an admin, you may not have permission to access this feature.
+            </div>
+            <button
+              onClick={() => refetchAvailableCounters()}
+              className="mt-2 bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {availableCounters && availableCounters.counters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {availableCounters.counters.map((counter) => (
+              <button
+                key={counter}
+                type="button"
+                className={`px-3 py-1 rounded border ${counterId === counter ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-blue-100'}`}
+                onClick={() => {
+                  setCounterId(counter);
+                  setSelectedUser(null);
+                }}
+              >
+                {counter}
+              </button>
+            ))}
+          </div>
+        )}
+        {availableCounters && availableCounters.counters.length === 0 && (
+          <div className="text-yellow-600 bg-yellow-50 border border-yellow-200 rounded p-3">
+            <div className="font-semibold">No counter types available</div>
+            <div className="text-sm mt-1">No counters have been created yet. You can still manually enter a counter ID below.</div>
+          </div>
+        )}
+      </div>
+
+      {/* Counter Type Selection */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">Counter ID</h2>
+        </div>
+        <div className="p-6">
+          <input
+            type="text"
+            value={counterId}
+            onChange={(e) => {
+              setCounterId(e.target.value);
+              setSelectedUser(null); // Reset selected user when changing counter type
+            }}
+            className="w-full p-3 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
+          />
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -39,24 +114,30 @@ export function CreditsManagementPage() {
         </div>
       )}
 
-      {/* User Credits Overview */}
+      {/* User Counters Overview */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">User Credits Overview</h2>
+          <h2 className="text-xl font-semibold text-gray-800">
+            User {counterId.charAt(0).toUpperCase() + counterId.slice(1)} Overview
+          </h2>
           <button
             onClick={() => refetchUsers()}
-            disabled={loadingUsers}
+            disabled={loadingUsers || !counterId}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
           >
             {loadingUsers ? 'Loading...' : 'Refresh'}
           </button>
         </div>
         <div className="p-6">
-          {loadingUsers && !allUserCredits && (
-            <p className="text-blue-500">Loading user credits...</p>
+          {loadingUsers && !allUserCounters && (
+            <p className="text-blue-500">Loading user counters...</p>
           )}
 
-          {allUserCredits && (
+          {!counterId && (
+            <p className="text-gray-500 text-center py-8">Please select a counter type</p>
+          )}
+
+          {counterId && allUserCounters && (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -69,7 +150,7 @@ export function CreditsManagementPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allUserCredits.users.map((user) => (
+                  {allUserCounters.users.map((user: any) => (
                     <tr key={user.user_id} className="hover:bg-gray-50">
                       <td className="p-3 border-b border-gray-200">{user.username}</td>
                       <td className="p-3 border-b border-gray-200">{user.email}</td>
@@ -99,7 +180,7 @@ export function CreditsManagementPage() {
                   ))}
                 </tbody>
               </table>
-              {allUserCredits.users.length === 0 && (
+              {allUserCounters.users.length === 0 && (
                 <p className="text-gray-500 text-center py-8">No users found</p>
               )}
             </div>
@@ -107,11 +188,13 @@ export function CreditsManagementPage() {
         </div>
       </div>
 
-      {/* Credit Adjustment Form */}
-      {selectedUser && (
+      {/* Counter Adjustment Form */}
+      {selectedUser && counterId && (
         <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Adjust Credits</h2>
+            <h2 className="text-xl font-semibold text-gray-800">
+              Adjust {counterId.charAt(0).toUpperCase() + counterId.slice(1)}
+            </h2>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -137,11 +220,11 @@ export function CreditsManagementPage() {
               </div>
               <div className="flex items-end">
                 <button
-                  onClick={() => adjustCreditsMutation.mutate({ userId: selectedUser, adjustment: adjustmentForm })}
+                  onClick={() => adjustCountersMutation.mutate({ counterId, userId: selectedUser, adjustment: adjustmentForm })}
                   disabled={mutationLoading || !adjustmentForm.amount || !adjustmentForm.description.trim()}
                   className="w-full bg-orange-500 text-white px-4 py-3 rounded hover:bg-orange-600 disabled:opacity-50"
                 >
-                  {mutationLoading ? 'Processing...' : 'Adjust Credits'}
+                  {mutationLoading ? 'Processing...' : `Adjust ${counterId.charAt(0).toUpperCase() + counterId.slice(1)}`}
                 </button>
               </div>
             </div>
@@ -149,17 +232,19 @@ export function CreditsManagementPage() {
         </div>
       )}
 
-      {/* Credit History */}
-      {selectedUser && creditHistory && (
+      {/* Counter History */}
+      {selectedUser && counterId && counterHistory && (
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-800">
-              Credit History - Current Balance:
-              <span className={`ml-2 ${creditHistory.current_balance < 0 ? 'text-red-600' : 'text-green-600'}`}>{creditHistory.current_balance}</span>
+              {counterId.charAt(0).toUpperCase() + counterId.slice(1)} History - Current Balance:
+              <span className={`ml-2 ${counterHistory.current_balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {counterHistory.current_balance}
+              </span>
             </h2>
           </div>
           <div className="p-6">
-            {creditHistory.transactions.length > 0 ? (
+            {counterHistory.transactions.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
@@ -171,11 +256,13 @@ export function CreditsManagementPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {creditHistory.transactions.map((transaction) => (
+                    {counterHistory.transactions.map((transaction: any) => (
                       <tr key={transaction.id} className="hover:bg-gray-50">
                         <td className="p-3 border-b border-gray-200">{new Date(transaction.created_at).toLocaleString()}</td>
                         <td className="p-3 border-b border-gray-200">
-                          <span className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>{transaction.amount > 0 ? '+' : ''}{transaction.amount}</span>
+                          <span className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {transaction.amount > 0 ? '+' : ''}{transaction.amount}
+                          </span>
                         </td>
                         <td className="p-3 border-b border-gray-200">{transaction.balance_after}</td>
                         <td className="p-3 border-b border-gray-200">{transaction.description}</td>
@@ -185,7 +272,7 @@ export function CreditsManagementPage() {
                 </table>
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No credit transactions found</p>
+              <p className="text-gray-500 text-center py-8">No counter transactions found</p>
             )}
           </div>
         </div>

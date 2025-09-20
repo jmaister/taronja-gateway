@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/session"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -33,22 +33,19 @@ func RndStr(n int) string {
 }
 
 func TestGetCurrentUser(t *testing.T) {
-	// Setup isolated test database
-	db.SetupTestDB("TestGetCurrentUser")
-	testDB := db.GetConnection()
+	// Setup isolated test database using the new dependencies approach
+	dependencies := deps.NewTestWithName("TestGetCurrentUser")
 
-	// Setup test server with database repositories
-	userRepo := db.NewDBUserRepository(testDB)
-	sessionRepo := db.NewSessionRepositoryDB(testDB)
-	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewTrafficMetricRepository(testDB)
-	tokenRepo := db.NewTokenRepositoryDB(testDB)
-	tokenService := auth.NewTokenService(tokenRepo, userRepo)
-
-	startTime := time.Now()
-
-	creditsRepo := db.NewDBCreditsRepository(testDB)
-	s := handlers.NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, creditsRepo, tokenService, startTime)
+	// Create test server using dependencies
+	s := handlers.NewStrictApiServer(
+		dependencies.SessionStore,
+		dependencies.UserRepo,
+		dependencies.TrafficMetricRepo,
+		dependencies.TokenRepo,
+		dependencies.CountersRepo,
+		dependencies.TokenService,
+		dependencies.StartTime,
+	)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {
 		// Setup: Create a test user in the repository
@@ -60,7 +57,7 @@ func TestGetCurrentUser(t *testing.T) {
 			Picture:  "https://example.com/avatar.jpg",
 			Provider: "testprovider",
 		}
-		err := userRepo.CreateUser(testUser)
+		err := dependencies.UserRepo.CreateUser(testUser)
 		assert.NoError(t, err)
 
 		// Setup: Create a valid session
@@ -114,7 +111,7 @@ func TestGetCurrentUser(t *testing.T) {
 			Picture:  "https://example.com/avatar.jpg",
 			Provider: db.AdminProvider,
 		}
-		err := userRepo.CreateUser(testAdmin)
+		err := dependencies.UserRepo.CreateUser(testAdmin)
 		assert.NoError(t, err)
 
 		// Setup: Create a valid admin session

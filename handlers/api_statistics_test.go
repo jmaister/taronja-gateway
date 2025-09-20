@@ -25,7 +25,7 @@ func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
 		dependencies.UserRepo,
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
-		dependencies.CreditsRepo,
+		dependencies.CountersRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 	)
@@ -222,7 +222,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		dependencies.UserRepo,
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
-		dependencies.CreditsRepo,
+		dependencies.CountersRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 	)

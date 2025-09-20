@@ -23,8 +23,11 @@ const (
 	CookieAuthScopes = "cookieAuth.Scopes"
 )
 
-// AllUserCreditsResponse defines model for AllUserCreditsResponse.
-type AllUserCreditsResponse struct {
+// AllUserCountersResponse defines model for AllUserCountersResponse.
+type AllUserCountersResponse struct {
+	// CounterId ID of the counter type
+	CounterId string `json:"counter_id"`
+
 	// Limit Maximum number of users returned
 	Limit int `json:"limit"`
 
@@ -34,22 +37,31 @@ type AllUserCreditsResponse struct {
 	// TotalCount Total number of users (for pagination)
 	TotalCount int `json:"total_count"`
 
-	// Users List of users with their credit balances
-	Users []UserCreditsResponse `json:"users"`
+	// Users List of users with their counter balances
+	Users []UserCountersResponse `json:"users"`
 }
 
-// CreditAdjustmentRequest defines model for CreditAdjustmentRequest.
-type CreditAdjustmentRequest struct {
+// AvailableCountersResponse defines model for AvailableCountersResponse.
+type AvailableCountersResponse struct {
+	// Counters List of available counter type IDs
+	Counters []string `json:"counters"`
+}
+
+// CounterAdjustmentRequest defines model for CounterAdjustmentRequest.
+type CounterAdjustmentRequest struct {
 	// Amount Amount to add (positive) or deduct (negative)
 	Amount int `json:"amount"`
 
-	// Description Description of the credit adjustment
+	// Description Description of the counter adjustment
 	Description string `json:"description"`
 }
 
-// CreditHistoryResponse defines model for CreditHistoryResponse.
-type CreditHistoryResponse struct {
-	// CurrentBalance Current credit balance
+// CounterHistoryResponse defines model for CounterHistoryResponse.
+type CounterHistoryResponse struct {
+	// CounterId ID of the counter type
+	CounterId string `json:"counter_id"`
+
+	// CurrentBalance Current counter balance
 	CurrentBalance int `json:"current_balance"`
 
 	// Limit Maximum number of transactions returned
@@ -61,20 +73,23 @@ type CreditHistoryResponse struct {
 	// TotalCount Total number of transactions (for pagination)
 	TotalCount int `json:"total_count"`
 
-	// Transactions List of credit transactions
-	Transactions []CreditTransactionResponse `json:"transactions"`
+	// Transactions List of counter transactions
+	Transactions []CounterTransactionResponse `json:"transactions"`
 
 	// UserId ID of the user
 	UserId string `json:"user_id"`
 }
 
-// CreditTransactionResponse defines model for CreditTransactionResponse.
-type CreditTransactionResponse struct {
+// CounterTransactionResponse defines model for CounterTransactionResponse.
+type CounterTransactionResponse struct {
 	// Amount Amount added (positive) or deducted (negative)
 	Amount int `json:"amount"`
 
 	// BalanceAfter Balance after this transaction
 	BalanceAfter int `json:"balance_after"`
+
+	// CounterId ID of the counter type
+	CounterId string `json:"counter_id"`
 
 	// CreatedAt When the transaction was created
 	CreatedAt time.Time `json:"created_at"`
@@ -231,17 +246,13 @@ type TokenResponse struct {
 	UsageCount int `json:"usage_count"`
 }
 
-// UserCreateRequest defines model for UserCreateRequest.
-type UserCreateRequest struct {
-	Email    openapi_types.Email `json:"email"`
-	Password string              `json:"password"`
-	Username string              `json:"username"`
-}
-
-// UserCreditsResponse defines model for UserCreditsResponse.
-type UserCreditsResponse struct {
-	// Balance Current credit balance
+// UserCountersResponse defines model for UserCountersResponse.
+type UserCountersResponse struct {
+	// Balance Current counter balance
 	Balance int `json:"balance"`
+
+	// CounterId ID of the counter type
+	CounterId string `json:"counter_id"`
 
 	// Email Email of the user
 	Email *openapi_types.Email `json:"email,omitempty"`
@@ -256,6 +267,13 @@ type UserCreditsResponse struct {
 	Username *string `json:"username,omitempty"`
 }
 
+// UserCreateRequest defines model for UserCreateRequest.
+type UserCreateRequest struct {
+	Email    openapi_types.Email `json:"email"`
+	Password string              `json:"password"`
+	Username string              `json:"username"`
+}
+
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
 	CreatedAt time.Time            `json:"createdAt"`
@@ -268,8 +286,8 @@ type UserResponse struct {
 	Username  string               `json:"username"`
 }
 
-// GetAllUserCreditsParams defines parameters for GetAllUserCredits.
-type GetAllUserCreditsParams struct {
+// GetAllUserCountersParams defines parameters for GetAllUserCounters.
+type GetAllUserCountersParams struct {
 	// Limit Maximum number of users to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -277,8 +295,8 @@ type GetAllUserCreditsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
-// GetUserCreditHistoryParams defines parameters for GetUserCreditHistory.
-type GetUserCreditHistoryParams struct {
+// GetUserCounterHistoryParams defines parameters for GetUserCounterHistory.
+type GetUserCounterHistoryParams struct {
 	// Limit Maximum number of transactions to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -313,8 +331,8 @@ type LogoutUserParams struct {
 	TgSessionToken *string `form:"tg_session_token,omitempty" json:"tg_session_token,omitempty"`
 }
 
-// AdjustUserCreditsJSONRequestBody defines body for AdjustUserCredits for application/json ContentType.
-type AdjustUserCreditsJSONRequestBody = CreditAdjustmentRequest
+// AdjustUserCountersJSONRequestBody defines body for AdjustUserCounters for application/json ContentType.
+type AdjustUserCountersJSONRequestBody = CounterAdjustmentRequest
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
@@ -324,18 +342,21 @@ type CreateTokenJSONRequestBody = TokenCreateRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Get all users' credit balances (admin only)
-	// (GET /api/admin/credits)
-	GetAllUserCredits(w http.ResponseWriter, r *http.Request, params GetAllUserCreditsParams)
-	// Get user's current credit balance
-	// (GET /api/credits/{userId})
-	GetUserCredits(w http.ResponseWriter, r *http.Request, userId string)
-	// Add or deduct credits for a user (admin only)
-	// (POST /api/credits/{userId})
-	AdjustUserCredits(w http.ResponseWriter, r *http.Request, userId string)
-	// Get user's credit transaction history
-	// (GET /api/credits/{userId}/history)
-	GetUserCreditHistory(w http.ResponseWriter, r *http.Request, userId string, params GetUserCreditHistoryParams)
+	// Get list of available counter types (admin only)
+	// (GET /api/admin/counters)
+	GetAvailableCounters(w http.ResponseWriter, r *http.Request)
+	// Get all users' counter balances (admin only)
+	// (GET /api/admin/counters/{counterId})
+	GetAllUserCounters(w http.ResponseWriter, r *http.Request, counterId string, params GetAllUserCountersParams)
+	// Get user's current counter balance
+	// (GET /api/counters/{counterId}/{userId})
+	GetUserCounters(w http.ResponseWriter, r *http.Request, counterId string, userId string)
+	// Add or deduct counter values for a user (admin only)
+	// (POST /api/counters/{counterId}/{userId})
+	AdjustUserCounters(w http.ResponseWriter, r *http.Request, counterId string, userId string)
+	// Get user's counter transaction history
+	// (GET /api/counters/{counterId}/{userId}/history)
+	GetUserCounterHistory(w http.ResponseWriter, r *http.Request, counterId string, userId string, params GetUserCounterHistoryParams)
 	// Get request statistics
 	// (GET /api/statistics/requests)
 	GetRequestStatistics(w http.ResponseWriter, r *http.Request, params GetRequestStatisticsParams)
@@ -386,10 +407,39 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// GetAllUserCredits operation middleware
-func (siw *ServerInterfaceWrapper) GetAllUserCredits(w http.ResponseWriter, r *http.Request) {
+// GetAvailableCounters operation middleware
+func (siw *ServerInterfaceWrapper) GetAvailableCounters(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAvailableCounters(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAllUserCounters operation middleware
+func (siw *ServerInterfaceWrapper) GetAllUserCounters(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	// ------------- Path parameter "counterId" -------------
+	var counterId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterId", r.PathValue("counterId"), &counterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterId", Err: err})
+		return
+	}
 
 	ctx := r.Context()
 
@@ -398,7 +448,7 @@ func (siw *ServerInterfaceWrapper) GetAllUserCredits(w http.ResponseWriter, r *h
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetAllUserCreditsParams
+	var params GetAllUserCountersParams
 
 	// ------------- Optional query parameter "limit" -------------
 
@@ -417,7 +467,7 @@ func (siw *ServerInterfaceWrapper) GetAllUserCredits(w http.ResponseWriter, r *h
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetAllUserCredits(w, r, params)
+		siw.Handler.GetAllUserCounters(w, r, counterId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -427,10 +477,19 @@ func (siw *ServerInterfaceWrapper) GetAllUserCredits(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
-// GetUserCredits operation middleware
-func (siw *ServerInterfaceWrapper) GetUserCredits(w http.ResponseWriter, r *http.Request) {
+// GetUserCounters operation middleware
+func (siw *ServerInterfaceWrapper) GetUserCounters(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	// ------------- Path parameter "counterId" -------------
+	var counterId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterId", r.PathValue("counterId"), &counterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterId", Err: err})
+		return
+	}
 
 	// ------------- Path parameter "userId" -------------
 	var userId string
@@ -448,7 +507,7 @@ func (siw *ServerInterfaceWrapper) GetUserCredits(w http.ResponseWriter, r *http
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetUserCredits(w, r, userId)
+		siw.Handler.GetUserCounters(w, r, counterId, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -458,10 +517,19 @@ func (siw *ServerInterfaceWrapper) GetUserCredits(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
-// AdjustUserCredits operation middleware
-func (siw *ServerInterfaceWrapper) AdjustUserCredits(w http.ResponseWriter, r *http.Request) {
+// AdjustUserCounters operation middleware
+func (siw *ServerInterfaceWrapper) AdjustUserCounters(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	// ------------- Path parameter "counterId" -------------
+	var counterId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterId", r.PathValue("counterId"), &counterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterId", Err: err})
+		return
+	}
 
 	// ------------- Path parameter "userId" -------------
 	var userId string
@@ -479,7 +547,7 @@ func (siw *ServerInterfaceWrapper) AdjustUserCredits(w http.ResponseWriter, r *h
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AdjustUserCredits(w, r, userId)
+		siw.Handler.AdjustUserCounters(w, r, counterId, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -489,10 +557,19 @@ func (siw *ServerInterfaceWrapper) AdjustUserCredits(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
-// GetUserCreditHistory operation middleware
-func (siw *ServerInterfaceWrapper) GetUserCreditHistory(w http.ResponseWriter, r *http.Request) {
+// GetUserCounterHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetUserCounterHistory(w http.ResponseWriter, r *http.Request) {
 
 	var err error
+
+	// ------------- Path parameter "counterId" -------------
+	var counterId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterId", r.PathValue("counterId"), &counterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterId", Err: err})
+		return
+	}
 
 	// ------------- Path parameter "userId" -------------
 	var userId string
@@ -510,7 +587,7 @@ func (siw *ServerInterfaceWrapper) GetUserCreditHistory(w http.ResponseWriter, r
 	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetUserCreditHistoryParams
+	var params GetUserCounterHistoryParams
 
 	// ------------- Optional query parameter "limit" -------------
 
@@ -529,7 +606,7 @@ func (siw *ServerInterfaceWrapper) GetUserCreditHistory(w http.ResponseWriter, r
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetUserCreditHistory(w, r, userId, params)
+		siw.Handler.GetUserCounterHistory(w, r, counterId, userId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1034,10 +1111,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc("GET "+options.BaseURL+"/api/admin/credits", wrapper.GetAllUserCredits)
-	m.HandleFunc("GET "+options.BaseURL+"/api/credits/{userId}", wrapper.GetUserCredits)
-	m.HandleFunc("POST "+options.BaseURL+"/api/credits/{userId}", wrapper.AdjustUserCredits)
-	m.HandleFunc("GET "+options.BaseURL+"/api/credits/{userId}/history", wrapper.GetUserCreditHistory)
+	m.HandleFunc("GET "+options.BaseURL+"/api/admin/counters", wrapper.GetAvailableCounters)
+	m.HandleFunc("GET "+options.BaseURL+"/api/admin/counters/{counterId}", wrapper.GetAllUserCounters)
+	m.HandleFunc("GET "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.GetUserCounters)
+	m.HandleFunc("POST "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.AdjustUserCounters)
+	m.HandleFunc("GET "+options.BaseURL+"/api/counters/{counterId}/{userId}/history", wrapper.GetUserCounterHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
@@ -1055,214 +1133,270 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	return m
 }
 
-type GetAllUserCreditsRequestObject struct {
-	Params GetAllUserCreditsParams
+type GetAvailableCountersRequestObject struct {
 }
 
-type GetAllUserCreditsResponseObject interface {
-	VisitGetAllUserCreditsResponse(w http.ResponseWriter) error
+type GetAvailableCountersResponseObject interface {
+	VisitGetAvailableCountersResponse(w http.ResponseWriter) error
 }
 
-type GetAllUserCredits200JSONResponse AllUserCreditsResponse
+type GetAvailableCounters200JSONResponse AvailableCountersResponse
 
-func (response GetAllUserCredits200JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAvailableCounters200JSONResponse) VisitGetAvailableCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetAllUserCredits401JSONResponse Error
+type GetAvailableCounters401JSONResponse Error
 
-func (response GetAllUserCredits401JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAvailableCounters401JSONResponse) VisitGetAvailableCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetAllUserCredits403JSONResponse Error
+type GetAvailableCounters403JSONResponse Error
 
-func (response GetAllUserCredits403JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAvailableCounters403JSONResponse) VisitGetAvailableCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetAllUserCredits500JSONResponse Error
+type GetAvailableCounters500JSONResponse Error
 
-func (response GetAllUserCredits500JSONResponse) VisitGetAllUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAvailableCounters500JSONResponse) VisitGetAvailableCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCreditsRequestObject struct {
-	UserId string `json:"userId"`
+type GetAllUserCountersRequestObject struct {
+	CounterId string `json:"counterId"`
+	Params    GetAllUserCountersParams
 }
 
-type GetUserCreditsResponseObject interface {
-	VisitGetUserCreditsResponse(w http.ResponseWriter) error
+type GetAllUserCountersResponseObject interface {
+	VisitGetAllUserCountersResponse(w http.ResponseWriter) error
 }
 
-type GetUserCredits200JSONResponse UserCreditsResponse
+type GetAllUserCounters200JSONResponse AllUserCountersResponse
 
-func (response GetUserCredits200JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAllUserCounters200JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCredits401JSONResponse Error
+type GetAllUserCounters401JSONResponse Error
 
-func (response GetUserCredits401JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAllUserCounters401JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCredits403JSONResponse Error
+type GetAllUserCounters403JSONResponse Error
 
-func (response GetUserCredits403JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAllUserCounters403JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCredits404JSONResponse Error
+type GetAllUserCounters404JSONResponse Error
 
-func (response GetUserCredits404JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAllUserCounters404JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCredits500JSONResponse Error
+type GetAllUserCounters500JSONResponse Error
 
-func (response GetUserCredits500JSONResponse) VisitGetUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetAllUserCounters500JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type AdjustUserCreditsRequestObject struct {
-	UserId string `json:"userId"`
-	Body   *AdjustUserCreditsJSONRequestBody
+type GetUserCountersRequestObject struct {
+	CounterId string `json:"counterId"`
+	UserId    string `json:"userId"`
 }
 
-type AdjustUserCreditsResponseObject interface {
-	VisitAdjustUserCreditsResponse(w http.ResponseWriter) error
+type GetUserCountersResponseObject interface {
+	VisitGetUserCountersResponse(w http.ResponseWriter) error
 }
 
-type AdjustUserCredits200JSONResponse CreditTransactionResponse
+type GetUserCounters200JSONResponse UserCountersResponse
 
-func (response AdjustUserCredits200JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetUserCounters200JSONResponse) VisitGetUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type AdjustUserCredits400JSONResponse Error
+type GetUserCounters401JSONResponse Error
 
-func (response AdjustUserCredits400JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+func (response GetUserCounters401JSONResponse) VisitGetUserCountersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCounters403JSONResponse Error
+
+func (response GetUserCounters403JSONResponse) VisitGetUserCountersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCounters404JSONResponse Error
+
+func (response GetUserCounters404JSONResponse) VisitGetUserCountersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetUserCounters500JSONResponse Error
+
+func (response GetUserCounters500JSONResponse) VisitGetUserCountersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCountersRequestObject struct {
+	CounterId string `json:"counterId"`
+	UserId    string `json:"userId"`
+	Body      *AdjustUserCountersJSONRequestBody
+}
+
+type AdjustUserCountersResponseObject interface {
+	VisitAdjustUserCountersResponse(w http.ResponseWriter) error
+}
+
+type AdjustUserCounters200JSONResponse CounterTransactionResponse
+
+func (response AdjustUserCounters200JSONResponse) VisitAdjustUserCountersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdjustUserCounters400JSONResponse Error
+
+func (response AdjustUserCounters400JSONResponse) VisitAdjustUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type AdjustUserCredits401JSONResponse Error
+type AdjustUserCounters401JSONResponse Error
 
-func (response AdjustUserCredits401JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+func (response AdjustUserCounters401JSONResponse) VisitAdjustUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type AdjustUserCredits403JSONResponse Error
+type AdjustUserCounters403JSONResponse Error
 
-func (response AdjustUserCredits403JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+func (response AdjustUserCounters403JSONResponse) VisitAdjustUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type AdjustUserCredits404JSONResponse Error
+type AdjustUserCounters404JSONResponse Error
 
-func (response AdjustUserCredits404JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+func (response AdjustUserCounters404JSONResponse) VisitAdjustUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type AdjustUserCredits500JSONResponse Error
+type AdjustUserCounters500JSONResponse Error
 
-func (response AdjustUserCredits500JSONResponse) VisitAdjustUserCreditsResponse(w http.ResponseWriter) error {
+func (response AdjustUserCounters500JSONResponse) VisitAdjustUserCountersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCreditHistoryRequestObject struct {
-	UserId string `json:"userId"`
-	Params GetUserCreditHistoryParams
+type GetUserCounterHistoryRequestObject struct {
+	CounterId string `json:"counterId"`
+	UserId    string `json:"userId"`
+	Params    GetUserCounterHistoryParams
 }
 
-type GetUserCreditHistoryResponseObject interface {
-	VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error
+type GetUserCounterHistoryResponseObject interface {
+	VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error
 }
 
-type GetUserCreditHistory200JSONResponse CreditHistoryResponse
+type GetUserCounterHistory200JSONResponse CounterHistoryResponse
 
-func (response GetUserCreditHistory200JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+func (response GetUserCounterHistory200JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCreditHistory401JSONResponse Error
+type GetUserCounterHistory401JSONResponse Error
 
-func (response GetUserCreditHistory401JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+func (response GetUserCounterHistory401JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCreditHistory403JSONResponse Error
+type GetUserCounterHistory403JSONResponse Error
 
-func (response GetUserCreditHistory403JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+func (response GetUserCounterHistory403JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCreditHistory404JSONResponse Error
+type GetUserCounterHistory404JSONResponse Error
 
-func (response GetUserCreditHistory404JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+func (response GetUserCounterHistory404JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetUserCreditHistory500JSONResponse Error
+type GetUserCounterHistory500JSONResponse Error
 
-func (response GetUserCreditHistory500JSONResponse) VisitGetUserCreditHistoryResponse(w http.ResponseWriter) error {
+func (response GetUserCounterHistory500JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -1752,18 +1886,21 @@ func (response GetOpenApiYaml200ApplicationxYamlResponse) VisitGetOpenApiYamlRes
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// Get all users' credit balances (admin only)
-	// (GET /api/admin/credits)
-	GetAllUserCredits(ctx context.Context, request GetAllUserCreditsRequestObject) (GetAllUserCreditsResponseObject, error)
-	// Get user's current credit balance
-	// (GET /api/credits/{userId})
-	GetUserCredits(ctx context.Context, request GetUserCreditsRequestObject) (GetUserCreditsResponseObject, error)
-	// Add or deduct credits for a user (admin only)
-	// (POST /api/credits/{userId})
-	AdjustUserCredits(ctx context.Context, request AdjustUserCreditsRequestObject) (AdjustUserCreditsResponseObject, error)
-	// Get user's credit transaction history
-	// (GET /api/credits/{userId}/history)
-	GetUserCreditHistory(ctx context.Context, request GetUserCreditHistoryRequestObject) (GetUserCreditHistoryResponseObject, error)
+	// Get list of available counter types (admin only)
+	// (GET /api/admin/counters)
+	GetAvailableCounters(ctx context.Context, request GetAvailableCountersRequestObject) (GetAvailableCountersResponseObject, error)
+	// Get all users' counter balances (admin only)
+	// (GET /api/admin/counters/{counterId})
+	GetAllUserCounters(ctx context.Context, request GetAllUserCountersRequestObject) (GetAllUserCountersResponseObject, error)
+	// Get user's current counter balance
+	// (GET /api/counters/{counterId}/{userId})
+	GetUserCounters(ctx context.Context, request GetUserCountersRequestObject) (GetUserCountersResponseObject, error)
+	// Add or deduct counter values for a user (admin only)
+	// (POST /api/counters/{counterId}/{userId})
+	AdjustUserCounters(ctx context.Context, request AdjustUserCountersRequestObject) (AdjustUserCountersResponseObject, error)
+	// Get user's counter transaction history
+	// (GET /api/counters/{counterId}/{userId}/history)
+	GetUserCounterHistory(ctx context.Context, request GetUserCounterHistoryRequestObject) (GetUserCounterHistoryResponseObject, error)
 	// Get request statistics
 	// (GET /api/statistics/requests)
 	GetRequestStatistics(ctx context.Context, request GetRequestStatisticsRequestObject) (GetRequestStatisticsResponseObject, error)
@@ -1834,25 +1971,50 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
-// GetAllUserCredits operation middleware
-func (sh *strictHandler) GetAllUserCredits(w http.ResponseWriter, r *http.Request, params GetAllUserCreditsParams) {
-	var request GetAllUserCreditsRequestObject
+// GetAvailableCounters operation middleware
+func (sh *strictHandler) GetAvailableCounters(w http.ResponseWriter, r *http.Request) {
+	var request GetAvailableCountersRequestObject
 
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAvailableCounters(ctx, request.(GetAvailableCountersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAvailableCounters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAvailableCountersResponseObject); ok {
+		if err := validResponse.VisitGetAvailableCountersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAllUserCounters operation middleware
+func (sh *strictHandler) GetAllUserCounters(w http.ResponseWriter, r *http.Request, counterId string, params GetAllUserCountersParams) {
+	var request GetAllUserCountersRequestObject
+
+	request.CounterId = counterId
 	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetAllUserCredits(ctx, request.(GetAllUserCreditsRequestObject))
+		return sh.ssi.GetAllUserCounters(ctx, request.(GetAllUserCountersRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetAllUserCredits")
+		handler = middleware(handler, "GetAllUserCounters")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetAllUserCreditsResponseObject); ok {
-		if err := validResponse.VisitGetAllUserCreditsResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetAllUserCountersResponseObject); ok {
+		if err := validResponse.VisitGetAllUserCountersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1860,25 +2022,26 @@ func (sh *strictHandler) GetAllUserCredits(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// GetUserCredits operation middleware
-func (sh *strictHandler) GetUserCredits(w http.ResponseWriter, r *http.Request, userId string) {
-	var request GetUserCreditsRequestObject
+// GetUserCounters operation middleware
+func (sh *strictHandler) GetUserCounters(w http.ResponseWriter, r *http.Request, counterId string, userId string) {
+	var request GetUserCountersRequestObject
 
+	request.CounterId = counterId
 	request.UserId = userId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetUserCredits(ctx, request.(GetUserCreditsRequestObject))
+		return sh.ssi.GetUserCounters(ctx, request.(GetUserCountersRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetUserCredits")
+		handler = middleware(handler, "GetUserCounters")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetUserCreditsResponseObject); ok {
-		if err := validResponse.VisitGetUserCreditsResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetUserCountersResponseObject); ok {
+		if err := validResponse.VisitGetUserCountersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1886,13 +2049,14 @@ func (sh *strictHandler) GetUserCredits(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-// AdjustUserCredits operation middleware
-func (sh *strictHandler) AdjustUserCredits(w http.ResponseWriter, r *http.Request, userId string) {
-	var request AdjustUserCreditsRequestObject
+// AdjustUserCounters operation middleware
+func (sh *strictHandler) AdjustUserCounters(w http.ResponseWriter, r *http.Request, counterId string, userId string) {
+	var request AdjustUserCountersRequestObject
 
+	request.CounterId = counterId
 	request.UserId = userId
 
-	var body AdjustUserCreditsJSONRequestBody
+	var body AdjustUserCountersJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
 		return
@@ -1900,18 +2064,18 @@ func (sh *strictHandler) AdjustUserCredits(w http.ResponseWriter, r *http.Reques
 	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AdjustUserCredits(ctx, request.(AdjustUserCreditsRequestObject))
+		return sh.ssi.AdjustUserCounters(ctx, request.(AdjustUserCountersRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AdjustUserCredits")
+		handler = middleware(handler, "AdjustUserCounters")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AdjustUserCreditsResponseObject); ok {
-		if err := validResponse.VisitAdjustUserCreditsResponse(w); err != nil {
+	} else if validResponse, ok := response.(AdjustUserCountersResponseObject); ok {
+		if err := validResponse.VisitAdjustUserCountersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1919,26 +2083,27 @@ func (sh *strictHandler) AdjustUserCredits(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// GetUserCreditHistory operation middleware
-func (sh *strictHandler) GetUserCreditHistory(w http.ResponseWriter, r *http.Request, userId string, params GetUserCreditHistoryParams) {
-	var request GetUserCreditHistoryRequestObject
+// GetUserCounterHistory operation middleware
+func (sh *strictHandler) GetUserCounterHistory(w http.ResponseWriter, r *http.Request, counterId string, userId string, params GetUserCounterHistoryParams) {
+	var request GetUserCounterHistoryRequestObject
 
+	request.CounterId = counterId
 	request.UserId = userId
 	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetUserCreditHistory(ctx, request.(GetUserCreditHistoryRequestObject))
+		return sh.ssi.GetUserCounterHistory(ctx, request.(GetUserCounterHistoryRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetUserCreditHistory")
+		handler = middleware(handler, "GetUserCounterHistory")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetUserCreditHistoryResponseObject); ok {
-		if err := validResponse.VisitGetUserCreditHistoryResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetUserCounterHistoryResponseObject); ok {
+		if err := validResponse.VisitGetUserCounterHistoryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

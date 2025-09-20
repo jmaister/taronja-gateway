@@ -23,7 +23,7 @@ func TestHealthCheck(t *testing.T) {
 		testDeps.UserRepo,
 		testDeps.TrafficMetricRepo,
 		testDeps.TokenRepo,
-		testDeps.CreditsRepo,
+		testDeps.CountersRepo,
 		testDeps.TokenService,
 		testDeps.StartTime,
 	)

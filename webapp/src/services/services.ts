@@ -1,12 +1,16 @@
 import {
-  getAllUserCredits,
-  getUserCreditHistory,
-  adjustUserCredits,
+  getUserCounters,
+  getUserCounterHistory,
+  adjustUserCounters,
+  getAllUserCounters,
+  getAvailableCounters,
 } from '@/apiclient/sdk.gen';
 import type {
-  AllUserCreditsResponse,
-  CreditHistoryResponse,
-  CreditAdjustmentRequest,
+  UserCountersResponse,
+  CounterHistoryResponse,
+  CounterAdjustmentRequest,
+  AllUserCountersResponse,
+  AvailableCountersResponse,
 } from '@/apiclient/types.gen';
 
 
@@ -204,42 +208,55 @@ export function useRevokeToken() {
   });
 }
 
-// Credits hooks
-export function useAllUserCredits() {
-  return useQuery<AllUserCreditsResponse, Error>({
-    queryKey: ['credits', 'allUsers'],
+// Counters hooks
+export function useAllUserCounters(counterId: string) {
+  return useQuery<AllUserCountersResponse, Error>({
+    queryKey: ['counters', 'allUsers', counterId],
     queryFn: async () => {
-      const response = await getAllUserCredits({ client: customApiClient });
-      return handleResponse<AllUserCreditsResponse>(response);
+      const response = await getAllUserCounters({ path: { counterId }, client: customApiClient });
+      return handleResponse<AllUserCountersResponse>(response);
     },
+    enabled: !!counterId,
     staleTime: 60_000,
   });
 }
 
-export function useCreditHistory(userId: string | null) {
-  return useQuery<CreditHistoryResponse, Error>({
-    queryKey: ['credits', 'history', userId],
+export function useCounterHistory(counterId: string, userId: string | null) {
+  return useQuery<CounterHistoryResponse, Error>({
+    queryKey: ['counters', 'history', counterId, userId],
     queryFn: async () => {
       if (!userId) throw new Error('No user selected');
-      const response = await getUserCreditHistory({ path: { userId }, client: customApiClient });
-      return handleResponse<CreditHistoryResponse>(response);
+      const response = await getUserCounterHistory({ path: { counterId, userId }, client: customApiClient });
+      return handleResponse<CounterHistoryResponse>(response);
     },
-    enabled: !!userId,
+    enabled: !!userId && !!counterId,
     staleTime: 30_000,
   });
 }
 
-export function useAdjustCredits() {
+export function useAdjustCounters() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ userId, adjustment }: { userId: string; adjustment: CreditAdjustmentRequest }) => {
-      const response = await adjustUserCredits({ path: { userId }, body: adjustment, client: customApiClient });
+    mutationFn: async ({ counterId, userId, adjustment }: { counterId: string; userId: string; adjustment: CounterAdjustmentRequest }) => {
+      const response = await adjustUserCounters({ path: { counterId, userId }, body: adjustment, client: customApiClient });
       if (response.error) throw new Error(response.error.message);
       return response.data;
     },
-    onSuccess: (_, { userId }) => {
-      queryClient.invalidateQueries({ queryKey: ['credits', 'allUsers'] });
-      queryClient.invalidateQueries({ queryKey: ['credits', 'history', userId] });
+    onSuccess: (_, { counterId, userId }) => {
+      queryClient.invalidateQueries({ queryKey: ['counters', 'allUsers', counterId] });
+      queryClient.invalidateQueries({ queryKey: ['counters', 'history', counterId, userId] });
     },
+  });
+}
+
+export function useAvailableCounters() {
+  return useQuery<AvailableCountersResponse, Error>({
+    queryKey: ['counters', 'available'],
+    queryFn: async () => {
+      const response = await getAvailableCounters({ client: customApiClient });
+      return handleResponse<AvailableCountersResponse>(response);
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - counter types don't change often
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }
