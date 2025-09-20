@@ -74,3 +74,6 @@ jobs:
           cd clients-repo
           git tag "$LATEST_TAG"
           git push origin "$LATEST_TAG"
+          # Go modules requires the tag to have "<folder>/<version"
+          git tag "go/$LATEST_TAG"
+          git push origin "go/$LATEST_TAG"
