@@ -16,6 +16,7 @@ export function CountersManagementPage() {
     data: availableCounters,
     isLoading: loadingAvailableCounters,
     error: errorAvailableCounters,
+    refetch: refetchAvailableCounters,
   } = useAvailableCounters();
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [adjustmentForm, setAdjustmentForm] = useState<CounterAdjustmentRequest>({ amount: 0, description: '' });
@@ -34,7 +35,7 @@ export function CountersManagementPage() {
   
   const adjustCountersMutation = useAdjustCounters();
   const mutationLoading = adjustCountersMutation.status === 'pending';
-  const error = errorUsers?.message || errorHistory?.message || (adjustCountersMutation.error instanceof Error ? adjustCountersMutation.error.message : null);
+  const error = errorAvailableCounters?.message || errorUsers?.message || errorHistory?.message || (adjustCountersMutation.error instanceof Error ? adjustCountersMutation.error.message : null);
 
   return (
     <div className="w-full p-6">
@@ -49,7 +50,19 @@ export function CountersManagementPage() {
           <div className="text-blue-500">Loading available counters...</div>
         )}
         {errorAvailableCounters && (
-          <div className="text-red-500">Error loading counters: {errorAvailableCounters.message}</div>
+          <div className="text-red-500 bg-red-50 border border-red-200 rounded p-3 mb-4">
+            <div className="font-semibold">Error loading available counters:</div>
+            <div className="text-sm mt-1">{errorAvailableCounters.message}</div>
+            <div className="text-xs mt-2 text-red-400">
+              Please check your connection and try refreshing the page. If you're not an admin, you may not have permission to access this feature.
+            </div>
+            <button
+              onClick={() => refetchAvailableCounters()}
+              className="mt-2 bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+            >
+              Retry
+            </button>
+          </div>
         )}
         {availableCounters && availableCounters.counters.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -66,6 +79,12 @@ export function CountersManagementPage() {
                 {counter}
               </button>
             ))}
+          </div>
+        )}
+        {availableCounters && availableCounters.counters.length === 0 && (
+          <div className="text-yellow-600 bg-yellow-50 border border-yellow-200 rounded p-3">
+            <div className="font-semibold">No counter types available</div>
+            <div className="text-sm mt-1">No counters have been created yet. You can still manually enter a counter ID below.</div>
           </div>
         )}
       </div>

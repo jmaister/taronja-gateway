@@ -175,6 +175,7 @@ func (r *CountersRepositoryDB) AdjustCounters(userID, counterID string, amount i
 		newBalance := currentBalance + amount
 
 		// Prevent negative balance if deducting counters
+		// TODO: configure if it can go negative?
 		if newBalance < 0 {
 			return errors.New("insufficient counters: transaction would result in negative balance")
 		}
@@ -324,11 +325,6 @@ func (r *CountersRepositoryDB) GetAvailableCounterTypes() ([]string, error) {
 		Order("counter_id").
 		Pluck("counter_id", &counterTypes).Error; err != nil {
 		return nil, fmt.Errorf("failed to get available counter types: %w", err)
-	}
-
-	// If no counters exist yet, return a default list
-	if len(counterTypes) == 0 {
-		return []string{"credits", "coins", "points", "tokens"}, nil
 	}
 
 	return counterTypes, nil
