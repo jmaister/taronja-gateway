@@ -64,6 +64,9 @@ type CounterHistoryResponse struct {
 	// CurrentBalance Current counter balance
 	CurrentBalance int `json:"current_balance"`
 
+	// HasHistory Indicates if the user has any counter transaction history. False when user has no transactions and balance is default 0.
+	HasHistory bool `json:"has_history"`
+
 	// Limit Maximum number of transactions returned
 	Limit int `json:"limit"`
 
@@ -256,6 +259,9 @@ type UserCountersResponse struct {
 
 	// Email Email of the user
 	Email *openapi_types.Email `json:"email,omitempty"`
+
+	// HasHistory Indicates if the user has any counter transaction history. False when user has no transactions and balance is default 0.
+	HasHistory bool `json:"has_history"`
 
 	// LastUpdated When the balance was last updated
 	LastUpdated time.Time `json:"last_updated"`

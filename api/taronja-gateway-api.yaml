@@ -1178,11 +1178,16 @@ components:
           format: date-time
           description: When the balance was last updated
           example: "2025-09-15T10:30:00Z"
+        has_history:
+          type: boolean
+          description: Indicates if the user has any counter transaction history. False when user has no transactions and balance is default 0.
+          example: true
       required:
         - user_id
         - counter_id
         - balance
         - last_updated
+        - has_history
 
     CounterAdjustmentRequest:
       type: object
@@ -1256,6 +1261,10 @@ components:
           type: integer
           description: Current counter balance
           example: 1500
+        has_history:
+          type: boolean
+          description: Indicates if the user has any counter transaction history. False when user has no transactions and balance is default 0.
+          example: true
         transactions:
           type: array
           items:
@@ -1277,6 +1286,7 @@ components:
         - user_id
         - counter_id
         - current_balance
+        - has_history
         - transactions
         - total_count
         - limit

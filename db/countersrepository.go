@@ -14,6 +14,7 @@ type CounterSummary struct {
 	CounterID   string    `json:"counter_id"`
 	Balance     int       `json:"balance"`
 	LastUpdated time.Time `json:"last_updated"`
+	HasHistory  bool      `json:"has_history"` // false when user has no transactions and balance is default 0
 }
 
 // UserCounterSummary represents a user's counter balance with user information
@@ -24,6 +25,7 @@ type UserCounterSummary struct {
 	CounterID   string    `json:"counter_id"`
 	Balance     int       `json:"balance"`
 	LastUpdated time.Time `json:"last_updated"`
+	HasHistory  bool      `json:"has_history"` // false when user has no transactions and balance is default 0
 }
 
 // CounterHistoryResult represents paginated counter history
@@ -31,6 +33,7 @@ type CounterHistoryResult struct {
 	UserID       string    `json:"user_id"`
 	CounterID    string    `json:"counter_id"`
 	Balance      int       `json:"current_balance"`
+	HasHistory   bool      `json:"has_history"` // false when user has no transactions and balance is default 0
 	Transactions []Counter `json:"transactions"`
 	TotalCount   int64     `json:"total_count"`
 	Limit        int       `json:"limit"`
@@ -81,6 +84,7 @@ type userCounterScan struct {
 	CounterID   string `gorm:"column:counter_id"`
 	Balance     int    `gorm:"column:balance"`
 	LastUpdated string `gorm:"column:last_updated"`
+	HasHistory  int    `gorm:"column:has_history"` // SQLite returns 0/1 for boolean, convert to bool later
 }
 
 // toUserCounterSummary converts userCounterScan to UserCounterSummary
@@ -112,6 +116,7 @@ func (u *userCounterScan) toUserCounterSummary() (*UserCounterSummary, error) {
 		CounterID:   u.CounterID,
 		Balance:     u.Balance,
 		LastUpdated: lastUpdated,
+		HasHistory:  u.HasHistory > 0, // Convert SQLite integer (0/1) to boolean
 	}, nil
 }
 
@@ -136,6 +141,7 @@ func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*Counte
 			CounterID:   counterID,
 			Balance:     0,
 			LastUpdated: lastCounter.CreatedAt, // Will be zero time
+			HasHistory:  false,                 // User has no transaction history
 		}, nil
 	}
 
@@ -148,6 +154,7 @@ func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*Counte
 		CounterID:   counterID,
 		Balance:     lastCounter.BalanceAfter,
 		LastUpdated: lastCounter.CreatedAt,
+		HasHistory:  true, // User has transaction history
 	}, nil
 }
 
@@ -224,6 +231,7 @@ func (r *CountersRepositoryDB) GetCounterHistory(userID, counterID string, limit
 
 	// Get current balance
 	currentBalance := 0
+	hasHistory := totalCount > 0
 	if len(counters) > 0 {
 		// If we have transactions, get the most recent one's balance
 		var lastCounter Counter
@@ -236,6 +244,7 @@ func (r *CountersRepositoryDB) GetCounterHistory(userID, counterID string, limit
 		UserID:       userID,
 		CounterID:    counterID,
 		Balance:      currentBalance,
+		HasHistory:   hasHistory,
 		Transactions: counters,
 		TotalCount:   totalCount,
 		Limit:        limit,
@@ -272,14 +281,18 @@ func (r *CountersRepositoryDB) GetAllUserCounters(counterID string, limit, offse
 				 FROM counters c2 
 				 WHERE c2.user_id = u.id AND c2.counter_id = ? AND c2.deleted_at IS NULL 
 				 ORDER BY c2.created_at DESC 
-				 LIMIT 1), u.created_at) as last_updated
+				 LIMIT 1), u.created_at) as last_updated,
+			CASE WHEN EXISTS(
+				SELECT 1 FROM counters c3 
+				WHERE c3.user_id = u.id AND c3.counter_id = ? AND c3.deleted_at IS NULL
+			) THEN 1 ELSE 0 END as has_history
 		FROM users u
 		WHERE u.deleted_at IS NULL
 		ORDER BY u.username
 		LIMIT ? OFFSET ?
 	`
 
-	if err := r.db.Raw(query, counterID, counterID, counterID, limit, offset).Scan(&scanResults).Error; err != nil {
+	if err := r.db.Raw(query, counterID, counterID, counterID, counterID, limit, offset).Scan(&scanResults).Error; err != nil {
 		return nil, fmt.Errorf("failed to get user counters: %w", err)
 	}
 

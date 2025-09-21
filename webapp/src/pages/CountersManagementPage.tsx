@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 
-import type { CounterAdjustmentRequest } from '@/apiclient/types.gen';
+import type { CounterAdjustmentRequest, UserCountersResponse } from '@/apiclient/types.gen';
 import {
   useAllUserCounters,
   useCounterHistory,
@@ -145,18 +145,28 @@ export function CountersManagementPage() {
                     <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Username</th>
                     <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Email</th>
                     <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Balance</th>
+                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Has History</th>
                     <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Last Updated</th>
                     <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allUserCounters.users.map((user: any) => (
+                  {allUserCounters.users.map((user: UserCountersResponse) => (
                     <tr key={user.user_id} className="hover:bg-gray-50">
                       <td className="p-3 border-b border-gray-200">{user.username}</td>
                       <td className="p-3 border-b border-gray-200">{user.email}</td>
                       <td className="p-3 border-b border-gray-200">
                         <span className={`font-semibold ${user.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
                           {user.balance}
+                        </span>
+                      </td>
+                      <td className="p-3 border-b border-gray-200">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.has_history 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {user.has_history ? '✓ Yes' : '○ No'}
                         </span>
                       </td>
                       <td className="p-3 border-b border-gray-200">
