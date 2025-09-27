@@ -140,8 +140,8 @@ func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*Counte
 			UserID:      userID,
 			CounterID:   counterID,
 			Balance:     0,
-			LastUpdated: lastCounter.CreatedAt, // Will be zero time
-			HasHistory:  false,                 // User has no transaction history
+			LastUpdated: time.Now(), // Use current time for users with no history
+			HasHistory:  false,      // User has no transaction history
 		}, nil
 	}
 
@@ -229,11 +229,10 @@ func (r *CountersRepositoryDB) GetCounterHistory(userID, counterID string, limit
 		return nil, fmt.Errorf("failed to get counter history: %w", err)
 	}
 
-	// Get current balance
+	// Get current balance - always get the most recent transaction regardless of pagination
 	currentBalance := 0
 	hasHistory := totalCount > 0
-	if len(counters) > 0 {
-		// If we have transactions, get the most recent one's balance
+	if hasHistory {
 		var lastCounter Counter
 		if err := r.db.Where("user_id = ? AND counter_id = ?", userID, counterID).Order("created_at desc").First(&lastCounter).Error; err == nil {
 			currentBalance = lastCounter.BalanceAfter

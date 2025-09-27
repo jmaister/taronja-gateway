@@ -245,6 +245,7 @@ export function useAdjustCounters() {
     onSuccess: (_, { counterId, userId }) => {
       queryClient.invalidateQueries({ queryKey: ['counters', 'allUsers', counterId] });
       queryClient.invalidateQueries({ queryKey: ['counters', 'history', counterId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['counters', 'available'] });
     },
   });
 }

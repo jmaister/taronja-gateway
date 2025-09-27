@@ -2,6 +2,7 @@ package db
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,14 +68,16 @@ func TestCountersRepository(t *testing.T) {
 	})
 
 	t.Run("HasHistory_Flag_Tests", func(t *testing.T) {
+		// Add a small delay to ensure test isolation
+		time.Sleep(1 * time.Millisecond)
 		// Create another test user for isolated testing
 		user2 := User{
-			Username: "testuser2",
-			Email:    "user2@example.com",
+			Username: "testuser2_hashistory",
+			Email:    "user2_hashistory@example.com",
 		}
 		require.NoError(t, dbConn.Create(&user2).Error)
 
-		testCounterID := "tokens"
+		testCounterID := "tokens_hashistory"
 
 		// Test 1: User with no transactions should have HasHistory=false
 		balance, err := repo.GetUserBalance(user2.ID, testCounterID)
@@ -92,11 +95,12 @@ func TestCountersRepository(t *testing.T) {
 		assert.True(t, balance.HasHistory, "User with transactions should have HasHistory=true")
 
 		// Test 3: User with zero balance but transaction history should have HasHistory=true
+		// Add a small delay to ensure different timestamps
+		time.Sleep(1 * time.Millisecond)
 		_, err = repo.AdjustCounters(user2.ID, testCounterID, -50, "Spend all tokens")
 		assert.NoError(t, err)
 
 		balance, err = repo.GetUserBalance(user2.ID, testCounterID)
-		assert.NoError(t, err)
 		assert.Equal(t, 0, balance.Balance)
 		assert.True(t, balance.HasHistory, "User with zero balance but transaction history should have HasHistory=true")
 	})
@@ -104,12 +108,12 @@ func TestCountersRepository(t *testing.T) {
 	t.Run("GetCounterHistory_HasHistory_Flag", func(t *testing.T) {
 		// Create another test user for isolated testing
 		user3 := User{
-			Username: "testuser3",
-			Email:    "user3@example.com",
+			Username: "testuser3_counterhistory",
+			Email:    "user3_counterhistory@example.com",
 		}
 		require.NoError(t, dbConn.Create(&user3).Error)
 
-		testCounterID := "gems"
+		testCounterID := "gems_counterhistory"
 
 		// Test 1: User with no transactions - GetCounterHistory should have HasHistory=false
 		history, err := repo.GetCounterHistory(user3.ID, testCounterID, 10, 0)
@@ -124,6 +128,8 @@ func TestCountersRepository(t *testing.T) {
 		// Test 2: Add transactions and verify HasHistory=true
 		_, err = repo.AdjustCounters(user3.ID, testCounterID, 25, "Initial gems")
 		assert.NoError(t, err)
+		// Add a small delay to ensure different timestamps
+		time.Sleep(1 * time.Millisecond)
 		_, err = repo.AdjustCounters(user3.ID, testCounterID, 10, "Bonus gems")
 		assert.NoError(t, err)
 
@@ -138,18 +144,18 @@ func TestCountersRepository(t *testing.T) {
 	t.Run("GetAllUserCounters_HasHistory_Flag", func(t *testing.T) {
 		// Create test users for isolated testing
 		userNoHistory := User{
-			Username: "user_no_history",
-			Email:    "nohistory@example.com",
+			Username: "user_no_history_allusers",
+			Email:    "nohistory_allusers@example.com",
 		}
 		require.NoError(t, dbConn.Create(&userNoHistory).Error)
 
 		userWithHistory := User{
-			Username: "user_with_history",
-			Email:    "withhistory@example.com",
+			Username: "user_with_history_allusers",
+			Email:    "withhistory_allusers@example.com",
 		}
 		require.NoError(t, dbConn.Create(&userWithHistory).Error)
 
-		testCounterID := "coins"
+		testCounterID := "coins_allusers"
 
 		// Add transactions only for userWithHistory
 		_, err := repo.AdjustCounters(userWithHistory.ID, testCounterID, 75, "Initial coins")

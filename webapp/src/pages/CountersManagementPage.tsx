@@ -238,6 +238,15 @@ export function CountersManagementPage() {
                 </button>
               </div>
             </div>
+            {/* Show backend error for adjustment */}
+            {adjustCountersMutation.error && (
+              <div className="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+                <strong>Adjustment Error:</strong>{' '}
+                {adjustCountersMutation.error instanceof Error
+                  ? adjustCountersMutation.error.message
+                  : String(adjustCountersMutation.error)}
+              </div>
+            )}
           </div>
         </div>
       )}
