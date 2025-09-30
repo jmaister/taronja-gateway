@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
@@ -23,15 +24,26 @@ func ValidateSessionFromRequest(r *http.Request, sessionStore session.SessionSto
 	var isAuthenticated bool
 	var authMethod string
 
-	// Method 1: Try cookie-based session validation first
-	validSession, isAuthenticated = sessionStore.ValidateSession(r)
-	if isAuthenticated && validSession != nil {
-		authMethod = "cookie"
-	} else {
-		// Method 2: If cookie auth failed, try bearer token authentication
+	// Check for Authorization header first to optimize for API usage
+	authHeader := r.Header.Get("Authorization")
+	trimmedHeader := strings.TrimSpace(authHeader)
+	if authHeader != "" && len(trimmedHeader) > 7 && strings.ToLower(trimmedHeader[:7]) == "bearer " {
+		// Method 1: Try bearer token authentication first when Authorization header is present
 		validSession, isAuthenticated = sessionStore.ValidateTokenAuth(r, tokenService)
 		if isAuthenticated && validSession != nil {
 			authMethod = "token"
+		} else {
+			// Log failed token authentication for security monitoring
+			log.Printf("Failed bearer token authentication from %s for %s %s",
+				r.RemoteAddr, r.Method, r.URL.Path)
+		}
+	}
+
+	// Method 2: Try cookie-based session validation if token auth didn't succeed
+	if !isAuthenticated {
+		validSession, isAuthenticated = sessionStore.ValidateSession(r)
+		if isAuthenticated && validSession != nil {
+			authMethod = "cookie"
 		}
 	}
 

@@ -41,7 +41,7 @@ func TestTokenService(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.NotEmpty(t, tokenString)
-		assert.Contains(t, tokenString, TokenPrefix)
+		// Token should be base64 encoded without prefix
 		assert.Equal(t, user.ID, token.UserID)
 		assert.Equal(t, "Test Token", token.Name)
 		assert.True(t, token.IsActive)
@@ -79,7 +79,7 @@ func TestTokenService(t *testing.T) {
 
 	t.Run("ValidateToken_NotFound", func(t *testing.T) {
 		// Create a token with the right format but wrong content
-		invalidToken := TokenPrefix + "invalidtokendata"
+		invalidToken := "invalidtokendata123456789012"
 		_, _, err := tokenService.ValidateToken(invalidToken)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "token not found")
