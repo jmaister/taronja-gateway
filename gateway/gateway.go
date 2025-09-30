@@ -59,7 +59,7 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 	middleware.LogMiddlewareStatus(config)
 
 	// Create HTTP server with middleware chain
-	server, mux, err := createHTTPServer(config, deps, authMiddleware, cacheMiddleware, routeChainBuilder)
+	server, mux, err := createHTTPServer(config, deps)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
 	}
@@ -98,7 +98,7 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 }
 
 // createHTTPServer creates the HTTP server with middleware chain
-func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies, authMiddleware *middleware.AuthMiddleware, cacheMiddleware *middleware.HttpCacheMiddleware, routeChainBuilder *middleware.RouteChainBuilder) (*http.Server, *http.ServeMux, error) {
+func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Build the global middleware chain
