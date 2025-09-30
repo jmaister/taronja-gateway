@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	TokenLength = 32    // Length of the random token in bytes
-	TokenPrefix = "tg_" // Prefix for tokens to identify them
+	TokenLength = 32 // Length of the random token in bytes
 )
 
 // TokenService handles token generation, validation and management
@@ -45,8 +44,8 @@ func (s *TokenService) GenerateToken(userID, name string, expiresAt *time.Time, 
 		return "", nil, fmt.Errorf("failed to generate random token: %w", err)
 	}
 
-	// Create the actual token string with prefix
-	tokenString := TokenPrefix + base64.URLEncoding.EncodeToString(randomBytes)
+	// Create the actual token string (no prefix, same format as session tokens)
+	tokenString := base64.URLEncoding.EncodeToString(randomBytes)
 
 	// Hash the token for storage
 	hasher := sha256.New()
@@ -92,8 +91,8 @@ func (s *TokenService) GenerateToken(userID, name string, expiresAt *time.Time, 
 
 // ValidateToken validates a token and returns the associated user and token info
 func (s *TokenService) ValidateToken(tokenString string) (*db.User, *db.Token, error) {
-	// Check if token has the correct prefix
-	if len(tokenString) < len(TokenPrefix) || tokenString[:len(TokenPrefix)] != TokenPrefix {
+	// Basic length check for token
+	if len(tokenString) < 16 { // Minimum reasonable length for base64 encoded token
 		return nil, nil, fmt.Errorf("invalid token format")
 	}
 

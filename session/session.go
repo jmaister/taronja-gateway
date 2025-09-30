@@ -77,17 +77,20 @@ func (s *SessionStoreDB) ValidateSession(r *http.Request) (*db.Session, bool) {
 func (s *SessionStoreDB) ValidateTokenAuth(r *http.Request, tokenService TokenService) (*db.Session, bool) {
 	// Extract bearer token from Authorization header
 	authHeader := r.Header.Get("Authorization")
+	// Trim whitespace from the header to handle malformed requests
+	authHeader = strings.TrimSpace(authHeader)
 	if authHeader == "" {
-		return nil, false // No authorization header
+		return nil, false // Empty header after trimming
 	}
 
 	// Check if it's a Bearer token
 	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+	if len(parts) != 2 || strings.ToLower(strings.TrimSpace(parts[0])) != "bearer" {
 		return nil, false // Not a bearer token
 	}
 
-	token := parts[1]
+	// Extract and trim the token
+	token := strings.TrimSpace(parts[1])
 	if token == "" {
 		return nil, false // Empty token
 	}

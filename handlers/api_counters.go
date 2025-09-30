@@ -71,6 +71,7 @@ func (s *StrictApiServer) GetUserCounters(ctx context.Context, request api.GetUs
 		CounterId:   balance.CounterID,
 		Balance:     balance.Balance,
 		LastUpdated: balance.LastUpdated,
+		HasHistory:  balance.HasHistory,
 	}, nil
 }
 
@@ -227,6 +228,7 @@ func (s *StrictApiServer) GetUserCounterHistory(ctx context.Context, request api
 		UserId:         history.UserID,
 		CounterId:      history.CounterID,
 		CurrentBalance: history.Balance,
+		HasHistory:     history.HasHistory,
 		Transactions:   transactions,
 		TotalCount:     int(history.TotalCount),
 		Limit:          history.Limit,
@@ -291,6 +293,7 @@ func (s *StrictApiServer) GetAllUserCounters(ctx context.Context, request api.Ge
 			CounterId:   user.CounterID,
 			Balance:     user.Balance,
 			LastUpdated: user.LastUpdated,
+			HasHistory:  user.HasHistory,
 		}
 	}
 

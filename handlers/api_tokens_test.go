@@ -138,7 +138,7 @@ func TestTokenHandlersAdmin(t *testing.T) {
 		successResponse, ok := response.(api.CreateToken201JSONResponse)
 		assert.True(t, ok)
 		assert.NotEmpty(t, successResponse.Token)
-		assert.Contains(t, successResponse.Token, "tg_")
+		// Token should be base64 encoded without prefix
 		assert.Equal(t, "Test Token", successResponse.TokenInfo.Name)
 		assert.True(t, successResponse.TokenInfo.IsActive)
 	})
