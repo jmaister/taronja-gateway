@@ -88,7 +88,11 @@ gen:
 	npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
 
 install: build
+ifeq ($(OS),Windows_NT)
+	cp $(BINARY_NAME) ~/bin/$(BINARY_NAME)
+else
 	cp $(BINARY_NAME) ~/.local/bin/$(BINARY_NAME)
+endif
 
 # Default target
 .PHONY: all build build-windows run dev test bench cover clean fmt tidy

@@ -9,6 +9,17 @@ All fixed.
 
 Button to refresh stats.
 
+# Health check 
+
+GET /_/health - Returns 200 OK if the service is running
+
+Health check configuration for the services accessed by the gateway:
+- Add a URL to check
+- Check interval
+- Timeout
+- Expected response code
+- Show the results in /_/health
+
 # Likes
 
 Create a like feature for any content based on their ID. Each like is associated with the logged user.
