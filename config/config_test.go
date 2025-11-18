@@ -41,7 +41,7 @@ func TestRouteOptions_GetCacheControlHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.opts.GetCacheControlHeader()
+			result := tt.opts.getCacheControlHeader()
 			assert.Equal(t, tt.expected, result)
 		})
 	}

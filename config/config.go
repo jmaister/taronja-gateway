@@ -15,104 +15,125 @@ import (
 
 // --- Configuration Structs ---
 
+// ServerConfig defines the gateway server's network configuration.
+// All fields are required.
 type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
-	URL  string `yaml:"url"`
+	Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
+	Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
+	URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
 }
 
+// AuthenticationConfig controls whether authentication is required for a specific route.
 type AuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled bool `yaml:"enabled"` // Enable authentication requirement for this route. Default: false
 }
 
+// RouteOptions contains additional optional configuration for individual routes.
 type RouteOptions struct {
-	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds, nil = no cache header, 0 = no-cache, >0 = max-age
+	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N"
 }
 
+// RouteConfig defines a single routing rule for the gateway.
+// Routes can proxy to remote servers or serve static files.
 type RouteConfig struct {
-	Name           string               `yaml:"name"`
-	From           string               `yaml:"from"`
-	To             string               `yaml:"to"`
-	ToFolder       string               `yaml:"toFolder"` // Folder path for static content
-	ToFile         string               `yaml:"toFile"`   // Optional specific file within folder
-	Static         bool                 `yaml:"static"`
-	IsSPA          bool                 `yaml:"isSPA"` // Enable SPA routing (fallback to index.html)
-	RemoveFromPath string               `yaml:"removeFromPath"`
-	Authentication AuthenticationConfig `yaml:"authentication"`
-	Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options
+	Name           string               `yaml:"name"`              // Human-readable route name for logging. Required.
+	From           string               `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
+	To             string               `yaml:"to"`                // Target URL for proxying (e.g., "https://api.example.com"). Required for proxy routes.
+	ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
+	ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
+	Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false
+	IsSPA          bool                 `yaml:"isSPA"`             // Enable SPA mode (fallback to index.html for 404s). Default: false
+	RemoveFromPath string               `yaml:"removeFromPath"`    // Path prefix to remove before proxying (e.g., "/api/v1/"). Optional.
+	Authentication AuthenticationConfig `yaml:"authentication"`    // Authentication requirements for this route
+	Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
 }
+
+// AuthProviderCredentials contains OAuth2 provider credentials.
+// Required for OAuth2 authentication providers (Google, GitHub).
 type AuthProviderCredentials struct {
-	ClientId     string `yaml:"clientId"`
-	ClientSecret string `yaml:"clientSecret"`
+	ClientId     string `yaml:"clientId"`     // OAuth2 client ID from provider. Can use environment variables (e.g., ${GOOGLE_CLIENT_ID})
+	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from provider. Can use environment variables (e.g., ${GOOGLE_CLIENT_SECRET})
 }
+
+// BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
 }
+
+// AuthenticationProviders defines all available authentication methods.
+// At least one provider should be enabled if authentication is required on any route.
 type AuthenticationProviders struct {
-	Basic  BasicAuthenticationConfig `yaml:"basic"`
-	Google AuthProviderCredentials   `yaml:"google"`
-	Github AuthProviderCredentials   `yaml:"github"`
+	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
+	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
+	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
 }
 
+// BrandingConfig contains visual customization options for the gateway UI.
 type BrandingConfig struct {
-	LogoUrl string `yaml:"logoUrl,omitempty"`
+	LogoUrl string `yaml:"logoUrl,omitempty"` // URL or path to custom logo image for login page. Optional.
 }
 
+// NotificationConfig defines notification system settings.
 type NotificationConfig struct {
 	Email struct {
-		Enabled bool `yaml:"enabled"`
+		Enabled bool `yaml:"enabled"` // Enable email notifications. Default: false
 		SMTP    struct {
-			Host     string `yaml:"host"`
-			Port     int    `yaml:"port"`
-			Username string `yaml:"username"`
-			Password string `yaml:"password"`
-			From     string `yaml:"from"`
-			FromName string `yaml:"fromName"`
+			Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com")
+			Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for TLS, 465 for SSL)
+			Username string `yaml:"username"` // SMTP authentication username. Can use environment variables.
+			Password string `yaml:"password"` // SMTP authentication password. Can use environment variables.
+			From     string `yaml:"from"`     // From email address. Can use environment variables.
+			FromName string `yaml:"fromName"` // From display name. Can use environment variables.
 		} `yaml:"smtp"`
 	} `yaml:"email"`
 }
 
-// Admin configuration for dashboard and other management features.
+// AdminConfig configures administrative access to the management dashboard.
+// When enabled, allows a single admin user to access the dashboard at <management.prefix>/admin/
 type AdminConfig struct {
-	Enabled  bool   `yaml:"enabled"`  // Enable admin access
-	Username string `yaml:"username"` // Admin username
-	Password string `yaml:"password"` // Admin password (will be hashed)
-	Email    string `yaml:"email"`    // Admin email for notifications
+	Enabled  bool   `yaml:"enabled"`  // Enable admin dashboard access. Default: false. Required if accessing dashboard.
+	Username string `yaml:"username"` // Admin username for login. Required if Enabled=true.
+	Password string `yaml:"password"` // Admin password (will be automatically hashed). Required if Enabled=true.
+	Email    string `yaml:"email"`    // Admin email address for notifications. Optional.
 }
 
-// Session configuration for management API
+// SessionConfig defines session lifetime for authenticated users.
 type SessionConfig struct {
-	SecondsDuration int `yaml:"secondsDuration"` // Session duration in seconds (default: 86400 = 24 hours)
+	SecondsDuration int `yaml:"secondsDuration"` // Session duration in seconds. Default: 86400 (24 hours). After this time, users must re-authenticate.
 }
 
 func (s *SessionConfig) GetDuration() time.Duration {
 	return time.Duration(s.SecondsDuration) * time.Second
 }
 
-// New: Management API Configuration Structs
+// ManagementConfig defines the management API and dashboard settings.
+// The management API provides endpoints for metrics, user management, and admin dashboard.
 type ManagementConfig struct {
-	Prefix    string        `yaml:"prefix"`    // e.g., "/_"
-	Logging   bool          `yaml:"logging"`   // Enable logging
-	Analytics bool          `yaml:"analytics"` // Enable request/response analytics collection
-	Admin     AdminConfig   `yaml:"admin"`     // Admin access configuration
-	Session   SessionConfig `yaml:"session"`   // Session configuration
+	Prefix    string        `yaml:"prefix"`    // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
+	Logging   bool          `yaml:"logging"`   // Enable request/response logging. Default: false. Logs all HTTP requests.
+	Analytics bool          `yaml:"analytics"` // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
+	Admin     AdminConfig   `yaml:"admin"`     // Admin dashboard access configuration
+	Session   SessionConfig `yaml:"session"`   // Session lifetime configuration for authenticated users
 }
 
-// Geolocation configuration for IP geolocation services
+// GeolocationConfig defines IP geolocation service settings.
+// Used to enrich analytics with geographic information about request origins.
 type GeolocationConfig struct {
-	IPLocateAPIKey string `yaml:"iplocateApiKey"` // API key for iplocate.io service
+	IPLocateAPIKey string `yaml:"iplocateApiKey"` // API key for iplocate.io service. Optional. Can use environment variables (e.g., ${IPLOCATE_IO_API_KEY}). Without this, geolocation features are disabled.
 }
 
-// Main GatewayConfig Struct including Management API config
+// GatewayConfig is the root configuration structure for Taronja Gateway.
+// It contains all settings needed to run the gateway including server, routing, authentication, and management.
+// Configuration is loaded from a YAML file and supports environment variable expansion (${VAR_NAME}).
 type GatewayConfig struct {
-	Name                    string                  `yaml:"name"`
-	Server                  ServerConfig            `yaml:"server"`
-	Management              ManagementConfig        `yaml:"management"` // Add management config
-	Routes                  []RouteConfig           `yaml:"routes"`
-	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"`
-	Branding                BrandingConfig          `yaml:"branding,omitempty"`
-	Geolocation             GeolocationConfig       `yaml:"geolocation"`
-	Notification            NotificationConfig      `yaml:"notification"`
+	Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
+	Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
+	Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
+	Routes                  []RouteConfig           `yaml:"routes"`                  // List of routing rules. At least one route required.
+	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"` // Available authentication methods. Required.
+	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
+	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
+	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -261,8 +282,8 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 		c.Management.Admin.Enabled
 }
 
-// LoginPageData is the data structure for the login.html template
-type LoginPageData struct {
+// loginPageData is the data structure for the login.html template
+type loginPageData struct {
 	AuthenticationProviders struct {
 		Basic struct {
 			Enabled bool
@@ -280,8 +301,8 @@ type LoginPageData struct {
 }
 
 // NewLoginPageData creates and populates a LoginPageData struct.
-func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) LoginPageData {
-	data := LoginPageData{
+func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPageData {
+	data := loginPageData{
 		RedirectURL:      redirectURL,
 		ManagementPrefix: gatewayConfig.Management.Prefix,
 	}
@@ -294,9 +315,9 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) LoginPag
 
 // --- RouteOptions Helper Methods ---
 
-// GetCacheControlHeader returns the appropriate Cache-Control header value based on the configuration.
+// getCacheControlHeader returns the appropriate Cache-Control header value based on the configuration.
 // Returns empty string if no cache header should be set.
-func (opts *RouteOptions) GetCacheControlHeader() string {
+func (opts *RouteOptions) getCacheControlHeader() string {
 	if opts == nil || opts.CacheControlSeconds == nil {
 		return "" // No cache header
 	}
@@ -317,7 +338,7 @@ func (route *RouteConfig) GetCacheControlHeader() string {
 	if route.Options == nil {
 		return ""
 	}
-	return route.Options.GetCacheControlHeader()
+	return route.Options.getCacheControlHeader()
 }
 
 // ShouldSetCacheHeader returns true if this route should set a Cache-Control header.

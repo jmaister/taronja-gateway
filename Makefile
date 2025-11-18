@@ -87,6 +87,12 @@ gen:
 	@echo "Generating TypeScript SDK..."
 	npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
 
+# Generate configuration documentation from Go structs
+config-docs:
+	@echo "Generating configuration documentation..."
+	@gomarkdoc --output doc/CONFIG.md ./config
+	@echo "Configuration documentation generated at doc/CONFIG.md"
+
 install: build
 ifeq ($(OS),Windows_NT)
 	cp $(BINARY_NAME) ~/bin/$(BINARY_NAME)

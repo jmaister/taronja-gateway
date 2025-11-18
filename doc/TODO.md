@@ -9,6 +9,13 @@ All fixed.
 
 Button to refresh stats.
 
+# Request identifier
+
+Should we add X-Request-ID to all requests and responses for tracing?
+Are there any other ways to trace requests?
+Are there libraries that already handle tracing?
+Do libraries stick to an specific tracing product or standard?
+
 # Health check 
 
 GET /_/health - Returns 200 OK if the service is running
