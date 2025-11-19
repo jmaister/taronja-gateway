@@ -68,6 +68,20 @@ type AuthenticationProviders struct {
 	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
 }
 
+// PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
+func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPrefix string) {
+	if a.Google.ClientId != "" && a.Google.ClientSecret != "" {
+		googleCallback := fmt.Sprintf("%s%s/auth/google/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Google callback URL:")
+		fmt.Println("   ", googleCallback)
+	}
+	if a.Github.ClientId != "" && a.Github.ClientSecret != "" {
+		githubCallback := fmt.Sprintf("%s%s/auth/github/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] GitHub callback URL:")
+		fmt.Println("   ", githubCallback)
+	}
+}
+
 // BrandingConfig contains visual customization options for the gateway UI.
 type BrandingConfig struct {
 	LogoUrl string `yaml:"logoUrl,omitempty"` // URL or path to custom logo image for login page. Optional.

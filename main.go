@@ -121,6 +121,9 @@ func runGateway(configFilePath string) {
 	log.Printf("Gateway public URL set to: %s", config.Server.URL)
 	log.Printf("Management API prefix: %s", config.Management.Prefix)
 
+	// Print OAuth callback URLs if configured
+	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
+
 	err = gateway.Server.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		log.Fatalf("FATAL: Failed to start server: %v", err)

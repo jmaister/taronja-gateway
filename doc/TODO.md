@@ -5,11 +5,15 @@ All fixed.
 
 # TODO tasks for the project
 
+# Print OAuth callback URL in the console when starting the server.
+
+That way, when setting up OAuth providers, the developer can easily copy the callback URL.
+
 # Stats
 
 Button to refresh stats.
 
-# Request identifier
+# Request identifier and tracing
 
 Should we add X-Request-ID to all requests and responses for tracing?
 Are there any other ways to trace requests?
@@ -20,7 +24,7 @@ Do libraries stick to an specific tracing product or standard?
 
 GET /_/health - Returns 200 OK if the service is running
 
-Health check configuration for the services accessed by the gateway:
+Health check configuration for the routes configured in the gateway:
 - Add a URL to check
 - Check interval
 - Timeout
