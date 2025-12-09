@@ -8,10 +8,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "analyze": "vite build --mode analyze"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-query": "^5.90.12",
     "chart.js": "^4.5.1",
     "date-fns": "^4.1.0",
@@ -21,11 +21,11 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.1",
     "react-map-gl": "^8.1.0",
-    "react-router-dom": "^7.10.1",
-    "tailwindcss": "^4.1.17"
+    "react-router-dom": "^7.10.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-query-devtools": "^5.91.1",
     "@types/node": "^24.10.2",
     "@types/react": "^19.2.7",
@@ -38,6 +38,8 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^27.3.0",
+    "rollup-plugin-visualizer": "^6.0.5",
+    "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3",
     "vite": "^7.2.7",
     "vitest": "^4.0.15"
