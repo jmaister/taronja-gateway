@@ -5,8 +5,10 @@ import type { CounterAdjustmentRequest, UserCountersResponse } from '@/apiclient
 import { useAdjustCounters, useAllUserCounters, useAvailableCounters, useCounterHistory } from '@/services/services';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
+import { FormField } from '../components/ui/FormField';
 import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
+import { StatusPill } from '../components/ui/StatusPill';
 
 export function CountersManagementPage() {
     const [counterId, setCounterId] = useState<string>('credits');
@@ -38,10 +40,10 @@ export function CountersManagementPage() {
 
     return (
         <div className="mx-auto w-full max-w-7xl space-y-6">
-            <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Counters</h1>
-                <p className="mt-2 text-muted-fg">Manage user counters and review transaction history.</p>
-            </div>
+            <PageHeader
+                title="Counters"
+                description="Manage user counters and review transaction history."
+            />
 
             <Card>
                 <CardHeader>
@@ -111,15 +113,17 @@ export function CountersManagementPage() {
                     <h2 className="text-lg font-semibold">Counter ID</h2>
                 </CardHeader>
                 <CardContent>
-                    <Input
-                        type="text"
-                        value={counterId}
-                        onChange={(e) => {
-                            setCounterId(e.target.value);
-                            setSelectedUser(null);
-                        }}
-                        placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
-                    />
+                    <FormField label="Counter ID" required>
+                        <Input
+                            type="text"
+                            value={counterId}
+                            onChange={(e) => {
+                                setCounterId(e.target.value);
+                                setSelectedUser(null);
+                            }}
+                            placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
+                        />
+                    </FormField>
                 </CardContent>
             </Card>
 
@@ -198,13 +202,9 @@ export function CountersManagementPage() {
                                             </td>
                                             <td className="border-b border-border px-3 py-3">
                                                 {user.has_history ? (
-                                                    <Badge variant="success" className="bg-success/15 text-success">
-                                                        ✓ Yes
-                                                    </Badge>
+                                                    <StatusPill variant="success">✓ Yes</StatusPill>
                                                 ) : (
-                                                    <Badge variant="default" className="bg-muted text-muted-fg">
-                                                        ○ No
-                                                    </Badge>
+                                                    <StatusPill>○ No</StatusPill>
                                                 )}
                                             </td>
                                             <td className="border-b border-border px-3 py-3">
@@ -252,8 +252,7 @@ export function CountersManagementPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-muted-fg">Amount</label>
+                            <FormField label="Amount" required>
                                 <Input
                                     type="number"
                                     value={adjustmentForm.amount}
@@ -265,9 +264,8 @@ export function CountersManagementPage() {
                                     }
                                     placeholder="Positive to add, negative to deduct"
                                 />
-                            </div>
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-muted-fg">Description</label>
+                            </FormField>
+                            <FormField label="Description" required>
                                 <Input
                                     type="text"
                                     value={adjustmentForm.description}
@@ -279,7 +277,7 @@ export function CountersManagementPage() {
                                     }
                                     placeholder="Reason for adjustment"
                                 />
-                            </div>
+                            </FormField>
                             <div className="flex items-end">
                                 <Button
                                     className="w-full"
