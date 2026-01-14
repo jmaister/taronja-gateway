@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import './App.css'; // Keep if it has essential base styles not covered by Tailwind preflight
+// App-level styles live in index.css
 
 // Layout and Page Components
 import MainLayout from './components/layout/MainLayout';

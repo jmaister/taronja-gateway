@@ -42,35 +42,29 @@ const MainLayout = ({ children }: MainLayoutProps) => {
   };
 
   return (
-    <div className={`drawer ${isCollapsed ? '' : 'lg:drawer-open'}`}>
-      <input 
-        id="sidebar-drawer" 
-        type="checkbox" 
-        className="drawer-toggle" 
-        checked={isMobileSidebarOpen}
-        onChange={toggleMobileSidebar}
-      />
-      
-      {/* Page content */}
-      <div className="drawer-content flex flex-col">
-        <Header
-          pageTitle={pageTitle}
+    <div className="min-h-screen bg-bg text-fg">
+      <div className="flex min-h-screen">
+        {/* Sidebar */}
+        <Sidebar
+          isOpenOnMobile={isMobileSidebarOpen}
           toggleMobileSidebar={toggleMobileSidebar}
           isCollapsed={isCollapsed}
           toggleCollapse={toggleCollapse}
         />
-        <main className="flex-1 p-6 bg-base-100 overflow-x-auto">
-          {children}
-        </main>
-      </div>
 
-      {/* Sidebar */}
-      <Sidebar
-        isOpenOnMobile={isMobileSidebarOpen}
-        toggleMobileSidebar={toggleMobileSidebar}
-        isCollapsed={isCollapsed}
-        toggleCollapse={toggleCollapse}
-      />
+        {/* Content */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Header
+            pageTitle={pageTitle}
+            toggleMobileSidebar={toggleMobileSidebar}
+            isCollapsed={isCollapsed}
+            toggleCollapse={toggleCollapse}
+          />
+          <main className="flex-1 overflow-x-auto px-4 py-6 sm:px-6 lg:px-8">
+            {children}
+          </main>
+        </div>
+      </div>
     </div>
   );
 };

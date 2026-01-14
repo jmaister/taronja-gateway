@@ -1,301 +1,386 @@
-import { Link } from 'react-router-dom';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import type { CounterAdjustmentRequest, UserCountersResponse } from '@/apiclient/types.gen';
-import {
-  useAllUserCounters,
-  useCounterHistory,
-  useAdjustCounters,
-  useAvailableCounters,
-} from '@/services/services';
+import { useAdjustCounters, useAllUserCounters, useAvailableCounters, useCounterHistory } from '@/services/services';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader } from '../components/ui/Card';
+import { FormField } from '../components/ui/FormField';
+import { Input } from '../components/ui/Input';
+import { PageHeader } from '../components/ui/PageHeader';
+import { StatusPill } from '../components/ui/StatusPill';
 
 export function CountersManagementPage() {
-  const [counterId, setCounterId] = useState<string>('credits');
-  // Fetch available counters
-  const {
-    data: availableCounters,
-    isLoading: loadingAvailableCounters,
-    error: errorAvailableCounters,
-    refetch: refetchAvailableCounters,
-  } = useAvailableCounters();
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [adjustmentForm, setAdjustmentForm] = useState<CounterAdjustmentRequest>({ amount: 0, description: '' });
-  
-  const {
-    data: allUserCounters,
-    isLoading: loadingUsers,
-    error: errorUsers,
-    refetch: refetchUsers,
-  } = useAllUserCounters(counterId);
-  
-  const {
-    data: counterHistory,
-    error: errorHistory,
-  } = useCounterHistory(counterId, selectedUser);
-  
-  const adjustCountersMutation = useAdjustCounters();
-  const mutationLoading = adjustCountersMutation.status === 'pending';
-  const error = errorAvailableCounters?.message || errorUsers?.message || errorHistory?.message || (adjustCountersMutation.error instanceof Error ? adjustCountersMutation.error.message : null);
+    const [counterId, setCounterId] = useState<string>('credits');
+    const [selectedUser, setSelectedUser] = useState<string | null>(null);
+    const [adjustmentForm, setAdjustmentForm] = useState<CounterAdjustmentRequest>({ amount: 0, description: '' });
 
-  return (
-    <div className="w-full p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Counters Management</h1>
-        <p className="text-gray-600 mt-2">Manage user counters and view transaction history</p>
-      </div>
+    const {
+        data: availableCounters,
+        isLoading: loadingAvailableCounters,
+        error: errorAvailableCounters,
+        refetch: refetchAvailableCounters,
+    } = useAvailableCounters();
 
-      {/* Available Counters Buttons */}
-      <div className="mb-4">
-        {loadingAvailableCounters && (
-          <div className="text-blue-500">Loading available counters...</div>
-        )}
-        {errorAvailableCounters && (
-          <div className="text-red-500 bg-red-50 border border-red-200 rounded p-3 mb-4">
-            <div className="font-semibold">Error loading available counters:</div>
-            <div className="text-sm mt-1">{errorAvailableCounters.message}</div>
-            <div className="text-xs mt-2 text-red-400">
-              Please check your connection and try refreshing the page. If you're not an admin, you may not have permission to access this feature.
-            </div>
-            <button
-              onClick={() => refetchAvailableCounters()}
-              className="mt-2 bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-        {availableCounters && availableCounters.counters.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {availableCounters.counters.map((counter) => (
-              <button
-                key={counter}
-                type="button"
-                className={`px-3 py-1 rounded border ${counterId === counter ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-blue-100'}`}
-                onClick={() => {
-                  setCounterId(counter);
-                  setSelectedUser(null);
-                }}
-              >
-                {counter}
-              </button>
-            ))}
-          </div>
-        )}
-        {availableCounters && availableCounters.counters.length === 0 && (
-          <div className="text-yellow-600 bg-yellow-50 border border-yellow-200 rounded p-3">
-            <div className="font-semibold">No counter types available</div>
-            <div className="text-sm mt-1">No counters have been created yet. You can still manually enter a counter ID below.</div>
-          </div>
-        )}
-      </div>
+    const {
+        data: allUserCounters,
+        isLoading: loadingUsers,
+        error: errorUsers,
+        refetch: refetchUsers,
+    } = useAllUserCounters(counterId);
 
-      {/* Counter Type Selection */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-800">Counter ID</h2>
-        </div>
-        <div className="p-6">
-          <input
-            type="text"
-            value={counterId}
-            onChange={(e) => {
-              setCounterId(e.target.value);
-              setSelectedUser(null); // Reset selected user when changing counter type
-            }}
-            className="w-full p-3 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
-          />
-        </div>
-      </div>
+    const { data: counterHistory, error: errorHistory } = useCounterHistory(counterId, selectedUser);
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-          {error}
-        </div>
-      )}
+    const adjustCountersMutation = useAdjustCounters();
+    const mutationLoading = adjustCountersMutation.status === 'pending';
 
-      {/* User Counters Overview */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">
-            User {counterId.charAt(0).toUpperCase() + counterId.slice(1)} Overview
-          </h2>
-          <button
-            onClick={() => refetchUsers()}
-            disabled={loadingUsers || !counterId}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
-          >
-            {loadingUsers ? 'Loading...' : 'Refresh'}
-          </button>
-        </div>
-        <div className="p-6">
-          {loadingUsers && !allUserCounters && (
-            <p className="text-blue-500">Loading user counters...</p>
-          )}
+    const pageError = errorAvailableCounters?.message || errorUsers?.message || errorHistory?.message || null;
 
-          {!counterId && (
-            <p className="text-gray-500 text-center py-8">Please select a counter type</p>
-          )}
+    const counterLabel = counterId ? counterId.charAt(0).toUpperCase() + counterId.slice(1) : 'Counter';
 
-          {counterId && allUserCounters && (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Username</th>
-                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Email</th>
-                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Balance</th>
-                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Has History</th>
-                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Last Updated</th>
-                    <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allUserCounters.users.map((user: UserCountersResponse) => (
-                    <tr key={user.user_id} className="hover:bg-gray-50">
-                      <td className="p-3 border-b border-gray-200">{user.username}</td>
-                      <td className="p-3 border-b border-gray-200">{user.email}</td>
-                      <td className="p-3 border-b border-gray-200">
-                        <span className={`font-semibold ${user.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          {user.balance}
-                        </span>
-                      </td>
-                      <td className="p-3 border-b border-gray-200">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          user.has_history 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {user.has_history ? '✓ Yes' : '○ No'}
-                        </span>
-                      </td>
-                      <td className="p-3 border-b border-gray-200">
-                        {new Date(user.last_updated).toLocaleDateString()}
-                      </td>
-                      <td className="p-3 border-b border-gray-200">
-                        <button
-                          onClick={() => setSelectedUser(user.user_id)}
-                          className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 mr-2"
+    return (
+        <div className="mx-auto w-full max-w-7xl space-y-6">
+            <PageHeader
+                title="Counters"
+                description="Manage user counters and review transaction history."
+            />
+
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-lg font-semibold">Available Counters</h2>
+                            <p className="mt-1 text-sm text-muted-fg">Quick-select an existing counter type.</p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => refetchAvailableCounters()}
+                            disabled={loadingAvailableCounters}
                         >
-                          View History
-                        </button>
-                        <Link
-                          to={`/users/${user.user_id}`}
-                          className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                            {loadingAvailableCounters ? 'Loading…' : 'Refresh'}
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {errorAvailableCounters && (
+                        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger">
+                            <div className="font-semibold">Error loading available counters</div>
+                            <div className="mt-1 text-sm text-danger/80">{errorAvailableCounters.message}</div>
+                            <div className="mt-2 text-xs text-danger/70">
+                                If you’re not an admin, you may not have permission to access this feature.
+                            </div>
+                            <div className="mt-3">
+                                <Button variant="danger" size="sm" onClick={() => refetchAvailableCounters()}>
+                                    Retry
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {availableCounters && availableCounters.counters.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {availableCounters.counters.map((counter) => (
+                                <Button
+                                    key={counter}
+                                    type="button"
+                                    size="sm"
+                                    variant={counterId === counter ? 'primary' : 'secondary'}
+                                    onClick={() => {
+                                        setCounterId(counter);
+                                        setSelectedUser(null);
+                                    }}
+                                >
+                                    {counter}
+                                </Button>
+                            ))}
+                        </div>
+                    )}
+
+                    {availableCounters && availableCounters.counters.length === 0 && (
+                        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-warning">
+                            <div className="font-semibold">No counter types available</div>
+                            <div className="mt-1 text-sm text-warning/80">
+                                No counters have been created yet. You can still manually enter a counter ID below.
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <h2 className="text-lg font-semibold">Counter ID</h2>
+                </CardHeader>
+                <CardContent>
+                    <FormField label="Counter ID" required>
+                        <Input
+                            type="text"
+                            value={counterId}
+                            onChange={(e) => {
+                                setCounterId(e.target.value);
+                                setSelectedUser(null);
+                            }}
+                            placeholder="Enter counter ID (e.g. credits, coins, points, tokens)"
+                        />
+                    </FormField>
+                </CardContent>
+            </Card>
+
+            {pageError && (
+                <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger">
+                    {pageError}
+                </div>
+            )}
+
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-lg font-semibold">User {counterLabel} Overview</h2>
+                            <p className="mt-1 text-sm text-muted-fg">
+                                Select a user to view history and apply adjustments.
+                            </p>
+                        </div>
+                        <Button
+                            onClick={() => refetchUsers()}
+                            disabled={loadingUsers || !counterId.trim()}
+                            variant="outline"
+                            size="sm"
                         >
-                          View User
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {allUserCounters.users.length === 0 && (
-                <p className="text-gray-500 text-center py-8">No users found</p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+                            {loadingUsers ? 'Loading…' : 'Refresh'}
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {loadingUsers && !allUserCounters && <p className="text-muted-fg">Loading user counters…</p>}
 
-      {/* Counter Adjustment Form */}
-      {selectedUser && counterId && (
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">
-              Adjust {counterId.charAt(0).toUpperCase() + counterId.slice(1)}
-            </h2>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
-                <input
-                  type="number"
-                  value={adjustmentForm.amount}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, amount: parseInt(e.target.value) || 0 })}
-                  className="w-full p-3 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter amount (positive to add, negative to deduct)"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                <input
-                  type="text"
-                  value={adjustmentForm.description}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, description: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Reason for adjustment"
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={() => adjustCountersMutation.mutate({ counterId, userId: selectedUser, adjustment: adjustmentForm })}
-                  disabled={mutationLoading || !adjustmentForm.amount || !adjustmentForm.description.trim()}
-                  className="w-full bg-orange-500 text-white px-4 py-3 rounded hover:bg-orange-600 disabled:opacity-50"
-                >
-                  {mutationLoading ? 'Processing...' : `Adjust ${counterId.charAt(0).toUpperCase() + counterId.slice(1)}`}
-                </button>
-              </div>
-            </div>
-            {/* Show backend error for adjustment */}
-            {adjustCountersMutation.error && (
-              <div className="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-                <strong>Adjustment Error:</strong>{' '}
-                {adjustCountersMutation.error instanceof Error
-                  ? adjustCountersMutation.error.message
-                  : String(adjustCountersMutation.error)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+                    {!counterId.trim() && (
+                        <p className="py-8 text-center text-muted-fg">Please enter a counter ID.</p>
+                    )}
 
-      {/* Counter History */}
-      {selectedUser && counterId && counterHistory && (
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">
-              {counterId.charAt(0).toUpperCase() + counterId.slice(1)} History - Current Balance:
-              <span className={`ml-2 ${counterHistory.current_balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {counterHistory.current_balance}
-              </span>
-            </h2>
-          </div>
-          <div className="p-6">
-            {counterHistory.transactions.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Date</th>
-                      <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Amount</th>
-                      <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Balance After</th>
-                      <th className="text-left p-3 border-b border-gray-300 bg-gray-100">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {counterHistory.transactions.map((transaction: any) => (
-                      <tr key={transaction.id} className="hover:bg-gray-50">
-                        <td className="p-3 border-b border-gray-200">{new Date(transaction.created_at).toLocaleString()}</td>
-                        <td className="p-3 border-b border-gray-200">
-                          <span className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {transaction.amount > 0 ? '+' : ''}{transaction.amount}
-                          </span>
-                        </td>
-                        <td className="p-3 border-b border-gray-200">{transaction.balance_after}</td>
-                        <td className="p-3 border-b border-gray-200">{transaction.description}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-gray-500 text-center py-8">No counter transactions found</p>
+                    {counterId.trim() && allUserCounters && (
+                        <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-sm">
+                                <thead>
+                                    <tr>
+                                        <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                            Username
+                                        </th>
+                                        <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                            Email
+                                        </th>
+                                        <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                            Balance
+                                        </th>
+                                        <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                            Has History
+                                        </th>
+                                        <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                            Last Updated
+                                        </th>
+                                        <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {allUserCounters.users.map((user: UserCountersResponse) => (
+                                        <tr key={user.user_id} className="hover:bg-muted/40">
+                                            <td className="border-b border-border px-3 py-3">{user.username}</td>
+                                            <td className="border-b border-border px-3 py-3">{user.email}</td>
+                                            <td className="border-b border-border px-3 py-3">
+                                                <span
+                                                    className={
+                                                        user.balance < 0
+                                                            ? 'font-semibold text-danger'
+                                                            : 'font-semibold text-success'
+                                                    }
+                                                >
+                                                    {user.balance}
+                                                </span>
+                                            </td>
+                                            <td className="border-b border-border px-3 py-3">
+                                                {user.has_history ? (
+                                                    <StatusPill variant="success">✓ Yes</StatusPill>
+                                                ) : (
+                                                    <StatusPill>○ No</StatusPill>
+                                                )}
+                                            </td>
+                                            <td className="border-b border-border px-3 py-3">
+                                                {new Date(user.last_updated).toLocaleDateString()}
+                                            </td>
+                                            <td className="border-b border-border px-3 py-3">
+                                                <div className="flex flex-wrap gap-2">
+                                                    <Button
+                                                        onClick={() => setSelectedUser(user.user_id)}
+                                                        variant="secondary"
+                                                        size="sm"
+                                                    >
+                                                        View History
+                                                    </Button>
+                                                    <Link
+                                                        to={`/users/${user.user_id}`}
+                                                        className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-transparent px-3 text-sm font-medium text-fg transition-colors hover:bg-muted/60"
+                                                    >
+                                                        View User
+                                                    </Link>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+
+                            {allUserCounters.users.length === 0 && (
+                                <p className="py-8 text-center text-muted-fg">No users found.</p>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {selectedUser && counterId.trim() && (
+                <Card>
+                    <CardHeader>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">Adjust {counterLabel}</h2>
+                            <p className="text-sm text-muted-fg">
+                                User: <span className="font-mono text-fg">{selectedUser}</span>
+                            </p>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                            <FormField label="Amount" required>
+                                <Input
+                                    type="number"
+                                    value={adjustmentForm.amount}
+                                    onChange={(e) =>
+                                        setAdjustmentForm({
+                                            ...adjustmentForm,
+                                            amount: parseInt(e.target.value, 10) || 0,
+                                        })
+                                    }
+                                    placeholder="Positive to add, negative to deduct"
+                                />
+                            </FormField>
+                            <FormField label="Description" required>
+                                <Input
+                                    type="text"
+                                    value={adjustmentForm.description}
+                                    onChange={(e) =>
+                                        setAdjustmentForm({
+                                            ...adjustmentForm,
+                                            description: e.target.value,
+                                        })
+                                    }
+                                    placeholder="Reason for adjustment"
+                                />
+                            </FormField>
+                            <div className="flex items-end">
+                                <Button
+                                    className="w-full"
+                                    onClick={() =>
+                                        adjustCountersMutation.mutate({
+                                            counterId,
+                                            userId: selectedUser,
+                                            adjustment: adjustmentForm,
+                                        })
+                                    }
+                                    disabled={
+                                        mutationLoading ||
+                                        adjustmentForm.amount === 0 ||
+                                        !adjustmentForm.description.trim()
+                                    }
+                                >
+                                    {mutationLoading ? 'Processing…' : `Adjust ${counterLabel}`}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {adjustCountersMutation.error && (
+                            <div className="mt-6 rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger">
+                                <strong>Adjustment Error:</strong>{' '}
+                                {adjustCountersMutation.error instanceof Error
+                                    ? adjustCountersMutation.error.message
+                                    : String(adjustCountersMutation.error)}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             )}
-          </div>
+
+            {selectedUser && counterId.trim() && counterHistory && (
+                <Card>
+                    <CardHeader>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h2 className="text-lg font-semibold">{counterLabel} History</h2>
+                            <div className="text-sm text-muted-fg">
+                                Current Balance:{' '}
+                                <span
+                                    className={
+                                        counterHistory.current_balance < 0
+                                            ? 'ml-2 font-semibold text-danger'
+                                            : 'ml-2 font-semibold text-success'
+                                    }
+                                >
+                                    {counterHistory.current_balance}
+                                </span>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {counterHistory.transactions.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                        <tr>
+                                            <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                                Date
+                                            </th>
+                                            <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                                Amount
+                                            </th>
+                                            <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                                Balance After
+                                            </th>
+                                            <th className="whitespace-nowrap border-b border-border bg-surface-2 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-fg">
+                                                Description
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {counterHistory.transactions.map((transaction: any) => (
+                                            <tr key={transaction.id} className="hover:bg-muted/40">
+                                                <td className="border-b border-border px-3 py-3">
+                                                    {new Date(transaction.created_at).toLocaleString()}
+                                                </td>
+                                                <td className="border-b border-border px-3 py-3">
+                                                    <span
+                                                        className={
+                                                            transaction.amount < 0
+                                                                ? 'font-semibold text-danger'
+                                                                : 'font-semibold text-success'
+                                                        }
+                                                    >
+                                                        {transaction.amount > 0 ? '+' : ''}
+                                                        {transaction.amount}
+                                                    </span>
+                                                </td>
+                                                <td className="border-b border-border px-3 py-3">{transaction.balance_after}</td>
+                                                <td className="border-b border-border px-3 py-3">{transaction.description}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="py-8 text-center text-muted-fg">No counter transactions found.</p>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 }

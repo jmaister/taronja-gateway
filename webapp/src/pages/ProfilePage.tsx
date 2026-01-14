@@ -1,4 +1,6 @@
 import { useAuth, getUserDisplayName, getUserAvatar, getUserInitials } from '../contexts/AuthContext';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent } from '../components/ui/Card';
 
 /**
  * ProfilePage component - Full page view for user profile
@@ -10,8 +12,8 @@ export const ProfilePage = () => {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading profile...</p>
+                    <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
+                    <p className="text-muted-fg">Loading profile...</p>
                 </div>
             </div>
         );
@@ -21,11 +23,11 @@ export const ProfilePage = () => {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
-                    <p className="text-gray-600 mb-6">You must be logged in to view your profile.</p>
+                    <h1 className="mb-4 text-2xl font-bold">Access Denied</h1>
+                    <p className="mb-6 text-muted-fg">You must be logged in to view your profile.</p>
                     <a
                         href="/login"
-                        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                        className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary/90"
                     >
                         Login
                     </a>
@@ -39,20 +41,17 @@ export const ProfilePage = () => {
     const initials = getUserInitials(currentUser);
 
     return (
-        <div className="w-full p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
             {/* Page Header */}
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-                <p className="text-gray-600 mt-2">Manage your account settings and preferences</p>
+            <div>
+                <h1 className="text-2xl font-semibold tracking-tight">My Profile</h1>
+                <p className="mt-1 text-sm text-muted-fg">Manage your account settings and preferences</p>
             </div>
 
-            {/* Profile Card */}
-            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                {/* Header Section */}
-                <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-8">
-                    <div className="flex items-center space-x-6">
-                        {/* Avatar */}
-                        <div className="flex-shrink-0">
+            <Card className="overflow-hidden">
+                <div className="bg-gradient-to-r from-primary to-primary/60 px-6 py-8">
+                    <div className="flex items-center gap-6">
+                        <div className="shrink-0">
                             {avatarUrl ? (
                                 <img
                                     className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
@@ -65,23 +64,23 @@ export const ProfilePage = () => {
                                 />
                             ) : null}
                             <div
-                                className={`w-24 h-24 rounded-full bg-white text-blue-500 flex items-center justify-center text-2xl font-bold border-4 border-white shadow-lg ${avatarUrl ? 'hidden' : ''}`}
+                                className={`flex h-24 w-24 items-center justify-center rounded-full bg-white text-2xl font-bold text-primary shadow-lg ${avatarUrl ? 'hidden' : ''}`}
                             >
                                 {initials}
                             </div>
                         </div>
 
                         {/* User Info */}
-                        <div className="text-white">
+                        <div className="text-primary-fg">
                             <h2 className="text-2xl font-bold">{displayName}</h2>
-                            <p className="text-blue-100 text-lg">{currentUser.email}</p>
+                            <p className="text-primary-fg/80 text-lg">{currentUser.email}</p>
                             {currentUser.provider && (
-                                <p className="text-blue-200 text-sm mt-1">
+                                <p className="mt-1 text-sm text-primary-fg/70">
                                     Authenticated via {currentUser.provider}
                                 </p>
                             )}
                             {currentUser.isAdmin && (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-500 text-white mt-2">
+                                <span className="mt-2 inline-flex items-center rounded-full bg-black/20 px-3 py-1 text-sm font-medium">
                                     Administrator
                                 </span>
                             )}
@@ -90,49 +89,49 @@ export const ProfilePage = () => {
                 </div>
 
                 {/* Content Section */}
-                <div className="p-6">
+                <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Account Information */}
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Account Information</h3>
+                            <h3 className="border-b border-border pb-2 text-base font-semibold">Account Information</h3>
                             
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Username</label>
-                                <p className="mt-1 text-sm text-gray-900">{currentUser.username || 'Not set'}</p>
+                                <label className="block text-sm font-medium text-muted-fg">Username</label>
+                                <p className="mt-1 text-sm">{currentUser.username || 'Not set'}</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Email</label>
-                                <p className="mt-1 text-sm text-gray-900">{currentUser.email}</p>
+                                <label className="block text-sm font-medium text-muted-fg">Email</label>
+                                <p className="mt-1 text-sm">{currentUser.email}</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Given Name</label>
-                                <p className="mt-1 text-sm text-gray-900">{currentUser.givenName || 'Not set'}</p>
+                                <label className="block text-sm font-medium text-muted-fg">Given Name</label>
+                                <p className="mt-1 text-sm">{currentUser.givenName || 'Not set'}</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Family Name</label>
-                                <p className="mt-1 text-sm text-gray-900">{currentUser.familyName || 'Not set'}</p>
+                                <label className="block text-sm font-medium text-muted-fg">Family Name</label>
+                                <p className="mt-1 text-sm">{currentUser.familyName || 'Not set'}</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Authentication Provider</label>
-                                <p className="mt-1 text-sm text-gray-900">{currentUser.provider || 'Local'}</p>
+                                <label className="block text-sm font-medium text-muted-fg">Authentication Provider</label>
+                                <p className="mt-1 text-sm">{currentUser.provider || 'Local'}</p>
                             </div>
                         </div>
 
                         {/* Account Status */}
                         <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Account Status</h3>
+                            <h3 className="border-b border-border pb-2 text-base font-semibold">Account Status</h3>
                             
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Account Type</label>
+                                <label className="block text-sm font-medium text-muted-fg">Account Type</label>
                                 <p className="mt-1">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                         currentUser.isAdmin 
-                                            ? 'bg-red-100 text-red-800' 
-                                            : 'bg-green-100 text-green-800'
+                                            ? 'bg-danger/10 text-danger' 
+                                            : 'bg-success/10 text-success'
                                     }`}>
                                         {currentUser.isAdmin ? 'Administrator' : 'Standard User'}
                                     </span>
@@ -140,9 +139,9 @@ export const ProfilePage = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Status</label>
+                                <label className="block text-sm font-medium text-muted-fg">Status</label>
                                 <p className="mt-1">
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <span className="inline-flex items-center rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
                                         Active
                                     </span>
                                 </p>
@@ -150,31 +149,28 @@ export const ProfilePage = () => {
 
                             {currentUser.timestamp && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Last Login</label>
-                                    <p className="mt-1 text-sm text-gray-900">
+                                    <label className="block text-sm font-medium text-muted-fg">Last Login</label>
+                                    <p className="mt-1 text-sm">
                                         {new Date(currentUser.timestamp).toLocaleDateString()}
                                     </p>
                                 </div>
                             )}
                         </div>
                     </div>
-                </div>
+                </CardContent>
 
                 {/* Actions Section */}
-                <div className="bg-gray-50 px-6 py-4 border-t">
+                <div className="bg-surface-2 px-6 py-4 border-t border-border">
                     <div className="flex justify-between items-center">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-muted-fg">
                             Last updated: {new Date().toLocaleDateString()}
                         </div>
-                        <button
-                            onClick={logout}
-                            className="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded transition-colors"
-                        >
+                        <Button variant="danger" onClick={logout}>
                             Logout
-                        </button>
+                        </Button>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 };
