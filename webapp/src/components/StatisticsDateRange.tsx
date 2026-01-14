@@ -91,11 +91,11 @@ export function StatisticsDateRange({
         setDateRange({ ...dateRange, [field]: value });
     }
     return (
-        <div className="flex gap-4 items-end mb-4">
+        <div className="flex items-end gap-4">
             <div>
-                <label className="block text-sm font-medium">Period</label>
+                <label className="block text-sm font-medium text-muted-fg">Period</label>
                 <select
-                    className="border rounded px-2 py-1"
+                    className="tg-input py-1.5"
                     value={selectedPeriod}
                     onChange={(e) => handlePeriodChange(e.target.value)}
                 >
@@ -107,20 +107,20 @@ export function StatisticsDateRange({
                 </select>
             </div>
             <div>
-                <label className="block text-sm font-medium">Start Date</label>
+                <label className="block text-sm font-medium text-muted-fg">Start Date</label>
                 <input
                     type="date"
-                    className="border rounded px-2 py-1"
+                    className="tg-input py-1.5"
                     value={dateRange.startDate}
                     onChange={(e) => handleDateChange("startDate", e.target.value)}
                     disabled={selectedPeriod !== "other"}
                 />
             </div>
             <div>
-                <label className="block text-sm font-medium">End Date</label>
+                <label className="block text-sm font-medium text-muted-fg">End Date</label>
                 <input
                     type="date"
-                    className="border rounded px-2 py-1"
+                    className="tg-input py-1.5"
                     value={dateRange.endDate}
                     onChange={(e) => handleDateChange("endDate", e.target.value)}
                     disabled={selectedPeriod !== "other"}

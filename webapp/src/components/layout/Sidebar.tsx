@@ -1,21 +1,6 @@
-/**
- * Sidebar Component - Uses DaisyUI 5 components
- * 
- * DaisyUI Components used:
- * - drawer: For sidebar layout
- * - menu: For navigation items
- * - collapse: For accordion functionality (Users submenu)
- * - btn: For buttons
- * - card: For user info section
- * 
- * Reference: https://daisyui.com/llms.txt
- * Follow DaisyUI best practices:
- * - Use semantic component classes
- * - Combine with Tailwind utilities
- * - Use daisyUI color names (primary, secondary, etc.)
- */
 import { useAuth } from '../../contexts/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
+import { Button } from '../ui/Button';
 
 interface SidebarProps {
   isOpenOnMobile: boolean; // Keep for consistency but not used internally
@@ -25,6 +10,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({
+  isOpenOnMobile,
   toggleMobileSidebar,
   isCollapsed = false,
   toggleCollapse,
@@ -53,107 +39,136 @@ const Sidebar = ({
     },
   ];
 
+  if (isCollapsed) {
+    return null;
+  }
+
+  const baseLink = 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors';
+  const inactiveLink = 'text-muted-fg hover:bg-muted/70 hover:text-fg';
+  const activeLink = 'bg-primary/10 text-fg ring-1 ring-primary/20';
+
   return (
-    <div className="drawer-side z-40">
-      {/* Mobile overlay - for DaisyUI drawer functionality */}
-      <label 
-        htmlFor="sidebar-drawer" 
-        aria-label="close sidebar" 
-        className="drawer-overlay lg:hidden"
-      ></label>
-      
-      {/* Sidebar - conditionally render based on collapse state */}
-      {!isCollapsed && (
-        <aside className="min-h-full bg-base-200 flex flex-col w-64 transition-all duration-300 ease-in-out">
-          {/* Header */}
-          <div className="navbar bg-base-300 min-h-16">
-            <div className="navbar-start">
-              <h1 className="text-sm font-bold">Taronja Gateway</h1>
-            </div>
-            <div className="navbar-end">
-              {/* Desktop hide button */}
-              {toggleCollapse && (
-                <button
-                  onClick={toggleCollapse}
-                  className="btn btn-ghost btn-sm hidden lg:flex"
-                  aria-label="Hide sidebar"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-              )}
-              {/* Mobile close button */}
-              <button
-                onClick={toggleMobileSidebar}
-                className="btn btn-ghost btn-sm lg:hidden"
-                aria-label="Close sidebar"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Navigation Menu */}
-          <div className="flex-1 p-4">
-            <ul className="menu menu-vertical w-full">
-              {navItems.map((item) => {
-                // Handle items with submenus
-                if (item.submenu) {
-                  return (
-                    <li key={item.name}>
-                      <details className="group">
-                        <summary className="group-hover:bg-base-300">
-                          <span className="text-lg">{item.icon}</span>
-                          <span>{item.name}</span>
-                        </summary>
-                        <ul className="menu-compact">
-                          {item.submenu.map((subItem) => (
-                            <li key={subItem.name}>
-                              <Link to={subItem.path} className="pl-8">
-                                {subItem.name}
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    </li>
-                  );
-                }
-                
-                // Handle regular menu items
-                if (item.path) {
-                  return (
-                    <li key={item.name}>
-                      <Link to={item.path}>
-                        <span className="text-lg">{item.icon}</span>
-                        <span>{item.name}</span>
-                      </Link>
-                    </li>
-                  );
-                }
-                
-                return null;
-              })}
-            </ul>
-          </div>
-
-          {/* User Info Footer */}
-          {currentUser && (
-            <div className="p-4 border-t border-base-300">
-              <button
-                onClick={logout}
-                className="btn btn-outline btn-sm w-full"
-              >
-                Logout
-              </button>
-            </div>
-          )}
-        </aside>
+    <>
+      {/* Mobile overlay */}
+      {isOpenOnMobile && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          aria-hidden="true"
+          onClick={toggleMobileSidebar}
+        />
       )}
-    </div>
+
+      <aside
+        className={
+          `fixed inset-y-0 left-0 z-50 w-72 border-r border-border bg-surface shadow-soft transition-transform lg:static lg:z-auto lg:translate-x-0 lg:shadow-none ` +
+          (isOpenOnMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')
+        }
+      >
+        <div className="flex h-16 items-center justify-between gap-2 px-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold tracking-tight">Taronja Gateway</div>
+            <div className="text-xs text-muted-fg">Admin console</div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {toggleCollapse && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden w-9 px-0 lg:inline-flex"
+                aria-label="Hide sidebar"
+                onClick={toggleCollapse}
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-9 px-0 lg:hidden"
+              aria-label="Close sidebar"
+              onClick={toggleMobileSidebar}
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </Button>
+          </div>
+        </div>
+
+        <nav className="px-3 pb-4">
+          <div className="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-fg">
+            Navigation
+          </div>
+
+          <div className="space-y-1">
+            {navItems.map((item) => {
+              if (item.submenu) {
+                return (
+                  <details key={item.name} className="group">
+                    <summary className={`${baseLink} ${inactiveLink} cursor-pointer list-none`}>
+                      <span className="text-base" aria-hidden="true">{item.icon}</span>
+                      <span className="flex-1">{item.name}</span>
+                      <svg className="h-4 w-4 opacity-70 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </summary>
+                    <div className="mt-1 space-y-1 pl-6">
+                      {item.submenu.map((subItem) => (
+                        <NavLink
+                          key={subItem.name}
+                          to={subItem.path}
+                          className={({ isActive }) =>
+                            `${baseLink} ${isActive ? activeLink : inactiveLink}`
+                          }
+                          onClick={() => {
+                            if (window.matchMedia('(max-width: 1023px)').matches) {
+                              toggleMobileSidebar();
+                            }
+                          }}
+                        >
+                          {subItem.name}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </details>
+                );
+              }
+
+              if (item.path) {
+                return (
+                  <NavLink
+                    key={item.name}
+                    to={item.path}
+                    className={({ isActive }) => `${baseLink} ${isActive ? activeLink : inactiveLink}`}
+                    onClick={() => {
+                      if (window.matchMedia('(max-width: 1023px)').matches) {
+                        toggleMobileSidebar();
+                      }
+                    }}
+                  >
+                    <span className="text-base" aria-hidden="true">{item.icon}</span>
+                    <span>{item.name}</span>
+                  </NavLink>
+                );
+              }
+
+              return null;
+            })}
+          </div>
+        </nav>
+
+        {currentUser && (
+          <div className="mt-auto border-t border-border p-4">
+            <Button variant="outline" className="w-full" onClick={logout}>
+              Logout
+            </Button>
+          </div>
+        )}
+      </aside>
+    </>
   );
 };
 

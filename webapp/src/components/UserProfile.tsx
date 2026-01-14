@@ -1,5 +1,6 @@
 import { useAuth, getUserDisplayName, getUserAvatar, getUserInitials } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import { Button } from './ui/Button';
 
 /**
  * UserProfile component that demonstrates how to use the enhanced AuthContext
@@ -21,7 +22,7 @@ export const UserProfile = () => {
             <div className="p-4">
                 <a
                     href="/login"
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                    className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary/90"
                 >
                     Login
                 </a>
@@ -34,9 +35,9 @@ export const UserProfile = () => {
     const initials = getUserInitials(currentUser);
 
     return (
-        <div className="flex items-center space-x-3 p-4 bg-white rounded-lg shadow">
+        <div className="flex items-center space-x-3 rounded-xl border border-border bg-surface p-4 shadow-soft">
             {/* User Avatar */}
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
                 {avatarUrl ? (
                     <img
                         className="w-10 h-10 rounded-full object-cover"
@@ -50,7 +51,7 @@ export const UserProfile = () => {
                     />
                 ) : null}
                 <div
-                    className={`w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-medium ${avatarUrl ? 'hidden' : ''}`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-fg ${avatarUrl ? 'hidden' : ''}`}
                 >
                     {initials}
                 </div>
@@ -58,34 +59,31 @@ export const UserProfile = () => {
 
             {/* User Info */}
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                    <Link to="/profile" className="hover:text-blue-600 hover:underline">
+                <p className="truncate text-sm font-medium">
+                    <Link to="/profile" className="tg-link">
                         {displayName}
                     </Link>
                 </p>
-                <p className="text-sm text-gray-500 truncate">
+                <p className="truncate text-sm text-muted-fg">
                     {currentUser.email}
                 </p>
                 {currentUser.provider && (
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-fg">
                         via {currentUser.provider}
                     </p>
                 )}
                 {currentUser.isAdmin && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                    <span className="mt-1 inline-flex items-center rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
                         Admin
                     </span>
                 )}
             </div>
 
             {/* Logout Button */}
-            <div className="flex-shrink-0">
-                <button
-                    onClick={logout}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-1 px-3 rounded text-sm"
-                >
+            <div className="shrink-0">
+                <Button variant="secondary" size="sm" onClick={logout}>
                     Logout
-                </button>
+                </Button>
             </div>
         </div>
     );
@@ -123,11 +121,11 @@ export const UserBadge = () => {
                 />
             ) : null}
             <div
-                className={`w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-medium ${avatarUrl ? 'hidden' : ''}`}
+                className={`flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-fg ${avatarUrl ? 'hidden' : ''}`}
             >
                 {initials}
             </div>
-            <span className="text-sm font-medium text-gray-700 hidden sm:block">
+            <span className="hidden text-sm font-medium text-muted-fg sm:block">
                 {displayName}
             </span>
         </div>

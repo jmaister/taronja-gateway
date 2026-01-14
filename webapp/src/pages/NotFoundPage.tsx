@@ -1,32 +1,33 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/ui/Button';
 
 // Simple 404 Page component for admin context
 export const NotFoundPage = () => {
     const { isAuthenticated, currentUser } = useAuth();
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center p-4">
-            <h1 className="text-4xl font-bold text-slate-700 mb-4">404 - Page Not Found</h1>
-            <p className="text-lg text-slate-600 mb-8">
+        <div className="flex min-h-[70vh] flex-col items-center justify-center text-center">
+            <h1 className="mb-4 text-4xl font-semibold tracking-tight">404</h1>
+            <p className="mb-8 max-w-xl text-muted-fg">
                 Sorry, the admin page you are looking for does not exist or has been moved.
             </p>
             {isAuthenticated && currentUser?.isAdmin ? (
                 <Link
                     to="/home" // Link back to the home page
-                    className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    className="inline-flex"
                 >
-                    Go to Home
+                    <Button>Go to Home</Button>
                 </Link>
             ) : (
                 <a
                     href="/"
-                    className="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    className="inline-flex"
                 >
-                    Go to Main Site
+                    <Button>Go to Main Site</Button>
                 </a>
             )}
-            <footer className="absolute bottom-4 text-center p-4 text-gray-500 text-xs">
+            <footer className="mt-10 text-center text-xs text-muted-fg">
                 <p>Taronja Gateway Admin</p>
             </footer>
         </div>

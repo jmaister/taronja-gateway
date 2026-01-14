@@ -1,4 +1,93 @@
+@config "../tailwind.config.js";
 @import "tailwindcss";
-@plugin "daisyui" {
-  themes: light --default, dark --prefersdark, cupcake;
+
+@layer base {
+  :root {
+    --color-bg: 248 250 252;
+    --color-fg: 15 23 42;
+    --color-muted: 241 245 249;
+    --color-muted-fg: 71 85 105;
+    --color-surface: 255 255 255;
+    --color-surface-2: 248 250 252;
+    --color-border: 226 232 240;
+    --color-ring: 94 234 212;
+
+    --color-danger: 239 68 68;
+    --color-danger-fg: 255 255 255;
+    --color-warning: 245 158 11;
+    --color-warning-fg: 15 23 42;
+    --color-success: 16 185 129;
+    --color-success-fg: 255 255 255;
+
+    /* Palette defaults (taronja) */
+    --color-primary: 249 115 22;
+    --color-primary-fg: 255 255 255;
+  }
+
+  html[data-theme='dark'] {
+    --color-bg: 9 11 16;
+    --color-fg: 226 232 240;
+    --color-muted: 15 23 42;
+    --color-muted-fg: 148 163 184;
+    --color-surface: 15 23 42;
+    --color-surface-2: 17 24 39;
+    --color-border: 30 41 59;
+    --color-ring: 94 234 212;
+  }
+
+  html[data-palette='taronja'] {
+    --color-primary: 249 115 22;
+    --color-primary-fg: 255 255 255;
+  }
+
+  html[data-palette='blue'] {
+    --color-primary: 59 130 246;
+    --color-primary-fg: 255 255 255;
+  }
+
+  html[data-palette='violet'] {
+    --color-primary: 139 92 246;
+    --color-primary-fg: 255 255 255;
+  }
+
+  html[data-palette='emerald'] {
+    --color-primary: 16 185 129;
+    --color-primary-fg: 8 23 20;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-bg text-fg antialiased;
+  }
+
+  ::selection {
+    @apply bg-primary/20;
+  }
+}
+
+@layer components {
+  .tg-card {
+    @apply rounded-xl border border-border bg-surface shadow-soft;
+  }
+
+  .tg-card-muted {
+    @apply rounded-xl border border-border bg-surface-2;
+  }
+
+  .tg-input {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none;
+    @apply focus:ring-2 focus:ring-ring/40 focus:border-ring;
+    @apply placeholder:text-muted-fg;
+  }
+
+  .tg-link {
+    @apply text-primary hover:underline;
+  }
 }

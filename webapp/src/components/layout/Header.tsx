@@ -1,4 +1,7 @@
 import { UserBadge } from '../UserProfile';
+import { ThemeSwitcher } from '../theme/ThemeSwitcher';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 
 interface HeaderProps {
   pageTitle?: string;
@@ -14,44 +17,49 @@ const Header = ({
   toggleCollapse,
 }: HeaderProps) => {
   return (
-    <div className="navbar bg-base-100 shadow-lg">
-      <div className="navbar-start">
-        {/* Universal menu button - works for both mobile drawer and desktop collapse */}
-        <button
+    <header className="sticky top-0 z-30 border-b border-border bg-surface/80 backdrop-blur">
+      <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+        {/* Menu button: mobile opens drawer; desktop collapses sidebar */}
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={isCollapsed ? 'Show sidebar' : 'Toggle sidebar'}
           onClick={() => {
-            if (isCollapsed && toggleCollapse) {
-              // Desktop: Show collapsed sidebar
-              toggleCollapse();
-            } else if (toggleMobileSidebar) {
-              // Mobile: Toggle drawer
+            const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+            if (isDesktop) {
+              if (toggleCollapse) {
+                toggleCollapse();
+              }
+              return;
+            }
+
+            if (toggleMobileSidebar) {
               toggleMobileSidebar();
             }
           }}
-          className="btn btn-square btn-ghost"
-          aria-label={isCollapsed ? "Show sidebar" : "Toggle menu"}
+          className="w-9 px-0"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
-        </button>
-        
-        <h1 className="text-xl font-semibold ml-2">{pageTitle}</h1>
-      </div>
+        </Button>
 
-      <div className="navbar-end">
-        {/* Search Bar */}
-        <div className="form-control hidden md:block mr-4">
-          <input 
-            type="text" 
-            placeholder="Search users, etc..." 
-            className="input input-bordered input-sm w-64" 
-          />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-semibold tracking-tight">{pageTitle}</h1>
+          <p className="hidden text-xs text-muted-fg sm:block">
+            Taronja Gateway Admin
+          </p>
         </div>
 
-        {/* User Profile */}
+        {/* Search */}
+        <div className="hidden w-[22rem] lg:block">
+          <Input placeholder="Search…" aria-label="Search" />
+        </div>
+
+        <ThemeSwitcher />
         <UserBadge />
       </div>
-    </div>
+    </header>
   );
 };
 
