@@ -1,19 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
+import type { GetCurrentUserResponse } from '@/apiclient/types.gen';
 
-// User Interface based on the API response from /me endpoint
-// TODO: Generate using openapi-generator-cli or similar tool
-export interface User {
-    authenticated: boolean;
-    username: string;
-    email?: string;
-    name?: string;
-    picture?: string;
-    givenName?: string;
-    familyName?: string;
-    provider?: string;
-    timestamp: string;
-    isAdmin: boolean;
-}
+export type User = GetCurrentUserResponse;
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -201,7 +189,7 @@ export const getUserDisplayName = (user: User | null): string => {
     if (user.givenName || user.familyName) {
         return [user.givenName, user.familyName].filter(Boolean).join(' ').trim();
     }
-    return user.username;
+    return user.username ?? 'User';
 };
 
 export const getUserAvatar = (user: User | null): string | null => {
@@ -222,7 +210,8 @@ export const getUserInitials = (user: User | null): string => {
         return words[0].substring(0, 2).toUpperCase();
     }
 
-    return user.username.substring(0, 2).toUpperCase();
+    const username = user.username ?? 'User';
+    return username.substring(0, 2).toUpperCase();
 };
 
 /**
