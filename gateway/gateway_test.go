@@ -886,6 +886,113 @@ window.onload = function() {
 	}
 }
 
+func TestProxySPAFallback(t *testing.T) {
+	const indexContent = "<html><body>SPA Root</body></html>"
+	const cssContent = "body { color: red; }"
+
+	// Upstream server: serves index.html at /, CSS at /style.css, 404 for everything else
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/", "":
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(indexContent))
+		case "/style.css":
+			w.Header().Set("Content-Type", "text/css")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(cssContent))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	tests := []struct {
+		name           string
+		isSPA          bool
+		requestPath    string
+		expectedStatus int
+		expectedBody   string
+		description    string
+	}{
+		{
+			name:           "SPA proxy - root returns index",
+			isSPA:          true,
+			requestPath:    "/",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "SPA Root",
+			description:    "Root path should serve index directly from upstream",
+		},
+		{
+			name:           "SPA proxy - client-side route falls back to root",
+			isSPA:          true,
+			requestPath:    "/about",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "SPA Root",
+			description:    "Unknown path should fall back to upstream base URL",
+		},
+		{
+			name:           "SPA proxy - known asset served directly",
+			isSPA:          true,
+			requestPath:    "/style.css",
+			expectedStatus: http.StatusOK,
+			expectedBody:   cssContent,
+			description:    "Known asset should be served directly without fallback",
+		},
+		{
+			name:           "Non-SPA proxy - returns 404 for unknown path",
+			isSPA:          false,
+			requestPath:    "/about",
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "",
+			description:    "Without SPA mode, unknown paths should return 404",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gatewayConfig := &config.GatewayConfig{
+				Server: config.ServerConfig{
+					Host: "127.0.0.1",
+					Port: 0,
+				},
+				Management: config.ManagementConfig{
+					Prefix: "/_",
+				},
+				Routes: []config.RouteConfig{
+					{
+						Name:  "Proxy SPA Route",
+						From:  "/*",
+						To:    upstream.URL,
+						IsSPA: tt.isSPA,
+					},
+				},
+			}
+
+			d := deps.NewTest()
+			gateway, err := NewGatewayWithDependencies(gatewayConfig, nil, d)
+			require.NoError(t, err, "Failed to create gateway")
+
+			server := httptest.NewServer(gateway.Mux)
+			defer server.Close()
+
+			resp, err := http.Get(server.URL + tt.requestPath)
+			require.NoError(t, err, "Failed to make request")
+			defer resp.Body.Close()
+
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode,
+				"Status code mismatch for: %s", tt.description)
+
+			if tt.expectedBody != "" {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err, "Failed to read response body")
+				assert.Contains(t, string(body), tt.expectedBody,
+					"Response body mismatch for: %s", tt.description)
+			}
+		})
+	}
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return substr != "" && s != substr && s != "" && strings.Contains(s, substr)

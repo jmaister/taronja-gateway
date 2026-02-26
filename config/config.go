@@ -42,7 +42,7 @@ type RouteConfig struct {
 	ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
 	ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
 	Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false
-	IsSPA          bool                 `yaml:"isSPA"`             // Enable SPA mode (fallback to index.html for 404s). Default: false
+	IsSPA          bool                 `yaml:"isSPA"`             // Enable SPA mode. For static routes: serves index.html on 404. For proxy routes: re-requests the upstream base URL on 404. Default: false
 	RemoveFromPath string               `yaml:"removeFromPath"`    // Path prefix to remove before proxying (e.g., "/api/v1/"). Optional.
 	Authentication AuthenticationConfig `yaml:"authentication"`    // Authentication requirements for this route
 	Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.

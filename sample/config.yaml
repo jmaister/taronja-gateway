@@ -43,6 +43,13 @@ routes:
     to: http://localhost:8081
     authentication:
       enabled: true
+  - name: SPA App
+    from: /app/*
+    removeFromPath: "/app/"
+    to: http://localhost:8090
+    isSPA: true
+    authentication:
+      enabled: true
   - name: Static files
     from: /static
     toFolder: ./sample/webfiles

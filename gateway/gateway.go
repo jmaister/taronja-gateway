@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template" // Added for template parsing
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -413,6 +414,9 @@ func (g *Gateway) configureUserRoutes() error {
 				continue
 			}
 			handler = g.createProxyHandlerFunc(routeConfig, targetURL)
+			if routeConfig.IsSPA {
+				log.Printf("Proxy Route [%s]: SPA mode enabled - upstream 404s will fall back to base URL: %s", routeConfig.Name, routeConfig.To)
+			}
 		}
 
 		// Wrap with cache control for all routes
@@ -528,6 +532,49 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 
 		req.Host = targetURL.Host
+	}
+
+	// Set up SPA fallback via ModifyResponse when isSPA is enabled
+	if routeConfig.IsSPA {
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			if resp.StatusCode != http.StatusNotFound {
+				return nil
+			}
+
+			log.Printf("Proxy Route [%s]: SPA fallback - upstream returned 404 for %s, fetching base URL: %s",
+				routeConfig.Name, resp.Request.URL.Path, targetURL.String())
+
+			fallbackReq, err := http.NewRequestWithContext(resp.Request.Context(), http.MethodGet, targetURL.String(), nil)
+			if err != nil {
+				log.Printf("Proxy Route [%s]: SPA fallback failed - could not create request: %v", routeConfig.Name, err)
+				return nil
+			}
+
+			client := &http.Client{Timeout: 10 * time.Second}
+			fallbackResp, err := client.Do(fallbackReq)
+			if err != nil {
+				log.Printf("Proxy Route [%s]: SPA fallback failed - could not fetch base URL: %v", routeConfig.Name, err)
+				return nil
+			}
+
+			// Drain and close the original 404 response body
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+
+			// Replace the 404 response with the fallback response
+			resp.StatusCode = fallbackResp.StatusCode
+			resp.Status = fallbackResp.Status
+			for key := range resp.Header {
+				delete(resp.Header, key)
+			}
+			for key, values := range fallbackResp.Header {
+				resp.Header[key] = values
+			}
+			resp.Body = fallbackResp.Body
+			resp.ContentLength = fallbackResp.ContentLength
+
+			return nil
+		}
 	}
 
 	// Set up error handler

@@ -274,6 +274,16 @@ To obtain OAuth2 credentials:
 - **Google**: [Google Cloud Console](https://console.cloud.google.com/)
 - **GitHub**: [GitHub OAuth Apps](https://github.com/settings/developers)
 
+#### Google OAuth2 sample
+
+Authorized origin: `http://localhost:8080`
+Authorized redirect URI: `http://localhost:8080/_/auth/google/callback`
+
+#### GitHub OAuth2 sample
+
+Authorized origin: `http://localhost:8080`
+Authorized callback URL: `http://localhost:8080/_/auth/github/callback`
+
 ### Branding
 
 Customize the login page and dashboard appearance.

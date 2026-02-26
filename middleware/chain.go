@@ -89,7 +89,10 @@ func (r *RouteChainBuilder) BuildRouteChain(handler http.HandlerFunc, routeConfi
 
 	// Authentication middleware (if enabled for this route)
 	if routeConfig.Authentication.Enabled {
-		chain.Add(r.authMiddleware.AuthMiddlewareFunc(routeConfig.Static))
+		// Redirect to login page for static routes and SPA proxy routes (browser-facing),
+		// return 401 for plain proxy/API routes.
+		shouldRedirect := routeConfig.Static || routeConfig.IsSPA
+		chain.Add(r.authMiddleware.AuthMiddlewareFunc(shouldRedirect))
 	}
 
 	// Cache control middleware (always applied)
