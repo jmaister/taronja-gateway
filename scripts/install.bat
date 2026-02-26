@@ -13,9 +13,9 @@ set ZIP_URL=
 REM Create install dir if it doesn't exist
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
-REM Get latest release info and extract the Windows zip URL (GoReleaser artifact)
+REM Get latest release info and extract the Windows tar.gz URL (GoReleaser artifact)
 powershell -Command "Invoke-WebRequest -Uri '%API_URL%' -OutFile 'latest.json'"
-for /f "delims=" %%i in ('powershell -Command "(Get-Content latest.json | Out-String | ConvertFrom-Json).assets | Where-Object { $_.name -like '*Windows_x86_64.zip' } | Select-Object -ExpandProperty browser_download_url"') do set ZIP_URL=%%i
+for /f "delims=" %%i in ('powershell -Command "(Get-Content latest.json | Out-String | ConvertFrom-Json).assets | Where-Object { $_.name -like '*Windows_x86_64.tar.gz' } | Select-Object -ExpandProperty browser_download_url"') do set ZIP_URL=%%i
 
 REM Debug: print ZIP_URL
 if "%ZIP_URL%"=="" (
@@ -27,22 +27,19 @@ if "%ZIP_URL%"=="" (
     echo Downloading from: %ZIP_URL%
 )
 
-REM Download the GoReleaser zip artifact using PowerShell
-powershell -Command "Invoke-WebRequest -Uri '%ZIP_URL%' -OutFile 'tg_win.zip'"
+REM Download the GoReleaser tar.gz artifact using PowerShell
+powershell -Command "Invoke-WebRequest -Uri '%ZIP_URL%' -OutFile 'tg_win.tar.gz'"
 
-REM Extract the zip (GoReleaser puts binary in a subfolder)
+REM Extract the tar.gz (GoReleaser puts binary in a subfolder)
 set EXTRACT_DIR=%TEMP%\tg_extract
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
-powershell -Command "Expand-Archive -Path tg_win.zip -DestinationPath '%EXTRACT_DIR%'"
+mkdir "%EXTRACT_DIR%"
+tar -xzf tg_win.tar.gz -C "%EXTRACT_DIR%"
 
-REM Find the extracted folder (should match taronja-gateway*)
-for /d %%D in (%EXTRACT_DIR%\taronja-gateway*) do set EXTRACTED_DIR=%%D
-
-REM Move tg.exe from extracted folder to install dir
-if exist "%EXTRACTED_DIR%\%TG_BIN%" move /Y "%EXTRACTED_DIR%\%TG_BIN%" "%INSTALL_DIR%\tg.exe"
-
-REM Also check if tg.exe is directly in the extract dir
-if exist "%EXTRACT_DIR%\%TG_BIN%" move /Y "%EXTRACT_DIR%\%TG_BIN%" "%INSTALL_DIR%\tg.exe"
+REM Find tg.exe recursively in the extracted folder
+for /r "%EXTRACT_DIR%" %%F in (tg.exe) do (
+    if exist "%%F" move /Y "%%F" "%INSTALL_DIR%\tg.exe"
+)
 
 REM Error if not found
 if not exist "%INSTALL_DIR%\tg.exe" (
@@ -50,7 +47,7 @@ if not exist "%INSTALL_DIR%\tg.exe" (
 )
 
 REM Clean up
-if exist tg_win.zip del tg_win.zip
+if exist tg_win.tar.gz del tg_win.tar.gz
 if exist latest.json del latest.json
 if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
 
