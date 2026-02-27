@@ -96,7 +96,7 @@ Taronja Gateway uses a YAML configuration file to define server settings, routes
 name: Example Gateway Configuration
 
 server:
-  host: 127.0.0.1
+  host: 0.0.0.0 # Bind to all interfaces, 127.0.0.1 for localhost only
   port: 8080
   url: http://localhost:8080
 
@@ -455,38 +455,38 @@ The `X-User-Data` header contains a JSON-encoded session object with the followi
 
 ```json
 {
-  "Token": "string",
-  "UserID": "string",
-  "Username": "string",
-  "Email": "string",
-  "IsAuthenticated": true,
-  "IsAdmin": false,
-  "ValidUntil": "2026-02-28T12:00:00Z",
-  "Provider": "string",
-  "ClosedOn": null,
-  "LastActivity": "2026-02-27T10:30:00Z",
-  "SessionName": "string",
-  "CreatedFrom": "string",
-  "IPAddress": "string",
-  "UserAgent": "string",
-  "Referrer": "string",
-  "BrowserFamily": "string",
-  "BrowserVersion": "string",
-  "OSFamily": "string",
-  "OSVersion": "string",
-  "DeviceFamily": "string",
-  "DeviceBrand": "string",
-  "DeviceModel": "string",
-  "GeoLocation": "string",
-  "Latitude": 0.0,
-  "Longitude": 0.0,
-  "City": "string",
-  "ZipCode": "string",
-  "Country": "string",
-  "CountryCode": "string",
-  "Region": "string",
-  "Continent": "string",
-  "JA4Fingerprint": "string"
+  "token": "string",
+  "userId": "string",
+  "username": "string",
+  "email": "string",
+  "isAuthenticated": true,
+  "isAdmin": false,
+  "validUntil": "2026-02-28T12:00:00Z",
+  "provider": "string",
+  "closedOn": null,
+  "lastActivity": "2026-02-27T10:30:00Z",
+  "sessionName": "string",
+  "createdFrom": "string",
+  "ipAddress": "string",
+  "userAgent": "string",
+  "referrer": "string",
+  "browserFamily": "string",
+  "browserVersion": "string",
+  "osFamily": "string",
+  "osVersion": "string",
+  "deviceFamily": "string",
+  "deviceBrand": "string",
+  "deviceModel": "string",
+  "geoLocation": "string",
+  "latitude": 0.0,
+  "longitude": 0.0,
+  "city": "string",
+  "zipCode": "string",
+  "country": "string",
+  "countryCode": "string",
+  "region": "string",
+  "continent": "string",
+  "ja4Fingerprint": "string"
 }
 ```
 
@@ -494,38 +494,38 @@ The `X-User-Data` header contains a JSON-encoded session object with the followi
 
 | Field              | Type      | Description                                                      |
 |--------------------|-----------|------------------------------------------------------------------|
-| `Token`            | `string`  | The session token identifier.                                    |
-| `UserID`           | `string`  | Unique user ID (CUID format).                                    |
-| `Username`         | `string`  | Username of the authenticated user.                              |
-| `Email`            | `string`  | Email address of the user.                                       |
-| `IsAuthenticated`  | `bool`    | Whether the session is authenticated.                            |
-| `IsAdmin`          | `bool`    | Whether the user has admin privileges.                           |
-| `ValidUntil`       | `string`  | Session expiration timestamp (RFC 3339 / ISO 8601).              |
-| `Provider`         | `string`  | Authentication provider used (`basic`, `google`, `github`, etc). |
-| `ClosedOn`         | `string?` | Timestamp when the session was closed, or `null` if active.      |
-| `LastActivity`     | `string`  | Timestamp of the last user activity in this session.             |
-| `SessionName`      | `string`  | Optional name assigned to the session.                           |
-| `CreatedFrom`      | `string`  | How the session was created (e.g. `cookie`, `token`).            |
-| `IPAddress`        | `string`  | Client IP address.                                               |
-| `UserAgent`        | `string`  | Client's User-Agent string.                                     |
-| `Referrer`         | `string`  | HTTP referrer.                                                   |
-| `BrowserFamily`    | `string`  | Browser name (e.g. `Chrome`, `Firefox`).                         |
-| `BrowserVersion`   | `string`  | Browser version string.                                          |
-| `OSFamily`         | `string`  | Operating system name.                                           |
-| `OSVersion`        | `string`  | Operating system version.                                        |
-| `DeviceFamily`     | `string`  | Device type (e.g. `desktop`, `mobile`).                          |
-| `DeviceBrand`      | `string`  | Device manufacturer.                                             |
-| `DeviceModel`      | `string`  | Device model name.                                               |
-| `GeoLocation`      | `string`  | General geolocation description.                                 |
-| `Latitude`         | `float`   | GPS latitude coordinate.                                         |
-| `Longitude`        | `float`   | GPS longitude coordinate.                                        |
-| `City`             | `string`  | City name from geolocation.                                      |
-| `ZipCode`          | `string`  | Postal / ZIP code.                                               |
-| `Country`          | `string`  | Country name.                                                    |
-| `CountryCode`      | `string`  | ISO country code (2-3 characters).                               |
-| `Region`           | `string`  | State, province, or region.                                      |
-| `Continent`        | `string`  | Continent name.                                                  |
-| `JA4Fingerprint`   | `string`  | JA4H HTTP fingerprint of the client.                             |
+| `token`            | `string`  | The session token identifier.                                    |
+| `userId`           | `string`  | Unique user ID (CUID format).                                    |
+| `username`         | `string`  | Username of the authenticated user.                              |
+| `email`            | `string`  | Email address of the user.                                       |
+| `isAuthenticated`  | `bool`    | Whether the session is authenticated.                            |
+| `isAdmin`          | `bool`    | Whether the user has admin privileges.                           |
+| `validUntil`       | `string`  | Session expiration timestamp (RFC 3339 / ISO 8601).              |
+| `provider`         | `string`  | Authentication provider used (`basic`, `google`, `github`, etc). |
+| `closedOn`         | `string?` | Timestamp when the session was closed, or `null` if active.      |
+| `lastActivity`     | `string`  | Timestamp of the last user activity in this session.             |
+| `sessionName`      | `string`  | Optional name assigned to the session.                           |
+| `createdFrom`      | `string`  | How the session was created (e.g. `cookie`, `token`).            |
+| `ipAddress`        | `string`  | Client IP address.                                               |
+| `userAgent`        | `string`  | Client's User-Agent string.                                      |
+| `referrer`         | `string`  | HTTP referrer.                                                   |
+| `browserFamily`    | `string`  | Browser name (e.g. `Chrome`, `Firefox`).                         |
+| `browserVersion`   | `string`  | Browser version string.                                          |
+| `osFamily`         | `string`  | Operating system name.                                           |
+| `osVersion`        | `string`  | Operating system version.                                        |
+| `deviceFamily`     | `string`  | Device type (e.g. `desktop`, `mobile`).                          |
+| `deviceBrand`      | `string`  | Device manufacturer.                                             |
+| `deviceModel`      | `string`  | Device model name.                                               |
+| `geoLocation`      | `string`  | General geolocation description.                                 |
+| `latitude`         | `float`   | GPS latitude coordinate.                                         |
+| `longitude`        | `float`   | GPS longitude coordinate.                                        |
+| `city`             | `string`  | City name from geolocation.                                      |
+| `zipCode`          | `string`  | Postal / ZIP code.                                               |
+| `country`          | `string`  | Country name.                                                    |
+| `countryCode`      | `string`  | ISO country code (2-3 characters).                               |
+| `region`           | `string`  | State, province, or region.                                      |
+| `continent`        | `string`  | Continent name.                                                  |
+| `ja4Fingerprint`   | `string`  | JA4H HTTP fingerprint of the client.                             |
 
 ## Authentication Methods
 
@@ -546,8 +546,8 @@ Backend routes can receive authenticated requests via two methods:
 app.get('/api/resource', (req, res) => {
     const userId = req.headers['x-user-id'];
     const userData = JSON.parse(req.headers['x-user-data']);
-    console.log(`User: ${userData.Username} (${userId})`);
-    res.json({ message: `Hello, ${userData.Username}` });
+  console.log(`User: ${userData.username} (${userId})`);
+  res.json({ message: `Hello, ${userData.username}` });
 });
 ```
 
