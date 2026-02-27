@@ -17,10 +17,24 @@ Button to refresh stats.
 
 # Request identifier and tracing
 
+OpenTelemetry + Open Telemetry server: https://opentelemetry.io/
+
 Should we add X-Request-ID to all requests and responses for tracing?
 Are there any other ways to trace requests?
 Are there libraries that already handle tracing?
 Do libraries stick to an specific tracing product or standard?
+
+## Logs
+
+Show logs in the dashboard
+* Filter logs by date range
+* Filter logs by severity level
+* Search logs by keyword
+
+## Stats
+
+* CPU usage
+* Memory usage
 
 # Health check 
 
@@ -33,31 +47,7 @@ Health check configuration for the routes configured in the gateway:
 - Expected response code
 - Show the results in /_/health
 
-# Likes
 
-Create a like feature for any content based on their ID. Each like is associated with the logged user.
-Likes can't be repeated.
-
-POST /api/likes/<content_name>/<content_id> - Creates a like
-GET /api/likes/<content_name>/<content_id> - Returns the count
-DELETE /api/likes/<content_name>/<content_id> - Removes this like
-...
-GET /api/users/likes - Returns the list of likes for the logged user
-
-DB table:
-likes
-- id (PK)
-- user_id (FK)
-- content_name
-- content_id
-- created_at
-- updated_at
-- deleted_at
-
-## Stats
-
-* CPU usage
-* Memory usage
 
 ## Password
 
@@ -73,14 +63,6 @@ likes
     * Email-based 2FA?
     * SMS-based 2FA?
     * Authenticator app-based 2FA
-
-
-# Logs
-
-Show logs in the dashboard
-* Filter logs by date range
-* Filter logs by severity level
-* Search logs by keyword
 
 
 # Constants data
@@ -141,24 +123,4 @@ Show logs in the dashboard
 * Allow users to manage their files (upload, delete, rename)
 * Integrate with cloud storage providers (e.g., AWS S3, Google Cloud Storage)
 
-
-## Credits
-
-Handle user's credits for premium features or services.
-
-* Add and deduct credits for users
-* Display user's current credit balance
-* Allow users to purchase additional credits
-* Track credit transactions (additions and deductions)
-* Payment gateway integration for purchasing credits
-* Provide admin interface to manage user credits: view history, adjust balances, refund credits
-* Table: credits
-  - id (PK)
-  - user_id (FK)
-  - amount (integer, positive or negative)
-  - balance_after (integer)
-  - description (string)
-  - created_at
-  - updated_at
-  - deleted_at
 
