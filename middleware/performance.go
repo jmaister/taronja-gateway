@@ -192,8 +192,14 @@ func BuildOptimizedGlobalChain(
 ) *ChainBuilder {
 	chain := NewChainBuilder()
 
+	// rate limiter runs at the very beginning
+	if gatewayConfig.Management.RateLimiter.IsEnabled() {
+		chain.Add(RateLimiterMiddleware(gatewayConfig.Management.RateLimiter))
+	}
+
 	// Skip analytics middleware for static assets if enabled
 	if perfConfig.EnableStaticAssetSkipping {
+		// buildConditionalChain must also know about rate limiter, so add it there as well
 		return buildConditionalChain(gatewayConfig, sessionStore, tokenService, trafficMetricRepo, perfConfig)
 	}
 
@@ -233,7 +239,14 @@ func buildConditionalChain(
 	trafficMetricRepo db.TrafficMetricRepository,
 	perfConfig *PerformanceConfig,
 ) *ChainBuilder {
-	return NewChainBuilder().Add(func(next http.Handler) http.Handler {
+	builder := NewChainBuilder()
+
+	// always run the rate limiter first if configured
+	if gatewayConfig.Management.RateLimiter.IsEnabled() {
+		builder.Add(RateLimiterMiddleware(gatewayConfig.Management.RateLimiter))
+	}
+
+	builder.Add(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if this is a static asset
 			if isStaticAsset(r.URL.Path) {
@@ -274,6 +287,8 @@ func buildConditionalChain(
 			fullChain.Build(next).ServeHTTP(w, r)
 		})
 	})
+
+	return builder
 }
 
 // OptimizedTrafficMetricMiddleware is a placeholder for optimized traffic metrics

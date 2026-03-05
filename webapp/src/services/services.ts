@@ -1,16 +1,18 @@
 import {
-  getUserCounters,
   getUserCounterHistory,
   adjustUserCounters,
   getAllUserCounters,
   getAvailableCounters,
+  getRateLimiterStats,
+  getRateLimiterConfig,
 } from '@/apiclient/sdk.gen';
 import type {
-  UserCountersResponse,
   CounterHistoryResponse,
   CounterAdjustmentRequest,
   AllUserCountersResponse,
   AvailableCountersResponse,
+  RateLimiterStats,
+  RateLimiterConfigResponse,
 } from '@/apiclient/types.gen';
 
 
@@ -71,6 +73,8 @@ export const queryKeys = {
   requestDetails: (startDate: string, endDate: string) => ['requestDetails', { startDate, endDate }] as const,
   userTokens: (userId: string) => ['users', userId, 'tokens'] as const,
   token: (tokenId: string) => ['tokens', tokenId] as const,
+  rateLimiterStats: () => ['rateLimiterStats'] as const,
+  rateLimiterConfig: () => ['rateLimiterConfig'] as const,
 } as const;
 
 // Users hooks
@@ -259,5 +263,29 @@ export function useAvailableCounters() {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - counter types don't change often
     gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+export function useRateLimiterStats() {
+  return useQuery<RateLimiterStats, Error>({
+    queryKey: queryKeys.rateLimiterStats(),
+    queryFn: async () => {
+      const response = await getRateLimiterStats({ client: customApiClient });
+      return handleResponse<RateLimiterStats>(response);
+    },
+    staleTime: 10_000, // refresh every 10 seconds
+    gcTime: 60_000,
+  });
+}
+
+export function useRateLimiterConfig() {
+  return useQuery<RateLimiterConfigResponse, Error>({
+    queryKey: queryKeys.rateLimiterConfig(),
+    queryFn: async () => {
+      const response = await getRateLimiterConfig({ client: customApiClient });
+      return handleResponse<RateLimiterConfigResponse>(response);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }

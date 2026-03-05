@@ -2,12 +2,14 @@ import { useAuth, getUserDisplayName } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
+import { useRateLimiterConfig } from '../services/services';
 
 /**
  * Home page - A simple welcome page without detailed user information
  */
 export const HomePage = () => {
     const { currentUser, isLoading, isAuthenticated } = useAuth();
+    const { data: rateLimiterConfig, isLoading: configLoading } = useRateLimiterConfig();
 
     if (isLoading) {
         return (
@@ -124,11 +126,90 @@ export const HomePage = () => {
                 </Card>
             </div>
 
+            {/* Rate Limiter Config Card */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-base font-semibold">Rate Limiter Configuration</h3>
+                        <Link to="/statistics/rate-limiter" className="tg-link text-sm font-medium">
+                            View Live Stats →
+                        </Link>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {configLoading ? (
+                        <div className="animate-pulse space-y-2">
+                            <div className="h-4 w-1/3 rounded bg-muted"></div>
+                            <div className="h-4 w-1/4 rounded bg-muted"></div>
+                        </div>
+                    ) : !rateLimiterConfig || (rateLimiterConfig.requestsPerMinute == null && rateLimiterConfig.maxErrors == null) ? (
+                        <p className="text-sm text-muted-fg">Rate limiter is not configured.</p>
+                    ) : (
+                        <>
+                            {/* three-section layout: 1) RPM 2) max errors and block minutes 3) vulnerability scan details */}
+                            <div className="space-y-4">
+                            {/* section 1: requests per minute */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div>
+                                    <div className="text-2xl font-semibold text-primary">
+                                        {rateLimiterConfig.requestsPerMinute ?? '—'}
+                                    </div>
+                                    <div className="text-sm text-muted-fg">Requests / minute</div>
+                                </div>
+                            </div>
+
+                            {/* section 2: errors and block duration */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div>
+                                    <div className="text-2xl font-semibold text-primary">
+                                        {rateLimiterConfig.maxErrors ?? '—'}
+                                    </div>
+                                    <div className="text-sm text-muted-fg">Max errors before block</div>
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-semibold text-primary">
+                                        {rateLimiterConfig.blockMinutes ?? '—'}
+                                    </div>
+                                    <div className="text-sm text-muted-fg">Block duration (min)</div>
+                                </div>
+                            </div>
+
+                            {/* section 3: vulnerability scan details */}
+                            {rateLimiterConfig.vulnerabilityScan && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div>
+                                        <div className="text-2xl font-semibold text-warning">
+                                            {rateLimiterConfig.vulnerabilityScan.max404}
+                                        </div>
+                                        <div className="text-sm text-muted-fg">Max scan 404s</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-2xl font-semibold text-warning">
+                                            {rateLimiterConfig.vulnerabilityScan.blockMinutes}
+                                        </div>
+                                        <div className="text-sm text-muted-fg">Scan block (min)</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-medium text-fg">
+                                            {rateLimiterConfig.vulnerabilityScan.urls.length} monitored path{rateLimiterConfig.vulnerabilityScan.urls.length !== 1 ? 's' : ''}
+                                        </div>
+                                        <div className="text-xs text-muted-fg truncate max-w-xs">
+                                            {rateLimiterConfig.vulnerabilityScan.urls.slice(0, 3).join(', ')}
+                                            {rateLimiterConfig.vulnerabilityScan.urls.length > 3 && '…'}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        </>
+                    )}
+                </CardContent>
+            </Card>
+
             {/* System Status */}
             <Card>
                 <CardHeader>
-                    <h3 className="text-base font-semibold">System Overview</h3>
-                </CardHeader>
+                    <h3 className="text-base font-semibold">System Overview</h3>                </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="text-center">

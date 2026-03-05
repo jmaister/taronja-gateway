@@ -1,19 +1,6 @@
 
-# FIX!!!
-
-All fixed.
 
 # TODO tasks for the project
-
-* use "https://ip.guide/" to get IP info, it's free and no API key needed.
-
-# Print OAuth callback URL in the console when starting the server.
-
-That way, when setting up OAuth providers, the developer can easily copy the callback URL.
-
-# Stats
-
-Button to refresh stats.
 
 # Request identifier and tracing
 

@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 )
@@ -28,6 +30,7 @@ func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
 		dependencies.CountersRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
+		nil, // no rate limiter for basic stats tests
 	)
 	return server, dependencies.TrafficMetricRepo
 }
@@ -225,6 +228,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		dependencies.CountersRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
+		nil,
 	)
 
 	// Create test users
@@ -346,4 +350,28 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		assert.NotContains(t, userStats, "user-1")
 		assert.NotContains(t, userStats, "user-2")
 	})
+}
+
+func TestRateLimiterEndpoints(t *testing.T) {
+	// create server with a limiter
+	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
+	rl := middleware.NewRateLimiter(*cfg)
+	dependencies := deps.NewTest()
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.TokenService, dependencies.StartTime, rl)
+	// admin session
+	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
+	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
+	// stats should initially be empty
+	resp, err := s.GetRateLimiterStats(ctx, api.GetRateLimiterStatsRequestObject{})
+	assert.NoError(t, err)
+	statsResp, ok := resp.(api.GetRateLimiterStats200JSONResponse)
+	assert.True(t, ok)
+	assert.Empty(t, statsResp)
+	// config endpoint
+	cfgResp, err := s.GetRateLimiterConfig(ctx, api.GetRateLimiterConfigRequestObject{})
+	assert.NoError(t, err)
+	conf, ok := cfgResp.(api.GetRateLimiterConfig200JSONResponse)
+	assert.True(t, ok)
+	assert.NotNil(t, conf.RequestsPerMinute)
+	assert.Equal(t, cfg.RequestsPerMinute, *conf.RequestsPerMinute)
 }

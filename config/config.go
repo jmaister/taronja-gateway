@@ -123,11 +123,44 @@ func (s *SessionConfig) GetDuration() time.Duration {
 // ManagementConfig defines the management API and dashboard settings.
 // The management API provides endpoints for metrics, user management, and admin dashboard.
 type ManagementConfig struct {
-	Prefix    string        `yaml:"prefix"`    // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
-	Logging   bool          `yaml:"logging"`   // Enable request/response logging. Default: false. Logs all HTTP requests.
-	Analytics bool          `yaml:"analytics"` // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
-	Admin     AdminConfig   `yaml:"admin"`     // Admin dashboard access configuration
-	Session   SessionConfig `yaml:"session"`   // Session lifetime configuration for authenticated users
+	Prefix      string            `yaml:"prefix"`      // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
+	Logging     bool              `yaml:"logging"`     // Enable request/response logging. Default: false. Logs all HTTP requests.
+	Analytics   bool              `yaml:"analytics"`   // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
+	Admin       AdminConfig       `yaml:"admin"`       // Admin dashboard access configuration
+	Session     SessionConfig     `yaml:"session"`     // Session lifetime configuration for authenticated users
+	RateLimiter RateLimiterConfig `yaml:"rateLimiter"` // Rate limiter settings. Optional; zero values disable.
+}
+
+// RateLimiterConfig contains simple in-memory rate limiting settings.
+// All values are positive integers; zero means the feature is disabled.
+// A single configuration block keeps the gateway easy to configure.
+// The middleware applies limits per client IP address.
+// VulnerabilityScanConfig contains a simple list of URL paths that are
+// likely to be probed by automated scanners. When a client triggers too many
+// 404 responses for those paths within the configured window, the IP is
+// temporarily blocked. This is a lightweight signature‑free scanner detector.
+type VulnerabilityScanConfig struct {
+	URLs         []string `yaml:"urls"`         // paths to watch (exact match)
+	Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
+	BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
+}
+
+// RateLimiterConfig contains simple in-memory rate limiting settings.
+// All values are positive integers; zero means the feature is disabled.
+// A single configuration block keeps the gateway easy to configure.
+// The middleware applies limits per client IP address.
+type RateLimiterConfig struct {
+	RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
+	MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
+	BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
+
+	VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
+}
+
+// IsEnabled reports whether any rate-limiting or vulnerability-scan feature is active.
+func (r RateLimiterConfig) IsEnabled() bool {
+	return r.RequestsPerMinute > 0 || r.MaxErrors > 0 ||
+		r.VulnerabilityScan.Max404 > 0 || len(r.VulnerabilityScan.URLs) > 0
 }
 
 // GeolocationConfig defines IP geolocation service settings.

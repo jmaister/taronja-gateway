@@ -127,6 +127,30 @@ type HealthResponse struct {
 	Uptime string `json:"uptime"`
 }
 
+// RateLimiterConfigResponse defines model for RateLimiterConfigResponse.
+type RateLimiterConfigResponse struct {
+	BlockMinutes      *int `json:"blockMinutes,omitempty"`
+	MaxErrors         *int `json:"maxErrors,omitempty"`
+	RequestsPerMinute *int `json:"requestsPerMinute,omitempty"`
+	VulnerabilityScan *struct {
+		BlockMinutes int      `json:"blockMinutes"`
+		Max404       int      `json:"max404"`
+		Urls         []string `json:"urls"`
+	} `json:"vulnerabilityScan,omitempty"`
+}
+
+// RateLimiterStat defines model for RateLimiterStat.
+type RateLimiterStat struct {
+	BlockedUntil time.Time `json:"blockedUntil"`
+	Errors       int       `json:"errors"`
+	Ip           string    `json:"ip"`
+	Requests     int       `json:"requests"`
+	Scan404      int       `json:"scan404"`
+}
+
+// RateLimiterStats defines model for RateLimiterStats.
+type RateLimiterStats = []RateLimiterStat
+
 // RequestDetail defines model for RequestDetail.
 type RequestDetail struct {
 	Browser string `json:"browser"`
@@ -282,14 +306,12 @@ type UserCreateRequest struct {
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
-	CreatedAt time.Time            `json:"createdAt"`
-	Email     *openapi_types.Email `json:"email,omitempty"`
-	Id        string               `json:"id"`
-	Name      *string              `json:"name"`
-	Picture   *string              `json:"picture"`
-	Provider  *string              `json:"provider"`
-	UpdatedAt time.Time            `json:"updatedAt"`
-	Username  string               `json:"username"`
+	Email    *openapi_types.Email `json:"email,omitempty"`
+	Id       string               `json:"id"`
+	Name     *string              `json:"name"`
+	Picture  *string              `json:"picture"`
+	Provider *string              `json:"provider"`
+	Username string               `json:"username"`
 }
 
 // GetAllUserCountersParams defines parameters for GetAllUserCounters.
@@ -354,6 +376,9 @@ type ServerInterface interface {
 	// Get all users' counter balances (admin only)
 	// (GET /api/admin/counters/{counterId})
 	GetAllUserCounters(w http.ResponseWriter, r *http.Request, counterId string, params GetAllUserCountersParams)
+	// Get current rate limiter configuration
+	// (GET /api/config/rate-limiter)
+	GetRateLimiterConfig(w http.ResponseWriter, r *http.Request)
 	// Get user's current counter balance
 	// (GET /api/counters/{counterId}/{userId})
 	GetUserCounters(w http.ResponseWriter, r *http.Request, counterId string, userId string)
@@ -363,6 +388,9 @@ type ServerInterface interface {
 	// Get user's counter transaction history
 	// (GET /api/counters/{counterId}/{userId}/history)
 	GetUserCounterHistory(w http.ResponseWriter, r *http.Request, counterId string, userId string, params GetUserCounterHistoryParams)
+	// Get current rate limiter statistics
+	// (GET /api/statistics/rate-limiter)
+	GetRateLimiterStats(w http.ResponseWriter, r *http.Request)
 	// Get request statistics
 	// (GET /api/statistics/requests)
 	GetRequestStatistics(w http.ResponseWriter, r *http.Request, params GetRequestStatisticsParams)
@@ -474,6 +502,26 @@ func (siw *ServerInterfaceWrapper) GetAllUserCounters(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAllUserCounters(w, r, counterId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRateLimiterConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetRateLimiterConfig(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRateLimiterConfig(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -613,6 +661,26 @@ func (siw *ServerInterfaceWrapper) GetUserCounterHistory(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUserCounterHistory(w, r, counterId, userId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRateLimiterStats operation middleware
+func (siw *ServerInterfaceWrapper) GetRateLimiterStats(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRateLimiterStats(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1119,9 +1187,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("GET "+options.BaseURL+"/api/admin/counters", wrapper.GetAvailableCounters)
 	m.HandleFunc("GET "+options.BaseURL+"/api/admin/counters/{counterId}", wrapper.GetAllUserCounters)
+	m.HandleFunc("GET "+options.BaseURL+"/api/config/rate-limiter", wrapper.GetRateLimiterConfig)
 	m.HandleFunc("GET "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.GetUserCounters)
 	m.HandleFunc("POST "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.AdjustUserCounters)
 	m.HandleFunc("GET "+options.BaseURL+"/api/counters/{counterId}/{userId}/history", wrapper.GetUserCounterHistory)
+	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/rate-limiter", wrapper.GetRateLimiterStats)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
@@ -1230,6 +1300,40 @@ func (response GetAllUserCounters404JSONResponse) VisitGetAllUserCountersRespons
 type GetAllUserCounters500JSONResponse Error
 
 func (response GetAllUserCounters500JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRateLimiterConfigRequestObject struct {
+}
+
+type GetRateLimiterConfigResponseObject interface {
+	VisitGetRateLimiterConfigResponse(w http.ResponseWriter) error
+}
+
+type GetRateLimiterConfig200JSONResponse RateLimiterConfigResponse
+
+func (response GetRateLimiterConfig200JSONResponse) VisitGetRateLimiterConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRateLimiterConfig401JSONResponse Error
+
+func (response GetRateLimiterConfig401JSONResponse) VisitGetRateLimiterConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRateLimiterConfig500JSONResponse Error
+
+func (response GetRateLimiterConfig500JSONResponse) VisitGetRateLimiterConfigResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -1403,6 +1507,40 @@ func (response GetUserCounterHistory404JSONResponse) VisitGetUserCounterHistoryR
 type GetUserCounterHistory500JSONResponse Error
 
 func (response GetUserCounterHistory500JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRateLimiterStatsRequestObject struct {
+}
+
+type GetRateLimiterStatsResponseObject interface {
+	VisitGetRateLimiterStatsResponse(w http.ResponseWriter) error
+}
+
+type GetRateLimiterStats200JSONResponse RateLimiterStats
+
+func (response GetRateLimiterStats200JSONResponse) VisitGetRateLimiterStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRateLimiterStats401JSONResponse Error
+
+func (response GetRateLimiterStats401JSONResponse) VisitGetRateLimiterStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRateLimiterStats500JSONResponse Error
+
+func (response GetRateLimiterStats500JSONResponse) VisitGetRateLimiterStatsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -1898,6 +2036,9 @@ type StrictServerInterface interface {
 	// Get all users' counter balances (admin only)
 	// (GET /api/admin/counters/{counterId})
 	GetAllUserCounters(ctx context.Context, request GetAllUserCountersRequestObject) (GetAllUserCountersResponseObject, error)
+	// Get current rate limiter configuration
+	// (GET /api/config/rate-limiter)
+	GetRateLimiterConfig(ctx context.Context, request GetRateLimiterConfigRequestObject) (GetRateLimiterConfigResponseObject, error)
 	// Get user's current counter balance
 	// (GET /api/counters/{counterId}/{userId})
 	GetUserCounters(ctx context.Context, request GetUserCountersRequestObject) (GetUserCountersResponseObject, error)
@@ -1907,6 +2048,9 @@ type StrictServerInterface interface {
 	// Get user's counter transaction history
 	// (GET /api/counters/{counterId}/{userId}/history)
 	GetUserCounterHistory(ctx context.Context, request GetUserCounterHistoryRequestObject) (GetUserCounterHistoryResponseObject, error)
+	// Get current rate limiter statistics
+	// (GET /api/statistics/rate-limiter)
+	GetRateLimiterStats(ctx context.Context, request GetRateLimiterStatsRequestObject) (GetRateLimiterStatsResponseObject, error)
 	// Get request statistics
 	// (GET /api/statistics/requests)
 	GetRequestStatistics(ctx context.Context, request GetRequestStatisticsRequestObject) (GetRequestStatisticsResponseObject, error)
@@ -2028,6 +2172,30 @@ func (sh *strictHandler) GetAllUserCounters(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetRateLimiterConfig operation middleware
+func (sh *strictHandler) GetRateLimiterConfig(w http.ResponseWriter, r *http.Request) {
+	var request GetRateLimiterConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRateLimiterConfig(ctx, request.(GetRateLimiterConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRateLimiterConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRateLimiterConfigResponseObject); ok {
+		if err := validResponse.VisitGetRateLimiterConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetUserCounters operation middleware
 func (sh *strictHandler) GetUserCounters(w http.ResponseWriter, r *http.Request, counterId string, userId string) {
 	var request GetUserCountersRequestObject
@@ -2110,6 +2278,30 @@ func (sh *strictHandler) GetUserCounterHistory(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserCounterHistoryResponseObject); ok {
 		if err := validResponse.VisitGetUserCounterHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRateLimiterStats operation middleware
+func (sh *strictHandler) GetRateLimiterStats(w http.ResponseWriter, r *http.Request) {
+	var request GetRateLimiterStatsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRateLimiterStats(ctx, request.(GetRateLimiterStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRateLimiterStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRateLimiterStatsResponseObject); ok {
+		if err := validResponse.VisitGetRateLimiterStatsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

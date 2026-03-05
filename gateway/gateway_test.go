@@ -15,6 +15,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/static"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,6 +114,24 @@ func TestNewGateway(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLoginPageFooter ensures the login page includes a sticky footer with
+// the expected text and a link to the GitHub repository.
+func TestLoginPageFooter(t *testing.T) {
+	cfg := createTestConfig()
+	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/_/login", nil)
+	rr := httptest.NewRecorder()
+	gw.Mux.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	// footer contains link text wrapped in an <a> element
+	assert.Contains(t, body, "Powered by <a", "login footer markup should be present")
+	assert.Contains(t, body, "https://github.com/jmaister/taronja-gateway", "footer link should point to repository")
 }
 
 func TestGatewayStaticFileRouting(t *testing.T) {

@@ -15,7 +15,17 @@ management:
     enabled: true
     username: admin
     password: admin123  # This will be automatically hashed for security
-
+  rateLimiter:
+    # Simple in-memory rate limiting (0 to disable)
+    requestsPerMinute: 100   # general request rate limit per IP
+    maxErrors: 20            # number of 401/404 errors before blocking
+    blockMinutes: 15         # how long to block offending IPs    # optional scanner detection: paths that should never exist
+    vulnerabilityScan:
+      urls:
+        - "/*.php"
+        - "/.env"
+      max404: 3              # block after three hits to watched paths
+      blockMinutes: 15       # length of block for scanner IP
 routes:
   - name: Favicon
     from: /favicon.ico

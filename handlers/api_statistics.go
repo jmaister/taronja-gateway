@@ -237,3 +237,62 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 	}
 	return api.GetRequestDetails200JSONResponse{Requests: details}, nil
 }
+
+// GetRateLimiterStats implements GET /_/api/statistics/rate-limiter
+func (s *StrictApiServer) GetRateLimiterStats(ctx context.Context, req api.GetRateLimiterStatsRequestObject) (api.GetRateLimiterStatsResponseObject, error) {
+	// admin check
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+		return api.GetRateLimiterStats401JSONResponse{}, nil
+	}
+	if s.rateLimiter == nil {
+		return api.GetRateLimiterStats200JSONResponse(api.RateLimiterStats{}), nil
+	}
+	// convert middleware stats to API structs
+	raw := s.rateLimiter.Stats()
+	apiStats := make(api.RateLimiterStats, 0, len(raw))
+	for _, st := range raw {
+		apiStats = append(apiStats, api.RateLimiterStat{
+			Ip:           st.IP,
+			Requests:     st.Requests,
+			Errors:       st.Errors,
+			Scan404:      st.Scan404,
+			BlockedUntil: st.BlockedUntil,
+		})
+	}
+	return api.GetRateLimiterStats200JSONResponse(apiStats), nil
+}
+
+// GetRateLimiterConfig implements GET /_/api/config/rate-limiter
+func (s *StrictApiServer) GetRateLimiterConfig(ctx context.Context, req api.GetRateLimiterConfigRequestObject) (api.GetRateLimiterConfigResponseObject, error) {
+	// admin check
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+		return api.GetRateLimiterConfig401JSONResponse{}, nil
+	}
+	if s.rateLimiter == nil {
+		return api.GetRateLimiterConfig200JSONResponse(api.RateLimiterConfigResponse{}), nil
+	}
+	cfg := s.rateLimiter.Config()
+	reqPerMin := cfg.RequestsPerMinute
+	maxErrors := cfg.MaxErrors
+	blockMins := cfg.BlockMinutes
+	resp := api.RateLimiterConfigResponse{
+		RequestsPerMinute: &reqPerMin,
+		MaxErrors:         &maxErrors,
+		BlockMinutes:      &blockMins,
+	}
+	if len(cfg.VulnerabilityScan.URLs) > 0 || cfg.VulnerabilityScan.Max404 > 0 {
+		vs := &struct {
+			BlockMinutes int      `json:"blockMinutes"`
+			Max404       int      `json:"max404"`
+			Urls         []string `json:"urls"`
+		}{
+			BlockMinutes: cfg.VulnerabilityScan.BlockMinutes,
+			Max404:       cfg.VulnerabilityScan.Max404,
+			Urls:         cfg.VulnerabilityScan.URLs,
+		}
+		resp.VulnerabilityScan = vs
+	}
+	return api.GetRateLimiterConfig200JSONResponse(resp), nil
+}

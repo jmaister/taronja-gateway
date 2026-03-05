@@ -37,9 +37,11 @@ type Gateway struct {
 	AuthMiddleware      *middleware.AuthMiddleware
 	HttpCacheMiddleware *middleware.HttpCacheMiddleware
 	RouteChainBuilder   *middleware.RouteChainBuilder
-	templates           map[string]*template.Template
-	WebappEmbedFS       *embed.FS
-	StartTime           time.Time
+	// Rate limiter instance (for stats/config APIs)
+	RateLimiter   *middleware.RateLimiter
+	templates     map[string]*template.Template
+	WebappEmbedFS *embed.FS
+	StartTime     time.Time
 }
 
 // --- NewGatewayWithDependencies Function ---
@@ -59,8 +61,8 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 	// Log middleware status
 	middleware.LogMiddlewareStatus(config)
 
-	// Create HTTP server with middleware chain
-	server, mux, err := createHTTPServer(config, deps)
+	// Create HTTP server with middleware chain (also returns limiter)
+	server, mux, rl, err := createHTTPServer(config, deps)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
 	}
@@ -80,6 +82,7 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 		AuthMiddleware:      authMiddleware,
 		HttpCacheMiddleware: cacheMiddleware,
 		RouteChainBuilder:   routeChainBuilder,
+		RateLimiter:         rl,
 		templates:           templates,
 		WebappEmbedFS:       webappEmbedFS,
 		StartTime:           time.Now(),
@@ -99,12 +102,18 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 }
 
 // createHTTPServer creates the HTTP server with middleware chain
-func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, error) {
+func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, *middleware.RateLimiter, error) {
 	mux := http.NewServeMux()
 
-	// Build the global middleware chain
-	globalChain := middleware.BuildGlobalChain(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo)
+	// instantiate rate limiter once and keep reference
+	rl := middleware.NewRateLimiter(config.Management.RateLimiter)
+
+	// Build the global middleware chain with the limiter
+	globalChain := middleware.BuildGlobalChain(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
 	handler := globalChain.Build(mux)
+
+	// attach limiter to gateway via returned value later
+	// (caller is responsible for storing it)
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
@@ -114,7 +123,7 @@ func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*h
 		Handler:      handler,
 	}
 
-	return server, mux, nil
+	return server, mux, rl, nil
 }
 
 // configureRoutes sets up all the gateway routes
@@ -294,6 +303,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.Dependencies.CountersRepo,
 		g.Dependencies.TokenService,
 		g.StartTime,
+		g.RateLimiter,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 

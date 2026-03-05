@@ -34,7 +34,8 @@ const Sidebar = ({
       icon: '📊', 
       submenu: [
         { name: 'Summary', path: '/statistics/request-summary' },
-        { name: 'Details', path: '/statistics/requests-details' }
+        { name: 'Details', path: '/statistics/requests-details' },
+        { name: 'Rate Limiter', path: '/statistics/rate-limiter' }
       ]
     },
   ];
