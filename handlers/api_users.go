@@ -46,14 +46,12 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	}
 
 	return api.UserResponse{
-		Id:        dbUser.ID, // Corrected: Directly use dbUser.ID
-		Username:  dbUser.Username,
-		Email:     emailPtr,
-		Name:      namePtr,
-		Picture:   picturePtr,
-		Provider:  providerPtr,
-		CreatedAt: dbUser.CreatedAt, // Corrected: Assign directly
-		UpdatedAt: dbUser.UpdatedAt, // Corrected: Assign directly
+		Id:       dbUser.ID,
+		Username: dbUser.Username,
+		Email:    emailPtr,
+		Name:     namePtr,
+		Picture:  picturePtr,
+		Provider: providerPtr,
 	}
 }
 

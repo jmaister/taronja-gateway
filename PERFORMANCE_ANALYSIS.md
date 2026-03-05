@@ -55,7 +55,7 @@ The analytics middleware introduces significant overhead:
 
 **Current Flow**:
 ```
-Request → JA4Middleware → SessionExtractionMiddleware → TrafficMetricMiddleware → LoggingMiddleware → Handler
+Request → RateLimiterMiddleware → JA4Middleware → SessionExtractionMiddleware → TrafficMetricMiddleware → LoggingMiddleware → Handler
 ```
 
 ### 3. Session Validation Overhead

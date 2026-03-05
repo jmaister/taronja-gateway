@@ -45,6 +45,7 @@ func TestGetCurrentUser(t *testing.T) {
 		dependencies.CountersRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
+		nil,
 	)
 
 	t.Run("AuthenticatedUser", func(t *testing.T) {

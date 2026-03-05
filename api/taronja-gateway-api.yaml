@@ -508,6 +508,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/statistics/rate-limiter:
+    get:
+      summary: Get current rate limiter statistics
+      operationId: getRateLimiterStats
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of rate limiter statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimiterStats'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/config/rate-limiter:
+    get:
+      summary: Get current rate limiter configuration
+      operationId: getRateLimiterConfig
+      tags:
+        - Configuration
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Rate limiter configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimiterConfigResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/counters/{counterId}/{userId}:
     get:
       summary: Get user's current counter balance
@@ -859,6 +915,9 @@ components:
         - password
     UserResponse:
       type: object
+      required:
+        - id
+        - username
       properties:
         id:
           type: string # Assuming User ID is a string (e.g., UUID or from path)
@@ -882,20 +941,62 @@ components:
         provider:
           type: string
           nullable: true
-          example: "google"
-        createdAt:
-          type: string
-          format: date-time
-          example: "2023-01-01T12:00:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          example: "2023-01-01T12:00:00Z"
+    RateLimiterStat:
+      type: object
       required:
-        - id
-        - username
-        - createdAt
-        - updatedAt
+        - ip
+        - requests
+        - errors
+        - scan404
+        - blockedUntil
+      properties:
+        ip:
+          type: string
+          example: "192.168.1.1"
+        requests:
+          type: integer
+          example: 120
+        errors:
+          type: integer
+          example: 5
+        scan404:
+          type: integer
+          example: 2
+        blockedUntil:
+          type: string
+          format: date-time
+          example: "2026-03-05T18:30:00Z"
+    RateLimiterStats:
+      type: array
+      items:
+        $ref: '#/components/schemas/RateLimiterStat'
+    RateLimiterConfigResponse:
+      type: object
+      properties:
+        requestsPerMinute:
+          type: integer
+          example: 60
+        maxErrors:
+          type: integer
+          example: 10
+        blockMinutes:
+          type: integer
+          example: 5
+        vulnerabilityScan:
+          type: object
+          properties:
+            urls:
+              type: array
+              items:
+                type: string
+            max404:
+              type: integer
+            blockMinutes:
+              type: integer
+          required:
+            - urls
+            - max404
+            - blockMinutes
     RequestStatistics:
       type: object
       properties:

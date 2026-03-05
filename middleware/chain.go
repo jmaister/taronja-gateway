@@ -45,8 +45,16 @@ func BuildGlobalChain(
 	sessionStore session.SessionStore,
 	tokenService *auth.TokenService,
 	trafficMetricRepo db.TrafficMetricRepository,
+	rateLimiter *RateLimiter,
 ) *ChainBuilder {
 	chain := NewChainBuilder()
+
+	// rate limiter should run first, even before analytics
+	if rateLimiter != nil {
+		chain.Add(rateLimiter.Handler)
+	} else if gatewayConfig.Management.RateLimiter.IsEnabled() {
+		chain.Add(RateLimiterMiddleware(gatewayConfig.Management.RateLimiter))
+	}
 
 	// Add middlewares conditionally based on configuration
 	if gatewayConfig.Management.Analytics {

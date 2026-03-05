@@ -136,6 +136,41 @@ func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.Ga
 	return nil
 }
 
+// ValidateRateLimiterMiddleware validates the rate limiter configuration
+func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	rl := config.Management.RateLimiter
+	// if neither mode is enabled, nothing to check
+	if !rl.IsEnabled() {
+		return nil
+	}
+
+	if rl.RequestsPerMinute < 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "requestsPerMinute cannot be negative"}
+	}
+	if rl.MaxErrors < 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "maxErrors cannot be negative"}
+	}
+	if rl.BlockMinutes <= 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "blockMinutes must be positive when rate limiting is enabled"}
+	}
+
+	// vulnerability scan validation
+	v := rl.VulnerabilityScan
+	if v.Max404 < 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "vulnerabilityScan.max404 cannot be negative"}
+	}
+	if v.Max404 > 0 {
+		if len(v.URLs) == 0 {
+			return &ValidationError{Middleware: "rate_limiter", Message: "vulnerabilityScan.urls must be provided when max404 > 0"}
+		}
+		if v.BlockMinutes <= 0 {
+			return &ValidationError{Middleware: "rate_limiter", Message: "vulnerabilityScan.blockMinutes must be positive when scan detection is enabled"}
+		}
+	}
+
+	return nil
+}
+
 // ValidateAdminAccess validates admin access configuration
 func ValidateAdminAccess(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	if !config.Management.Admin.Enabled {
@@ -240,6 +275,11 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 		return err
 	}
 
+	// Validate rate limiter settings
+	if err := ValidateRateLimiterMiddleware(deps, config); err != nil {
+		return err
+	}
+
 	log.Printf("All middleware validation completed successfully")
 	return nil
 }
@@ -261,6 +301,19 @@ func LogMiddlewareStatus(config *config.GatewayConfig) {
 		log.Printf("✓ Request Logging: ENABLED")
 	} else {
 		log.Printf("✗ Request Logging: DISABLED")
+	}
+
+	// Rate limiter
+	if config.Management.RateLimiter.IsEnabled() {
+		log.Printf("✓ Rate Limiter: ENABLED (rpm=%d, maxErrors=%d, blockMinutes=%d, scanMax404=%d, scanURLs=%d, scanBlockMinutes=%d)",
+			config.Management.RateLimiter.RequestsPerMinute,
+			config.Management.RateLimiter.MaxErrors,
+			config.Management.RateLimiter.BlockMinutes,
+			config.Management.RateLimiter.VulnerabilityScan.Max404,
+			len(config.Management.RateLimiter.VulnerabilityScan.URLs),
+			config.Management.RateLimiter.VulnerabilityScan.BlockMinutes)
+	} else {
+		log.Printf("✗ Rate Limiter: DISABLED")
 	}
 
 	// Route-specific middleware status

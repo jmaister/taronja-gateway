@@ -6,12 +6,10 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
-// --- Strict API Server Implementation ---
-
-// StrictApiServer provides an implementation of the api.StrictServerInterface.
 type StrictApiServer struct {
 	// No dependencies needed here if middleware handles session validation
 	// and places SessionData in context.
@@ -22,10 +20,12 @@ type StrictApiServer struct {
 	countersRepo      db.CountersRepository
 	tokenService      *auth.TokenService
 	startTime         time.Time
+	// rate limiter instance for stats/config endpoints
+	rateLimiter *middleware.RateLimiter
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, tokenService *auth.TokenService, startTime time.Time) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *middleware.RateLimiter) *StrictApiServer {
 	return &StrictApiServer{
 		sessionStore:      sessionStore,
 		userRepo:          userRepo,
@@ -34,6 +34,7 @@ func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepos
 		countersRepo:      countersRepo,
 		tokenService:      tokenService,
 		startTime:         startTime,
+		rateLimiter:       rateLimiter,
 	}
 }
 

@@ -26,6 +26,7 @@ func TestHealthCheck(t *testing.T) {
 		testDeps.CountersRepo,
 		testDeps.TokenService,
 		testDeps.StartTime,
+		nil,
 	)
 
 	t.Run("SuccessfulHealthCheck", func(t *testing.T) {

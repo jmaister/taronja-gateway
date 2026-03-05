@@ -12,6 +12,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type AuthProviderCredentials](<#AuthProviderCredentials>)
 - [type AuthenticationConfig](<#AuthenticationConfig>)
 - [type AuthenticationProviders](<#AuthenticationProviders>)
+  - [func \(a \*AuthenticationProviders\) PrintOAuthCallbackURLs\(serverURL, managementPrefix string\)](<#AuthenticationProviders.PrintOAuthCallbackURLs>)
 - [type BasicAuthenticationConfig](<#BasicAuthenticationConfig>)
 - [type BrandingConfig](<#BrandingConfig>)
 - [type GatewayConfig](<#GatewayConfig>)
@@ -20,6 +21,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type GeolocationConfig](<#GeolocationConfig>)
 - [type ManagementConfig](<#ManagementConfig>)
 - [type NotificationConfig](<#NotificationConfig>)
+- [type RateLimiterConfig](<#RateLimiterConfig>)
 - [type RouteConfig](<#RouteConfig>)
   - [func \(route \*RouteConfig\) GetCacheControlHeader\(\) string](<#RouteConfig.GetCacheControlHeader>)
   - [func \(route \*RouteConfig\) ShouldSetCacheHeader\(\) bool](<#RouteConfig.ShouldSetCacheHeader>)
@@ -28,6 +30,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type ServerConfig](<#ServerConfig>)
 - [type SessionConfig](<#SessionConfig>)
   - [func \(s \*SessionConfig\) GetDuration\(\) time.Duration](<#SessionConfig.GetDuration>)
+- [type VulnerabilityScanConfig](<#VulnerabilityScanConfig>)
 
 
 <a name="AdminConfig"></a>
@@ -79,6 +82,15 @@ type AuthenticationProviders struct {
     Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
 }
 ```
+
+<a name="AuthenticationProviders.PrintOAuthCallbackURLs"></a>
+### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L72>)
+
+```go
+func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPrefix string)
+```
+
+PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
 
 <a name="BasicAuthenticationConfig"></a>
 ## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L59-L61>)
@@ -150,17 +162,62 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L111-L117>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L111-L119>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
 ```go
 type ManagementConfig struct {
-    Prefix    string        `yaml:"prefix"`    // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
-    Logging   bool          `yaml:"logging"`   // Enable request/response logging. Default: false. Logs all HTTP requests.
-    Analytics bool          `yaml:"analytics"` // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
-    Admin     AdminConfig   `yaml:"admin"`     // Admin dashboard access configuration
-    Session   SessionConfig `yaml:"session"`   // Session lifetime configuration for authenticated users
+    Prefix      string            `yaml:"prefix"`      // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
+    Logging     bool              `yaml:"logging"`     // Enable request/response logging. Default: false. Logs all HTTP requests.
+    Analytics   bool              `yaml:"analytics"`   // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
+    Admin       AdminConfig       `yaml:"admin"`       // Admin dashboard access configuration
+    Session     SessionConfig     `yaml:"session"`     // Session lifetime configuration for authenticated users
+    RateLimiter RateLimiterConfig `yaml:"rateLimiter"` // Rate limiter settings. Optional; zero values disable.
+}
+```
+
+<a name="RateLimiterConfig"></a>
+## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L122-L132>)
+
+RateLimiterConfig contains simple in-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. The middleware applies limits per client IP address.
+
+```go
+type RateLimiterConfig struct {
+    RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
+    MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
+    BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
+
+    VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
+}
+```
+
+Example YAML:
+
+```yaml
+management:
+  rateLimiter:
+    requestsPerMinute: 100
+    maxErrors: 20
+    blockMinutes: 15
+    vulnerabilityScan:
+      urls:
+        - /admin/a.php
+        - /.env
+      max404: 5
+      blockMinutes: 30
+```
+
+<a name="VulnerabilityScanConfig"></a>
+## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L113-L120>)
+
+VulnerabilityScanConfig contains a list of URL paths likely to be probed by automated scanners. When a client triggers too many 404 responses for those paths within the configured window, the IP is temporarily blocked.
+
+```go
+type VulnerabilityScanConfig struct {
+    URLs         []string `yaml:"urls"`         // paths to watch (exact match)
+    Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
+    BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
 }
 ```
 
