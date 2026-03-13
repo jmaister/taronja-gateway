@@ -39,8 +39,11 @@ Features table, shows what is implemented and what is planned.
 | Authentication: JWT           | 🚧       |
 | Authorization using RBAC      | 🚧       |
 | HTTP Cache Control            | ✅       |
+| Rate Limiter                  | ✅       |
+| - Requess per minute per IP   | ✅       |
+| - Avoid scanners with number of 404 limit | ✅       |
+| - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       |
 | Feature Flags                 | 🚧       |
-| Rate Limiting                 | 🚧       |
 | Circuit breaker               | 🚧       |
 | Caching                       | 🚧       |
 | Load Balancing                | 🚧       |
