@@ -202,7 +202,7 @@ management:
     blockMinutes: 15
     vulnerabilityScan:
       urls:
-        - /admin/a.php
+        - /admin/*.php
         - /.env
       max404: 5
       blockMinutes: 30
@@ -215,7 +215,7 @@ VulnerabilityScanConfig contains a list of URL paths likely to be probed by auto
 
 ```go
 type VulnerabilityScanConfig struct {
-    URLs         []string `yaml:"urls"`         // paths to watch (exact match)
+    URLs         []string `yaml:"urls"`         // paths to watch (supports wildcard patterns with "*"). Example: ["/admin/*.php", "/.env", "/.env.*", "/config/*.yml"]
     Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
     BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
 }

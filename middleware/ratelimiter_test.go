@@ -233,3 +233,69 @@ func TestRateLimiter_VulnerabilityScan(t *testing.T) {
 	// still blocked
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 }
+
+func TestMatchesVulnerabilityScanPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		pattern     string
+		requestPath string
+		expected    bool
+	}{
+		{name: "exact match", pattern: "/.env", requestPath: "/.env", expected: true},
+		{name: "exact match", pattern: "/.env.*", requestPath: "/.env.prod", expected: true},
+		{name: "root wildcard matches top level file", pattern: "/*.php", requestPath: "/mailchimp_keys.php", expected: true},
+		{name: "root wildcard matches nested file", pattern: "/*.php", requestPath: "/config/mandrill.local.php", expected: true},
+		{name: "root wildcard matches nested yaml file", pattern: "/*.yml", requestPath: "/config/mailchimp.yml", expected: true},
+		{name: "pattern under fixed directory still matches direct child", pattern: "/admin/*.php", requestPath: "/admin/index.php", expected: true},
+		{name: "different extension does not match", pattern: "/*.php", requestPath: "/config/mailchimp.yml", expected: false},
+		{name: "fixed directory pattern does not overmatch nested folders", pattern: "/admin/*.php", requestPath: "/config/admin/index.php", expected: false},
+		{name: "fixed directory pattern does not overmatch nested folders", pattern: "/admin/*.php", requestPath: "/admin/index.php", expected: true},
+		{name: "nested wildcard pattern does not match deeper nested path", pattern: "/*/admin/*.php", requestPath: "/config/admin/index.php", expected: true},
+	}
+
+	for _, testCase := range tests {
+		assert.Equal(t, testCase.expected, matchesVulnerabilityScanPath(testCase.pattern, testCase.requestPath), testCase.name)
+	}
+}
+
+func TestRateLimiter_VulnerabilityScanWildcardMatchesNestedPaths(t *testing.T) {
+	cfg := config.RateLimiterConfig{
+		RequestsPerMinute: 0,
+		MaxErrors:         0,
+		BlockMinutes:      1,
+		VulnerabilityScan: config.VulnerabilityScanConfig{
+			URLs:         []string{"/*.php", "/*.yml"},
+			Max404:       2,
+			BlockMinutes: 1,
+		},
+	}
+	rl := NewRateLimiter(cfg)
+
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	paths := []string{
+		"/mailchimp_keys.php",
+		"/config/mandrill.local.php",
+		"/config/mailchimp.yml",
+	}
+
+	for _, requestPath := range paths {
+		req := httptest.NewRequest("GET", requestPath, nil)
+		req.RemoteAddr = "12.12.12.12:1212"
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	}
+
+	entry := rl.getEntry("12.12.12.12")
+	assert.Len(t, entry.scan404, 3)
+	assert.True(t, entry.blockedUntil.After(time.Now()))
+
+	req := httptest.NewRequest("GET", "/lib/sparkpost.php", nil)
+	req.RemoteAddr = "12.12.12.12:1212"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+}

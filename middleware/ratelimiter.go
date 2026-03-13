@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,7 +114,7 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 		// vulnerability scan paths: count only 404s on configured urls
 		if rw.status == http.StatusNotFound && len(rl.cfg.VulnerabilityScan.URLs) > 0 {
 			for _, pattern := range rl.cfg.VulnerabilityScan.URLs {
-				matched, _ := doublestar.PathMatch(pattern, r.URL.Path)
+				matched := matchesVulnerabilityScanPath(pattern, r.URL.Path)
 				if matched {
 					entry := rl.getEntry(ip)
 					now := time.Now()
@@ -129,6 +130,38 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 			}
 		}
 	})
+}
+
+func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
+	// First, try the user-specified pattern as-is.
+	matched, err := doublestar.PathMatch(pattern, requestPath)
+	if err == nil && matched {
+		return true
+	}
+
+	// If the pattern contains wildcards, also try a "recursive" form that
+	// treats single-segment globs ("*") as multi-segment globs ("**").
+	// This makes patterns like "/*.php" behave as a catch-all for PHP scans
+	// even when they occur in nested directories.
+	if !strings.Contains(pattern, "*") {
+		return false
+	}
+
+	// Avoid mangling existing ** patterns.
+	placeholder := "\x00"
+	p := strings.ReplaceAll(pattern, "/**", placeholder)
+	p = strings.ReplaceAll(p, "/*", "/**")
+	p = strings.ReplaceAll(p, placeholder, "/**")
+
+	if p == pattern {
+		return false
+	}
+
+	matched, err = doublestar.PathMatch(p, requestPath)
+	if err != nil {
+		return false
+	}
+	return matched
 }
 
 // statusRecorder is a minimal response writer that remembers the status code.

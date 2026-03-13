@@ -140,7 +140,7 @@ type ManagementConfig struct {
 // 404 responses for those paths within the configured window, the IP is
 // temporarily blocked. This is a lightweight signature‑free scanner detector.
 type VulnerabilityScanConfig struct {
-	URLs         []string `yaml:"urls"`         // paths to watch (exact match)
+	URLs         []string `yaml:"urls"`         // paths to watch (supports wildcard patterns)
 	Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
 	BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
 }

@@ -880,6 +880,51 @@ func (r *spaResponseRecorder) Write(data []byte) (int, error) {
 
 // --- Utility Functions ---
 
+// convertToServeMuxPattern converts a route "from" glob pattern that contains
+// wildcard "*" segments into a Go 1.22+ net/http.ServeMux named-wildcard pattern.
+//
+// Rules:
+//   - A "*" in a non-final segment becomes a named wildcard {wN} that matches
+//     exactly one path segment.
+//   - A "*" as the final segment is removed and a trailing slash is used instead,
+//     which makes ServeMux match everything below that prefix (subtree match).
+//
+// Examples:
+//
+//	/api/boxes/*/certs        → /api/boxes/{w0}/certs
+//	/a/*/b/*/c                → /a/{w0}/b/{w1}/c
+//	/api/boxes/*/certs/*      → /api/boxes/{w0}/certs/
+func convertToServeMuxPattern(from string) string {
+	segments := strings.Split(from, "/")
+	wildcardIdx := 0
+	for i, seg := range segments {
+		if seg == "*" {
+			if i == len(segments)-1 {
+				// Last segment: strip it; the trailing slash left by the join provides subtree match.
+				segments[i] = ""
+			} else {
+				segments[i] = fmt.Sprintf("{w%d}", wildcardIdx)
+				wildcardIdx++
+			}
+		}
+	}
+	return strings.Join(segments, "/")
+}
+
+// hasMiddleWildcard reports whether from contains a "*" wildcard that is not
+// solely a trailing "/*" (i.e. there is at least one wildcard in a non-final
+// position, or there are multiple wildcards).
+func hasMiddleWildcard(from string) bool {
+	if !strings.Contains(from, "*") {
+		return false
+	}
+	// A single trailing /* is handled by the existing subtree-match code path.
+	if strings.HasSuffix(from, "/*") && strings.Count(from, "*") == 1 {
+		return false
+	}
+	return true
+}
+
 // singleJoiningSlash remains unchanged
 func singleJoiningSlash(a, b string) string {
 	aslash := strings.HasSuffix(a, "/")
