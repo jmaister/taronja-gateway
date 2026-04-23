@@ -5,6 +5,41 @@ import tailwindcss from '@tailwindcss/vite';
 import path from "path";
 import { visualizer } from 'rollup-plugin-visualizer';
 
+function manualChunks(id: string): string | undefined {
+    const normalizedId = id.replaceAll('\\', '/');
+
+    if (!normalizedId.includes('/node_modules/')) {
+        return undefined;
+    }
+
+    // Keep vendor chunking compatible with Vite 8's function-based manualChunks.
+    if (normalizedId.includes('/node_modules/maplibre-gl/')) {
+        return 'maplibre-gl';
+    }
+
+    if (normalizedId.includes('/node_modules/react-map-gl/')) {
+        return 'react-map-gl';
+    }
+
+    if (
+        normalizedId.includes('/node_modules/chart.js/') ||
+        normalizedId.includes('/node_modules/react-chartjs-2/')
+    ) {
+        return 'charts';
+    }
+
+    if (
+        normalizedId.includes('/node_modules/react/') ||
+        normalizedId.includes('/node_modules/react-dom/') ||
+        normalizedId.includes('/node_modules/react-router-dom/') ||
+        normalizedId.includes('/node_modules/@tanstack/react-query/')
+    ) {
+        return 'react-vendor';
+    }
+
+    return undefined;
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
     base: '/_/admin/',
@@ -27,15 +62,7 @@ export default defineConfig(({ mode }) => ({
     build: {
         rollupOptions: {
             output: {
-                manualChunks: {
-                    // Separate heavy mapping libraries into their own chunk
-                    'maplibre-gl': ['maplibre-gl'],
-                    'react-map-gl': ['react-map-gl/maplibre'],
-                    // Separate chart libraries
-                    'charts': ['chart.js', 'react-chartjs-2'],
-                    // React and core libraries
-                    'react-vendor': ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query'],
-                }
+                manualChunks,
             }
         },
         chunkSizeWarningLimit: 1000, // Increase warning limit for map chunks
