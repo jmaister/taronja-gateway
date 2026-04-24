@@ -133,6 +133,9 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
+	pattern = strings.ReplaceAll(pattern, "\\", "/")
+	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
+
 	// First, try the user-specified pattern as-is.
 	matched, err := doublestar.PathMatch(pattern, requestPath)
 	if err == nil && matched {
@@ -147,17 +150,28 @@ func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
 		return false
 	}
 
-	// Avoid mangling existing ** patterns.
-	placeholder := "\x00"
-	p := strings.ReplaceAll(pattern, "/**", placeholder)
-	p = strings.ReplaceAll(p, "/*", "/**")
-	p = strings.ReplaceAll(p, placeholder, "/**")
+	// Root-level single-segment wildcard patterns should also match nested files.
+	// Example: "/*.php" should match both "/a.php" and "/dir/a.php".
+	if strings.HasPrefix(pattern, "/*") && !strings.HasPrefix(pattern, "/**") {
+		recursivePattern := "/**/" + strings.TrimPrefix(pattern, "/*")
+		matched, err = doublestar.PathMatch(recursivePattern, requestPath)
+		if err == nil && matched {
+			return true
+		}
+	}
 
-	if p == pattern {
+	// As a fallback, expand single-segment wildcards to recursive wildcards.
+	// Keep existing ** segments unchanged.
+	placeholder := "\x00"
+	expandedPattern := strings.ReplaceAll(pattern, "/**", placeholder)
+	expandedPattern = strings.ReplaceAll(expandedPattern, "/*", "/**")
+	expandedPattern = strings.ReplaceAll(expandedPattern, placeholder, "/**")
+
+	if expandedPattern == pattern {
 		return false
 	}
 
-	matched, err = doublestar.PathMatch(p, requestPath)
+	matched, err = doublestar.PathMatch(expandedPattern, requestPath)
 	if err != nil {
 		return false
 	}
