@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
     build: {
+        chunkSizeWarningLimit: 1500,
         emptyOutDir: true,
         lib: {
             entry: 'src/index.ts',
