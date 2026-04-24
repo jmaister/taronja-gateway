@@ -73,7 +73,7 @@ jobs:
       - name: Build and test React SDK
         working-directory: ./sdk
         run: |
-          npm ci
+          npm install
           npm version "${{ steps.release_version.outputs.version }}" --no-git-tag-version
           npm test
           npm run build

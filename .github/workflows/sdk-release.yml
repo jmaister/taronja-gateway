@@ -58,7 +58,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./sdk
-        run: npm ci
+        run: npm install
 
       - name: Stamp package version from release tag
         working-directory: ./sdk

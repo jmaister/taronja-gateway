@@ -37,7 +37,7 @@ jobs:
     - name: Build React SDK and App
       run: |
         cd sdk
-        npm ci
+        npm install
         npm run build
         cd ../webapp
         npm ci
