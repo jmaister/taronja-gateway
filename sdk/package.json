@@ -1,5 +1,5 @@
 {
-    "name": "taronja-gateway-react-sdk",
+    "name": "taronja-gateway-react",
     "version": "0.1.0",
     "description": "React and TypeScript SDK for Taronja Gateway",
     "license": "MIT",
