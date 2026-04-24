@@ -1,4 +1,4 @@
-import { useAuth, getUserDisplayName } from '../contexts/AuthContext';
+import { getUserDisplayName, useTaronjaAuth } from 'taronja-gateway-react';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
@@ -8,7 +8,7 @@ import { useRateLimiterConfig } from '../services/services';
  * Home page - A simple welcome page without detailed user information
  */
 export const HomePage = () => {
-    const { currentUser, isLoading, isAuthenticated } = useAuth();
+    const { currentUser, isLoading, isAuthenticated } = useTaronjaAuth();
     const { data: rateLimiterConfig, isLoading: configLoading } = useRateLimiterConfig();
 
     if (isLoading) {

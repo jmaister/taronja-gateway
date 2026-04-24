@@ -1,0 +1,85 @@
+name: Publish React SDK
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to validate, for example v1.2.3
+        required: true
+        default: v0.0.0-rc.1
+        type: string
+
+jobs:
+  publish-react-sdk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Derive release version
+        id: release_version
+        run: |
+          if [[ "${{ github.event_name }}" == 'release' ]]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME="${{ inputs.release_tag }}"
+          fi
+
+          VERSION="${TAG_NAME#v}"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "Release tag is empty"
+            exit 1
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag '$TAG_NAME' is not a supported semver tag"
+            exit 1
+          fi
+
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: ./sdk
+        run: npm ci
+
+      - name: Stamp package version from release tag
+        working-directory: ./sdk
+        run: npm version "${{ steps.release_version.outputs.version }}" --no-git-tag-version
+
+      - name: Test and build package
+        working-directory: ./sdk
+        run: |
+          npm test
+          npm run build
+          npm pack --dry-run
+
+      - name: Publish package to npm
+        if: ${{ github.event_name == 'release' }}
+        working-directory: ./sdk
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Report dry run result
+        if: ${{ github.event_name != 'release' }}
+        run: |
+          echo "Dry run completed for ${{ steps.release_version.outputs.tag }}"
+          echo "npm publish was skipped because this was a manual workflow run"

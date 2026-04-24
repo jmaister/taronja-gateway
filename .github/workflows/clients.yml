@@ -3,77 +3,147 @@ name: Generate and Update Clients
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to validate, for example v1.2.3
+        required: true
+        default: v0.0.0-rc.1
+        type: string
 
 jobs:
   generate-and-push-clients:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout main repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Derive release version
+        id: release_version
+        run: |
+          if [[ "${{ github.event_name }}" == 'release' ]]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME="${{ inputs.release_tag }}"
+          fi
+
+          VERSION="${TAG_NAME#v}"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "Release tag is empty"
+            exit 1
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag '$TAG_NAME' is not a supported semver tag"
+            exit 1
+          fi
+
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Ensure temp and repo folders exist
         run: |
-          mkdir -p ./clients-temp/typescript/
           mkdir -p ./clients-temp/go/
-          mkdir -p ./clients-repo/typescript/
-          mkdir -p ./clients-repo/go/
       
       # Set up environments for code generation
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
-          cache-dependency-path: webapp/package-lock.json
+          cache-dependency-path: |
+            sdk/package-lock.json
+            webapp/package-lock.json
 
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           cache: true
 
+      - name: Build and test React SDK
+        working-directory: ./sdk
+        run: |
+          npm ci
+          npm version "${{ steps.release_version.outputs.version }}" --no-git-tag-version
+          npm test
+          npm run build
+
       # Step 1: Generate Clients to a temporary directory
       - name: Generate all clients
         run: |
-          # npm install @openapitools/openapi-generator-cli
-          # npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o ./clients-temp/typescript -c @hey-api/client-fetch
-          # npx @openapitools/openapi-generator-cli generate \
-          #  -i api/taronja-gateway-api.yaml \
-          #  -g go \
-          #  -o ./clients-temp/go
           go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_client.yaml api/taronja-gateway-api.yaml
       
       # Step 2: Checkout the separate clients repository
       - name: Checkout clients repository
-        uses: actions/checkout@v4
+        if: ${{ github.event_name == 'release' }}
+        uses: actions/checkout@v6
         with:
           repository: jmaister/taronja-gateway-clients
           path: ./clients-repo
           token: ${{ secrets.CLIENTS_REPO_TOKEN }}
+
+      - name: Prepare local clients mirror for dry run
+        if: ${{ github.event_name != 'release' }}
+        run: |
+          mkdir -p ./clients-repo
+
+      - name: Ensure clients repository folders exist
+        run: |
+          mkdir -p ./clients-repo/go/
+          mkdir -p ./clients-repo/react/
       
       # Step 3: Copy generated code into the clients repository
       - name: Copy generated code to clients repository
         run: |
-          # rsync -av --delete ./clients-temp/typescript/ ./clients-repo/typescript/
           rsync -av --delete --exclude='go.mod' --exclude='go.sum' ./clients-temp/go/ ./clients-repo/go/
+          rsync -av --delete \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.git' \
+            --exclude='.github' \
+            ./sdk/ ./clients-repo/react/
       
       # Step 4: Commit and push changes (only on push, not on PR)
       - name: Commit and push changes
+        if: ${{ github.event_name == 'release' }}
         run: |
           cd ./clients-repo
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "feat(ci): Auto-generated clients from new API spec" || true
-          git push
+          if git diff --cached --quiet; then
+            echo "No client changes to commit"
+          else
+            git commit -m "chore(release): sync clients for ${{ steps.release_version.outputs.tag }}"
+            git push
+          fi
 
-          # Get the latest tag from the main repo and use it for the clients repo, with go/ prefix for Go submodule
-          cd ..
-          LATEST_TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
-          cd clients-repo
-          git tag "$LATEST_TAG"
-          git push origin "$LATEST_TAG"
-          # Go modules requires the tag to have "<folder>/<version>" format
-          git tag "go/$LATEST_TAG"
-          git push origin "go/$LATEST_TAG"
+          for tag_name in \
+            "${{ steps.release_version.outputs.tag }}" \
+            "go/${{ steps.release_version.outputs.tag }}" \
+            "react/${{ steps.release_version.outputs.tag }}"
+          do
+            if git ls-remote --exit-code --tags origin "$tag_name" >/dev/null 2>&1; then
+              echo "Tag $tag_name already exists in clients repository"
+              continue
+            fi
+
+            git tag "$tag_name"
+            git push origin "$tag_name"
+          done
+
+      - name: Report dry run result
+        if: ${{ github.event_name != 'release' }}
+        run: |
+          echo "Dry run completed for ${{ steps.release_version.outputs.tag }}"
+          echo "Generated clients were copied into ./clients-repo without pushing changes"

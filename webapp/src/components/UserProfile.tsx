@@ -1,4 +1,4 @@
-import { useAuth, getUserDisplayName, getUserAvatar, getUserInitials } from '../contexts/AuthContext';
+import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react';
 import { Link } from 'react-router-dom';
 import { Button } from './ui/Button';
 
@@ -6,7 +6,7 @@ import { Button } from './ui/Button';
  * UserProfile component that demonstrates how to use the enhanced AuthContext
  */
 export const UserProfile = () => {
-    const { isAuthenticated, currentUser, isLoading, logout } = useAuth();
+    const { isAuthenticated, currentUser, isLoading, logout } = useTaronjaAuth();
 
     if (isLoading) {
         return (
@@ -81,7 +81,7 @@ export const UserProfile = () => {
 
             {/* Logout Button */}
             <div className="shrink-0">
-                <Button variant="secondary" size="sm" onClick={logout}>
+                <Button variant="secondary" size="sm" onClick={() => void logout()}>
                     Logout
                 </Button>
             </div>
@@ -93,7 +93,7 @@ export const UserProfile = () => {
  * Simple user badge component for navbar/header use
  */
 export const UserBadge = () => {
-    const { isAuthenticated, currentUser, isLoading } = useAuth();
+    const { isAuthenticated, currentUser, isLoading } = useTaronjaAuth();
 
     if (isLoading) {
         return <div className="w-8 h-8 bg-gray-300 rounded-full animate-pulse"></div>;
