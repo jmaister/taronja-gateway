@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -135,6 +136,17 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
 	pattern = strings.ReplaceAll(pattern, "\\", "/")
 	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
+
+	// Root wildcard patterns should match nested files by basename.
+	// Example: "/*.php" should match "/a.php" and "/dir/a.php".
+	if strings.HasPrefix(pattern, "/*") && !strings.Contains(strings.TrimPrefix(pattern, "/"), "/") {
+		filePattern := strings.TrimPrefix(pattern, "/")
+		requestFile := path.Base(requestPath)
+		matched, err := path.Match(filePattern, requestFile)
+		if err == nil && matched {
+			return true
+		}
+	}
 
 	// First, try the user-specified pattern as-is.
 	matched, err := doublestar.PathMatch(pattern, requestPath)
