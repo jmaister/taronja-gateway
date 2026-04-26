@@ -133,33 +133,26 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
+	// Normalize separators so matching works consistently on all platforms.
 	pattern = strings.ReplaceAll(pattern, "\\", "/")
 	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
 
+	// Use doublestar.Match (always uses '/' as separator) instead of PathMatch
+	// so behaviour is identical on Windows and Linux.
+
 	// First, try the user-specified pattern as-is.
-	if matched, _ := doublestar.PathMatch(pattern, requestPath); matched {
+	if matched, _ := doublestar.Match(pattern, requestPath); matched {
 		return true
 	}
 
-	// Workaround for doublestar's inconsistent behavior with ** patterns.
-	// A simple string prefix/suffix check is more reliable in these cases.
-	if strings.Contains(pattern, "**") {
-		parts := strings.Split(pattern, "**")
-		if len(parts) == 2 {
-			prefix, suffix := parts[0], parts[1]
-			if strings.HasPrefix(requestPath, prefix) && strings.HasSuffix(requestPath, suffix) {
-				return true
-			}
-		}
-	}
-
-	// Handle recursive expansion of single wildcards to match nested paths.
-	// Patterns without ** should be expanded to match paths at any depth.
-	// For example: "/*.php" -> "**/*.php", "/foo/*" -> "/foo/**", "/download/*/*.zip" -> "/download/**/*.zip"
+	// Expand patterns without ** to also match nested paths at any depth.
+	// Examples:
+	//   "/*.php"          -> "/**/*.php"   matches /dir/admin.php
+	//   "/foo/*"          -> "/foo/**/*"   matches /foo/bar/baz
+	//   "/download/*/*.zip" -> "/download/**/*.zip" matches /download/a/b/archive.zip
 	if !strings.Contains(pattern, "**") && strings.Contains(pattern, "*") {
-		// Expand single * to ** to match any depth
-		expandedPattern := strings.ReplaceAll(pattern, "*", "**")
-		if matched, _ := doublestar.PathMatch(expandedPattern, requestPath); matched {
+		expandedPattern := strings.ReplaceAll(pattern, "*", "**/*")
+		if matched, _ := doublestar.Match(expandedPattern, requestPath); matched {
 			return true
 		}
 	}
