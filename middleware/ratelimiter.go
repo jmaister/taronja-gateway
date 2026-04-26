@@ -153,6 +153,17 @@ func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
 		}
 	}
 
+	// Handle recursive expansion of single wildcards to match nested paths.
+	// Patterns without ** should be expanded to match paths at any depth.
+	// For example: "/*.php" -> "**/*.php", "/foo/*" -> "/foo/**", "/download/*/*.zip" -> "/download/**/*.zip"
+	if !strings.Contains(pattern, "**") && strings.Contains(pattern, "*") {
+		// Expand single * to ** to match any depth
+		expandedPattern := strings.ReplaceAll(pattern, "*", "**")
+		if matched, _ := doublestar.PathMatch(expandedPattern, requestPath); matched {
+			return true
+		}
+	}
+
 	return false
 }
 
