@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -234,27 +235,115 @@ func TestRateLimiter_VulnerabilityScan(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 }
 
+// Test that the trim function correctly prunes old timestamps.
+func TestRateLimiter_Trim(t *testing.T) {
+	cfg := config.RateLimiterConfig{
+		RequestsPerMinute: 10,
+		MaxErrors:         10,
+		BlockMinutes:      1,
+		VulnerabilityScan: config.VulnerabilityScanConfig{
+			URLs:         []string{"/foo"},
+			Max404:       10,
+			BlockMinutes: 1,
+		},
+	}
+
+	entry := &rateEntry{}
+	now := time.Now()
+
+	// Add requests, errors, and scan404s that should be trimmed and some that should remain
+	// Requests (1 minute cutoff)
+	entry.requests = []time.Time{
+		now.Add(-2 * time.Minute),  // should be trimmed
+		now.Add(-30 * time.Second), // should remain
+	}
+	// Errors (BlockMinutes cutoff = 1 minute)
+	entry.errors = []time.Time{
+		now.Add(-2 * time.Minute),  // should be trimmed
+		now.Add(-45 * time.Second), // should remain
+	}
+	// Scan404 (VulnerabilityScan.BlockMinutes cutoff = 1 minute)
+	entry.scan404 = []time.Time{
+		now.Add(-2 * time.Minute),  // should be trimmed
+		now.Add(-15 * time.Second), // should remain
+	}
+
+	entry.trim(now, cfg)
+
+	assert.Len(t, entry.requests, 1)
+	assert.True(t, entry.requests[0].After(now.Add(-1*time.Minute)))
+
+	assert.Len(t, entry.errors, 1)
+	assert.True(t, entry.errors[0].After(now.Add(-1*time.Minute)))
+
+	assert.Len(t, entry.scan404, 1)
+	assert.True(t, entry.scan404[0].After(now.Add(-1*time.Minute)))
+}
+
+// Test the various matching scenarios for vulnerability scan paths
 func TestMatchesVulnerabilityScanPath(t *testing.T) {
 	tests := []struct {
-		name        string
 		pattern     string
 		requestPath string
 		expected    bool
 	}{
-		{name: "exact match", pattern: "/.env", requestPath: "/.env", expected: true},
-		{name: "exact match", pattern: "/.env.*", requestPath: "/.env.prod", expected: true},
-		{name: "root wildcard matches top level file", pattern: "/*.php", requestPath: "/mailchimp_keys.php", expected: true},
-		{name: "root wildcard matches nested file", pattern: "/*.php", requestPath: "/config/mandrill.local.php", expected: true},
-		{name: "root wildcard matches nested yaml file", pattern: "/*.yml", requestPath: "/config/mailchimp.yml", expected: true},
-		{name: "pattern under fixed directory still matches direct child", pattern: "/admin/*.php", requestPath: "/admin/index.php", expected: true},
-		{name: "different extension does not match", pattern: "/*.php", requestPath: "/config/mailchimp.yml", expected: false},
-		{name: "fixed directory pattern does not overmatch nested folders", pattern: "/admin/*.php", requestPath: "/config/admin/index.php", expected: false},
-		{name: "fixed directory pattern does not overmatch nested folders", pattern: "/admin/*.php", requestPath: "/admin/index.php", expected: true},
-		{name: "nested wildcard pattern does not match deeper nested path", pattern: "/*/admin/*.php", requestPath: "/config/admin/index.php", expected: true},
+		// Direct matches
+		{"/foo/bar", "/foo/bar", true},
+		{"/foo/baz", "/foo/bar", false},
+
+		// Backslash normalization
+		{"\\foo\\bar", "/foo/bar", true},
+		{"/foo/bar", "\\foo\\bar", true},
+
+		// Root wildcard patterns (path.Base matching)
+		{"/*.php", "/admin.php", true},
+		{"/*.php", "/dir/admin.php", true},
+		{"/*.php", "/dir/sub/admin.php", true},
+		{"/*.js", "/app.js", true},
+		{"/*.js", "/dir/app.js", true},
+		{"/*.php", "/admin/test.php", true},
+		{"/*.php", "/admin.jpg", false},
+		{"/*", "/anything", true},
+		{"/*", "/dir/anything", true}, // Should match base name
+
+		// Single segment wildcard (doublestar)
+		{"/foo/*", "/foo/bar", true},
+		{"/foo/*", "/foo/bar/baz", true},
+		{"/foo/*", "/bar/baz", false},
+
+		// Multi segment wildcard (doublestar)
+		{"/foo/**", "/foo/bar", true},
+		{"/foo/**", "/foo/bar/baz", true},
+		{"/foo/**", "/bar/baz", false},
+		{"/**/bar", "/foo/bar", true},
+		{"/**/bar", "/foo/baz/bar", true},
+		{"/**/bar", "/bar", true},
+
+		// Recursive expansion of single segment wildcards (e.g., /*.php -> **/*.php)
+		{"/*.php", "/nested/admin.php", true}, // originally handled by path.Base, but also by expansion
+		{"/foo/*.js", "/foo/bar/app.js", true},
+		{"/foo/*.js", "/foo/bar/baz/app.js", true},
+		{"/foo/*", "/foo/bar/baz", true},
+		{"/user/*/profile", "/user/123/profile", true},
+		{"/user/*/profile", "/user/123/nested/profile", true},
+
+		// Patterns with existing /**/ should not be re-expanded (placeholder logic)
+		{"/api/**/status", "/api/v1/status", true},
+		{"/api/**/status", "/api/status", true},           // Should still match
+		{"/api/**/status", "/api/v1/nested/status", true}, // Should still match
+
+		// Complex scenarios
+		{"/download/*/*.zip", "/download/files/archive.zip", true},
+		{"/download/*/*.zip", "/download/temp/subdir/archive.zip", true},
+		{"/download/**/*.zip", "/download/temp/subdir/archive.zip", true},
+		{"/download/*/*.zip", "/download/archive.zip", false}, // Requires two segments before .zip
 	}
 
-	for _, testCase := range tests {
-		assert.Equal(t, testCase.expected, matchesVulnerabilityScanPath(testCase.pattern, testCase.requestPath), testCase.name)
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("Pattern: %s, Path: %s", tt.pattern, tt.requestPath), func(t *testing.T) {
+			actual := matchesVulnerabilityScanPath(tt.pattern, tt.requestPath)
+			assert.Equal(t, tt.expected, actual, "for pattern %s and path %s", tt.pattern, tt.requestPath)
+		})
 	}
 }
 

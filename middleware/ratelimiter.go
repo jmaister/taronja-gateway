@@ -3,7 +3,6 @@ package middleware
 import (
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 	"sync"
 	"time"
@@ -137,57 +136,24 @@ func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
 	pattern = strings.ReplaceAll(pattern, "\\", "/")
 	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
 
-	// Root wildcard patterns should match nested files by basename.
-	// Example: "/*.php" should match "/a.php" and "/dir/a.php".
-	if strings.HasPrefix(pattern, "/*") && !strings.Contains(strings.TrimPrefix(pattern, "/"), "/") {
-		filePattern := strings.TrimPrefix(pattern, "/")
-		requestFile := path.Base(requestPath)
-		matched, err := path.Match(filePattern, requestFile)
-		if err == nil && matched {
-			return true
-		}
-	}
-
 	// First, try the user-specified pattern as-is.
-	matched, err := doublestar.PathMatch(pattern, requestPath)
-	if err == nil && matched {
+	if matched, _ := doublestar.PathMatch(pattern, requestPath); matched {
 		return true
 	}
 
-	// If the pattern contains wildcards, also try a "recursive" form that
-	// treats single-segment globs ("*") as multi-segment globs ("**").
-	// This makes patterns like "/*.php" behave as a catch-all for PHP scans
-	// even when they occur in nested directories.
-	if !strings.Contains(pattern, "*") {
-		return false
-	}
-
-	// Root-level single-segment wildcard patterns should also match nested files.
-	// Example: "/*.php" should match both "/a.php" and "/dir/a.php".
-	if strings.HasPrefix(pattern, "/*") && !strings.HasPrefix(pattern, "/**") {
-		recursivePattern := "/**/" + strings.TrimPrefix(pattern, "/*")
-		matched, err = doublestar.PathMatch(recursivePattern, requestPath)
-		if err == nil && matched {
-			return true
+	// Workaround for doublestar's inconsistent behavior with ** patterns.
+	// A simple string prefix/suffix check is more reliable in these cases.
+	if strings.Contains(pattern, "**") {
+		parts := strings.Split(pattern, "**")
+		if len(parts) == 2 {
+			prefix, suffix := parts[0], parts[1]
+			if strings.HasPrefix(requestPath, prefix) && strings.HasSuffix(requestPath, suffix) {
+				return true
+			}
 		}
 	}
 
-	// As a fallback, expand single-segment wildcards to recursive wildcards.
-	// Keep existing ** segments unchanged.
-	placeholder := "\x00"
-	expandedPattern := strings.ReplaceAll(pattern, "/**", placeholder)
-	expandedPattern = strings.ReplaceAll(expandedPattern, "/*", "/**")
-	expandedPattern = strings.ReplaceAll(expandedPattern, placeholder, "/**")
-
-	if expandedPattern == pattern {
-		return false
-	}
-
-	matched, err = doublestar.PathMatch(expandedPattern, requestPath)
-	if err != nil {
-		return false
-	}
-	return matched
+	return false
 }
 
 // statusRecorder is a minimal response writer that remembers the status code.
