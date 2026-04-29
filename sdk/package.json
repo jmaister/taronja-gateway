@@ -1,0 +1,49 @@
+{
+    "name": "taronja-gateway-react",
+    "version": "0.1.0",
+    "description": "React and TypeScript SDK for Taronja Gateway",
+    "license": "MIT",
+    "type": "module",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/jmaister/taronja-gateway.git",
+        "directory": "sdk"
+    },
+    "homepage": "https://github.com/jmaister/taronja-gateway/tree/main/sdk",
+    "bugs": {
+        "url": "https://github.com/jmaister/taronja-gateway/issues"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "sideEffects": false,
+    "publishConfig": {
+        "access": "public"
+    },
+    "scripts": {
+        "build": "vite build && tsc -p tsconfig.build.json",
+        "prepublishOnly": "npm test && npm run build",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "react": ">=18"
+    },
+    "devDependencies": {
+        "@types/react": "19.2.14",
+        "typescript": "6.0.3",
+        "vite": "8.0.10",
+        "vitest": "4.1.5"
+    }
+}

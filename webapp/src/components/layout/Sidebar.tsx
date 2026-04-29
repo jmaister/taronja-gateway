@@ -1,5 +1,5 @@
-import { useAuth } from '../../contexts/AuthContext';
-import { Link, NavLink } from 'react-router-dom';
+import { useTaronjaAuth } from 'taronja-gateway-react';
+import { NavLink } from 'react-router-dom';
 import { Button } from '../ui/Button';
 
 interface SidebarProps {
@@ -15,7 +15,7 @@ const Sidebar = ({
   isCollapsed = false,
   toggleCollapse,
 }: SidebarProps) => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout } = useTaronjaAuth();
 
   const navItems = [
     { name: 'Home', icon: '🏠', path: '/home' },
@@ -163,7 +163,7 @@ const Sidebar = ({
 
         {currentUser && (
           <div className="mt-auto border-t border-border p-4">
-            <Button variant="outline" className="w-full" onClick={logout}>
+            <Button variant="outline" className="w-full" onClick={() => void logout()}>
               Logout
             </Button>
           </div>

@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useTaronjaAuth } from 'taronja-gateway-react';
 import { Button } from '../components/ui/Button';
 
 // Simple 404 Page component for admin context
 export const NotFoundPage = () => {
-    const { isAuthenticated, currentUser } = useAuth();
+    const { isAuthenticated, currentUser } = useTaronjaAuth();
 
     return (
         <div className="flex min-h-[70vh] flex-col items-center justify-center text-center">

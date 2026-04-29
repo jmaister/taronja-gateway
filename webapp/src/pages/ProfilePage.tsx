@@ -1,4 +1,4 @@
-import { useAuth, getUserDisplayName, getUserAvatar, getUserInitials } from '../contexts/AuthContext';
+import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 
@@ -6,7 +6,7 @@ import { Card, CardContent } from '../components/ui/Card';
  * ProfilePage component - Full page view for user profile
  */
 export const ProfilePage = () => {
-    const { isAuthenticated, currentUser, isLoading, logout } = useAuth();
+    const { isAuthenticated, currentUser, isLoading, logout } = useTaronjaAuth();
 
     if (isLoading) {
         return (
@@ -165,7 +165,7 @@ export const ProfilePage = () => {
                         <div className="text-sm text-muted-fg">
                             Last updated: {new Date().toLocaleDateString()}
                         </div>
-                        <Button variant="danger" onClick={logout}>
+                        <Button variant="danger" onClick={() => void logout()}>
                             Logout
                         </Button>
                     </div>

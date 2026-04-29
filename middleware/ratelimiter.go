@@ -133,35 +133,31 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
+	// Normalize separators so matching works consistently on all platforms.
+	pattern = strings.ReplaceAll(pattern, "\\", "/")
+	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
+
+	// Use doublestar.Match (always uses '/' as separator) instead of PathMatch
+	// so behaviour is identical on Windows and Linux.
+
 	// First, try the user-specified pattern as-is.
-	matched, err := doublestar.PathMatch(pattern, requestPath)
-	if err == nil && matched {
+	if matched, _ := doublestar.Match(pattern, requestPath); matched {
 		return true
 	}
 
-	// If the pattern contains wildcards, also try a "recursive" form that
-	// treats single-segment globs ("*") as multi-segment globs ("**").
-	// This makes patterns like "/*.php" behave as a catch-all for PHP scans
-	// even when they occur in nested directories.
-	if !strings.Contains(pattern, "*") {
-		return false
+	// Expand patterns without ** to also match nested paths at any depth.
+	// Examples:
+	//   "/*.php"          -> "/**/*.php"   matches /dir/admin.php
+	//   "/foo/*"          -> "/foo/**/*"   matches /foo/bar/baz
+	//   "/download/*/*.zip" -> "/download/**/*.zip" matches /download/a/b/archive.zip
+	if !strings.Contains(pattern, "**") && strings.Contains(pattern, "*") {
+		expandedPattern := strings.ReplaceAll(pattern, "*", "**/*")
+		if matched, _ := doublestar.Match(expandedPattern, requestPath); matched {
+			return true
+		}
 	}
 
-	// Avoid mangling existing ** patterns.
-	placeholder := "\x00"
-	p := strings.ReplaceAll(pattern, "/**", placeholder)
-	p = strings.ReplaceAll(p, "/*", "/**")
-	p = strings.ReplaceAll(p, placeholder, "/**")
-
-	if p == pattern {
-		return false
-	}
-
-	matched, err = doublestar.PathMatch(p, requestPath)
-	if err != nil {
-		return false
-	}
-	return matched
+	return false
 }
 
 // statusRecorder is a minimal response writer that remembers the status code.

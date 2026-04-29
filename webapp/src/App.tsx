@@ -15,11 +15,11 @@ import { CountersManagementPage } from './pages/CountersManagementPage';
 import { RateLimiterStatsPage } from './pages/RateLimiterStatsPage';
 
 // Authentication components
-import { useAuth } from './contexts/AuthContext';
+import { useTaronjaAuth } from 'taronja-gateway-react';
 
 // A component to group routes under MainLayout with admin protection
 const AdminLayoutRoutes = () => {
-    const { isAuthenticated, currentUser, isLoading } = useAuth();
+    const { isAuthenticated, currentUser, isLoading } = useTaronjaAuth();
 
     // Show loading state while checking authentication
     if (isLoading) {
