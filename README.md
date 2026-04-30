@@ -1,5 +1,9 @@
 # Taronja Gateway
 
+<p align="center">
+  <img src="doc/images/logo.png" alt="Taronja Gateway logo" width="240">
+</p>
+
 Taronja Gateway is an API and application gateway.
 
 It serves as an entry point for your API server and your frontend application, handling routing, authentication, sessions, and many more features, leaving your application code clean and focused on business logic.
