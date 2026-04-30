@@ -101,6 +101,34 @@ RateLimiterConfig
         blockMinutes: 15                               # How long to block offending IPs
 ```
 
+### URL patterns
+
+You can spcify URL patterns with wildcards like "*" and "**" (doublestar syntax).
+
+- `*` (star) Matches everithing up to the next slash. For example, `/*.php` matches `/admin.php` but not `/admin.php/config`.
+- `**` (doublestar) Matches any number of directories or segments recursively, can match zero or more segments. For example, `/**/setup.sh` matches `/setup.sh` and `/scripts/setup.sh`.
+
+Examples table:
+
+| Pattern | Matches | Does Not Match | Note |
+| :--- | :--- | :--- | :--- |
+| `/admin.php` | `/admin.php` | `/index.php` | **Exact Match**: Only matches this specific file. |
+| `/*.php` | `/index.php`, `/login.php` | `/api/v1/login.php` | **Shallow Wildcard**: Only matches files in the root. |
+| `/**.php` | ❌ | ❌ | **Invalid Pattern**: `**` cannot be used in the middle of a segment. |
+| `/**/*.sh` | `/setup.sh`, `/bin/run.sh` | `/scripts/run.py` | **Recursive**: Matches files in any directory depth. |
+| `/admin/*` | `/admin/config`, `/admin/logs` | `/admin/logs/today.txt`, `/admin.php` | **Folder Wildcard**: Matches one level deep inside `/admin/`. |
+| `/admin/**` | `/admin/logs`, `/admin/a/b/c` | `/index.php` | **Full Path**: Matches anything starting with `/admin/`. |
+| `/api/*/v1` | `/api/users/v1` | `/api/v1`, `/api/a/b/v1` | **Middle Wildcard**: Exactly one segment between slashes. |
+| `/api/**/v1` | `/api/v1`, `/api/a/b/v1` | `/api/v1/extra` | **Middle Recursive**: Any number of segments between slashes. |
+
+| Pattern | Path | Match? | Reason |
+| `/api/**/status` | `/api/status` | ✅ **True** | `**` matches **zero** folders in the middle. |
+| `/logs/**` | `/logs/` | ✅ **True** | `**` at the end matches the base directory (zero subfolders). |
+| `/**/*.js` | `/app.js` | ✅ **True** | `**` at the start matches zero folders (file is in root). |
+| `/api/*` | `/api/` | ✅ **True** | `*` matches the "empty" string after the trailing slash. |
+| `/api/*` | `/api` | ❌ **False** | There is no slash, so the pattern expects a segment that doesn't exist. |
+| `/api/**` | `/api` | ❌ **False** | Standard globbing requires the prefix `/api/` to match recursively. |
+
 ### Memory Safety
 
 - Each IP entry is a small struct: two slices of timestamps plus a block-expiry time. Memory per entry is bounded to `O(requestsPerMinute + maxErrors)` timestamps.

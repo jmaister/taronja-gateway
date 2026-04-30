@@ -14,27 +14,32 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.26'
         cache: true
 
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: 'npm'
-        cache-dependency-path: webapp/package-lock.json
+        cache-dependency-path: |
+          sdk/package-lock.json
+          webapp/package-lock.json
 
     - name: Generate API client
       run: npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
 
-    - name: Build React App
+    - name: Build React SDK and App
       run: |
-        cd webapp
+        cd sdk
+        npm install
+        npm run build
+        cd ../webapp
         npm install
         npm run build
         cd ..
@@ -57,7 +62,7 @@ jobs:
 
     - name: Post Coverage Comment
       if: github.event_name == 'pull_request'
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           const fs = require('fs');
@@ -137,7 +142,7 @@ jobs:
           }
         
     - name: Check GoReleaser Config
-      uses: goreleaser/goreleaser-action@v6
+      uses: goreleaser/goreleaser-action@v7
       with:
         version: "~> v2"
         args: check
