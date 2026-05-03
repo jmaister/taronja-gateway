@@ -1,4 +1,4 @@
-import { useTaronjaAuth } from 'taronja-gateway-react';
+import { useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { NavLink } from 'react-router-dom';
 import { Button } from '../ui/Button';
 

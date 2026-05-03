@@ -1,4 +1,4 @@
-import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react';
+import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { Link } from 'react-router-dom';
 import { Button } from './ui/Button';
 

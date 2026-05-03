@@ -1,4 +1,4 @@
-import { getUserDisplayName, useTaronjaAuth } from 'taronja-gateway-react';
+import { getUserDisplayName, useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';

@@ -12,7 +12,7 @@ The React SDK release should use the main repository release tag as the single s
 ## Release contract
 
 - Create a GitHub release with a tag such as `v0.2.0`.
-- `.github/workflows/sdk-release.yml` strips the leading `v`, stamps that version into `sdk/package.json`, runs the SDK tests and build, then publishes `taronja-gateway-react` to npm.
+- `.github/workflows/sdk-release.yml` strips the leading `v`, stamps that version into `sdk/package.json`, runs the SDK tests and build, then publishes `taronja-gateway-react-sdk` to npm.
 - `.github/workflows/clients.yml` uses the same release tag to build the SDK, generate the Go client, and push both into `jmaister/taronja-gateway-clients`.
 - The clients repository receives these tags:
   - `v0.2.0` for the umbrella client release.
@@ -21,7 +21,7 @@ The React SDK release should use the main repository release tag as the single s
 
 ## Required secrets
 
-- `NPM_TOKEN`: npm automation token with publish access to `taronja-gateway-react`.
+- `NPM_TOKEN`: npm automation token with publish access to `taronja-gateway-react-sdk`.
 - `CLIENTS_REPO_TOKEN`: GitHub token with push access to `jmaister/taronja-gateway-clients`.
 
 ## Why this is the best fit here

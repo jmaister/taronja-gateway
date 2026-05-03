@@ -15,7 +15,7 @@ import { CountersManagementPage } from './pages/CountersManagementPage';
 import { RateLimiterStatsPage } from './pages/RateLimiterStatsPage';
 
 // Authentication components
-import { useTaronjaAuth } from 'taronja-gateway-react';
+import { useTaronjaAuth } from 'taronja-gateway-react-sdk';
 
 // A component to group routes under MainLayout with admin protection
 const AdminLayoutRoutes = () => {

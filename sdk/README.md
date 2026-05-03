@@ -1,4 +1,4 @@
-# taronja-gateway-react
+# taronja-gateway-react-sdk
 
 Independent React and TypeScript SDK for Taronja Gateway.
 
@@ -31,7 +31,7 @@ This package is intended to move into the external clients repository later, but
 ## Install
 
 ```bash
-npm install taronja-gateway-react react
+npm install taronja-gateway-react-sdk react
 ```
 
 For local work inside this repository:
@@ -53,7 +53,7 @@ import {
     RequireAdmin,
     createTaronjaClient,
     useTaronjaAuth,
-} from 'taronja-gateway-react';
+} from 'taronja-gateway-react-sdk';
 
 const client = createTaronjaClient({
     baseUrl: '/_',

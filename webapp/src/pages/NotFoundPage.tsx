@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useTaronjaAuth } from 'taronja-gateway-react';
+import { useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { Button } from '../components/ui/Button';
 
 // Simple 404 Page component for admin context

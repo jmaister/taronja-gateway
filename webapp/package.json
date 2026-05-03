@@ -22,7 +22,7 @@
     "react-dom": "19.2.5",
     "react-map-gl": "8.1.1",
     "react-router-dom": "7.14.2",
-    "taronja-gateway-react": "0.1.0"
+    "taronja-gateway-react-sdk": "0.0.24"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

@@ -1,4 +1,4 @@
-import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react';
+import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 
@@ -49,7 +49,7 @@ export const ProfilePage = () => {
             </div>
 
             <Card className="overflow-hidden">
-                <div className="bg-gradient-to-r from-primary to-primary/60 px-6 py-8">
+                <div className="bg-linear-to-r from-primary to-primary/60 px-6 py-8">
                     <div className="flex items-center gap-6">
                         <div className="shrink-0">
                             {avatarUrl ? (
