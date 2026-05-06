@@ -46,6 +46,12 @@ type RouteConfig struct {
 	RemoveFromPath string               `yaml:"removeFromPath"`    // Path prefix to remove before proxying (e.g., "/api/v1/"). Optional.
 	Authentication AuthenticationConfig `yaml:"authentication"`    // Authentication requirements for this route
 	Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
+	Robots         *bool                `yaml:"robots,omitempty"`  // robots.txt directive for this route. nil = not included, true = Allow, false = Disallow.
+}
+
+// RobotsConfig defines the robots.txt configuration for the gateway.
+type RobotsConfig struct {
+	File string `yaml:"file,omitempty"` // Path to a static robots.txt file to serve. When set, this file is served at /robots.txt instead of auto-generating one.
 }
 
 // AuthProviderCredentials contains OAuth2 provider credentials.
@@ -181,6 +187,7 @@ type GatewayConfig struct {
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
+	Robots                  RobotsConfig            `yaml:"robots,omitempty"`        // robots.txt configuration. Optional.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -313,6 +320,19 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		if !strings.HasPrefix(route.From, "/") {
 			log.Printf("Warning: Route '%s' From path '%s' does not start with '/'. Adding prefix.", route.Name, route.From)
 			route.From = "/" + route.From
+		}
+	}
+
+	// Resolve robots.txt file path
+	if config.Robots.File != "" {
+		originalPath := config.Robots.File
+		resolvedPath := originalPath
+		if !filepath.IsAbs(originalPath) {
+			resolvedPath = filepath.Join(currentDir, originalPath)
+		}
+		config.Robots.File = filepath.Clean(resolvedPath)
+		if originalPath != config.Robots.File {
+			log.Printf("Robots.txt file path resolved. Original: '%s', Resolved: '%s'", originalPath, config.Robots.File)
 		}
 	}
 

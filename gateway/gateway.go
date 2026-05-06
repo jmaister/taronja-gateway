@@ -139,6 +139,9 @@ func configureRoutes(gateway *Gateway) error {
 	// Configure the OAuth callback handler
 	gateway.configureOAuthCallbackRoute()
 
+	// Configure the robots.txt handler
+	gateway.configureRobotsRoute()
+
 	return nil
 }
 
@@ -489,7 +492,65 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
 }
 
-// --- Route Handler Creation ---
+// configureRobotsRoute registers the /robots.txt handler.
+// If a static file is configured via robots.file, it is served directly.
+// Otherwise, a robots.txt is auto-generated from routes that have the
+// robots field set (true = Allow, false = Disallow).
+func (g *Gateway) configureRobotsRoute() {
+	g.Mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		// Serve static file if configured
+		if g.GatewayConfig.Robots.File != "" {
+			http.ServeFile(w, r, g.GatewayConfig.Robots.File)
+			return
+		}
+
+		// Auto-generate robots.txt from route configuration
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		content := generateRobotsTxt(g.GatewayConfig.Routes)
+		if _, err := w.Write([]byte(content)); err != nil {
+			log.Printf("robots.txt: error writing response: %v", err)
+		}
+	})
+	log.Printf("Registered robots.txt handler at /robots.txt")
+}
+
+// generateRobotsTxt produces a robots.txt content string based on route configurations.
+// Routes with robots=true contribute an Allow directive; robots=false contributes a Disallow directive.
+// Routes without a robots field are omitted.
+// If no routes have a robots setting, a permissive default (Disallow: nothing) is returned.
+func generateRobotsTxt(routes []config.RouteConfig) string {
+	var sb strings.Builder
+	sb.WriteString("User-agent: *\n")
+
+	hasAnyRobotsConfig := false
+	for _, route := range routes {
+		if route.Robots == nil {
+			continue
+		}
+		hasAnyRobotsConfig = true
+
+		// Normalize the path for use in robots.txt
+		path := route.From
+		if strings.HasSuffix(path, "/*") {
+			// /api/* → /api/
+			path = strings.TrimSuffix(path, "*")
+		}
+
+		if *route.Robots {
+			sb.WriteString(fmt.Sprintf("Allow: %s\n", path))
+		} else {
+			sb.WriteString(fmt.Sprintf("Disallow: %s\n", path))
+		}
+	}
+
+	if !hasAnyRobotsConfig {
+		// Default: allow all crawlers everywhere
+		sb.WriteString("Disallow:\n")
+	}
+
+	return sb.String()
+}
+
 // createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
 func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
 	// Create the proxy once when the handler is created
