@@ -26,6 +26,16 @@ management:
         - "/.env"
       max404: 3              # block after three hits to watched paths
       blockMinutes: 15       # length of block for scanner IP
+
+# robots.txt configuration (optional)
+# Option 1: Serve a custom static robots.txt file
+# robots:
+#   file: ./robots.txt
+#
+# Option 2: Auto-generate robots.txt from route settings (robots: true/false per route)
+# When no robots.file is set, the gateway generates /robots.txt automatically
+# based on the robots field of each route (see route examples below).
+
 routes:
   - name: Favicon
     from: /favicon.ico
@@ -35,12 +45,14 @@ routes:
     from: /api/v1/*
     removeFromPath: "/api/v1/"
     to: https://jsonplaceholder.typicode.com
+    robots: false  # Disallow crawlers from /api/v1/
     options:
       cacheControlSeconds: 0  # No cache (sends "no-cache" header)
   - name: V2 of the API (authenticated)
     from: /api/v2/*
     removeFromPath: "/api/v2/"
     to: https://jsonplaceholder.typicode.com
+    robots: false  # Disallow crawlers from /api/v2/
     authentication:
       enabled: true
   - name: httpbin
@@ -68,12 +80,14 @@ routes:
     from: /secret
     toFolder: ./sample/webfiles/secret
     static: true
+    robots: false  # Disallow crawlers from /secret
     authentication:
       enabled: true
   - name: FrontEnd
     from: /
     toFolder: ./sample/webfiles
     static: true
+    robots: true   # Allow crawlers at the root
     options:
       cacheControlSeconds: 86400  # Cache for 1 day (86400 seconds)
 
