@@ -529,7 +529,7 @@ func generateRobotsTxt(routes []config.RouteConfig) string {
 		}
 		hasAnyRobotsConfig = true
 
-		// Normalise the path for use in robots.txt
+		// Normalize the path for use in robots.txt
 		path := route.From
 		if strings.HasSuffix(path, "/*") {
 			// /api/* → /api/
