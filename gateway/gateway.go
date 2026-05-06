@@ -507,7 +507,9 @@ func (g *Gateway) configureRobotsRoute() {
 		// Auto-generate robots.txt from route configuration
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		content := generateRobotsTxt(g.GatewayConfig.Routes)
-		w.Write([]byte(content))
+		if _, err := w.Write([]byte(content)); err != nil {
+			log.Printf("robots.txt: error writing response: %v", err)
+		}
 	})
 	log.Printf("Registered robots.txt handler at /robots.txt")
 }
@@ -532,9 +534,6 @@ func generateRobotsTxt(routes []config.RouteConfig) string {
 		if strings.HasSuffix(path, "/*") {
 			// /api/* → /api/
 			path = strings.TrimSuffix(path, "*")
-		} else if !strings.HasSuffix(path, "/") {
-			// /favicon.ico → /favicon.ico/  (leave single-file paths as-is)
-			// For non-wildcard, non-directory patterns, use the path directly
 		}
 
 		if *route.Robots {
