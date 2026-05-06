@@ -231,15 +231,8 @@ func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayC
 			}
 		}
 
-		// Validate cache configuration
-		if route.Options != nil && route.Options.CacheControlSeconds != nil {
-			if *route.Options.CacheControlSeconds < 0 {
-				return &ValidationError{
-					Middleware: "cache",
-					Message:    fmt.Sprintf("route '%s' has invalid cache control seconds: %d", route.Name, *route.Options.CacheControlSeconds),
-				}
-			}
-		}
+		// Validate cache configuration (negative values are treated as "no cache header", same as nil)
+		// No additional validation needed for CacheControlSeconds
 	}
 
 	log.Printf("Route middleware configuration validated successfully")
