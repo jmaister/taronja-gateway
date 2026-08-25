@@ -161,6 +161,9 @@ type MiddlewareMetrics struct {
 	RequestCount  int64      `json:"requestCount"`
 }
 
+// MiddlewareMetricsList defines model for MiddlewareMetricsList.
+type MiddlewareMetricsList = []MiddlewareMetrics
+
 // MiddlewareStatusItem defines model for MiddlewareStatusItem.
 type MiddlewareStatusItem struct {
 	// Dependencies Names of other middleware that must run earlier in the chain for this one to work.
@@ -446,6 +449,9 @@ type ServerInterface interface {
 	// Get status (and health, where available) of every global middleware
 	// (GET /api/middleware)
 	GetMiddlewareStatus(w http.ResponseWriter, r *http.Request)
+	// Get request metrics for every global middleware in one call
+	// (GET /api/middleware/metrics)
+	GetAllMiddlewareMetrics(w http.ResponseWriter, r *http.Request)
 	// Get request metrics for a single global middleware
 	// (GET /api/middleware/{name}/metrics)
 	GetMiddlewareMetrics(w http.ResponseWriter, r *http.Request, name string)
@@ -742,6 +748,26 @@ func (siw *ServerInterfaceWrapper) GetMiddlewareStatus(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMiddlewareStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAllMiddlewareMetrics operation middleware
+func (siw *ServerInterfaceWrapper) GetAllMiddlewareMetrics(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAllMiddlewareMetrics(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1304,6 +1330,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.AdjustUserCounters)
 	m.HandleFunc("GET "+options.BaseURL+"/api/counters/{counterId}/{userId}/history", wrapper.GetUserCounterHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/api/middleware", wrapper.GetMiddlewareStatus)
+	m.HandleFunc("GET "+options.BaseURL+"/api/middleware/metrics", wrapper.GetAllMiddlewareMetrics)
 	m.HandleFunc("GET "+options.BaseURL+"/api/middleware/{name}/metrics", wrapper.GetMiddlewareMetrics)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/rate-limiter", wrapper.GetRateLimiterStats)
 	m.HandleFunc("GET "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
@@ -1646,6 +1673,31 @@ func (response GetMiddlewareStatus200JSONResponse) VisitGetMiddlewareStatusRespo
 type GetMiddlewareStatus401JSONResponse Error
 
 func (response GetMiddlewareStatus401JSONResponse) VisitGetMiddlewareStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAllMiddlewareMetricsRequestObject struct {
+}
+
+type GetAllMiddlewareMetricsResponseObject interface {
+	VisitGetAllMiddlewareMetricsResponse(w http.ResponseWriter) error
+}
+
+type GetAllMiddlewareMetrics200JSONResponse MiddlewareMetricsList
+
+func (response GetAllMiddlewareMetrics200JSONResponse) VisitGetAllMiddlewareMetricsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAllMiddlewareMetrics401JSONResponse Error
+
+func (response GetAllMiddlewareMetrics401JSONResponse) VisitGetAllMiddlewareMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
@@ -2225,6 +2277,9 @@ type StrictServerInterface interface {
 	// Get status (and health, where available) of every global middleware
 	// (GET /api/middleware)
 	GetMiddlewareStatus(ctx context.Context, request GetMiddlewareStatusRequestObject) (GetMiddlewareStatusResponseObject, error)
+	// Get request metrics for every global middleware in one call
+	// (GET /api/middleware/metrics)
+	GetAllMiddlewareMetrics(ctx context.Context, request GetAllMiddlewareMetricsRequestObject) (GetAllMiddlewareMetricsResponseObject, error)
 	// Get request metrics for a single global middleware
 	// (GET /api/middleware/{name}/metrics)
 	GetMiddlewareMetrics(ctx context.Context, request GetMiddlewareMetricsRequestObject) (GetMiddlewareMetricsResponseObject, error)
@@ -2482,6 +2537,30 @@ func (sh *strictHandler) GetMiddlewareStatus(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMiddlewareStatusResponseObject); ok {
 		if err := validResponse.VisitGetMiddlewareStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAllMiddlewareMetrics operation middleware
+func (sh *strictHandler) GetAllMiddlewareMetrics(w http.ResponseWriter, r *http.Request) {
+	var request GetAllMiddlewareMetricsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAllMiddlewareMetrics(ctx, request.(GetAllMiddlewareMetricsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAllMiddlewareMetrics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAllMiddlewareMetricsResponseObject); ok {
+		if err := validResponse.VisitGetAllMiddlewareMetricsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -5,6 +5,8 @@ import {
   getAvailableCounters,
   getRateLimiterStats,
   getRateLimiterConfig,
+  getMiddlewareStatus,
+  getAllMiddlewareMetrics,
 } from '@/apiclient/sdk.gen';
 import type {
   CounterHistoryResponse,
@@ -13,6 +15,8 @@ import type {
   AvailableCountersResponse,
   RateLimiterStats,
   RateLimiterConfigResponse,
+  MiddlewareStatusList,
+  MiddlewareMetricsList,
 } from '@/apiclient/types.gen';
 
 
@@ -75,6 +79,8 @@ export const queryKeys = {
   token: (tokenId: string) => ['tokens', tokenId] as const,
   rateLimiterStats: () => ['rateLimiterStats'] as const,
   rateLimiterConfig: () => ['rateLimiterConfig'] as const,
+  middlewareStatus: () => ['middlewareStatus'] as const,
+  middlewareMetrics: () => ['middlewareMetrics'] as const,
 } as const;
 
 // Users hooks
@@ -287,5 +293,30 @@ export function useRateLimiterConfig() {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+  });
+}
+
+// Middleware status/health/metrics hooks (see doc/refactor01.md Phases 3 & 5)
+export function useMiddlewareStatus() {
+  return useQuery<MiddlewareStatusList, Error>({
+    queryKey: queryKeys.middlewareStatus(),
+    queryFn: async () => {
+      const response = await getMiddlewareStatus({ client: customApiClient });
+      return handleResponse<MiddlewareStatusList>(response);
+    },
+    staleTime: 30_000,
+    gcTime: 60_000,
+  });
+}
+
+export function useMiddlewareMetrics() {
+  return useQuery<MiddlewareMetricsList, Error>({
+    queryKey: queryKeys.middlewareMetrics(),
+    queryFn: async () => {
+      const response = await getAllMiddlewareMetrics({ client: customApiClient });
+      return handleResponse<MiddlewareMetricsList>(response);
+    },
+    staleTime: 10_000, // refresh every 10 seconds, same cadence as rate limiter stats
+    gcTime: 60_000,
   });
 }

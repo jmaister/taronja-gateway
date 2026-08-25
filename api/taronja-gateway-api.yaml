@@ -586,6 +586,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/middleware/metrics:
+    get:
+      summary: Get request metrics for every global middleware in one call
+      operationId: getAllMiddlewareMetrics
+      tags:
+        - Middleware
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Request metrics for every middleware that has been built into the running chain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareMetricsList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/middleware/{name}/metrics:
     get:
       summary: Get request metrics for a single global middleware
@@ -1139,6 +1161,10 @@ components:
           type: string
           format: date-time
           nullable: true
+    MiddlewareMetricsList:
+      type: array
+      items:
+        $ref: '#/components/schemas/MiddlewareMetrics'
     RequestStatistics:
       type: object
       properties:

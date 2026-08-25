@@ -168,6 +168,11 @@ taronja-gateway/
 - [`doc/refactor01-release-notes.md`](../doc/refactor01-release-notes.md) is a human-readable summary of the whole refactor (all 4 phases) suitable for a PR description or release notes — GoReleaser generates its own changelog from commit messages at release time (see `.goreleaser.yml`), so this file exists for the case that needs more than a commit list.
 - `CLAUDE.md` intentionally stays a one-line pointer to this file rather than duplicating any of the above.
 
+**Follow-ups from self-review (Phase 5):** two gaps found by re-auditing phases 3–4 (see `doc/refactor01.md` Phase 5) rather than bugs:
+- `GET <prefix>/api/middleware/metrics` (`handlers/api_middleware.go`'s `GetAllMiddlewareMetrics`) returns every middleware's `MiddlewareMetricsSnapshot` in one call via `MiddlewareRegistryV2.GetAllMetrics()`, which existed since Phase 3 but had no endpoint — a dashboard previously needed one request per middleware.
+- `webapp/src/pages/MiddlewarePage.tsx` (route `/middleware`, nav entry in `Sidebar.tsx`) is the dashboard page Phase 3 marked "(if applicable)" and skipped; modeled directly on `RateLimiterStatsPage.tsx`'s layout/auto-refresh pattern. Uses `useMiddlewareStatus()` + `useMiddlewareMetrics()` (`services/services.ts`), merging the two responses client-side by middleware name.
+- Two other gaps found in the same review — per-middleware YAML config beyond `rate_limiter`, and a dedicated dependency-graph data structure — are deliberately **not** implemented; see Phase 5 in `doc/refactor01.md` for why.
+
 **Declarative `middleware:` config example** (opt-in; omit this section entirely to keep using `management.analytics`/`logging`/`rateLimiter`):
 ```yaml
 middleware:
@@ -279,7 +284,8 @@ webapp/src/
 │   ├── HomePage, ProfilePage, NotFoundPage
 │   ├── RequestSummaryPage, RequestsDetailsPage, RateLimiterStatsPage
 │   ├── UsersListPage, CreateUserPage, UserInfoPage
-│   └── CountersManagementPage
+│   ├── CountersManagementPage
+│   └── MiddlewarePage             # status/health/metrics for the global middleware chain (doc/refactor01.md Phase 5)
 ├── contexts/
 │   └── ThemeContext.tsx        # Light/dark mode + color palette provider (drives html[data-theme]/[data-palette])
 ├── lib/, utils/                # cn() classnames helper, formatting helpers, coordinates
@@ -312,6 +318,7 @@ webapp/src/
 - Tool: `@hey-api/openapi-ts` (via `make gen`, executed in root Makefile)
 - Command: `npx @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch`
 - Regenerated whenever the spec changes; files carry auto-generated headers (`// This file is auto-generated`)
+- **Gotcha**: plain `npx --yes @hey-api/openapi-ts ...` (no local install) resolves its own isolated `typescript` dependency, which as of writing pulls in `typescript@7.x` (the from-scratch Go-based compiler rewrite) — incompatible with `@hey-api/openapi-ts`'s TS AST codegen (`Cannot read properties of undefined (reading 'SyntaxKind')` / `'LineFeed'`, across multiple `@hey-api/openapi-ts` versions). Fix: install it as a local devDependency first (`npm install --no-save @hey-api/openapi-ts` inside `webapp/`) so npm resolves its `typescript` peer against the workspace's own pinned `typescript` (6.0.3, which works), then run `./node_modules/.bin/openapi-ts` directly instead of via `npx`. Uninstall it afterward (`npm uninstall @hey-api/openapi-ts`) — it's a generation-time tool, not a real dependency, matching how the Go side never adds `oapi-codegen` to `go.mod`. Also note `webapp/src/apiclient` is gitignored (a generated artifact, same as `webapp/dist`), so a fresh checkout has no client at all until this is run once.
 
 **Dependencies** (key packages in [`webapp/package.json`](./webapp/package.json)):
 - React 19, react-dom 19, TypeScript 6

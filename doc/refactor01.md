@@ -907,19 +907,69 @@ A: MiddlewareRegistryV2_test.go has comprehensive tests. Can also build test cha
 
 ---
 
+## Phase 5: Follow-ups from Self-Review ✅ DONE
+
+Phases 1–4 were reviewed after being marked complete (in response to "is
+anything missing?"), which surfaced four gaps. Two were real bugs — already
+found, fixed, and covered by regression tests in a dedicated commit (see
+their own phase sections above: `EffectiveRateLimiterConfig`, `BuildChain`'s
+`r.built`/`r.metrics` reset, `Global != nil` vs `len(Global) > 0`, and the
+`traffic_metrics` → `ja4_fingerprint` dependency correction). The remaining
+two are genuine gaps in what phases 3–4 delivered, not bugs — this phase
+tracks them explicitly instead of leaving them as an informal "possible
+future work" list.
+
+**Goal**: close the gaps that are well-scoped and valuable now; document why
+the other two remain deliberately deferred rather than silently dropping
+them.
+
+**Tasks**:
+- [x] Bulk middleware metrics endpoint — `MiddlewareRegistryV2.GetAllMetrics()`
+  had existed since Phase 3 but nothing called it; a dashboard wanting every
+  middleware's metrics needed N+1 requests (one
+  `GET .../api/middleware/{name}/metrics` per middleware from the status
+  list). Added `GET <prefix>/api/middleware/metrics` (`getAllMiddlewareMetrics`
+  in `api/taronja-gateway-api.yaml`, `StrictApiServer.GetAllMiddlewareMetrics`
+  in `handlers/api_middleware.go`) returning all of them in one call.
+- [x] Middleware status/metrics page in the admin dashboard — Phase 3 marked
+  this "(if applicable)" and skipped it since nothing consumed the API yet.
+  Added `webapp/src/pages/MiddlewarePage.tsx` (route `/middleware`, nav entry
+  in `Sidebar.tsx`), modeled on the existing `RateLimiterStatsPage`, showing
+  every global middleware's status, health, dependencies, and live metrics
+  (merging the status and bulk-metrics responses client-side by name).
+
+**Deliberately still deferred (not implemented in this phase)**:
+- **Per-middleware YAML config beyond `rate_limiter`** — e.g. the `logging:`
+  level/format/includeBody options sketched in Improvement 4. Implementing
+  this means inventing real behavior for `LoggingMiddleware` (log levels,
+  structured vs. text output, header allow-listing) that doesn't exist today
+  — it's new middleware functionality, not wiring up something already
+  built, so it doesn't belong in a "close the gaps" pass. Revisit if/when
+  `LoggingMiddleware` itself grows those options.
+- **A real dependency graph structure** (`middleware/dependency_graph.go`,
+  Improvement 3) — `MiddlewareRegistryV2`'s existing check ("every direct
+  dependency is satisfied by an earlier spec") already catches every
+  incorrect ordering that's actually possible with today's five built-in
+  middlewares, including transitively (verified during the self-review: the
+  `ja4_fingerprint` → `session_extraction` → `traffic_metrics` chain
+  correctly enforces `ja4_fingerprint` before `traffic_metrics` even before
+  `traffic_metrics` declared that dependency directly). Building a dedicated
+  graph data structure now, with no concrete case the current check gets
+  wrong, would be speculative complexity with no test that could prove it
+  necessary. Revisit if a middleware ever needs something the direct-only
+  check can't express (e.g. "at least one of X or Y", or a cycle-detection
+  requirement once there are enough middlewares for cycles to be a realistic
+  mistake).
+
+**Success Criteria**:
+- ✅ `GET <prefix>/api/middleware/metrics` returns every middleware's metrics in one call
+- ✅ The admin dashboard has a page showing middleware status/health/metrics
+- ✅ The two deferred items have a documented reason, not just silence
+
+---
+
 ## Next Steps
 
-All four planned phases are implemented (see the per-phase sections above).
-Possible future work, not currently planned or scheduled:
-
-1. **Per-middleware YAML config beyond `rate_limiter`** — e.g. the `logging:`
-   level/format/includeBody options sketched in Improvement 4 above, once
-   `LoggingMiddleware` itself actually supports them.
-2. **A middleware status/metrics page in the admin dashboard** — the API
-   (`GET <prefix>/api/middleware`, `GET <prefix>/api/middleware/{name}/metrics`)
-   exists; no webapp UI consumes it yet (Phase 3 marked this "if applicable").
-3. **A real dependency graph structure** (`middleware/dependency_graph.go`,
-   Improvement 3) if dependencies ever become more complex than the simple
-   "all direct deps satisfied by an earlier spec" check `MiddlewareRegistryV2`
-   does today.
+All five phases above are implemented. No further work is currently planned
+or scheduled beyond the two items Phase 5 deliberately deferred.
 

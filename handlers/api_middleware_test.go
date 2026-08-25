@@ -140,3 +140,53 @@ func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 	assert.Equal(t, int64(0), metrics.ErrorCount)
 	require.NotNil(t, metrics.LastInvokedAt)
 }
+
+func TestGetAllMiddlewareMetrics_Unauthorized(t *testing.T) {
+	s := setupMiddlewareTestServer(t)
+
+	resp, err := s.GetAllMiddlewareMetrics(context.Background(), api.GetAllMiddlewareMetricsRequestObject{})
+	require.NoError(t, err)
+	_, ok := resp.(api.GetAllMiddlewareMetrics401JSONResponse)
+	assert.True(t, ok)
+}
+
+// TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware is the Phase 5
+// regression test for the bulk metrics endpoint: it must report every
+// middleware that was actually built into the chain (with real recorded
+// data), and nothing that wasn't.
+func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
+	dependencies := deps.NewTest()
+
+	registry, err := middleware.NewGlobalMiddlewareRegistry(
+		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil,
+	)
+	require.NoError(t, err)
+
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.Logging = true // rate_limiter, ja4, etc. stay unbuilt
+	chain, err := middleware.BuildGlobalChainFromConfigV2(registry, gatewayConfig)
+	require.NoError(t, err)
+
+	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+		rw := httptest.NewRecorder()
+		handler.ServeHTTP(rw, req)
+	}
+
+	s := NewStrictApiServer(
+		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
+		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.TokenService,
+		dependencies.StartTime, nil, registry,
+	)
+
+	resp, err := s.GetAllMiddlewareMetrics(adminContext(), api.GetAllMiddlewareMetricsRequestObject{})
+	require.NoError(t, err)
+	items, ok := resp.(api.GetAllMiddlewareMetrics200JSONResponse)
+	require.True(t, ok)
+	require.Len(t, items, 1, "only logging was built into the chain")
+	assert.Equal(t, config.MiddlewareNameLogging, items[0].Name)
+	assert.Equal(t, int64(2), items[0].RequestCount)
+}

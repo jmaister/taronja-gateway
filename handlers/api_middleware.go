@@ -87,6 +87,44 @@ func (s *StrictApiServer) GetMiddlewareMetrics(ctx context.Context, req api.GetM
 	}, nil
 }
 
+// GetAllMiddlewareMetrics implements GET /_/api/middleware/metrics — the
+// in-memory request metrics for every global middleware that has been built
+// into the running chain, in one call (see middleware.MiddlewareRegistryV2.GetAllMetrics).
+// Added in Phase 5 (doc/refactor01.md) so a dashboard doesn't need one
+// request per middleware from the status list.
+func (s *StrictApiServer) GetAllMiddlewareMetrics(ctx context.Context, req api.GetAllMiddlewareMetricsRequestObject) (api.GetAllMiddlewareMetricsResponseObject, error) {
+	// admin check, matching the rate limiter stats/config endpoints
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+		return api.GetAllMiddlewareMetrics401JSONResponse{}, nil
+	}
+
+	if s.middlewareRegistry == nil {
+		return api.GetAllMiddlewareMetrics200JSONResponse{}, nil
+	}
+
+	snapshots := s.middlewareRegistry.GetAllMetrics()
+	names := make([]string, 0, len(snapshots))
+	for name := range snapshots {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	items := make([]api.MiddlewareMetrics, 0, len(names))
+	for _, name := range names {
+		snap := snapshots[name]
+		items = append(items, api.MiddlewareMetrics{
+			Name:              snap.Name,
+			RequestCount:      snap.RequestCount,
+			ErrorCount:        snap.ErrorCount,
+			AverageDurationMs: snap.AverageDurationMs,
+			LastInvokedAt:     snap.LastInvokedAt,
+		})
+	}
+
+	return api.GetAllMiddlewareMetrics200JSONResponse(items), nil
+}
+
 // stringPtrOrNil returns nil for an empty string, otherwise a pointer to s —
 // matches the `message,omitempty` semantics of the generated MiddlewareHealth type.
 func stringPtrOrNil(s string) *string {

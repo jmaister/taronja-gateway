@@ -13,6 +13,7 @@ import { RequestSummaryPage } from './pages/RequestSummaryPage';
 import { RequestsDetailsPage } from './pages/RequestsDetailsPage';
 import { CountersManagementPage } from './pages/CountersManagementPage';
 import { RateLimiterStatsPage } from './pages/RateLimiterStatsPage';
+import { MiddlewarePage } from './pages/MiddlewarePage';
 
 // Authentication components
 import { useTaronjaAuth } from 'taronja-gateway-react-sdk';
@@ -97,6 +98,7 @@ function App() {
                     <Route path="/users/:userId" element={<UserInfoPage />} />
                     <Route path="/statistics/requests-details" element={<RequestsDetailsPage />} />
                     <Route path="/statistics/rate-limiter" element={<RateLimiterStatsPage />} />
+                    <Route path="/middleware" element={<MiddlewarePage />} />
                     <Route path="/counters" element={<CountersManagementPage />} />
                     {/* Add other admin routes that should use MainLayout here */}
                 </Route>
