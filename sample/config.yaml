@@ -1,3 +1,4 @@
+version: 2 # Config schema version. See "Config file versioning" in README.md.
 name: Example Gateway Configuration
 server:
   host: 127.0.0.1

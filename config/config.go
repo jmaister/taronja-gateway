@@ -173,6 +173,7 @@ type GeolocationConfig struct {
 // It contains all settings needed to run the gateway including server, routing, authentication, and management.
 // Configuration is loaded from a YAML file and supports environment variable expansion (${VAR_NAME}).
 type GatewayConfig struct {
+	Version                 int                     `yaml:"version,omitempty"`       // Config schema version. Optional; absent (or 0) is treated as version 1, the implicit version of every config file written before this field existed. See CurrentConfigVersion and LoadConfig's migration behavior in version.go.
 	Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
 	Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
 	Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
@@ -214,6 +215,13 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
 	}
+
+	// Check the config file's schema version, and migrate it (writing a
+	// sibling "-vN" file, leaving the original untouched) if it predates
+	// CurrentConfigVersion. Uses the pre-expansion `data`, never
+	// `expandedData` — a migrated file on disk must never contain resolved
+	// secrets. See version.go.
+	applyConfigVersioning(configAbsPath, data, config)
 
 	// --- Post-Unmarshal Validation and Path Resolution ---
 	// Validate server config

@@ -107,6 +107,8 @@ Taronja Gateway uses a YAML configuration file to define server settings, routes
 ## Basic Structure
 
 ```yaml
+version: 2 # Config schema version — see "Config File Versioning" below
+
 name: Example Gateway Configuration
 
 server:
@@ -162,6 +164,39 @@ notification:
       from: ${SMTP_FROM}
       fromName: ${SMTP_FROM_NAME}
 ```
+
+## Config File Versioning
+
+The config file declares a schema version:
+
+```yaml
+version: 2
+```
+
+On startup, the gateway logs the version it detected and what it currently
+supports:
+
+```
+Config file version: 2 (current: 2)
+```
+
+**You don't need to add this field to keep an existing config file working.**
+A file with no `version:` key is treated as version 1 — the implicit version
+of every config written before this feature existed — and loads exactly as
+before. But when the gateway detects a config older than it supports, it
+automatically writes an upgraded copy alongside the original, named with a
+`-v<N>` suffix (e.g. `config.yaml` → `config-v2.yaml`), and logs what it did:
+
+```
+Config file version: 1 (current: 2)
+Config file 'config.yaml' is version 1 (current: 2). Wrote a migrated copy to 'config-v2.yaml' — consider switching to it; the original was left unchanged.
+```
+
+The original file is **never modified or deleted**, and a migrated file is
+**never overwritten** once created (in case you've since hand-edited it) —
+you decide when to switch `--config` over to the new file. The gateway runs
+correctly either way in the meantime: it behaves per the current schema
+internally regardless of which file it actually loaded.
 
 ## Configuration Sections
 

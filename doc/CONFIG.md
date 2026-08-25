@@ -8,6 +8,9 @@ import "github.com/jmaister/taronja-gateway/config"
 
 ## Index
 
+- [Constants](<#constants>)
+- [Variables](<#variables>)
+- [func IsMiddlewareNameKnown\(name string\) bool](<#IsMiddlewareNameKnown>)
 - [type AdminConfig](<#AdminConfig>)
 - [type AuthProviderCredentials](<#AuthProviderCredentials>)
 - [type AuthenticationConfig](<#AuthenticationConfig>)
@@ -20,21 +23,67 @@ import "github.com/jmaister/taronja-gateway/config"
   - [func \(c \*GatewayConfig\) HasAnyAuthentication\(\) bool](<#GatewayConfig.HasAnyAuthentication>)
 - [type GeolocationConfig](<#GeolocationConfig>)
 - [type ManagementConfig](<#ManagementConfig>)
+- [type MiddlewareEntryConfig](<#MiddlewareEntryConfig>)
+  - [func \(e MiddlewareEntryConfig\) IsEnabled\(\) bool](<#MiddlewareEntryConfig.IsEnabled>)
+- [type MiddlewareSection](<#MiddlewareSection>)
 - [type NotificationConfig](<#NotificationConfig>)
 - [type RateLimiterConfig](<#RateLimiterConfig>)
+  - [func \(r RateLimiterConfig\) IsEnabled\(\) bool](<#RateLimiterConfig.IsEnabled>)
 - [type RouteConfig](<#RouteConfig>)
   - [func \(route \*RouteConfig\) GetCacheControlHeader\(\) string](<#RouteConfig.GetCacheControlHeader>)
   - [func \(route \*RouteConfig\) ShouldSetCacheHeader\(\) bool](<#RouteConfig.ShouldSetCacheHeader>)
 - [type RouteOptions](<#RouteOptions>)
-  - [func \(opts \*RouteOptions\) GetCacheControlHeader\(\) string](<#RouteOptions.GetCacheControlHeader>)
 - [type ServerConfig](<#ServerConfig>)
 - [type SessionConfig](<#SessionConfig>)
   - [func \(s \*SessionConfig\) GetDuration\(\) time.Duration](<#SessionConfig.GetDuration>)
 - [type VulnerabilityScanConfig](<#VulnerabilityScanConfig>)
 
 
+## Constants
+
+<a name="MiddlewareNameRateLimiter"></a>Known global middleware names. These are the identifiers accepted in \`middleware.global\[\].name\` \(see MiddlewareEntryConfig\) and are also used by the middleware package's factories \(middleware/factory.go\) so both sides agree on naming without middleware needing to import config, or config needing to import middleware \(which already imports config\).
+
+```go
+const (
+    MiddlewareNameRateLimiter       = "rate_limiter"
+    MiddlewareNameJA4Fingerprint    = "ja4_fingerprint"
+    MiddlewareNameSessionExtraction = "session_extraction"
+    MiddlewareNameTrafficMetrics    = "traffic_metrics"
+    MiddlewareNameLogging           = "logging"
+)
+```
+
+<a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build of the gateway expects a config file to declare via its top\-level \`version:\` field. Bump it, and add a corresponding entry to configMigrations, whenever a config schema change should be reflected in the version a config file declares.
+
+```go
+const CurrentConfigVersion = 2
+```
+
+## Variables
+
+<a name="KnownMiddlewareNames"></a>KnownMiddlewareNames lists every global middleware name the gateway understands today. Used to validate \`middleware.global\[\].name\` entries at config load time.
+
+```go
+var KnownMiddlewareNames = []string{
+    MiddlewareNameRateLimiter,
+    MiddlewareNameJA4Fingerprint,
+    MiddlewareNameSessionExtraction,
+    MiddlewareNameTrafficMetrics,
+    MiddlewareNameLogging,
+}
+```
+
+<a name="IsMiddlewareNameKnown"></a>
+## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L28>)
+
+```go
+func IsMiddlewareNameKnown(name string) bool
+```
+
+IsMiddlewareNameKnown reports whether name is a recognized global middleware.
+
 <a name="AdminConfig"></a>
-## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L93-L98>)
+## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L107-L112>)
 
 AdminConfig configures administrative access to the management dashboard. When enabled, allows a single admin user to access the dashboard at \<management.prefix\>/admin/
 
@@ -104,7 +153,7 @@ type BasicAuthenticationConfig struct {
 ```
 
 <a name="BrandingConfig"></a>
-## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L72-L74>)
+## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L86-L88>)
 
 BrandingConfig contains visual customization options for the gateway UI.
 
@@ -115,12 +164,13 @@ type BrandingConfig struct {
 ```
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L128-L137>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L175-L186>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
 ```go
 type GatewayConfig struct {
+    Version                 int                     `yaml:"version,omitempty"`       // Config schema version. Optional; absent (or 0) is treated as version 1, the implicit version of every config file written before this field existed. See CurrentConfigVersion and LoadConfig's migration behavior in version.go.
     Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
     Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
     Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
@@ -129,11 +179,12 @@ type GatewayConfig struct {
     Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
     Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
     Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
+    Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
 }
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L140>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L189>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -142,7 +193,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L278>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L349>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -151,7 +202,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L121-L123>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L168-L170>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -162,7 +213,7 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L111-L119>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L125-L132>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
@@ -177,52 +228,45 @@ type ManagementConfig struct {
 }
 ```
 
-<a name="RateLimiterConfig"></a>
-## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L122-L132>)
+<a name="MiddlewareEntryConfig"></a>
+## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L46-L50>)
 
-RateLimiterConfig contains simple in-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. The middleware applies limits per client IP address.
+MiddlewareEntryConfig declares one middleware in the \`middleware.global\` list, in the order it should run.
+
+Only rate\_limiter currently has its own typed per\-entry configuration \(RateLimiter\); the other built\-in middlewares \(ja4\_fingerprint, session\_extraction, traffic\_metrics, logging\) take no options today, so listing them just enables/positions them. Per\-middleware config for the rest is future work \(see doc/refactor01.md Improvement 4\) — adding it here without matching runtime support would be misleading.
 
 ```go
-type RateLimiterConfig struct {
-    RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
-    MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
-    BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
-
-    VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
+type MiddlewareEntryConfig struct {
+    Name        string             `yaml:"name"`                  // Middleware identifier. Must be one of KnownMiddlewareNames.
+    Enabled     *bool              `yaml:"enabled,omitempty"`     // Enable/disable this middleware. Default: true (listing it implies enabled).
+    RateLimiter *RateLimiterConfig `yaml:"rateLimiter,omitempty"` // Per-entry override for "rate_limiter". Falls back to management.rateLimiter when nil.
 }
 ```
 
-Example YAML:
-
-```yaml
-management:
-  rateLimiter:
-    requestsPerMinute: 100
-    maxErrors: 20
-    blockMinutes: 15
-    vulnerabilityScan:
-      urls:
-        - /admin/*.php
-        - /.env
-      max404: 5
-      blockMinutes: 30
-```
-
-<a name="VulnerabilityScanConfig"></a>
-## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L113-L120>)
-
-VulnerabilityScanConfig contains a list of URL paths likely to be probed by automated scanners. When a client triggers too many 404 responses for those paths within the configured window, the IP is temporarily blocked.
+<a name="MiddlewareEntryConfig.IsEnabled"></a>
+### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L54>)
 
 ```go
-type VulnerabilityScanConfig struct {
-    URLs         []string `yaml:"urls"`         // paths to watch (supports wildcard patterns with "*"). Example: ["/admin/*.php", "/.env", "/.env.*", "/config/*.yml"]
-    Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
-    BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
+func (e MiddlewareEntryConfig) IsEnabled() bool
+```
+
+IsEnabled reports whether this entry is enabled. An absent Enabled field defaults to true: appearing in the list is enough to opt in.
+
+<a name="MiddlewareSection"></a>
+## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L70-L72>)
+
+MiddlewareSection declares the global middleware chain explicitly, in execution order. When Global is nil — i.e. there's no \`middleware:\` section at all, the common case for existing config files — the gateway falls back to the legacy management.analytics / management.logging / management.rateLimiter flags. See middleware.ResolveGlobalChainSpecs.
+
+Once a \`middleware:\` section with a \`global:\` key is present, it takes over entirely and the legacy flags are ignored — including when it's explicitly listed empty \(\`global: \[\]\`\), which means "no global middleware at all" rather than falling back. This relies on Global being nil \(unset\) vs. a non\-nil empty slice \(explicitly \`\[\]\`\), a distinction YAML unmarshaling already preserves correctly \(verified in middleware\_test.go\).
+
+```go
+type MiddlewareSection struct {
+    Global []MiddlewareEntryConfig `yaml:"global,omitempty"`
 }
 ```
 
 <a name="NotificationConfig"></a>
-## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L77-L89>)
+## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L91-L103>)
 
 NotificationConfig defines notification system settings.
 
@@ -241,6 +285,30 @@ type NotificationConfig struct {
     } `yaml:"email"`
 }
 ```
+
+<a name="RateLimiterConfig"></a>
+## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L152-L158>)
+
+RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address.
+
+```go
+type RateLimiterConfig struct {
+    RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
+    MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
+    BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
+
+    VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
+}
+```
+
+<a name="RateLimiterConfig.IsEnabled"></a>
+### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L161>)
+
+```go
+func (r RateLimiterConfig) IsEnabled() bool
+```
+
+IsEnabled reports whether any rate\-limiting or vulnerability\-scan feature is active.
 
 <a name="RouteConfig"></a>
 ## type [RouteConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L38-L49>)
@@ -263,7 +331,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L337>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L408>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -272,7 +340,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L345>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L416>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -291,15 +359,6 @@ type RouteOptions struct {
 }
 ```
 
-<a name="RouteOptions.GetCacheControlHeader"></a>
-### func \(\*RouteOptions\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L320>)
-
-```go
-func (opts *RouteOptions) GetCacheControlHeader() string
-```
-
-GetCacheControlHeader returns the appropriate Cache\-Control header value based on the configuration. Returns empty string if no cache header should be set.
-
 <a name="ServerConfig"></a>
 ## type [ServerConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L20-L24>)
 
@@ -314,7 +373,7 @@ type ServerConfig struct {
 ```
 
 <a name="SessionConfig"></a>
-## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L101-L103>)
+## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L115-L117>)
 
 SessionConfig defines session lifetime for authenticated users.
 
@@ -325,12 +384,25 @@ type SessionConfig struct {
 ```
 
 <a name="SessionConfig.GetDuration"></a>
-### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L105>)
+### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L119>)
 
 ```go
 func (s *SessionConfig) GetDuration() time.Duration
 ```
 
 
+
+<a name="VulnerabilityScanConfig"></a>
+## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L142-L146>)
+
+RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address. VulnerabilityScanConfig contains a simple list of URL paths that are likely to be probed by automated scanners. When a client triggers too many 404 responses for those paths within the configured window, the IP is temporarily blocked. This is a lightweight signature‑free scanner detector.
+
+```go
+type VulnerabilityScanConfig struct {
+    URLs         []string `yaml:"urls"`         // paths to watch (supports wildcard patterns)
+    Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
+    BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
+}
+```
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

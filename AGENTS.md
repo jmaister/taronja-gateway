@@ -82,7 +82,14 @@ taronja-gateway/
   - `routes` — list of `RouteConfig` (reverse proxy, static file, SPA routes)
   - `authenticationProviders` — Basic, Google OAuth2, GitHub OAuth2 config
   - `branding`, `geolocation`, `notification.email.smtp`
-- **Examples:** [`sample/config.yaml`](./sample/config.yaml), inline in [`README.md`](./README.md), auto-generated reference in [`doc/CONFIG.md`](./doc/CONFIG.md)
+  - `version` — config schema version (see below)
+- **Examples:** [`sample/config.yaml`](./sample/config.yaml), inline in [`README.md`](./README.md), auto-generated reference in [`doc/CONFIG.md`](./doc/CONFIG.md) (regenerate with `make config-docs`, needs `gomarkdoc` — `go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest` if not already on `PATH`)
+
+**Config file versioning (`config/version.go`):** `GatewayConfig.Version` (yaml `version:`) declares the config schema version; `config.CurrentConfigVersion` is what this build expects. `LoadConfig` always logs the detected version (`Config file version: %d (current: %d)`). An absent/zero `version:` field is treated as `legacyConfigVersion` (1) — every file written before this feature existed. If the loaded file's version is older than current, `LoadConfig`:
+- Sets the in-memory `GatewayConfig.Version` to `CurrentConfigVersion` — the running gateway always behaves per the current schema regardless of which file it loaded.
+- Migrates the *original, pre-`${VAR}`-expansion* file bytes (`configMigrations`, one step per version, chained by `migrateConfigToCurrent`) and writes the result to a sibling file — `versionedConfigPath` appends `-v<N>` to the base filename, e.g. `config.yaml` → `config-v2.yaml` — without touching the original. Never overwrites an existing migrated file (assumed hand-edited) or fails `LoadConfig` if the write itself fails (logged as a warning; the gateway still starts using the in-memory config).
+- The only migration today (`migrateV1ToV2`) just stamps the `version:` field via a **text-level** edit (`setTopLevelVersionField`, regex-matched at column 0 so it can't match a same-named key nested under another section) rather than an `Unmarshal`-then-`Marshal` round trip through `GatewayConfig` — that would silently drop every comment and reorder every key in the user's file. A future migration that needs to restructure the document, not just add/update a field, will need a different strategy (e.g. `yaml.Node` AST editing) to keep that property.
+- A file declaring a version *newer* than `CurrentConfigVersion` is left as-is (not migrated backward) with a logged warning; `LoadConfig` still succeeds.
 
 ### `db/` — Database Layer (GORM + SQLite)
 
