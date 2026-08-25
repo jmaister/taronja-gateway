@@ -1021,6 +1021,14 @@ components:
         provider:
           type: string
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          description: When the user account was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the user account was last updated.
     RateLimiterStat:
       type: object
       required:

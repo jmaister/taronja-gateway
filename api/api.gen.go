@@ -364,12 +364,17 @@ type UserCreateRequest struct {
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
-	Email    *openapi_types.Email `json:"email,omitempty"`
-	Id       string               `json:"id"`
-	Name     *string              `json:"name"`
-	Picture  *string              `json:"picture"`
-	Provider *string              `json:"provider"`
-	Username string               `json:"username"`
+	// CreatedAt When the user account was created.
+	CreatedAt *time.Time           `json:"createdAt,omitempty"`
+	Email     *openapi_types.Email `json:"email,omitempty"`
+	Id        string               `json:"id"`
+	Name      *string              `json:"name"`
+	Picture   *string              `json:"picture"`
+	Provider  *string              `json:"provider"`
+
+	// UpdatedAt When the user account was last updated.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	Username  string     `json:"username"`
 }
 
 // GetAllUserCountersParams defines parameters for GetAllUserCounters.

@@ -13,8 +13,13 @@ interface RequestsWorldMapProps {
     requests: RequestDetail[];
 }
 
-// Cast the imported JSON to the correct type
-const maplibreStyle = maplibreStyleJson as StyleSpecification;
+// Cast the imported JSON to the correct type. JSON module imports infer
+// loose types (e.g. array literals like `center` widen to `number[]`
+// instead of the `[number, number]` tuple StyleSpecification expects), so a
+// direct assertion doesn't type-check even though the JSON is a valid style
+// at runtime. Going through `unknown` first is the standard, TS-suggested
+// way to assert a type the compiler can't otherwise verify overlaps.
+const maplibreStyle = maplibreStyleJson as unknown as StyleSpecification;
 
 // Layer definitions following the exact pattern from react-map-gl clusters example
 export const clusterLayer: LayerProps = {

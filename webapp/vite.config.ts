@@ -71,7 +71,16 @@ export default defineConfig(({ mode }) => ({
                 manualChunks,
             }
         },
-        chunkSizeWarningLimit: 1000, // Increase warning limit for map chunks
+        // maplibre-gl (a full WebGL map renderer) is already isolated into its
+        // own chunk (manualChunks above) and already lazy-loaded via
+        // React.lazy()/dynamic import() (see LazyRequestsWorldMap.tsx) — it's
+        // only fetched when a page that renders the map is actually visited,
+        // and its gzipped size (~270 kB) is what real users pay for. There's
+        // no further splitting to be done on a single vendor library, so the
+        // warning limit is raised past its current built size (~1030 kB
+        // uncompressed) with headroom for minor maplibre-gl version bumps,
+        // rather than chasing an unactionable warning on every build.
+        chunkSizeWarningLimit: 1200,
     },
     test: {
         globals: true,
