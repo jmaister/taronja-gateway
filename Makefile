@@ -85,7 +85,7 @@ gen:
 	@echo "Generating OpenAPI code..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
 	@echo "Generating TypeScript SDK..."
-	npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
+	@cd webapp && npm install --no-audit --no-fund >/dev/null && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
 
 # Generate configuration documentation from Go structs
 config-docs:

@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
+    "@hey-api/openapi-ts": "^0.99.0",
     "@tailwindcss/vite": "4.2.4",
     "@tanstack/react-query-devtools": "5.100.1",
     "@types/node": "25.6.0",
