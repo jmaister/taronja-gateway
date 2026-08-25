@@ -272,23 +272,29 @@ GET /management/metrics/middleware/ja4_fingerprint
 
 ---
 
-### Phase 3: Monitoring & Observability (Week 3)
+### Phase 3: Monitoring & Observability (Week 3) ✅ DONE
 **Goal**: Add runtime inspection and health checks
 
 **Tasks**:
-- [ ] Add health check interface to middleware
-- [ ] Implement health checks in existing middleware
-- [ ] Create middleware status API endpoint
-- [ ] Create middleware metrics API endpoint
-- [ ] Add middleware status dashboard (if applicable)
-- [ ] Document health check patterns
+- [x] Add health check interface to middleware (`middleware/health.go`: `HealthChecker`/`MiddlewareHealth`, optionally implemented by a `MiddlewareFactory`)
+- [x] Implement health checks in existing middleware (`RateLimiterFactory.HealthCheck()` reports tracked/blocked IP counts from `RateLimiter.Stats()`; the other four factories don't implement it — see Note below — so `GetHealth`/`GetStatus` report `"unknown"` for them rather than a fabricated `"healthy"`)
+- [x] Create middleware status API endpoint (`GET <prefix>/api/middleware`, admin-only — `handlers/api_middleware.go` + `api/taronja-gateway-api.yaml`)
+- [x] Create middleware metrics API endpoint (`GET <prefix>/api/middleware/{name}/metrics`, admin-only, 404 for an unknown name)
+- [ ] Add middleware status dashboard — skipped; "(if applicable)" in the original plan, and no webapp page consumes these endpoints yet. The API is usable directly; a dashboard page is future work if/when needed.
+- [x] Document health check patterns (`AGENTS.md`, this file)
+
+**Tasks not in the original list, added during implementation**:
+- [x] Per-middleware request metrics (`middleware/metrics.go`): `BuildChain` wraps every middleware with `instrumentMiddleware`, recording request count, error count (status ≥ 500), and elapsed time in-memory. This was necessary to have real data for the metrics endpoint — without it, "performance data" would have to be fabricated.
+- [x] `NewGlobalMiddlewareRegistry` split out of `BuildGlobalChainV2` (`middleware/chain.go`) so `gateway.go` can keep the built `*MiddlewareRegistryV2` (on `Gateway.MiddlewareRegistry`) instead of it being discarded once the chain is built — needed for the status/metrics endpoints to have anything to query at request time.
 
 **Success Criteria**:
-- ✅ `GET /management/middleware` returns status of all middleware
-- ✅ `GET /management/metrics/middleware/:name` returns performance data
+- ✅ `GET /management/middleware` returns status of all middleware — implemented as `GET <prefix>/api/middleware` (e.g. `/_/api/middleware`), matching this codebase's existing endpoint convention (`/api/statistics/rate-limiter`, `/api/config/rate-limiter`, etc.) rather than a literal `/management/` path.
+- ✅ `GET /management/metrics/middleware/:name` returns performance data — implemented as `GET <prefix>/api/middleware/{name}/metrics`, same convention.
 - ✅ Can monitor middleware health in production
 
 **Estimated Effort**: 2-3 days development + 1 day testing
+
+**Note on scope**: only `rate_limiter` implements `HealthChecker`, since it's the only built-in middleware with real runtime state to report (tracked/blocked IPs). `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, and `logging` are stateless per request — there's nothing genuine to check — so they report health `"unknown"` rather than a hardcoded `"healthy"` that would just be decoration. A middleware's `averageDurationMs` metric is cumulative from entering that middleware to the response being written (middlewares nest, so this includes every downstream middleware and the final handler), not an isolated per-middleware cost; this is documented on the type and in the OpenAPI schema.
 
 ---
 

@@ -31,6 +31,7 @@ func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil, // no rate limiter for basic stats tests
+		nil, // no middleware registry for basic stats tests
 	)
 	return server, dependencies.TrafficMetricRepo
 }
@@ -229,6 +230,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil,
+		nil,
 	)
 
 	// Create test users
@@ -357,7 +359,7 @@ func TestRateLimiterEndpoints(t *testing.T) {
 	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
 	rl := middleware.NewRateLimiter(*cfg)
 	dependencies := deps.NewTest()
-	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.TokenService, dependencies.StartTime, rl)
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.TokenService, dependencies.StartTime, rl, nil)
 	// admin session
 	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
 	ctx := context.WithValue(context.Background(), session.SessionKey, sess)

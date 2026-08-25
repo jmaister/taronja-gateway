@@ -564,6 +564,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/middleware:
+    get:
+      summary: Get status (and health, where available) of every global middleware
+      operationId: getMiddlewareStatus
+      tags:
+        - Middleware
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Status of all global middleware
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareStatusList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/middleware/{name}/metrics:
+    get:
+      summary: Get request metrics for a single global middleware
+      operationId: getMiddlewareMetrics
+      tags:
+        - Middleware
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Middleware identifier, e.g. "rate_limiter" or "logging" (see getMiddlewareStatus)
+          schema:
+            type: string
+          example: "rate_limiter"
+      responses:
+        '200':
+          description: Request metrics for the named middleware
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareMetrics'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown middleware name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/counters/{counterId}/{userId}:
     get:
       summary: Get user's current counter balance
@@ -997,6 +1055,90 @@ components:
             - urls
             - max404
             - blockMinutes
+    MiddlewareHealth:
+      type: object
+      description: >-
+        The result of a middleware's health check. Most built-in global
+        middlewares are stateless per request and have nothing meaningful to
+        check; status is "unknown" for those rather than a fabricated
+        "healthy".
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy, unknown]
+          example: "healthy"
+        message:
+          type: string
+          example: "tracking 3 client IP(s), 0 currently blocked"
+    MiddlewareStatusItem:
+      type: object
+      required:
+        - name
+        - description
+        - status
+        - enabled
+        - dependencies
+      properties:
+        name:
+          type: string
+          example: "rate_limiter"
+        description:
+          type: string
+          example: "Limits request rate per client IP and detects vulnerability scans"
+        status:
+          type: string
+          enum: [active, available]
+          description: '"active" if currently included in the running global chain, "available" if registered but not.'
+          example: "active"
+        enabled:
+          type: boolean
+        dependencies:
+          type: array
+          items:
+            type: string
+          description: Names of other middleware that must run earlier in the chain for this one to work.
+        health:
+          $ref: '#/components/schemas/MiddlewareHealth'
+    MiddlewareStatusList:
+      type: array
+      items:
+        $ref: '#/components/schemas/MiddlewareStatusItem'
+    MiddlewareMetrics:
+      type: object
+      description: >-
+        In-memory request metrics for one middleware, tracked since the
+        process started (reset on restart). averageDurationMs is cumulative
+        from entering this middleware to the response being written, so it
+        includes every downstream middleware and the final handler — not this
+        middleware's isolated cost.
+      required:
+        - name
+        - requestCount
+        - errorCount
+        - averageDurationMs
+      properties:
+        name:
+          type: string
+          example: "logging"
+        requestCount:
+          type: integer
+          format: int64
+          example: 1024
+        errorCount:
+          type: integer
+          format: int64
+          description: Requests where the eventual response status was >= 500.
+          example: 2
+        averageDurationMs:
+          type: number
+          format: double
+          example: 1.42
+        lastInvokedAt:
+          type: string
+          format: date-time
+          nullable: true
     RequestStatistics:
       type: object
       properties:

@@ -22,19 +22,23 @@ type StrictApiServer struct {
 	startTime         time.Time
 	// rate limiter instance for stats/config endpoints
 	rateLimiter *middleware.RateLimiter
+	// middleware registry for the middleware status/health/metrics endpoints
+	// (see doc/refactor01.md Phase 3). May be nil in tests that don't need it.
+	middlewareRegistry *middleware.MiddlewareRegistryV2
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *middleware.RateLimiter) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *middleware.RateLimiter, middlewareRegistry *middleware.MiddlewareRegistryV2) *StrictApiServer {
 	return &StrictApiServer{
-		sessionStore:      sessionStore,
-		userRepo:          userRepo,
-		trafficMetricRepo: trafficMetricRepo,
-		tokenRepo:         tokenRepo,
-		countersRepo:      countersRepo,
-		tokenService:      tokenService,
-		startTime:         startTime,
-		rateLimiter:       rateLimiter,
+		sessionStore:       sessionStore,
+		userRepo:           userRepo,
+		trafficMetricRepo:  trafficMetricRepo,
+		tokenRepo:          tokenRepo,
+		countersRepo:       countersRepo,
+		tokenService:       tokenService,
+		startTime:          startTime,
+		rateLimiter:        rateLimiter,
+		middlewareRegistry: middlewareRegistry,
 	}
 }
 

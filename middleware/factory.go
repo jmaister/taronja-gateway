@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -77,6 +78,31 @@ func (f *RateLimiterFactory) Create(cfg interface{}) (Middleware, error) {
 
 func (f *RateLimiterFactory) GetDefaultConfig() interface{} {
 	return config.RateLimiterConfig{}
+}
+
+// HealthCheck reports the rate limiter's current in-memory state: how many
+// client IPs it's tracking and how many are presently blocked. It implements
+// HealthChecker (see health.go). The rate limiter has no failure mode of its
+// own — it's always considered "healthy" once an instance exists — so this
+// exists to surface useful operational detail, not to detect outages.
+func (f *RateLimiterFactory) HealthCheck() MiddlewareHealth {
+	if f.rateLimiter == nil {
+		return MiddlewareHealth{Status: "unknown", Message: "no rate limiter instance configured"}
+	}
+
+	stats := f.rateLimiter.Stats()
+	now := time.Now()
+	blocked := 0
+	for _, s := range stats {
+		if s.BlockedUntil.After(now) {
+			blocked++
+		}
+	}
+
+	return MiddlewareHealth{
+		Status:  "healthy",
+		Message: fmt.Sprintf("tracking %d client IP(s), %d currently blocked", len(stats), blocked),
+	}
 }
 
 // --- JA4Factory ------------------------------------------------------------

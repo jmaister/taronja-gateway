@@ -17,11 +17,12 @@ type MiddlewareSpec struct {
 
 // MiddlewareStatus describes the status of a middleware known to a MiddlewareRegistryV2.
 type MiddlewareStatus struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Status       string   `json:"status"` // "active" or "available"
-	Enabled      bool     `json:"enabled"`
-	Dependencies []string `json:"dependencies"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	Status       string            `json:"status"` // "active" or "available"
+	Enabled      bool              `json:"enabled"`
+	Dependencies []string          `json:"dependencies"`
+	Health       *MiddlewareHealth `json:"health,omitempty"` // nil if the factory doesn't implement HealthChecker
 }
 
 // MiddlewareRegistryV2 builds middleware chains from declarative MiddlewareSpec
@@ -31,6 +32,7 @@ type MiddlewareStatus struct {
 type MiddlewareRegistryV2 struct {
 	factories map[string]MiddlewareFactory
 	built     map[string]bool
+	metrics   map[string]*middlewareMetricsCounter
 }
 
 // NewMiddlewareRegistryV2 creates an empty registry with no factories registered.
@@ -38,6 +40,7 @@ func NewMiddlewareRegistryV2() *MiddlewareRegistryV2 {
 	return &MiddlewareRegistryV2{
 		factories: make(map[string]MiddlewareFactory),
 		built:     make(map[string]bool),
+		metrics:   make(map[string]*middlewareMetricsCounter),
 	}
 }
 
@@ -90,7 +93,12 @@ func (r *MiddlewareRegistryV2) BuildChain(specs []MiddlewareSpec) (*ChainBuilder
 			return nil, fmt.Errorf("failed to create middleware '%s': %w", spec.Name, err)
 		}
 
-		chain.Add(mw)
+		// Wrap with request-metrics instrumentation (see metrics.go) before
+		// adding to the chain, so GetMetrics/GetAllMetrics can report on it.
+		counter := &middlewareMetricsCounter{}
+		r.metrics[spec.Name] = counter
+		chain.Add(instrumentMiddleware(mw, counter))
+
 		built[spec.Name] = true
 		r.built[spec.Name] = true
 		log.Printf("Added middleware to chain: %s", spec.Name)
@@ -116,6 +124,10 @@ func (r *MiddlewareRegistryV2) GetStatus() map[string]MiddlewareStatus {
 			s.Status = "active"
 		} else {
 			s.Status = "available"
+		}
+		if hc, ok := factory.(HealthChecker); ok {
+			h := hc.HealthCheck()
+			s.Health = &h
 		}
 		status[name] = s
 	}

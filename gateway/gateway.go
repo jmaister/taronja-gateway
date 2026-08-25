@@ -38,10 +38,14 @@ type Gateway struct {
 	HttpCacheMiddleware *middleware.HttpCacheMiddleware
 	RouteChainBuilder   *middleware.RouteChainBuilder
 	// Rate limiter instance (for stats/config APIs)
-	RateLimiter   *middleware.RateLimiter
-	templates     map[string]*template.Template
-	WebappEmbedFS *embed.FS
-	StartTime     time.Time
+	RateLimiter *middleware.RateLimiter
+	// Registry of global middleware factories, built by createHTTPServer. Kept
+	// on the Gateway so the middleware status/health/metrics API (see
+	// doc/refactor01.md Phase 3) can introspect it after startup.
+	MiddlewareRegistry *middleware.MiddlewareRegistryV2
+	templates          map[string]*template.Template
+	WebappEmbedFS      *embed.FS
+	StartTime          time.Time
 }
 
 // --- NewGatewayWithDependencies Function ---
@@ -61,8 +65,9 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 	// Log middleware status
 	middleware.LogMiddlewareStatus(config)
 
-	// Create HTTP server with middleware chain (also returns limiter)
-	server, mux, rl, err := createHTTPServer(config, deps)
+	// Create HTTP server with middleware chain (also returns the rate limiter
+	// and the middleware registry, for introspection via the management API)
+	server, mux, rl, middlewareRegistry, err := createHTTPServer(config, deps)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
 	}
@@ -83,6 +88,7 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 		HttpCacheMiddleware: cacheMiddleware,
 		RouteChainBuilder:   routeChainBuilder,
 		RateLimiter:         rl,
+		MiddlewareRegistry:  middlewareRegistry,
 		templates:           templates,
 		WebappEmbedFS:       webappEmbedFS,
 		StartTime:           time.Now(),
@@ -102,23 +108,25 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 }
 
 // createHTTPServer creates the HTTP server with middleware chain
-func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, *middleware.RateLimiter, error) {
+func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, *middleware.RateLimiter, *middleware.MiddlewareRegistryV2, error) {
 	mux := http.NewServeMux()
 
 	// instantiate rate limiter once and keep reference
 	rl := middleware.NewRateLimiter(config.Management.RateLimiter)
 
-	// Build the global middleware chain with the limiter, via the factory/registry
-	// system (see doc/refactor01.md Phase 1). Behaviorally identical to the
-	// hardcoded middleware.BuildGlobalChain.
-	globalChain, err := middleware.BuildGlobalChainV2(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
+	// Build the global middleware chain via the factory/registry system (see
+	// doc/refactor01.md Phases 1-3). The registry is built separately from
+	// (and kept alongside) the chain so it can be introspected later — e.g.
+	// by the middleware status/health/metrics API endpoints.
+	registry, err := middleware.NewGlobalMiddlewareRegistry(deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to build middleware chain: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("failed to build middleware registry: %w", err)
+	}
+	globalChain, err := middleware.BuildGlobalChainFromConfigV2(registry, config)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to build middleware chain: %w", err)
 	}
 	handler := globalChain.Build(mux)
-
-	// attach limiter to gateway via returned value later
-	// (caller is responsible for storing it)
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
@@ -128,7 +136,7 @@ func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*h
 		Handler:      handler,
 	}
 
-	return server, mux, rl, nil
+	return server, mux, rl, registry, nil
 }
 
 // configureRoutes sets up all the gateway routes
@@ -309,6 +317,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.Dependencies.TokenService,
 		g.StartTime,
 		g.RateLimiter,
+		g.MiddlewareRegistry,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
