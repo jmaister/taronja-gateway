@@ -123,36 +123,150 @@ func (r *MiddlewareRegistryV2) GetStatus() map[string]MiddlewareStatus {
 	return status
 }
 
-// BuildGlobalChainFromConfigV2 translates gateway configuration into an
-// ordered list of MiddlewareSpec and builds the resulting chain via the
-// registry. This mirrors the conditional logic in BuildGlobalChain, but
-// expressed declaratively so it can be introspected and tested independently
-// of the concrete middleware implementations.
-func BuildGlobalChainFromConfigV2(
-	registry *MiddlewareRegistryV2,
-	gatewayConfig *config.GatewayConfig,
-) (*ChainBuilder, error) {
+// ValidateSpecs checks that every spec names a registered factory and that
+// its dependencies are satisfied by an earlier spec in the same list —
+// without creating any middleware instances. This is the same dependency
+// graph check BuildChain performs, exposed separately so configuration can be
+// validated at startup before real dependencies (session store, DB
+// repositories, rate limiter instance, ...) are available to actually build
+// the chain.
+func (r *MiddlewareRegistryV2) ValidateSpecs(specs []MiddlewareSpec) error {
+	built := make(map[string]bool)
+	for _, spec := range specs {
+		factory, exists := r.factories[spec.Name]
+		if !exists {
+			return fmt.Errorf("unknown middleware: %s", spec.Name)
+		}
+		for _, dep := range factory.GetDependencies() {
+			if !built[dep] {
+				return fmt.Errorf(
+					"middleware '%s' depends on '%s' which is not enabled",
+					spec.Name, dep,
+				)
+			}
+		}
+		built[spec.Name] = true
+	}
+	return nil
+}
+
+// referenceGlobalFactories returns one instance of every built-in global
+// middleware factory, with no real dependencies wired in (nil session store,
+// nil repositories, ...). It exists purely so MiddlewareSpec lists can be
+// validated (names + dependency graph) via ValidateGlobalChainSpecs without
+// needing live dependencies — those factories' Create() is never called for
+// validation, only GetName()/GetDependencies().
+func referenceGlobalFactories() []MiddlewareFactory {
+	return []MiddlewareFactory{
+		NewRateLimiterFactory(nil),
+		NewJA4Factory(),
+		NewSessionExtractionFactory(nil, nil),
+		NewTrafficMetricsFactory(nil),
+		NewLoggingFactory(),
+	}
+}
+
+// ValidateGlobalChainSpecs validates specs (typically produced by
+// ResolveGlobalChainSpecs) against the built-in global middleware factories:
+// every name must be recognized and every dependency must be satisfied by an
+// earlier spec. It does not require or use real middleware dependencies.
+func ValidateGlobalChainSpecs(specs []MiddlewareSpec) error {
+	registry := NewMiddlewareRegistryV2()
+	for _, f := range referenceGlobalFactories() {
+		if err := registry.RegisterFactory(f); err != nil {
+			return err
+		}
+	}
+	return registry.ValidateSpecs(specs)
+}
+
+// ResolveGlobalChainSpecs translates gateway configuration into an ordered
+// list of MiddlewareSpec describing the global chain.
+//
+// If gatewayConfig.Middleware.Global is non-empty (an explicit `middleware:`
+// section is present in the config file), it is used directly: each entry
+// becomes a spec, in the order listed, skipping entries with Enabled=false.
+// This is the Phase 2 declarative path (see doc/refactor01.md).
+//
+// Otherwise, the legacy management.analytics / management.logging /
+// management.rateLimiter flags are translated into the equivalent specs —
+// identical to Phase 1 / the original hardcoded BuildGlobalChain — so
+// existing config files keep working unchanged.
+func ResolveGlobalChainSpecs(gatewayConfig *config.GatewayConfig) ([]MiddlewareSpec, error) {
+	if len(gatewayConfig.Middleware.Global) > 0 {
+		return specsFromMiddlewareSection(gatewayConfig)
+	}
+	return legacySpecsFromConfig(gatewayConfig), nil
+}
+
+// specsFromMiddlewareSection builds specs from an explicit
+// gatewayConfig.Middleware.Global list.
+func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]MiddlewareSpec, error) {
+	specs := make([]MiddlewareSpec, 0, len(gatewayConfig.Middleware.Global))
+
+	for _, entry := range gatewayConfig.Middleware.Global {
+		if !config.IsMiddlewareNameKnown(entry.Name) {
+			// config.LoadConfig already rejects unknown names at load time; this
+			// guards GatewayConfig values built programmatically (e.g. in tests)
+			// that bypass LoadConfig.
+			return nil, fmt.Errorf("middleware.global: unknown middleware '%s'", entry.Name)
+		}
+		if !entry.IsEnabled() {
+			continue
+		}
+
+		spec := MiddlewareSpec{Name: entry.Name}
+		if entry.Name == config.MiddlewareNameRateLimiter {
+			if entry.RateLimiter != nil {
+				spec.Config = *entry.RateLimiter
+			} else {
+				spec.Config = gatewayConfig.Management.RateLimiter
+			}
+		}
+		specs = append(specs, spec)
+	}
+
+	return specs, nil
+}
+
+// legacySpecsFromConfig derives specs from the pre-Phase-2 configuration
+// flags: management.rateLimiter, management.analytics, management.logging.
+func legacySpecsFromConfig(gatewayConfig *config.GatewayConfig) []MiddlewareSpec {
 	specs := []MiddlewareSpec{}
 
 	// Rate limiter should run first, even before analytics.
 	if gatewayConfig.Management.RateLimiter.IsEnabled() {
 		specs = append(specs, MiddlewareSpec{
-			Name:   "rate_limiter",
+			Name:   config.MiddlewareNameRateLimiter,
 			Config: gatewayConfig.Management.RateLimiter,
 		})
 	}
 
 	// Analytics group: JA4H fingerprint -> session extraction -> traffic metrics.
 	if gatewayConfig.Management.Analytics {
-		specs = append(specs, MiddlewareSpec{Name: "ja4_fingerprint"})
-		specs = append(specs, MiddlewareSpec{Name: "session_extraction"})
-		specs = append(specs, MiddlewareSpec{Name: "traffic_metrics"})
+		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameJA4Fingerprint})
+		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameSessionExtraction})
+		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameTrafficMetrics})
 	}
 
 	// Logging.
 	if gatewayConfig.Management.Logging {
-		specs = append(specs, MiddlewareSpec{Name: "logging"})
+		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameLogging})
 	}
 
+	return specs
+}
+
+// BuildGlobalChainFromConfigV2 resolves gateway configuration to an ordered
+// list of MiddlewareSpec (via ResolveGlobalChainSpecs) and builds the
+// resulting chain via the registry.
+func BuildGlobalChainFromConfigV2(
+	registry *MiddlewareRegistryV2,
+	gatewayConfig *config.GatewayConfig,
+) (*ChainBuilder, error) {
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		return nil, err
+	}
 	return registry.BuildChain(specs)
 }

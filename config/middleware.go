@@ -1,0 +1,66 @@
+package config
+
+// Known global middleware names. These are the identifiers accepted in
+// `middleware.global[].name` (see MiddlewareEntryConfig) and are also used by
+// the middleware package's factories (middleware/factory.go) so both sides
+// agree on naming without middleware needing to import config, or config
+// needing to import middleware (which already imports config).
+const (
+	MiddlewareNameRateLimiter       = "rate_limiter"
+	MiddlewareNameJA4Fingerprint    = "ja4_fingerprint"
+	MiddlewareNameSessionExtraction = "session_extraction"
+	MiddlewareNameTrafficMetrics    = "traffic_metrics"
+	MiddlewareNameLogging           = "logging"
+)
+
+// KnownMiddlewareNames lists every global middleware name the gateway
+// understands today. Used to validate `middleware.global[].name` entries at
+// config load time.
+var KnownMiddlewareNames = []string{
+	MiddlewareNameRateLimiter,
+	MiddlewareNameJA4Fingerprint,
+	MiddlewareNameSessionExtraction,
+	MiddlewareNameTrafficMetrics,
+	MiddlewareNameLogging,
+}
+
+// IsMiddlewareNameKnown reports whether name is a recognized global middleware.
+func IsMiddlewareNameKnown(name string) bool {
+	for _, n := range KnownMiddlewareNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// MiddlewareEntryConfig declares one middleware in the `middleware.global`
+// list, in the order it should run.
+//
+// Only rate_limiter currently has its own typed per-entry configuration
+// (RateLimiter); the other built-in middlewares (ja4_fingerprint,
+// session_extraction, traffic_metrics, logging) take no options today, so
+// listing them just enables/positions them. Per-middleware config for the
+// rest is future work (see doc/refactor01.md Improvement 4) — adding it here
+// without matching runtime support would be misleading.
+type MiddlewareEntryConfig struct {
+	Name        string             `yaml:"name"`                  // Middleware identifier. Must be one of KnownMiddlewareNames.
+	Enabled     *bool              `yaml:"enabled,omitempty"`     // Enable/disable this middleware. Default: true (listing it implies enabled).
+	RateLimiter *RateLimiterConfig `yaml:"rateLimiter,omitempty"` // Per-entry override for "rate_limiter". Falls back to management.rateLimiter when nil.
+}
+
+// IsEnabled reports whether this entry is enabled. An absent Enabled field
+// defaults to true: appearing in the list is enough to opt in.
+func (e MiddlewareEntryConfig) IsEnabled() bool {
+	return e.Enabled == nil || *e.Enabled
+}
+
+// MiddlewareSection declares the global middleware chain explicitly, in
+// execution order. When Global is empty (the common case for existing
+// config files), the gateway falls back to the legacy
+// management.analytics / management.logging / management.rateLimiter flags —
+// see middleware.ResolveGlobalChainSpecs. Once a `middleware:` section is
+// present, it takes over entirely; the legacy flags are ignored.
+type MiddlewareSection struct {
+	Global []MiddlewareEntryConfig `yaml:"global,omitempty"`
+}

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/jmaister/taronja-gateway/auth"
@@ -39,7 +40,18 @@ func (c *ChainBuilder) Build(handler http.Handler) http.Handler {
 	return handler
 }
 
-// BuildGlobalChain builds the global middleware chain based on gateway configuration
+// BuildGlobalChain builds the global middleware chain based on gateway
+// configuration. It delegates to BuildGlobalChainV2 (the factory/registry
+// system — see doc/refactor01.md Phase 2), so it now understands both the
+// legacy management.analytics/logging/rateLimiter flags and an explicit
+// `middleware:` config section, exactly like BuildGlobalChainV2.
+//
+// This function has no error return, for backward compatibility with any
+// existing callers, so a build failure (e.g. an invalid explicit middleware
+// section) is logged and results in an empty chain rather than a panic.
+// Prefer calling BuildGlobalChainV2 directly where an error return is
+// acceptable, since it surfaces misconfiguration instead of silently
+// dropping the chain.
 func BuildGlobalChain(
 	gatewayConfig *config.GatewayConfig,
 	sessionStore session.SessionStore,
@@ -47,33 +59,11 @@ func BuildGlobalChain(
 	trafficMetricRepo db.TrafficMetricRepository,
 	rateLimiter *RateLimiter,
 ) *ChainBuilder {
-	chain := NewChainBuilder()
-
-	// rate limiter should run first, even before analytics
-	if rateLimiter != nil {
-		chain.Add(rateLimiter.Handler)
-	} else if gatewayConfig.Management.RateLimiter.IsEnabled() {
-		chain.Add(RateLimiterMiddleware(gatewayConfig.Management.RateLimiter))
+	chain, err := BuildGlobalChainV2(gatewayConfig, sessionStore, tokenService, trafficMetricRepo, rateLimiter)
+	if err != nil {
+		log.Printf("BuildGlobalChain: failed to build middleware chain via registry: %v; falling back to an empty chain", err)
+		return NewChainBuilder()
 	}
-
-	// Add middlewares conditionally based on configuration
-	if gatewayConfig.Management.Analytics {
-		// JA4H fingerprinting middleware (first so fingerprint is available for other middlewares)
-		// chain.Add(JA4Middleware)
-		chain.Add(OptimizedJA4Middleware(true))
-
-		// Session extraction middleware (before traffic metrics to capture user info)
-		chain.Add(SessionExtractionMiddleware(sessionStore, tokenService))
-
-		// Traffic metrics middleware
-		chain.Add(TrafficMetricMiddleware(trafficMetricRepo))
-	}
-
-	// Logging middleware (if enabled)
-	if gatewayConfig.Management.Logging {
-		chain.Add(LoggingMiddleware)
-	}
-
 	return chain
 }
 

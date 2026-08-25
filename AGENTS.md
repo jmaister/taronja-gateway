@@ -144,12 +144,30 @@ taronja-gateway/
 - **Traffic metrics** (`trafficmetric.go`) — records each request as a `TrafficMetric` row for analytics
 - **Auth** (`auth.go`) — enforces route-level auth (redirects to login for static/SPA, 401 for API)
 
-**Factory + Registry pattern (Phase 1 of `doc/refactor01.md`):** `BuildGlobalChain()` in `chain.go` remains the hardcoded, conditional way to build the global chain. Alongside it, `BuildGlobalChainV2()` builds the same chain declaratively via `MiddlewareRegistryV2` (`registry_v2.go`):
-- Each existing global middleware (`rate_limiter`, `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`) has a `MiddlewareFactory` implementation in `factory.go`, exposing `Create()`, `GetName()`, `GetDescription()`, `GetDependencies()`, `GetDefaultConfig()`.
-- `MiddlewareRegistryV2.BuildChain([]MiddlewareSpec)` looks up each spec's factory, verifies its declared `GetDependencies()` were already built earlier in the same call (e.g. `session_extraction` depends on `ja4_fingerprint`), and appends the created middleware to a `ChainBuilder`.
+**Factory + Registry pattern (Phases 1–2 of `doc/refactor01.md`):** the global chain is built declaratively via `MiddlewareRegistryV2` (`registry_v2.go`) instead of a hardcoded `if` ladder:
+- Each existing global middleware (`rate_limiter`, `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`) has a `MiddlewareFactory` implementation in `factory.go`, exposing `Create()`, `GetName()`, `GetDescription()`, `GetDependencies()`, `GetDefaultConfig()`. Middleware names are shared constants in `config` (`config.MiddlewareNameRateLimiter`, etc.) so `config` can validate them without importing `middleware`.
+- `MiddlewareRegistryV2.BuildChain([]MiddlewareSpec)` looks up each spec's factory, verifies its declared `GetDependencies()` were already built earlier in the same call (e.g. `session_extraction` depends on `ja4_fingerprint`), and appends the created middleware to a `ChainBuilder`. `ValidateSpecs`/`ValidateGlobalChainSpecs` run the same name+dependency check without instantiating anything, so config can be validated before real dependencies (session store, DB repos, rate limiter instance) exist.
 - `MiddlewareRegistryV2.GetStatus()` reports each registered factory as `"active"` (included in the last `BuildChain` call) or `"available"` (registered but not built), for future runtime introspection.
-- `gateway.go`'s `createHTTPServer()` calls `BuildGlobalChainV2()`, not `BuildGlobalChain()`; the two are behaviorally identical today (`BuildGlobalChainFromConfigV2` mirrors the same `config.Management.*` conditionals). `RateLimiterFactory` reuses the gateway's existing `*RateLimiter` instance (via its `Handler` method) when one is supplied, rather than constructing a new stateless middleware, so request stats stay consistent with what the management API reports.
-- New middleware should get a factory + registration in `BuildGlobalChainV2` rather than another `if` branch in `BuildGlobalChain`. Config-driven YAML declaration (`middleware:` section) and health/metrics endpoints are future phases, not yet implemented.
+- `ResolveGlobalChainSpecs(gatewayConfig)` turns config into an ordered `[]MiddlewareSpec`: if `gatewayConfig.Middleware.Global` (the YAML `middleware:` section) is non-empty it's used directly, entry order and `enabled` flags respected, and a per-entry `rateLimiter:` override takes priority over `management.rateLimiter`; otherwise it falls back to translating the legacy `management.analytics`/`logging`/`rateLimiter` flags, so existing config files are unaffected. `BuildGlobalChainV2()` and `BuildGlobalChain()` (which now just delegates to it, logging and falling back to an empty chain on error since it has no error return) both go through this.
+- `gateway.go`'s `createHTTPServer()` calls `BuildGlobalChainV2()`. `RateLimiterFactory` reuses the gateway's existing `*RateLimiter` instance (via its `Handler` method) when one is supplied, rather than constructing a new stateless middleware, so request stats stay consistent with what the management API reports.
+- `middleware.ValidateMiddlewareChainConfig()` (called from `ValidateAllMiddleware`) resolves and validates the chain spec at startup, so a typo'd middleware name or a missing dependency (e.g. `session_extraction` without `ja4_fingerprint`) fails fast with a clear error instead of at request time.
+- Only `rate_limiter` has real per-entry YAML configuration (`config.MiddlewareEntryConfig.RateLimiter`) today, since it's the only middleware with tunable runtime options; the others just take `name`/`enabled`. New middleware should get a factory + a name constant in `config`, not another `if` branch. Health/metrics endpoints (Phase 3) are not implemented yet.
+
+**Declarative `middleware:` config example** (opt-in; omit this section entirely to keep using `management.analytics`/`logging`/`rateLimiter`):
+```yaml
+middleware:
+  global:
+    - name: rate_limiter
+      rateLimiter:
+        requestsPerMinute: 1000
+        maxErrors: 10
+        blockMinutes: 5
+    - name: ja4_fingerprint
+    - name: session_extraction
+    - name: traffic_metrics
+    - name: logging
+      enabled: false
+```
 
 ### `providers/` — Authentication Providers
 

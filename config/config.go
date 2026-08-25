@@ -181,6 +181,7 @@ type GatewayConfig struct {
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
+	Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -250,6 +251,21 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		config.Management.Admin.Username = ""
 		config.Management.Admin.Password = ""
 		log.Printf("Admin access is disabled")
+	}
+
+	// Validate explicit middleware section, if present
+	seenMiddleware := make(map[string]bool, len(config.Middleware.Global))
+	for _, entry := range config.Middleware.Global {
+		if entry.Name == "" {
+			return nil, fmt.Errorf("middleware.global: entry is missing 'name'")
+		}
+		if !IsMiddlewareNameKnown(entry.Name) {
+			return nil, fmt.Errorf("middleware.global: unknown middleware '%s' (known: %v)", entry.Name, KnownMiddlewareNames)
+		}
+		if seenMiddleware[entry.Name] {
+			return nil, fmt.Errorf("middleware.global: middleware '%s' is listed more than once", entry.Name)
+		}
+		seenMiddleware[entry.Name] = true
 	}
 
 	// Validate authentication providers

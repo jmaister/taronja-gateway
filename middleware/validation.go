@@ -171,6 +171,26 @@ func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.Gatew
 	return nil
 }
 
+// ValidateMiddlewareChainConfig validates the global middleware chain
+// configuration — the explicit `middleware:` section if present, otherwise
+// the legacy management.analytics/logging/rateLimiter flags — by resolving it
+// to the same ordered MiddlewareSpec list BuildGlobalChainV2 will use
+// (ResolveGlobalChainSpecs) and checking every spec's name and dependency
+// graph (ValidateGlobalChainSpecs). This runs before real dependencies
+// (session store, DB repositories, rate limiter instance) exist, so it
+// catches mistakes like enabling session_extraction without ja4_fingerprint,
+// or a typo'd middleware name, at startup instead of at request time.
+func ValidateMiddlewareChainConfig(config *config.GatewayConfig) error {
+	specs, err := ResolveGlobalChainSpecs(config)
+	if err != nil {
+		return &ValidationError{Middleware: "global", Message: err.Error()}
+	}
+	if err := ValidateGlobalChainSpecs(specs); err != nil {
+		return &ValidationError{Middleware: "global", Message: err.Error()}
+	}
+	return nil
+}
+
 // ValidateAdminAccess validates admin access configuration
 func ValidateAdminAccess(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	if !config.Management.Admin.Enabled {
@@ -277,6 +297,11 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 
 	// Validate rate limiter settings
 	if err := ValidateRateLimiterMiddleware(deps, config); err != nil {
+		return err
+	}
+
+	// Validate the global middleware chain's names and dependency graph
+	if err := ValidateMiddlewareChainConfig(config); err != nil {
 		return err
 	}
 

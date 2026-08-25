@@ -250,23 +250,25 @@ GET /management/metrics/middleware/ja4_fingerprint
 
 ---
 
-### Phase 2: Config Integration (Week 2)
+### Phase 2: Config Integration (Week 2) ✅ DONE
 **Goal**: Parse middleware from config file instead of hardcoded
 
 **Tasks**:
-- [ ] Create typed config structs for each middleware
-- [ ] Update config loader to parse `middleware:` YAML section
-- [ ] Migrate logic from BuildGlobalChain() to use registry
-- [ ] Make BuildGlobalChain() delegate to BuildGlobalChainV2()
-- [ ] Update validation system to use dependency graph
-- [ ] Add integration tests
+- [x] Create typed config structs for each middleware (`config/middleware.go`: `MiddlewareEntryConfig`, `MiddlewareSection`, shared name constants — only `rate_limiter` gets real per-entry options today, since it's the only middleware with tunable runtime config; see Key Design Decisions below)
+- [x] Update config loader to parse `middleware:` YAML section (`config.LoadConfig` in `config.go`, with fail-fast validation of unknown/missing/duplicate names)
+- [x] Migrate logic from BuildGlobalChain() to use registry (`ResolveGlobalChainSpecs` in `registry_v2.go`: explicit `middleware.global` section when present, else the legacy flags translated exactly as before)
+- [x] Make BuildGlobalChain() delegate to BuildGlobalChainV2() (`chain.go`; since `BuildGlobalChain` has no error return, a build failure is logged and falls back to an empty chain rather than panicking)
+- [x] Update validation system to use dependency graph (`middleware.ValidateMiddlewareChainConfig`, wired into `ValidateAllMiddleware`, validates names + `GetDependencies()` via `MiddlewareRegistryV2.ValidateSpecs` before real dependencies exist)
+- [x] Add integration tests (`config/middleware_test.go` for YAML parsing/validation, `middleware/registry_v2_config_test.go` for spec resolution, dependency validation, and end-to-end chain building)
 
 **Success Criteria**:
 - ✅ Middleware config read from YAML file
-- ✅ Same behavior as Phase 1
+- ✅ Same behavior as Phase 1 (legacy flags still produce identical specs when no `middleware:` section is present — covered by `TestResolveGlobalChainSpecs_LegacyFlagsWhenNoMiddlewareSection`)
 - ✅ Developers can now modify middleware without code changes
 
 **Estimated Effort**: 2-3 days development + 1 day testing
+
+**Note on scope**: the doc's original example showed per-middleware `logging:` options (level, format, includeBody, includeHeaders). Those aren't implemented — `LoggingMiddleware` itself has no such knobs today, and adding them would be a behavior change, not just a wiring change. Only `rate_limiter` (which already had a typed, wired-up `config.RateLimiterConfig`) gets per-entry YAML config in Phase 2. Extending other middlewares similarly is future work once they actually support the options.
 
 ---
 

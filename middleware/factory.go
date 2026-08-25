@@ -56,7 +56,7 @@ type RateLimiterFactory struct {
 func NewRateLimiterFactory(rateLimiter *RateLimiter) *RateLimiterFactory {
 	return &RateLimiterFactory{
 		ConcreteFactory: ConcreteFactory{
-			name:        "rate_limiter",
+			name:        config.MiddlewareNameRateLimiter,
 			description: "Limits request rate per client IP and detects vulnerability scans",
 		},
 		rateLimiter: rateLimiter,
@@ -87,7 +87,7 @@ type JA4Factory struct{ ConcreteFactory }
 func NewJA4Factory() *JA4Factory {
 	return &JA4Factory{
 		ConcreteFactory: ConcreteFactory{
-			name:        "ja4_fingerprint",
+			name:        config.MiddlewareNameJA4Fingerprint,
 			description: "Computes and caches a JA4H fingerprint for each request",
 		},
 	}
@@ -114,9 +114,9 @@ type SessionExtractionFactory struct {
 func NewSessionExtractionFactory(sessionStore session.SessionStore, tokenService session.TokenService) *SessionExtractionFactory {
 	return &SessionExtractionFactory{
 		ConcreteFactory: ConcreteFactory{
-			name:         "session_extraction",
+			name:         config.MiddlewareNameSessionExtraction,
 			description:  "Resolves the authenticated session/user and attaches it to the request context",
-			dependencies: []string{"ja4_fingerprint"},
+			dependencies: []string{config.MiddlewareNameJA4Fingerprint},
 		},
 		sessionStore: sessionStore,
 		tokenService: tokenService,
@@ -142,9 +142,9 @@ type TrafficMetricsFactory struct {
 func NewTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *TrafficMetricsFactory {
 	return &TrafficMetricsFactory{
 		ConcreteFactory: ConcreteFactory{
-			name:         "traffic_metrics",
+			name:         config.MiddlewareNameTrafficMetrics,
 			description:  "Records per-request traffic metrics (status, size, duration, user)",
-			dependencies: []string{"session_extraction"},
+			dependencies: []string{config.MiddlewareNameSessionExtraction},
 		},
 		trafficMetricRepo: trafficMetricRepo,
 	}
@@ -166,7 +166,7 @@ type LoggingFactory struct{ ConcreteFactory }
 func NewLoggingFactory() *LoggingFactory {
 	return &LoggingFactory{
 		ConcreteFactory: ConcreteFactory{
-			name:        "logging",
+			name:        config.MiddlewareNameLogging,
 			description: "Logs each request/response (method, path, status, duration)",
 		},
 	}
