@@ -137,6 +137,17 @@ type SessionExtractionFactory struct {
 	tokenService session.TokenService
 }
 
+// NewSessionExtractionFactory declares a dependency on ja4_fingerprint,
+// preserving the ordering of the original hardcoded BuildGlobalChain (whose
+// comment read "JA4H fingerprinting middleware (first so fingerprint is
+// available for other middlewares)"). Note this is a conservative choice,
+// not a verified direct read: SessionExtractionMiddleware itself doesn't
+// read the JA4H header. The actual consumer is session.NewClientInfo
+// (session/clientinfo.go), invoked later during login/session creation —
+// outside this middleware entirely. The dependency stays declared because
+// removing it without being certain nothing else relies on JA4H already
+// being on the request by this point in the chain isn't worth the risk for
+// a purely cosmetic simplification.
 func NewSessionExtractionFactory(sessionStore session.SessionStore, tokenService session.TokenService) *SessionExtractionFactory {
 	return &SessionExtractionFactory{
 		ConcreteFactory: ConcreteFactory{
@@ -165,12 +176,28 @@ type TrafficMetricsFactory struct {
 	trafficMetricRepo db.TrafficMetricRepository
 }
 
+// NewTrafficMetricsFactory declares two dependencies, both verified reads
+// (not just preserved ordering, unlike session_extraction's — see
+// NewSessionExtractionFactory):
+//   - session_extraction: TrafficMetricMiddleware reads the session from the
+//     request context (middleware/trafficmetric.go), which
+//     SessionExtractionMiddleware puts there.
+//   - ja4_fingerprint: TrafficMetricMiddleware calls session.NewTrafficMetric,
+//     which calls session.NewClientInfo, which reads the JA4H fingerprint
+//     header (session/clientinfo.go) that JA4Middleware/OptimizedJA4Middleware
+//     set. This is declared explicitly, even though building a chain with
+//     session_extraction already transitively guarantees ja4_fingerprint ran
+//     first (session_extraction itself declares that dependency, if only to
+//     preserve the original chain's ordering) — spelling it out here means
+//     traffic_metrics's real requirement doesn't silently break if
+//     session_extraction's dependency list is ever "cleaned up" by someone
+//     who (reasonably) can't find a direct read to justify it.
 func NewTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *TrafficMetricsFactory {
 	return &TrafficMetricsFactory{
 		ConcreteFactory: ConcreteFactory{
 			name:         config.MiddlewareNameTrafficMetrics,
 			description:  "Records per-request traffic metrics (status, size, duration, user)",
-			dependencies: []string{config.MiddlewareNameSessionExtraction},
+			dependencies: []string{config.MiddlewareNameSessionExtraction, config.MiddlewareNameJA4Fingerprint},
 		},
 		trafficMetricRepo: trafficMetricRepo,
 	}

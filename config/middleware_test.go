@@ -65,6 +65,22 @@ func TestLoadConfig_NoMiddlewareSection(t *testing.T) {
 	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Middleware.Global, "no middleware: section should leave Global empty")
+	assert.Nil(t, cfg.Middleware.Global, "an absent middleware: section must leave Global nil, not an empty slice — "+
+		"middleware.ResolveGlobalChainSpecs distinguishes the two to let a config explicitly declare zero global middleware")
+}
+
+// TestLoadConfig_ExplicitEmptyMiddlewareGlobalIsNotNil guards the nil-vs-empty
+// distinction ResolveGlobalChainSpecs relies on: `middleware: {global: []}`
+// must NOT unmarshal the same way as an absent middleware: section (nil),
+// otherwise a config author has no way to explicitly disable every global
+// middleware without deleting the section entirely — it would silently fall
+// back to the legacy management.analytics/logging/rateLimiter flags instead.
+func TestLoadConfig_ExplicitEmptyMiddlewareGlobalIsNotNil(t *testing.T) {
+	path := writeTestConfig(t, "middleware:\n  global: []\n")
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.Middleware.Global, "an explicit empty global: [] must unmarshal to a non-nil empty slice")
+	assert.Empty(t, cfg.Middleware.Global)
 }
 
 func TestLoadConfig_MiddlewareSectionParsed(t *testing.T) {

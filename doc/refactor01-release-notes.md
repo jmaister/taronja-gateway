@@ -18,9 +18,10 @@ global middleware (`rate_limiter`, `ja4_fingerprint`, `session_extraction`,
 (`middleware/factory.go`) registered into a `MiddlewareRegistryV2`
 (`middleware/registry_v2.go`), which builds the chain from an ordered,
 inspectable list of specs and validates declared dependencies between them at
-build time — e.g. `session_extraction` (which needs a JA4 fingerprint
-already on the request) now fails fast at startup if `ja4_fingerprint` isn't
-also enabled, instead of silently running without it.
+build time — e.g. `traffic_metrics` (which reads the JA4 fingerprint header
+via `session.NewClientInfo` to enrich the metrics it records) now fails fast
+at startup if `ja4_fingerprint` isn't also enabled, instead of silently
+recording metrics without it.
 
 **An optional declarative `middleware:` config section.** Alongside the
 existing `management.analytics` / `management.logging` /

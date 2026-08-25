@@ -51,6 +51,27 @@ func TestResolveGlobalChainSpecs_EmptyByDefault(t *testing.T) {
 	}
 }
 
+// TestResolveGlobalChainSpecs_ExplicitEmptyListMeansZeroMiddleware guards
+// against a bug where an explicit `middleware.global: []` (a non-nil, empty
+// slice — as YAML unmarshals it, see config.TestLoadConfig_ExplicitEmptyMiddlewareGlobalIsNotNil)
+// was indistinguishable from no middleware: section at all (nil), and so
+// silently fell back to the legacy management.analytics/logging/rateLimiter
+// flags instead of honoring "explicitly zero global middleware".
+func TestResolveGlobalChainSpecs_ExplicitEmptyListMeansZeroMiddleware(t *testing.T) {
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.Analytics = true // legacy flag would normally add 3 specs
+	gatewayConfig.Management.Logging = true   // and this one more
+	gatewayConfig.Middleware.Global = []config.MiddlewareEntryConfig{}
+
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(specs) != 0 {
+		t.Fatalf("expected an explicit empty middleware.global list to mean zero middleware (ignoring legacy flags), got %+v", specs)
+	}
+}
+
 // --- ResolveGlobalChainSpecs: explicit `middleware:` section (Phase 2) ---
 
 func TestResolveGlobalChainSpecs_ExplicitSectionOverridesLegacyFlags(t *testing.T) {
@@ -140,6 +161,31 @@ func TestResolveGlobalChainSpecs_UnknownNameFromRawConfigErrors(t *testing.T) {
 	_, err := ResolveGlobalChainSpecs(gatewayConfig)
 	if err == nil {
 		t.Fatal("expected an error for an unknown middleware name")
+	}
+}
+
+// TestTrafficMetricsFactory_DependsDirectlyOnJA4Fingerprint locks in a
+// correction found during review: TrafficMetricMiddleware calls
+// session.NewTrafficMetric -> session.NewClientInfo, which reads the JA4H
+// fingerprint header directly (session/clientinfo.go) — a real, verified
+// dependency on ja4_fingerprint, not just a transitive one inherited through
+// session_extraction's (unverified, ordering-only) dependency on it. Without
+// this declared directly, removing session_extraction's dependency on
+// ja4_fingerprint in a future cleanup (it doesn't actually read the
+// fingerprint itself) would silently let traffic_metrics run before its own
+// real requirement is met.
+func TestTrafficMetricsFactory_DependsDirectlyOnJA4Fingerprint(t *testing.T) {
+	f := NewTrafficMetricsFactory(nil)
+	deps := f.GetDependencies()
+
+	foundJA4 := false
+	for _, d := range deps {
+		if d == config.MiddlewareNameJA4Fingerprint {
+			foundJA4 = true
+		}
+	}
+	if !foundJA4 {
+		t.Fatalf("expected traffic_metrics to directly declare a dependency on ja4_fingerprint, got %v", deps)
 	}
 }
 

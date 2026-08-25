@@ -57,10 +57,16 @@ type MiddlewareFactory interface {
   already be earlier in the same chain. Returning `nil`/`[]string{}` means no
   ordering requirement. `MiddlewareRegistryV2.BuildChain` (and
   `ValidateSpecs`) reject a chain where a dependency isn't satisfied by an
-  earlier spec — e.g. the gateway's own `session_extraction` depends on
-  `ja4_fingerprint`, so building a chain with `session_extraction` but not
-  `ja4_fingerprint` fails fast with a clear error instead of the middleware
-  silently missing data it expected to already be on the request.
+  earlier spec — e.g. the gateway's own `traffic_metrics` depends on
+  `ja4_fingerprint` (it reads the JA4H header via `session.NewClientInfo` to
+  enrich the metrics it records), so building a chain with `traffic_metrics`
+  but not `ja4_fingerprint` fails fast with a clear error instead of silently
+  recording metrics with that data missing. Only declare a dependency for a
+  verified read like this one — not just to preserve an existing chain's
+  ordering when you can't point to what actually consumes the earlier
+  middleware's output; if you're not sure, say so in a comment the way
+  `NewSessionExtractionFactory` does for its own (ordering-only, not a
+  verified read) dependency on `ja4_fingerprint`.
 - **`GetDefaultConfig()`** returns the zero-value/default config for this
   middleware. `BuildChain` calls this when a `MiddlewareSpec` has a `nil`
   `Config`, so `Create` always receives a usable value.

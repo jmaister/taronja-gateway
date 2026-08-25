@@ -111,8 +111,13 @@ func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *emb
 func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, *middleware.RateLimiter, *middleware.MiddlewareRegistryV2, error) {
 	mux := http.NewServeMux()
 
-	// instantiate rate limiter once and keep reference
-	rl := middleware.NewRateLimiter(config.Management.RateLimiter)
+	// Instantiate the rate limiter once and keep a reference. Built from the
+	// *effective* config — a per-entry `middleware.global` rate_limiter
+	// override if the config declares one, otherwise management.rateLimiter —
+	// not management.rateLimiter directly: RateLimiterFactory always reuses
+	// this shared instance's Handler once it exists (see factory.go), so
+	// building it from the wrong config would silently ignore an override.
+	rl := middleware.NewRateLimiter(middleware.EffectiveRateLimiterConfig(config))
 
 	// Build the global middleware chain via the factory/registry system (see
 	// doc/refactor01.md Phases 1-3). The registry is built separately from

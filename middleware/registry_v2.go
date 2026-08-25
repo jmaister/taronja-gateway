@@ -63,7 +63,15 @@ func (r *MiddlewareRegistryV2) RegisterFactory(factory MiddlewareFactory) error 
 //
 // Returns an error if a spec names an unregistered middleware or if a
 // dependency is not satisfied by an earlier spec.
+//
+// Calling BuildChain again on the same registry (e.g. after a config reload)
+// discards the built/metrics state of any previous call first, so GetStatus
+// and GetMetrics/GetAllMetrics always reflect only the most recently built
+// chain rather than accumulating "active" middleware across calls.
 func (r *MiddlewareRegistryV2) BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) {
+	r.built = make(map[string]bool)
+	r.metrics = make(map[string]*middlewareMetricsCounter)
+
 	chain := NewChainBuilder()
 	built := make(map[string]bool)
 
@@ -195,20 +203,65 @@ func ValidateGlobalChainSpecs(specs []MiddlewareSpec) error {
 // ResolveGlobalChainSpecs translates gateway configuration into an ordered
 // list of MiddlewareSpec describing the global chain.
 //
-// If gatewayConfig.Middleware.Global is non-empty (an explicit `middleware:`
-// section is present in the config file), it is used directly: each entry
-// becomes a spec, in the order listed, skipping entries with Enabled=false.
-// This is the Phase 2 declarative path (see doc/refactor01.md).
+// If gatewayConfig.Middleware.Global is non-nil (a `middleware:` section with
+// a `global:` key is present in the config file, even if listed as an empty
+// array to explicitly mean "no global middleware at all"), it is used
+// directly: each entry becomes a spec, in the order listed, skipping entries
+// with Enabled=false. This is the Phase 2 declarative path (see
+// doc/refactor01.md). Note this checks for nil, not length: config.LoadConfig
+// (via YAML) and a literal Go struct both leave Global nil when no section is
+// present, but `global: []` unmarshals to a non-nil empty slice — that
+// distinction is what lets a config explicitly disable every global
+// middleware, rather than an empty list being indistinguishable from an
+// absent section and silently falling back to the legacy flags below.
 //
-// Otherwise, the legacy management.analytics / management.logging /
-// management.rateLimiter flags are translated into the equivalent specs —
-// identical to Phase 1 / the original hardcoded BuildGlobalChain — so
-// existing config files keep working unchanged.
+// Otherwise (Global is nil), the legacy management.analytics /
+// management.logging / management.rateLimiter flags are translated into the
+// equivalent specs — identical to Phase 1 / the original hardcoded
+// BuildGlobalChain — so existing config files keep working unchanged.
 func ResolveGlobalChainSpecs(gatewayConfig *config.GatewayConfig) ([]MiddlewareSpec, error) {
-	if len(gatewayConfig.Middleware.Global) > 0 {
+	if gatewayConfig.Middleware.Global != nil {
 		return specsFromMiddlewareSection(gatewayConfig)
 	}
 	return legacySpecsFromConfig(gatewayConfig), nil
+}
+
+// EffectiveRateLimiterConfig returns the config.RateLimiterConfig that
+// resolving the global chain (ResolveGlobalChainSpecs) would actually use to
+// build the rate_limiter middleware: a per-entry override from an explicit
+// `middleware.global` rate_limiter entry if one is present, otherwise
+// management.rateLimiter (which is also what an explicit entry with no
+// override falls back to, and what's used when there's no explicit
+// `middleware:` section at all).
+//
+// This exists because the gateway constructs its shared *RateLimiter
+// instance (see gateway.go's createHTTPServer) before the registry is built,
+// so it can't just rely on RateLimiterFactory.Create's cfg argument — that
+// instance is reused directly by RateLimiterFactory whenever one is supplied
+// (see factory.go), so whatever config *it* was built with is what actually
+// takes effect, regardless of any per-entry override in the spec. Callers
+// that construct the shared instance need to resolve the effective config
+// with this function first, rather than reading gatewayConfig.Management.RateLimiter
+// directly, or a per-entry override would be silently ignored.
+//
+// If gatewayConfig.Middleware.Global is invalid (e.g. an unknown middleware
+// name), this returns gatewayConfig.Management.RateLimiter rather than an
+// error; the real error will surface when BuildGlobalChainFromConfigV2 is
+// called against the same config.
+func EffectiveRateLimiterConfig(gatewayConfig *config.GatewayConfig) config.RateLimiterConfig {
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		return gatewayConfig.Management.RateLimiter
+	}
+	for _, spec := range specs {
+		if spec.Name != config.MiddlewareNameRateLimiter {
+			continue
+		}
+		if cfg, ok := spec.Config.(config.RateLimiterConfig); ok {
+			return cfg
+		}
+	}
+	return gatewayConfig.Management.RateLimiter
 }
 
 // specsFromMiddlewareSection builds specs from an explicit

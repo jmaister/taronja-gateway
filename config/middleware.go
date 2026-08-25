@@ -56,11 +56,17 @@ func (e MiddlewareEntryConfig) IsEnabled() bool {
 }
 
 // MiddlewareSection declares the global middleware chain explicitly, in
-// execution order. When Global is empty (the common case for existing
-// config files), the gateway falls back to the legacy
-// management.analytics / management.logging / management.rateLimiter flags —
-// see middleware.ResolveGlobalChainSpecs. Once a `middleware:` section is
-// present, it takes over entirely; the legacy flags are ignored.
+// execution order. When Global is nil — i.e. there's no `middleware:`
+// section at all, the common case for existing config files — the gateway
+// falls back to the legacy management.analytics / management.logging /
+// management.rateLimiter flags. See middleware.ResolveGlobalChainSpecs.
+//
+// Once a `middleware:` section with a `global:` key is present, it takes
+// over entirely and the legacy flags are ignored — including when it's
+// explicitly listed empty (`global: []`), which means "no global middleware
+// at all" rather than falling back. This relies on Global being nil (unset)
+// vs. a non-nil empty slice (explicitly `[]`), a distinction YAML
+// unmarshaling already preserves correctly (verified in middleware_test.go).
 type MiddlewareSection struct {
 	Global []MiddlewareEntryConfig `yaml:"global,omitempty"`
 }

@@ -143,6 +143,45 @@ func TestRegistryReportsStatus(t *testing.T) {
 	}
 }
 
+// TestRegistryStatusReflectsOnlyMostRecentBuild guards against a bug where
+// r.built/r.metrics accumulated across multiple BuildChain calls on the same
+// registry instead of being reset, so a middleware dropped from a later
+// build kept reporting "active" from an earlier one — contradicting
+// GetStatus's documented "included in the most recent BuildChain call"
+// contract.
+func TestRegistryStatusReflectsOnlyMostRecentBuild(t *testing.T) {
+	registry := NewMiddlewareRegistryV2()
+	registry.RegisterFactory(NewRateLimiterFactory(nil))
+	registry.RegisterFactory(NewLoggingFactory())
+
+	if _, err := registry.BuildChain([]MiddlewareSpec{
+		{Name: "rate_limiter", Config: config.RateLimiterConfig{RequestsPerMinute: 10}},
+		{Name: "logging"},
+	}); err != nil {
+		t.Fatalf("first BuildChain failed: %v", err)
+	}
+
+	// Rebuild without rate_limiter (e.g. a config reload that dropped it).
+	if _, err := registry.BuildChain([]MiddlewareSpec{{Name: "logging"}}); err != nil {
+		t.Fatalf("second BuildChain failed: %v", err)
+	}
+
+	status := registry.GetStatus()
+	rl := status["rate_limiter"]
+	if rl.Enabled || rl.Status != "available" {
+		t.Fatalf("Expected rate_limiter to report available/disabled after being dropped from the most recent build, got %+v", rl)
+	}
+	logging := status["logging"]
+	if !logging.Enabled || logging.Status != "active" {
+		t.Fatalf("Expected logging to remain active, got %+v", logging)
+	}
+
+	// Metrics for the dropped middleware should also not still be reported.
+	if _, ok := registry.GetAllMetrics()["rate_limiter"]; ok {
+		t.Fatal("Expected rate_limiter metrics to be cleared after being dropped from the most recent build")
+	}
+}
+
 func TestBuildGlobalChainFromConfigV2MatchesConfig(t *testing.T) {
 	registry := NewMiddlewareRegistryV2()
 	registry.RegisterFactory(NewRateLimiterFactory(nil))
