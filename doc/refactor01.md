@@ -1,6 +1,6 @@
 # Refactoring 01: Middleware Architecture - Declarative & Pluggable Design
 
-**Status**: Planning  
+**Status**: Complete — all 4 phases implemented (see per-phase status below and [`doc/refactor01-release-notes.md`](./refactor01-release-notes.md) for a summary)
 **Priority**: Medium  
 **Effort**: 4 weeks (phased)  
 **Owner**: TBD  
@@ -298,21 +298,21 @@ GET /management/metrics/middleware/ja4_fingerprint
 
 ---
 
-### Phase 4: Documentation & Tooling (Week 4)
+### Phase 4: Documentation & Tooling (Week 4) ✅ DONE
 **Goal**: Make it easy for developers to add custom middleware
 
 **Tasks**:
-- [ ] Create middleware development guide (`doc/middleware_development.md`)
-- [ ] Create middleware plugin template
-- [ ] Create CLI tool for middleware introspection
-- [ ] Update CLAUDE.md with new patterns
-- [ ] Update repository README with architecture overview
-- [ ] Create release notes
+- [x] Create middleware development guide (`doc/middleware_development.md`)
+- [x] Create middleware plugin template — this codebase has no dynamic-loading Go `plugin` mechanism (middleware is always compiled in and registered via `RegisterFactory`), so "plugin template" means a real, compiling, tested example of that registration pattern rather than a `.so`: [`examples/middleware-plugin/`](../examples/middleware-plugin/) (an `X-Request-Id` tracing middleware, `request_id`)
+- [x] Create CLI tool for middleware introspection (`tg middleware list --config <path>`, in `main.go`)
+- [x] Update CLAUDE.md with new patterns — CLAUDE.md is intentionally a one-line pointer to `AGENTS.md` (per this repo's convention, established before this refactor); all patterns are documented there instead, kept current every phase
+- [x] Update repository README with architecture overview (`README.md`: new "Middleware Architecture" section + `middleware:` config subsection + `tg middleware list` in Commands)
+- [x] Create release notes (`doc/refactor01-release-notes.md` — GoReleaser generates its own changelog from commit messages at actual release time; this is a human-readable summary of the whole refactor for a PR description or manual release notes)
 
 **Success Criteria**:
 - ✅ New developers can add custom middleware
 - ✅ Clear documentation of patterns
-- ✅ Example of 3rd-party middleware
+- ✅ Example of 3rd-party middleware — compiled and tested, not just prose: `go test ./examples/middleware-plugin/...`
 
 **Estimated Effort**: 1-2 days
 
@@ -907,8 +907,17 @@ A: MiddlewareRegistryV2_test.go has comprehensive tests. Can also build test cha
 
 ## Next Steps
 
-1. **Review this document** - Ensure approach is acceptable
-2. **Discuss with team** - Get feedback on design choices
-3. **Start Phase 1 implementation** - If approved
-4. **Weekly check-ins** - Monitor progress, adapt as needed
+All four planned phases are implemented (see the per-phase sections above).
+Possible future work, not currently planned or scheduled:
+
+1. **Per-middleware YAML config beyond `rate_limiter`** — e.g. the `logging:`
+   level/format/includeBody options sketched in Improvement 4 above, once
+   `LoggingMiddleware` itself actually supports them.
+2. **A middleware status/metrics page in the admin dashboard** — the API
+   (`GET <prefix>/api/middleware`, `GET <prefix>/api/middleware/{name}/metrics`)
+   exists; no webapp UI consumes it yet (Phase 3 marked this "if applicable").
+3. **A real dependency graph structure** (`middleware/dependency_graph.go`,
+   Improvement 3) if dependencies ever become more complex than the simple
+   "all direct deps satisfied by an earlier spec" check `MiddlewareRegistryV2`
+   does today.
 

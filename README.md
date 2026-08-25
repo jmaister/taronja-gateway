@@ -14,6 +14,7 @@ It serves as an entry point for your API server and your frontend application, h
 - [Installation](#installation)
 - [Commands](#commands)
 - [Configuration](#configuration)
+- [Middleware Architecture](#middleware-architecture)
 - [Building and Releasing](#building-and-releasing)
 - [Authentication on the APIs](#authentication-on-the-apis)
 - [Getting the Current User from the Frontend](#getting-the-current-user-from-the-frontend)
@@ -92,6 +93,12 @@ The Taronja Gateway CLI provides the following commands:
     ```bash
     ./tg version
     ```
+
+*   **List the global middleware chain for a config file:**
+    ```bash
+    ./tg middleware list --config ./sample/config.yaml
+    ```
+    Prints every global middleware's status, dependencies, and (where implemented) health for the given config — without starting the server. See [Middleware Architecture](#middleware-architecture).
 
 # Configuration
 
@@ -177,6 +184,33 @@ Controls the management dashboard and gateway features.
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
+
+### Middleware (optional, advanced)
+
+By default, the global middleware chain (rate limiting, JA4 fingerprinting,
+session extraction, traffic metrics, request logging) is controlled by the
+`logging` / `analytics` / `rateLimiter` flags above. For explicit control over
+which middleware runs and in what order, add a `middleware:` section — when
+present it fully replaces those flags:
+
+```yaml
+middleware:
+  global:
+    - name: rate_limiter
+      rateLimiter:
+        requestsPerMinute: 1000
+        maxErrors: 10
+        blockMinutes: 5
+    - name: ja4_fingerprint
+    - name: session_extraction
+    - name: traffic_metrics
+    - name: logging
+      enabled: false   # listed but disabled
+```
+
+See [Middleware Architecture](#middleware-architecture) below for how to
+inspect this at runtime, and `doc/middleware_development.md` for adding your
+own middleware.
 
 ### Routes
 
@@ -361,6 +395,31 @@ export GOOGLE_CLIENT_SECRET="your-client-secret"
 ## Example Configuration
 
 See the complete example configuration in `sample/config.yaml`.
+
+# Middleware Architecture
+
+The gateway's global middleware chain (rate limiting, JA4 fingerprinting,
+session extraction, traffic metrics, request logging) is built from a small
+Factory + Registry system rather than hardcoded conditionals, so it can be
+inspected, configured declaratively, monitored, and extended:
+
+- **Inspect** what's active for a config file without starting the server:
+  ```bash
+  ./tg middleware list --config ./sample/config.yaml
+  ```
+- **Configure declaratively** with an optional `middleware:` YAML section —
+  see [Middleware (optional, advanced)](#middleware-optional-advanced) above.
+- **Monitor** a running gateway (admin session required):
+  - `GET <prefix>/api/middleware` — status, dependencies, and health of every
+    global middleware
+  - `GET <prefix>/api/middleware/{name}/metrics` — request count, error
+    count, and average duration for one middleware
+- **Extend** by adding your own middleware — see
+  [`doc/middleware_development.md`](doc/middleware_development.md) for the
+  guide and [`examples/middleware-plugin/`](examples/middleware-plugin/) for
+  a complete, tested, third-party-style example.
+
+Full design rationale and phase-by-phase history: [`doc/refactor01.md`](doc/refactor01.md).
 
 # Building and Releasing
 

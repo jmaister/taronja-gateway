@@ -33,7 +33,7 @@ taronja-gateway/
 │
 ├── sdk/                        # Published npm package: taronja-gateway-react-sdk
 ├── webapp/                     # React/Vite/TS admin dashboard (built into binary)
-├── examples/                   # Example client apps (astro-hockey, react-newspaper)
+├── examples/                   # Example client apps (astro-hockey, react-newspaper) + middleware-plugin (Go)
 ├── sample/                     # Sample config.yaml, example configs
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
@@ -49,10 +49,11 @@ taronja-gateway/
 
 ### `main.go` — CLI Entry Point
 
-- **Cobra CLI** with three subcommands:
+- **Cobra CLI** with four subcommands:
   - `run --config <path>` — starts the gateway server (config file path required)
   - `adduser <username> <email> <password>` — direct CLI user creation
   - `version` — displays version/commit/build date (injected by GoReleaser)
+  - `middleware list --config <path>` — prints the resolved global middleware chain and status for a config file, without starting the server (see Phase 4 notes in the `middleware/` section below)
 - Embeds the built React dashboard (`webapp/dist`) into the binary using `//go:embed`
 - Loads environment variables from `.env` via `godotenv`
 
@@ -158,6 +159,13 @@ taronja-gateway/
 - `metrics.go` wraps every middleware `BuildChain` creates with `instrumentMiddleware`, which records request count, error count (status ≥ 500), and elapsed wall-clock time per middleware name (in-memory only, reset on restart). Because middlewares nest, a given middleware's `averageDurationMs` includes everything downstream of it too — it isn't an isolated cost. `GetMetrics(name)`/`GetAllMetrics()` read the counters back as a `MiddlewareMetricsSnapshot`.
 - `GET <prefix>/api/middleware` (`handlers/api_middleware.go`, admin-only, same pattern as the rate-limiter stats/config endpoints) returns `GetStatus()` as a list. `GET <prefix>/api/middleware/{name}/metrics` returns one middleware's `MiddlewareMetricsSnapshot`, 404 for an unknown name. Both are defined in `api/taronja-gateway-api.yaml` and generated via `make generate` (`oapi-codegen`) into `api/api.gen.go`.
 - No dashboard UI was added for these endpoints (Phase 3's "if applicable" dashboard task was left for whenever the webapp actually needs it) — they're consumable today via the API directly.
+
+**Documentation and tooling (Phase 4):**
+- [`doc/middleware_development.md`](../doc/middleware_development.md) is the guide for implementing a new `MiddlewareFactory` (and optionally `HealthChecker`), registering it, and wiring it into a gateway instance either as a built-in (`middleware/factory.go` + `NewGlobalMiddlewareRegistry`) or as a separate module.
+- [`examples/middleware-plugin/`](../examples/middleware-plugin/) is a complete, compiled, tested third-party-style example (`request_id`, an `X-Request-Id` tracing middleware) that only imports `middleware`'s public API — proof the extension path in the guide actually works, not just prose. Run with `go test ./examples/middleware-plugin/...`.
+- `tg middleware list --config <path>` (new Cobra command in `main.go`, implemented by `listMiddleware`) prints the resolved chain and `GetStatus()` for a config file. It builds a `MiddlewareRegistryV2` with every dependency `nil` (session store, repos, rate limiter) since introspection never calls into them — safe against a real config file, opens no DB connection, starts no server.
+- [`doc/refactor01-release-notes.md`](../doc/refactor01-release-notes.md) is a human-readable summary of the whole refactor (all 4 phases) suitable for a PR description or release notes — GoReleaser generates its own changelog from commit messages at release time (see `.goreleaser.yml`), so this file exists for the case that needs more than a commit list.
+- `CLAUDE.md` intentionally stays a one-line pointer to this file rather than duplicating any of the above.
 
 **Declarative `middleware:` config example** (opt-in; omit this section entirely to keep using `management.analytics`/`logging`/`rateLimiter`):
 ```yaml
