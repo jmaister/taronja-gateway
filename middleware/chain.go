@@ -117,3 +117,41 @@ func Chain(handler http.Handler, middlewares ...Middleware) http.Handler {
 	}
 	return handler
 }
+
+// BuildGlobalChainV2 builds the global middleware chain using the factory +
+// registry system (MiddlewareRegistryV2) instead of the hardcoded conditionals
+// in BuildGlobalChain. It registers a factory for every middleware currently
+// wired into BuildGlobalChain and builds the chain from gatewayConfig via
+// BuildGlobalChainFromConfigV2, so the resulting chain is behaviorally
+// identical to BuildGlobalChain.
+//
+// This is an additive, backward-compatible entry point (see doc/refactor01.md
+// Phase 1): BuildGlobalChain keeps working unchanged, and callers can opt into
+// the registry-based path by calling this function instead.
+func BuildGlobalChainV2(
+	gatewayConfig *config.GatewayConfig,
+	sessionStore session.SessionStore,
+	tokenService *auth.TokenService,
+	trafficMetricRepo db.TrafficMetricRepository,
+	rateLimiter *RateLimiter,
+) (*ChainBuilder, error) {
+	registry := NewMiddlewareRegistryV2()
+
+	if err := registry.RegisterFactory(NewRateLimiterFactory(rateLimiter)); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewJA4Factory()); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewSessionExtractionFactory(sessionStore, tokenService)); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewTrafficMetricsFactory(trafficMetricRepo)); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+		return nil, err
+	}
+
+	return BuildGlobalChainFromConfigV2(registry, gatewayConfig)
+}

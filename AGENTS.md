@@ -144,6 +144,13 @@ taronja-gateway/
 - **Traffic metrics** (`trafficmetric.go`) — records each request as a `TrafficMetric` row for analytics
 - **Auth** (`auth.go`) — enforces route-level auth (redirects to login for static/SPA, 401 for API)
 
+**Factory + Registry pattern (Phase 1 of `doc/refactor01.md`):** `BuildGlobalChain()` in `chain.go` remains the hardcoded, conditional way to build the global chain. Alongside it, `BuildGlobalChainV2()` builds the same chain declaratively via `MiddlewareRegistryV2` (`registry_v2.go`):
+- Each existing global middleware (`rate_limiter`, `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`) has a `MiddlewareFactory` implementation in `factory.go`, exposing `Create()`, `GetName()`, `GetDescription()`, `GetDependencies()`, `GetDefaultConfig()`.
+- `MiddlewareRegistryV2.BuildChain([]MiddlewareSpec)` looks up each spec's factory, verifies its declared `GetDependencies()` were already built earlier in the same call (e.g. `session_extraction` depends on `ja4_fingerprint`), and appends the created middleware to a `ChainBuilder`.
+- `MiddlewareRegistryV2.GetStatus()` reports each registered factory as `"active"` (included in the last `BuildChain` call) or `"available"` (registered but not built), for future runtime introspection.
+- `gateway.go`'s `createHTTPServer()` calls `BuildGlobalChainV2()`, not `BuildGlobalChain()`; the two are behaviorally identical today (`BuildGlobalChainFromConfigV2` mirrors the same `config.Management.*` conditionals). `RateLimiterFactory` reuses the gateway's existing `*RateLimiter` instance (via its `Handler` method) when one is supplied, rather than constructing a new stateless middleware, so request stats stay consistent with what the management API reports.
+- New middleware should get a factory + registration in `BuildGlobalChainV2` rather than another `if` branch in `BuildGlobalChain`. Config-driven YAML declaration (`middleware:` section) and health/metrics endpoints are future phases, not yet implemented.
+
 ### `providers/` — Authentication Providers
 
 **`providers.go`:**

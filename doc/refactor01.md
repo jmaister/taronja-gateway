@@ -213,31 +213,30 @@ GET /management/metrics/middleware/ja4_fingerprint
 
 ## Implementation Roadmap
 
-### Phase 1: Foundation (Week 1) ✍️ CURRENT FOCUS
+### Phase 1: Foundation (Week 1) ✅ DONE
 **Goal**: Create factory and registry system, fully backward compatible
 
 **Tasks**:
-- [ ] Create `middleware/factory.go` with MiddlewareFactory interface
-- [ ] Implement factories for all existing middleware:
-  - [ ] RateLimiterFactory
-  - [ ] JA4Factory
-  - [ ] SessionExtractionFactory
-  - [ ] TrafficMetricsFactory
-  - [ ] LoggingFactory
-- [ ] Create `middleware/registry_v2.go` with MiddlewareRegistryV2
-  - [ ] RegisterFactory(factory MiddlewareFactory) error
-  - [ ] BuildFromSpec(spec MiddlewareSpec) (Middleware, error)
-  - [ ] BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error)
-  - [ ] GetStatus() map[string]MiddlewareStatus
-- [ ] Add BuildGlobalChainV2() to `middleware/chain.go`
-- [ ] Create `middleware/registry_v2_test.go` with comprehensive tests
-  - [ ] Test factory creation
-  - [ ] Test dependency validation
-  - [ ] Test chain building
-  - [ ] Test status reporting
-- [ ] Update `gateway/gateway.go` createHTTPServer() to call BuildGlobalChainV2()
-- [ ] Verify all existing tests still pass
-- [ ] Document new patterns in CLAUDE.md
+- [x] Create `middleware/factory.go` with MiddlewareFactory interface
+- [x] Implement factories for all existing middleware:
+  - [x] RateLimiterFactory (reuses the gateway's existing `*RateLimiter` instance when supplied, so stats/config stay consistent with the management API)
+  - [x] JA4Factory
+  - [x] SessionExtractionFactory
+  - [x] TrafficMetricsFactory
+  - [x] LoggingFactory
+- [x] Create `middleware/registry_v2.go` with MiddlewareRegistryV2
+  - [x] RegisterFactory(factory MiddlewareFactory) error
+  - [x] BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) (also creates middleware from specs internally, so a separate BuildFromSpec wasn't needed)
+  - [x] GetStatus() map[string]MiddlewareStatus
+- [x] Add BuildGlobalChainV2() to `middleware/chain.go`
+- [x] Create `middleware/registry_v2_test.go` with comprehensive tests
+  - [x] Test factory creation
+  - [x] Test dependency validation
+  - [x] Test chain building
+  - [x] Test status reporting
+- [x] Update `gateway/gateway.go` createHTTPServer() to call BuildGlobalChainV2()
+- [x] Verify all existing tests still pass
+- [x] Document new patterns in AGENTS.md (CLAUDE.md just points to AGENTS.md for project context)
 
 **Success Criteria**:
 - ✅ All existing middleware work via factories
@@ -716,50 +715,50 @@ func TestRegistryReportsStatus(t *testing.T) {
 ## Implementation Checklist
 
 ### Phase 1 Tasks
-- [ ] Create `middleware/factory.go`
-  - [ ] MiddlewareFactory interface
-  - [ ] RateLimiterFactory
-  - [ ] JA4Factory
-  - [ ] SessionExtractionFactory
-  - [ ] TrafficMetricsFactory
-  - [ ] LoggingFactory
-  - [ ] Registry functions (RegisterFactory, GetFactory, ListFactories)
+- [x] Create `middleware/factory.go`
+  - [x] MiddlewareFactory interface
+  - [x] RateLimiterFactory
+  - [x] JA4Factory
+  - [x] SessionExtractionFactory
+  - [x] TrafficMetricsFactory
+  - [x] LoggingFactory
+  - [x] Registry functions (RegisterFactory, GetFactory, ListFactories)
 
-- [ ] Create `middleware/registry_v2.go`
-  - [ ] MiddlewareRegistryV2 struct and methods
-  - [ ] MiddlewareSpec struct
-  - [ ] BuildChain() with dependency validation
-  - [ ] GetStatus() for introspection
-  - [ ] BuildGlobalChainFromConfigV2() helper
+- [x] Create `middleware/registry_v2.go`
+  - [x] MiddlewareRegistryV2 struct and methods
+  - [x] MiddlewareSpec struct
+  - [x] BuildChain() with dependency validation
+  - [x] GetStatus() for introspection
+  - [x] BuildGlobalChainFromConfigV2() helper
 
-- [ ] Update `middleware/chain.go`
-  - [ ] Add BuildGlobalChainV2() function
+- [x] Update `middleware/chain.go`
+  - [x] Add BuildGlobalChainV2() function
 
-- [ ] Update `gateway/gateway.go`
-  - [ ] Change createHTTPServer() to call BuildGlobalChainV2()
-  - [ ] Add error handling for chain building
+- [x] Update `gateway/gateway.go`
+  - [x] Change createHTTPServer() to call BuildGlobalChainV2()
+  - [x] Add error handling for chain building
 
-- [ ] Create `middleware/registry_v2_test.go`
-  - [ ] Unit tests for all scenarios
-  - [ ] Tests for error conditions
-  - [ ] Tests for dependency validation
+- [x] Create `middleware/registry_v2_test.go`
+  - [x] Unit tests for all scenarios
+  - [x] Tests for error conditions
+  - [x] Tests for dependency validation
 
-- [ ] Verify all existing tests pass
-  - [ ] Run full test suite
-  - [ ] Check for any regressions
+- [x] Verify all existing tests pass
+  - [x] Run full test suite
+  - [x] Check for any regressions
 
-- [ ] Update `CLAUDE.md`
-  - [ ] Document new factory pattern
-  - [ ] Document registry usage
-  - [ ] Update architecture section
+- [x] Update `AGENTS.md` (CLAUDE.md defers to it for project context)
+  - [x] Document new factory pattern
+  - [x] Document registry usage
+  - [x] Update architecture section
 
 ### Acceptance Criteria
-- [ ] All unit tests passing
-- [ ] All integration tests passing
-- [ ] All existing tests still passing
-- [ ] Zero behavior change from before
+- [x] All unit tests passing
+- [x] All integration tests passing (existing gateway/middleware suites)
+- [x] All existing tests still passing
+- [x] Zero behavior change from before
 - [ ] Code review approved
-- [ ] Documentation updated
+- [x] Documentation updated
 
 ---
 

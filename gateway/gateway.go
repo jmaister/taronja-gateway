@@ -108,8 +108,13 @@ func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*h
 	// instantiate rate limiter once and keep reference
 	rl := middleware.NewRateLimiter(config.Management.RateLimiter)
 
-	// Build the global middleware chain with the limiter
-	globalChain := middleware.BuildGlobalChain(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
+	// Build the global middleware chain with the limiter, via the factory/registry
+	// system (see doc/refactor01.md Phase 1). Behaviorally identical to the
+	// hardcoded middleware.BuildGlobalChain.
+	globalChain, err := middleware.BuildGlobalChainV2(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to build middleware chain: %w", err)
+	}
 	handler := globalChain.Build(mux)
 
 	// attach limiter to gateway via returned value later
