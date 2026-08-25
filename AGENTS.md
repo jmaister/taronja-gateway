@@ -1,0 +1,392 @@
+# Taronja Gateway — Project Context for AI Agents
+
+## Project Overview
+
+**Taronja Gateway** (`github.com/jmaister/taronja-gateway`) is a Go application and API reverse-proxy gateway that centralizes authentication, session management, request routing, static/SPA file serving, and traffic analytics in front of one or more backend services. It includes a bundled React admin dashboard for user management, API token issuance, and statistics. The gateway sits between client applications and backend services, injecting identity headers (`X-User-Id`, `X-User-Data`) so backends can trust the gateway instead of reimplementing auth.
+
+**Key references:** [`doc/adr/0001-purpose.md`](./doc/adr/0001-purpose.md) (architecture decision), [`README.md`](./README.md) (user-facing feature list and configuration reference).
+
+---
+
+## Repository Layout at a Glance
+
+```
+taronja-gateway/
+├── main.go                     # CLI entry point (Cobra: run, adduser, version commands)
+├── Makefile                    # Build/dev/test automation
+├── go.mod, go.sum              # Go module def (1.26)
+├── .env, .env.sample           # Environment (OAuth secrets, SMTP config)
+├── modd.conf                   # Dev file-watch config
+├── .goreleaser.yml             # Release build (cross-platform binaries)
+│
+├── gateway/                    # HTTP server assembly, routing, reverse proxy
+├── handlers/                   # OpenAPI handler implementations (one per resource)
+├── middleware/                 # Chain builder, auth, cache, logging, rate limit, metrics, JA4H
+├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
+├── session/                    # Session store, client-info parsing, IP geolocation
+├── auth/                       # API bearer token service
+├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
+├── config/                     # YAML config loader, struct definitions, validation
+├── encryption/                 # Password hashing utilities
+├── static/                     # Embedded login page, logo assets
+├── api/                        # Generated OpenAPI server types/interfaces
+│
+├── sdk/                        # Published npm package: taronja-gateway-react-sdk
+├── webapp/                     # React/Vite/TS admin dashboard (built into binary)
+├── examples/                   # Example client apps (astro-hockey, react-newspaper)
+├── sample/                     # Sample config.yaml, example configs
+├── doc/                        # Architecture decisions, config reference, middleware docs
+├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
+├── test/                       # Load-test plan (JMeter)
+└── .github/
+    ├── copilot-instructions.md # GitHub Copilot conventions (Go style, test patterns)
+    └── workflows/              # CI/CD pipelines
+```
+
+---
+
+## Backend Modules (Go)
+
+### `main.go` — CLI Entry Point
+
+- **Cobra CLI** with three subcommands:
+  - `run --config <path>` — starts the gateway server (config file path required)
+  - `adduser <username> <email> <password>` — direct CLI user creation
+  - `version` — displays version/commit/build date (injected by GoReleaser)
+- Embeds the built React dashboard (`webapp/dist`) into the binary using `//go:embed`
+- Loads environment variables from `.env` via `godotenv`
+
+### `gateway/` and `gateway/deps/`
+
+**`gateway/gateway.go`** — Core HTTP server assembly:
+- Builds `http.Server` on Go 1.22+ `net/http.ServeMux`
+- Registers management API routes (`/​_/me`, `/​_/login`, `/​_/logout`, `/​_/users`, `/​_/tokens`, `/​_/statistics`, `/​_/counters`, etc.)
+- Registers user-defined routes from config (reverse proxy, static file, SPA routes) with pattern conversion for wildcards
+- Implements reverse-proxy logic via `net.http/httputil.ReverseProxy` with path rewriting, SPA 404-fallback, and header injection (`X-Forwarded-*`, `X-User-Id`, `X-User-Data`)
+- Serves admin dashboard at `<management.prefix>/admin/` (default `/_/admin/`) with SPA index.html fallback
+
+**`gateway/deps/`** — Dependency-injection container:
+- `Dependencies` struct holds DB repositories, session store, token service, rate limiter, cache, geolocation config
+- `NewProduction()` — wires all prod dependencies (DB, real geolocation API, etc.)
+- `NewTest()` / `NewTestWithName(name)` — in-memory SQLite DB per test for isolation, used in unit tests
+
+### `config/` — Configuration Loading
+
+- **Format:** YAML, loaded via `config.LoadConfig(filePath)`
+- **Env-var expansion:** Supports `${VAR_NAME}` interpolation from OS environment (sourced from `.env`)
+- **Defaults applied** then validated post-unmarshal (port required, admin credentials required if admin enabled)
+- **Main config sections:**
+  - `server` — host, port, external URL
+  - `management` — API prefix (default `/_`), admin credentials, session config, rate limiter rules, geolocation provider
+  - `routes` — list of `RouteConfig` (reverse proxy, static file, SPA routes)
+  - `authenticationProviders` — Basic, Google OAuth2, GitHub OAuth2 config
+  - `branding`, `geolocation`, `notification.email.smtp`
+- **Examples:** [`sample/config.yaml`](./sample/config.yaml), inline in [`README.md`](./README.md), auto-generated reference in [`doc/CONFIG.md`](./doc/CONFIG.md)
+
+### `db/` — Database Layer (GORM + SQLite)
+
+**ORM & Driver:**
+- GORM (`gorm.io/gorm`) with pure-Go SQLite driver (`modernc.org/sqlite` — **no CGO**, builds with `CGO_ENABLED=0`)
+- Auto-migration on init; no separate migration files (schema-as-code via GORM struct tags)
+
+**Models** (`db/schema.go`):
+- `User` — username, email, password hash, OAuth provider identity, email confirmation flag
+- `Session` — persistent session tied to `tg_session_token` cookie; embeds `ClientInfo` (IP, User-Agent, geolocation, device fingerprint)
+- `TrafficMetric` — per-request analytics record; embeds `ClientInfo`
+- `Token` — API bearer tokens (SHA-256 hashed, CUID ID, scopes, usage counter, lazy-expiring per ADR 0006)
+- `Counter` — generic user "counter" transactions (credits/points ledger)
+- `ClientInfo` — shared embedded struct (IP address, parsed User-Agent, browser/OS/device info, geolocation, JA4 fingerprint)
+
+**Repositories** (`db/*repository.go` + `_test.go`):
+- One interface + GORM implementation per model (`UserRepository`, `SessionRepository`, `TokenRepository`, `TrafficMetricRepository`, `CountersRepository`)
+- Each has unit tests; no mocks — tests use the in-memory SQLite DB
+
+### `auth/` — API Token Service
+
+**`auth/token_service.go`:**
+- Issues and validates Bearer API tokens for programmatic access (not session cookies)
+- Tokens are SHA-256 hashed at rest, stored with a CUID ID, optional scopes, and usage counters
+- Implements "lazy expiration" — a token never truly expires at issued time; expiration checked on validation (ADR 0006)
+- `TokenService` interface + database-backed implementation
+
+### `session/` — Session Management and Client Info
+
+**`session/session.go`:**
+- `SessionStore` interface + `SessionStoreDB` implementation (backed by `db.Session` table)
+- Validates `tg_session_token` cookie and Bearer API tokens
+- Session includes `IsAdmin` flag, provider name, expiry, and rich client metadata
+
+**`clientinfo.go`:**
+- Parses User-Agent via `github.com/ua-parser/uap-go` to extract browser, OS, device type
+- JA4H fingerprinting support (via `middleware/ja4.go`)
+
+**`ipgeo.go`:**
+- IP geolocation via `iplocate.io` or fallback `freeipapi.com`
+- 7-day cache to minimize external API calls
+
+### `middleware/` — HTTP Middleware Chain
+
+**Architecture:** composable chain builder pattern (see [`doc/middlewares.md`](./doc/middlewares.md) for deep dive).
+
+**Global chain** (applied to all routes in order):
+1. JA4H fingerprinting (`ja4.go`)
+2. Session extraction (`session_extraction.go`)
+3. Traffic metrics recording (`trafficmetric.go`)
+4. Request logging (`logging.go`)
+
+**Per-route chain** (applied selectively):
+1. HTTP cache-control headers (`cache.go`)
+2. Session-based authentication/authorization (`auth.go`)
+
+**Notable middlewares:**
+- **Rate limiter** (`ratelimiter.go`) — in-memory IP-based rate limiting, configurable per route/path, scanner detection (blocks known scanner User-Agents)
+- **Cache control** (`cache.go`) — sets HTTP cache-control headers on responses
+- **Traffic metrics** (`trafficmetric.go`) — records each request as a `TrafficMetric` row for analytics
+- **Auth** (`auth.go`) — enforces route-level auth (redirects to login for static/SPA, 401 for API)
+
+### `providers/` — Authentication Providers
+
+**`providers.go`:**
+- `AuthenticationProvider` interface with Login/Callback/Logout flow
+- OAuth2 lifecycle: state + redirect cookies → provider redirect → code exchange → fetch user info → find-or-create `User` by email → create `Session` → set cookie
+
+**Implementations:**
+- `basicAuthentication.go` — username/password against `User.PasswordHash`
+- `google.go` — Google OAuth2 (redirect to Google, callback at `/_/callback`, exchanges auth code for user info)
+- `github.go` — GitHub OAuth2 (similar flow)
+
+### `handlers/` and `api/` — OpenAPI API Implementation
+
+**API Spec:** [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml) (OpenAPI 3.x)
+
+**Code generation:** `api/api.gen.go` auto-generated by `oapi-codegen` (run via `make gen`). Defines:
+- `StrictApiServer` interface — one method per endpoint
+- Request/response types (embedded in generated code, not a separate types file)
+- Server interface that handler implementations must satisfy
+
+**Handler implementations** (`handlers/api_*.go`):
+- One file per major resource: `api_users.go`, `api_tokens.go`, `api_me.go`, `api_logout.go`, `api_health.go`, `api_statistics.go`, `api_counters.go`, `api_openapi.go`
+- `api_impl.go` defines `StrictApiServer` struct with all repo/service/store dependencies; each handler method signature satisfies the generated interface
+- **API-first workflow:** when adding a new endpoint, edit the OpenAPI spec first, regenerate with `make gen`, then implement in a handler file
+
+### `encryption/` — Password Hashing
+
+**`encryption/password.go`:**
+- `GeneratePasswordHash(plaintext)` — hashes passwords using `golang.org/x/crypto`
+- `IsPasswordHashed(hash)` — checks if a string is already hashed (avoids double-hashing)
+
+### `static/` — Embedded Assets
+
+**`static/static.go`:**
+- Uses `//go:embed` to bundle `login.html` template and logo/favicon assets
+- Served under `<management.prefix>/static/` (default `/_/static/`)
+
+---
+
+## Frontend Modules (TypeScript/React)
+
+The frontend lives under two sibling directories: **`sdk/`** (published npm package) and **`webapp/`** (admin dashboard, built into the Go binary).
+
+### `sdk/` — Published npm Package: `taronja-gateway-react-sdk`
+
+**Purpose:** Reusable React client library for applications that integrate with Taronja Gateway. Currently co-located in this repo but designed to move to an external `taronja-gateway-clients` repository later (see [`sdk/README.md`](./sdk/README.md), [`doc/SDK_RELEASE.md`](./doc/SDK_RELEASE.md)).
+
+**Key exports** (`sdk/src/index.ts`):
+- `createTaronjaClient(baseUrl?, opts?)` — dependency-free fetch wrapper for gateway API calls (`getCurrentUser`, `getLoginUrl`, `logout`, user admin, tokens, statistics, rate limiter, counters endpoints)
+- `TaronjaAuthProvider` — React context provider for session state, polls `/_/me` every 5 minutes (configurable) to keep session fresh
+- `useTaronjaAuth()` — hook to read current user and auth state
+- `useTaronjaClient()` — hook to get the configured API client
+- `RequireAuth`, `RequireAdmin` — components and HOCs for route/UI protection
+- `withTaronjaAuth`, `withTaronjaAdmin` — higher-order components (legacy pattern, prefer hooks)
+- Shared types: `CurrentUser`, `UserResponse`, `TokenResponse`, `RequestStatistics`, counter types, etc. (hand-maintained, distinct from the generated webapp types)
+- Error type: `TaronjaGatewayError`
+- Utilities: `getUserDisplayName`, `getUserInitials`, `getUserAvatar`
+
+**Publishing:** npm package (`taronja-gateway-react-sdk`), released via GitHub Actions workflow (`.github/workflows/sdk-release.yml`), published to npm registry.
+
+**Testing:** Unit tests in `sdk/src/client.test.ts`, `sdk/src/utils.test.ts` (Vitest).
+
+### `webapp/` — React Admin Dashboard
+
+**Stack:** React 19, Vite, TypeScript, TanStack Query (React Query), react-router-dom v7, Tailwind CSS v4
+
+**Build & Dev:**
+- Dev server: `npm run dev` (Vite dev server)
+- Build: `npm run build` → `dist/` (production build, ~300KB minified)
+- This `dist/` is embedded into the Go binary at build time and served at `/_/admin/*`
+
+**Directory Structure:**
+
+```
+webapp/src/
+├── main.tsx                    # Bootstrap: QueryClientProvider → ThemeProvider → TaronjaAuthProvider → App
+├── App.tsx                     # Routes + AdminLayoutRoutes wrapper (auth guard, admin check, layout)
+├── index.css                   # Tailwind v4 import + CSS custom-property design tokens + component layer
+├── vite-env.d.ts, vite.config.ts, tsconfig.json
+├── apiclient/                  # ⚠️ AUTO-GENERATED OpenAPI client (do NOT hand-edit)
+│   ├── client.gen.ts, sdk.gen.ts, types.gen.ts, index.ts
+│   └── client/, core/          # Generated fetch internals
+├── services/
+│   └── services.ts             # React Query hooks wrapping apiclient (useUsers, useCurrentUser, useRequestStatistics, etc.)
+├── components/
+│   ├── layout/                 # Sidebar.tsx, Header.tsx, MainLayout.tsx (app shell)
+│   ├── ui/                     # Design system: Badge, Button, Card, FormField, Input, PageHeader, StatusPill
+│   ├── theme/                  # ThemeSwitcher.tsx (light/dark + color palette selection)
+│   ├── charts/                 # SampleBarChart.tsx (chart.js 4 + react-chartjs-2)
+│   ├── RequestsWorldMap.tsx, LazyRequestsWorldMap.tsx  # maplibre-gl world map
+│   └── [other components]
+├── pages/                      # One file per route
+│   ├── HomePage, ProfilePage, NotFoundPage
+│   ├── RequestSummaryPage, RequestsDetailsPage, RateLimiterStatsPage
+│   ├── UsersListPage, CreateUserPage, UserInfoPage
+│   └── CountersManagementPage
+├── contexts/
+│   └── ThemeContext.tsx        # Light/dark mode + color palette provider (drives html[data-theme]/[data-palette])
+├── lib/, utils/                # cn() classnames helper, formatting helpers, coordinates
+├── assets/                     # Static files (maplibre style, icons)
+└── test/
+    └── setup.ts                # Vitest setup (currently minimal — no test files in webapp yet)
+```
+
+**Key Architectural Details:**
+
+1. **Two API-calling mechanisms coexist** (watch for this when editing):
+   - **SDK's `createTaronjaClient`** — used for **auth concerns only** (`/me`, `/login`, `/logout`) in `TaronjaAuthProvider`
+   - **Generated OpenAPI client** + **React Query hooks** — used for **all data fetching** (users, tokens, statistics, counters, etc.)
+   
+   These are two separate fetch implementations that happen to target the same backend. The SDK is dependency-free; the generated client is auto-generated from the OpenAPI spec.
+
+2. **Routing:** `react-router-dom` v7 with `basename="/_/admin"`:
+   - Protected routes require auth via `AdminLayoutRoutes` wrapper
+   - Admin-only check via `useTaronjaAuth()` + `currentUser.isAdmin`
+   - Full route list in [`App.tsx`](./webapp/src/App.tsx)
+
+3. **Styling:** Tailwind v4 via `@tailwindcss/vite` plugin (config-first, not PostCSS). CSS custom properties for theme tokens (`--color-bg`, `--color-fg`, `--color-primary`, etc.) swapped via `html[data-theme='dark']` and `html[data-palette='...']` attributes. Four color palettes: taronja (orange), blue, violet, emerald.
+
+4. **Same-origin API access in production:** The built `webapp/dist` is embedded into the Go binary and served from the same origin as the API (`/_/admin/*` + `/_/*` routes), so no CORS or proxy configuration needed. **Dev mode:** `npm run dev` runs Vite dev server; the dev setup assumes the Go server is running separately and reachable (no proxy configured in `vite.config.ts` — you must either run the Go server or manually proxy API requests).
+
+5. **State management:** No Redux/Zustand; uses React Query cache (server state) + React Context (local UI state like theme).
+
+**API Client Generation:**
+- OpenAPI spec: [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml)
+- Tool: `@hey-api/openapi-ts` (via `make gen`, executed in root Makefile)
+- Command: `npx @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch`
+- Regenerated whenever the spec changes; files carry auto-generated headers (`// This file is auto-generated`)
+
+**Dependencies** (key packages in [`webapp/package.json`](./webapp/package.json)):
+- React 19, react-dom 19, TypeScript 6
+- Vite 8, @vitejs/plugin-react, @tailwindcss/vite
+- react-router-dom 7.14, @tanstack/react-query 5
+- chart.js 4.5, maplibre-gl 5.24
+- date-fns 4.1
+- taronja-gateway-react-sdk 0.0.24 (local, points to `../sdk` in dev)
+- vitest 4.1, jsdom 29 (no test files in webapp yet; SDK has tests)
+- ESLint 9, @tailwindcss/vite
+
+**⚠️ Known inconsistency:** [`webapp/.copilot-instructions.md`](./webapp/.copilot-instructions.md) describes DaisyUI conventions, but DaisyUI is **not** in `webapp/package.json` — verify before using DaisyUI classes in new code (the project currently uses custom `components/ui/` instead).
+
+---
+
+## Build, Run, and Test Commands
+
+### Go Backend (Root Level)
+
+| Command | Purpose |
+|---------|---------|
+| `make setup` | `go mod download` + `cd webapp && npm install` |
+| `make dev` | Start dev file-watcher (`modd`) for live-reload on .go/.tsx/.css changes |
+| `make build` | Regenerate API client (`make gen`), build webapp (`npm run build`), build Go binary with embedded assets; produces `tg` executable |
+| `make run` | Run gateway with sample config (`tg run --config sample/config.yaml`) |
+| `make test` | `go test -cover ./...` — runs all Go unit tests with coverage; uses testify + in-memory DBs |
+| `make gen` | Regenerate Go OpenAPI server (`oapi-codegen`) + TS API client (`@hey-api/openapi-ts`) |
+| `make config-docs` | Generate [`doc/CONFIG.md`](./doc/CONFIG.md) from `config/` package comments via `gomarkdoc` |
+| `make cover` | Run tests + open coverage HTML report |
+| `make jmeter` | Run JMeter load test (`test/test-plan.jmx`) |
+
+### React Webapp (under `webapp/`)
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Start Vite dev server (assumes Go backend running separately) |
+| `npm run build` | Vite build → `dist/` |
+| `npm run preview` | Preview production build locally |
+| `npm run test` | Run Vitest (currently no tests in webapp; SDK tests run separately) |
+| `npm run lint` | ESLint check |
+| `npm run analyze` | Build + generate bundle-size HTML report (`dist/bundle-stats.html`) |
+
+### CI/CD
+
+- **GitHub Actions** (`.github/workflows/`):
+  - `ci.yml` — on push/PR: setup Go 1.26 + Node 22, regenerate API clients, build SDK/webapp, `go build`, `go test -cover`, post coverage table as PR comment, run `goreleaser check`
+  - `sdk-release.yml` — publish SDK to npm (triggered on tag or manual workflow dispatch)
+  - `release.yml` — build release binaries and Docker images via GoReleaser (disabled/commented out Docker section)
+
+---
+
+## Conventions to Follow
+
+These practices appear in the codebase and are documented more fully in [`.github/copilot-instructions.md`](./.github/copilot-instructions.md). AI assistants should follow these:
+
+### Go Code
+
+- **Formatting:** 4-space indent (see [`.editorconfig`](./.editorconfig))
+- **Error handling:** Separate the error assignment and the `if err != nil` check onto different lines; do not use inline `if err := ...; err != nil { ... }` chains
+- **Naming:** Repository/type names must match the underlying concept (e.g., `TrafficMetricRepository` not `StatsRepository`)
+- **HTTP server:** Use standard library `net/http` directly; no web framework
+- **Database:** GORM for ORM, pure-Go SQLite driver (no CGO)
+- **Testing:** Use testify assertions, colocate tests with source (`_test.go`), **no mocks** — use actual in-memory or DB repository implementations
+- **Avoid:** No throwaway debug main functions; use tests instead
+- **API-first:** OpenAPI spec at [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml) drives code generation. Implement handlers in `handlers/` (one file per root endpoint); the server interface is auto-generated (`api.StrictApiServer`)
+- **Commands:** Use `make build`, `make run`, `make test`, `make gen`; never run `git add/commit/push` automatically
+
+### React/TypeScript Code
+
+- **Stack:** TypeScript + Vite + React 19 + React Router v7 + Tailwind v4
+- **Components:** Function components only; no `React.FC` type annotation
+- **State:** Use React Query for server state, React Context for local UI state; no Redux/Zustand
+- **Formatting:** 4-space indent (matches Go)
+- **Imports:** Use `taronja-gateway-react-sdk` for auth (`TaronjaAuthProvider`, `useTaronjaAuth`); use generated `apiclient` + `services.ts` hooks for data fetching
+- **Routes:** Protect routes via `AdminLayoutRoutes` and `useAuth()`; route list in `App.tsx`
+
+---
+
+## Known Inconsistencies to Verify (Don't Assume)
+
+1. **DaisyUI mismatch:** [`webapp/.copilot-instructions.md`](./webapp/.copilot-instructions.md) describes DaisyUI 5 component conventions (e.g., `.btn`, `.card`, `.modal`), but DaisyUI is **not** a dependency in [`webapp/package.json`](./webapp/package.json). The project uses custom `components/ui/` components instead. Before writing UI code that references DaisyUI classes, verify current practice.
+
+2. **`webapp/README.md`:** Generic Vite boilerplate left from `npm create vite`; **not project-specific documentation**. Don't treat it as truth about the project.
+
+3. **Duplicate API types:** `sdk/src/types.ts` (hand-maintained SDK types) vs. `webapp/src/apiclient/types.gen.ts` (auto-generated OpenAPI types) are two separate type sources. Check which one a file imports before assuming a type's structure.
+
+---
+
+## Where to Go Deeper
+
+For more detailed information on specific areas:
+
+- **Purpose & Architecture:** [`doc/adr/0001-purpose.md`](./doc/adr/0001-purpose.md), [`README.md`](./README.md)
+- **Configuration reference:** [`doc/CONFIG.md`](./doc/CONFIG.md) (auto-generated from code comments)
+- **Middleware design:** [`doc/middlewares.md`](./doc/middlewares.md) (execution order, chain builder patterns)
+- **Architecture decisions:** [`doc/adr/*.md`](./doc/adr/) (numbered decisions on purpose, login, webapp tech, stats, tokens, JWT, rate limiter, OAuth, etc.)
+- **SDK documentation:** [`sdk/README.md`](./sdk/README.md)
+- **SDK release process:** [`doc/SDK_RELEASE.md`](./doc/SDK_RELEASE.md)
+- **Auth header contract:** [`README.md`](./README.md) section "Using the Gateway" (detailed header formats, backend integration examples in Node/Go/Python/JS)
+- **Performance notes:** [`PERFORMANCE_ANALYSIS.md`](./PERFORMANCE_ANALYSIS.md)
+
+---
+
+## Quick Links by Task
+
+| Task | Key Files |
+|------|-----------|
+| Add a new API endpoint | Edit [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml) → `make gen` → implement in [`handlers/api_*.go`](./handlers/) |
+| Add a database model | Add struct to [`db/schema.go`](./db/schema.go) + repository interface/impl in [`db/*repository.go`](./db/) |
+| Add a route (proxy/static) | Edit config YAML, see [`sample/config.yaml`](./sample/config.yaml) and [`config/config.go`](./config/config.go) for schema |
+| Configure auth provider | Edit config YAML `authenticationProviders` section; implementations in [`providers/*.go`](./providers/) |
+| Build for release | `make release-local` (GoReleaser, cross-platform binaries); requires version tag |
+| Publish SDK to npm | `.github/workflows/sdk-release.yml` (automated on tag or manual dispatch); details in [`doc/SDK_RELEASE.md`](./doc/SDK_RELEASE.md) |
+| Add a UI component | Create in [`webapp/src/components/`](./webapp/src/components/), use in pages under [`webapp/src/pages/`](./webapp/src/pages/) |
+| Add a dashboard page | Create in [`webapp/src/pages/`](./webapp/src/pages/), add route in [`webapp/src/App.tsx`](./webapp/src/App.tsx), add menu entry in [`webapp/src/components/layout/Sidebar.tsx`](./webapp/src/components/layout/Sidebar.tsx) |
+| Fetch data in React | Use `services.ts` hooks (e.g., `useUsers()`, `useRequestStatistics()`) from [`webapp/src/services/services.ts`](./webapp/src/services/services.ts); these wrap the generated OpenAPI client |
+| Add unit tests (Go) | Create `*_test.go` in same package, use testify + in-memory DB via `gateway/deps.NewTestWithName(testName)` |
+| Add unit tests (SDK/TS) | Create `*.test.ts` in `sdk/src/`, run `npm test` from `sdk/` |
