@@ -106,31 +106,28 @@ var versionCmd = &cobra.Command{
 
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
-	Short: "Migrate a config file to the version this gateway requires",
-	Long: `Reads a config file and, if it's older than the version this gateway
-requires, migrates it and writes the result to a new file named with a
-"-vN" suffix (e.g. config.yaml -> config-v2.yaml). The original file is
-never modified.
+	Short: "Print a config file migrated to the version this gateway requires",
+	Long: `Reads a config file and prints it migrated to the version this gateway
+requires (unchanged if it's already current) on stdout. This command never
+writes a file itself — redirect the output to save it:
+
+    tg migrate --config config.yaml > config-v2.yaml
 
 The migration is applied one version step at a time (v1->v2, v2->v3, ...),
-same as if you'd run this once per intervening version.
+same as if you'd run this once per intervening version, so a config several
+versions behind is fully upgraded in a single run.
 
 The gateway refuses to start ("run") against an outdated config file
-specifically so this migration is a deliberate step you take (and can
-review the result of) rather than something that happens silently on
-every startup. Run this whenever "tg run" tells you to.`,
+specifically so upgrading it is a deliberate step you take (and can review
+the result of) rather than something that happens silently on every
+startup. Run this whenever "tg run" tells you to.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configFilePath, err := cmd.Flags().GetString("config")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
 			os.Exit(1)
 		}
-		force, err := cmd.Flags().GetBool("force")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting force flag: %v\n", err)
-			os.Exit(1)
-		}
-		migrateConfigFile(configFilePath, force)
+		migrateConfigFile(configFilePath)
 	},
 }
 
@@ -150,7 +147,6 @@ func init() {
 	if err := migrateCmd.MarkFlagRequired("config"); err != nil {
 		log.Fatalf("Failed to mark 'config' flag as required for migrateCmd: %v", err)
 	}
-	migrateCmd.Flags().Bool("force", false, "Overwrite the migrated file if it already exists")
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(addUserCmd)
@@ -294,27 +290,29 @@ func listMiddleware(configFilePath string) {
 	tw.Flush()
 }
 
-// migrateConfigFile implements `tg migrate`: it upgrades a config file to
-// the version this gateway requires (config.CurrentConfigVersion),
-// stepping through each intervening version's migration in turn
-// (config.MigrateConfigFile), and writes the result to a new "-vN" file
-// without touching the original. This is the only supported way to move an
-// outdated config forward — config.LoadConfig (used by "tg run" and
-// "tg middleware list") refuses to run against one at all.
-func migrateConfigFile(configFilePath string, force bool) {
-	writtenPath, fromVersion, err := config.MigrateConfigFile(configFilePath, force)
+// migrateConfigFile implements `tg migrate`: it prints configFilePath
+// migrated to the version this gateway requires (config.CurrentConfigVersion)
+// on stdout, stepping through each intervening version's migration in turn
+// (config.MigrateConfigContent). It never writes a file itself — the caller
+// decides whether and where to save the output, typically via shell
+// redirection. This is the only supported way to move an outdated config
+// forward — config.LoadConfig (used by "tg run" and "tg middleware list")
+// refuses to run against one at all.
+func migrateConfigFile(configFilePath string) {
+	content, fromVersion, err := config.MigrateConfigContent(configFilePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}
 
-	if writtenPath == "" {
-		fmt.Printf("'%s' is already version %d (current: %d) — nothing to migrate.\n",
+	// Informational note only for the no-op case: someone redirecting this to
+	// a "new" file should know it's actually identical to the source, since
+	// that's not otherwise obvious from the output. Otherwise stay quiet on
+	// stderr so the command composes cleanly in a pipeline.
+	if fromVersion >= config.CurrentConfigVersion {
+		fmt.Fprintf(os.Stderr, "Note: '%s' is already version %d (current: %d) — printing it unchanged.\n",
 			configFilePath, fromVersion, config.CurrentConfigVersion)
-		return
 	}
 
-	fmt.Printf("Migrated '%s' (version %d) to '%s' (version %d).\n",
-		configFilePath, fromVersion, writtenPath, config.CurrentConfigVersion)
-	fmt.Printf("The original file was left unchanged. Point --config at the new file when you're ready:\n\n    tg run --config %s\n\n", writtenPath)
+	os.Stdout.Write(content)
 }

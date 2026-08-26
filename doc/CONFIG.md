@@ -11,7 +11,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func IsMiddlewareNameKnown\(name string\) bool](<#IsMiddlewareNameKnown>)
-- [func MigrateConfigFile\(path string, force bool\) \(writtenPath string, fromVersion int, err error\)](<#MigrateConfigFile>)
+- [func MigrateConfigContent\(path string\) \(content \[\]byte, fromVersion int, err error\)](<#MigrateConfigContent>)
 - [type AdminConfig](<#AdminConfig>)
 - [type AuthProviderCredentials](<#AuthProviderCredentials>)
 - [type AuthenticationConfig](<#AuthenticationConfig>)
@@ -83,18 +83,16 @@ func IsMiddlewareNameKnown(name string) bool
 
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
 
-<a name="MigrateConfigFile"></a>
-## func [MigrateConfigFile](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L153>)
+<a name="MigrateConfigContent"></a>
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L153>)
 
 ```go
-func MigrateConfigFile(path string, force bool) (writtenPath string, fromVersion int, err error)
+func MigrateConfigContent(path string) (content []byte, fromVersion int, err error)
 ```
 
-MigrateConfigFile reads the config file at path, and — if its declared version is older than CurrentConfigVersion — migrates its raw content \(migrateConfigToCurrent\) and writes the result to a sibling "\-vN" file \(versionedConfigPath\), leaving the original completely untouched. This is what \`tg migrate\` calls; see checkConfigVersion for why the gateway doesn't do this automatically on every startup anymore.
+MigrateConfigContent reads the config file at path and returns its content migrated up to CurrentConfigVersion \(migrateConfigToCurrent\) — or unchanged, if it's already at CurrentConfigVersion or newer. It never writes anything: this is what \`tg migrate\` calls to produce the output it prints to stdout, leaving it up to the caller \(a shell redirect, in the CLI's case\) to decide whether and where to save it. See checkConfigVersion for why the gateway doesn't migrate a config file automatically or write one on its own anymore.
 
-If the file is already at CurrentConfigVersion or newer, no file is written: writtenPath is "" and err is nil. Callers should check for an empty writtenPath rather than treating that case as an error.
-
-If the target file already exists, MigrateConfigFile fails unless force is true — it may have been hand\-edited since an earlier migration, and silently clobbering it would be a worse default than asking.
+fromVersion is the file's effective declared version, useful for callers that want to report whether a migration actually happened \(fromVersion \< CurrentConfigVersion\) or the input was already current/newer \(fromVersion \>= CurrentConfigVersion, in which case content is simply the file's original bytes\).
 
 <a name="AdminConfig"></a>
 ## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L107-L112>)

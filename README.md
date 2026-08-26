@@ -102,9 +102,9 @@ The Taronja Gateway CLI provides the following commands:
 
 *   **Migrate a config file to the current schema version:**
     ```bash
-    ./tg migrate --config ./sample/config.yaml
+    ./tg migrate --config ./sample/config.yaml > ./sample/config-v2.yaml
     ```
-    Writes an upgraded copy named with a `-v<N>` suffix (e.g. `config.yaml` → `config-v2.yaml`); never modifies the original. `tg run` refuses to start against an outdated config file and tells you to run this. See [Config File Versioning](#config-file-versioning).
+    Prints the migrated config to stdout — redirect it to save it; never modifies the original or writes a file itself. `tg run` refuses to start against an outdated config file and tells you to run this. See [Config File Versioning](#config-file-versioning).
 
 # Configuration
 
@@ -196,34 +196,29 @@ list`) fail immediately with an error telling you what to do:
 ```
 FATAL: Failed to load configuration: config file 'config.yaml' is version 1, but this gateway requires version 2
 
-Run this to upgrade it (writes a new file; the original is left untouched):
+Run this to upgrade it (it prints the migrated config; redirect it to a file):
 
-    tg migrate --config config.yaml
+    tg migrate --config config.yaml > config-v2.yaml
 
-Then point --config at the migrated file (it's named with a "-v2" suffix).
+Then point --config at the new file.
 ```
 
-Run the suggested command:
+`tg migrate` **prints** the migrated config to stdout — it never writes a
+file itself, and never touches the original. Redirect the output to save
+it, same as any other Unix command:
 
 ```bash
-./tg migrate --config config.yaml
+./tg migrate --config config.yaml > config-v2.yaml
+./tg run --config config-v2.yaml
 ```
 
-```
-Migrated 'config.yaml' (version 1) to 'config-v2.yaml' (version 2).
-The original file was left unchanged. Point --config at the new file when you're ready:
-
-    tg run --config config-v2.yaml
-```
-
-`tg migrate` writes an upgraded copy named with a `-v<N>` suffix (e.g.
-`config.yaml` → `config-v2.yaml`) — it **never modifies or deletes the
-original**, and refuses to overwrite an existing migrated file unless you
-pass `--force` (in case you've since hand-edited it). Update your `--config`
-flag (or however you invoke `tg run`) to point at the new file once you're
-happy with it. A config spanning multiple versions is migrated one step at
-a time internally (e.g. v1→v2→v3), so a single `tg migrate` run always gets
-you all the way to the version this build requires.
+You choose the destination filename; `config-v<N>.yaml` (as suggested in
+the error above) is just a convention, not a requirement. A config several
+versions behind is migrated one step at a time internally (e.g.
+v1→v2→v3), so a single `tg migrate` run always gets you all the way to the
+version this build requires. Running it on a config that's already current
+just prints the file back unchanged (with a note on stderr, so it doesn't
+pollute the redirected output).
 
 ## Configuration Sections
 

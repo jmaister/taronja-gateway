@@ -127,69 +127,60 @@ func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 	if fileVersion < CurrentConfigVersion {
 		return fmt.Errorf(
 			"config file '%s' is version %d, but this gateway requires version %d\n\n"+
-				"Run this to upgrade it (writes a new file; the original is left untouched):\n\n"+
-				"    tg migrate --config %s\n\n"+
-				"Then point --config at the migrated file (it's named with a \"-v%d\" suffix).",
-			configPath, fileVersion, CurrentConfigVersion, configPath, CurrentConfigVersion,
+				"Run this to upgrade it (it prints the migrated config; redirect it to a file):\n\n"+
+				"    tg migrate --config %s > %s\n\n"+
+				"Then point --config at the new file.",
+			configPath, fileVersion, CurrentConfigVersion, configPath, versionedConfigPath(configPath, CurrentConfigVersion),
 		)
 	}
 	return nil
 }
 
-// MigrateConfigFile reads the config file at path, and — if its declared
-// version is older than CurrentConfigVersion — migrates its raw content
-// (migrateConfigToCurrent) and writes the result to a sibling "-vN" file
-// (versionedConfigPath), leaving the original completely untouched. This is
-// what `tg migrate` calls; see checkConfigVersion for why the gateway
-// doesn't do this automatically on every startup anymore.
+// MigrateConfigContent reads the config file at path and returns its content
+// migrated up to CurrentConfigVersion (migrateConfigToCurrent) — or
+// unchanged, if it's already at CurrentConfigVersion or newer. It never
+// writes anything: this is what `tg migrate` calls to produce the output it
+// prints to stdout, leaving it up to the caller (a shell redirect, in the
+// CLI's case) to decide whether and where to save it. See checkConfigVersion
+// for why the gateway doesn't migrate a config file automatically or write
+// one on its own anymore.
 //
-// If the file is already at CurrentConfigVersion or newer, no file is
-// written: writtenPath is "" and err is nil. Callers should check for an
-// empty writtenPath rather than treating that case as an error.
-//
-// If the target file already exists, MigrateConfigFile fails unless force is
-// true — it may have been hand-edited since an earlier migration, and
-// silently clobbering it would be a worse default than asking.
-func MigrateConfigFile(path string, force bool) (writtenPath string, fromVersion int, err error) {
+// fromVersion is the file's effective declared version, useful for callers
+// that want to report whether a migration actually happened (fromVersion <
+// CurrentConfigVersion) or the input was already current/newer (fromVersion
+// >= CurrentConfigVersion, in which case content is simply the file's
+// original bytes).
+func MigrateConfigContent(path string) (content []byte, fromVersion int, err error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to read config file '%s': %w", path, err)
+		return nil, 0, fmt.Errorf("failed to read config file '%s': %w", path, err)
 	}
 
 	// Only the version field is needed here; full parsing/validation happens
-	// later, in LoadConfig, once the migrated file is actually loaded.
+	// later, in LoadConfig, once the migrated content is actually loaded.
 	var probe struct {
 		Version int `yaml:"version"`
 	}
 	if err := yaml.Unmarshal(raw, &probe); err != nil {
-		return "", 0, fmt.Errorf("failed to parse config file '%s': %w", path, err)
+		return nil, 0, fmt.Errorf("failed to parse config file '%s': %w", path, err)
 	}
 	fileVersion := effectiveConfigVersion(probe.Version)
 
 	if fileVersion >= CurrentConfigVersion {
-		return "", fileVersion, nil
+		return raw, fileVersion, nil
 	}
 
-	targetPath := versionedConfigPath(path, CurrentConfigVersion)
-	if !force {
-		if _, statErr := os.Stat(targetPath); statErr == nil {
-			return "", fileVersion, fmt.Errorf("migrated file '%s' already exists; pass --force to overwrite it", targetPath)
-		}
-	}
-
-	migrated := migrateConfigToCurrent(raw, fileVersion)
-	if err := os.WriteFile(targetPath, migrated, 0o644); err != nil {
-		return "", fileVersion, fmt.Errorf("failed to write migrated config to '%s': %w", targetPath, err)
-	}
-
-	return targetPath, fileVersion, nil
+	return migrateConfigToCurrent(raw, fileVersion), fileVersion, nil
 }
 
-// versionedConfigPath returns the path a migrated config should be written
-// to: the same directory and extension as originalPath, with the target
-// version's suffix appended to the base filename — e.g. "config.yaml"
-// becomes "config-v2.yaml" for version 2, "/etc/gateway/prod.yml" becomes
-// "/etc/gateway/prod-v2.yml".
+// versionedConfigPath returns a conventional suggested filename for a
+// migrated config, used only in messages (checkConfigVersion's error, the
+// CLI's usage text) since `tg migrate` no longer writes a file itself: the
+// same directory and extension as originalPath, with the target version's
+// suffix appended to the base filename — e.g. "config.yaml" becomes
+// "config-v2.yaml" for version 2, "/etc/gateway/prod.yml" becomes
+// "/etc/gateway/prod-v2.yml". Nothing stops a user from redirecting `tg
+// migrate`'s output to a different name.
 func versionedConfigPath(originalPath string, version int) string {
 	dir := filepath.Dir(originalPath)
 	ext := filepath.Ext(originalPath)
