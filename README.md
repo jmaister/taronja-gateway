@@ -24,36 +24,36 @@ It serves as an entry point for your API server and your frontend application, h
 
 Features table, shows what is implemented and what is planned.
 
-| Feature                       | Status   |
-|-------------------------------|----------|
-| API Gateway                   | ✅       |
-| Application Gateway           | ✅       |
-| Management Dashboard          | ✅       |
-| Logging                       | ✅       |
-| Analytics and Traffic metrics | ✅       |
-| - User Geo-location           | ✅       |
-| - User fingerprint (JA4)      | ✅       |
-| Sessions (Persistent)         | ✅       |
-| User management               | ✅       |
-| Authentication                | ✅       |
-| Authentication: Basic         | ✅       |
-| Authentication: OAuth2        | ✅       |
-| - OAuth2: GitHub              | ✅       |
-| - OAuth2: Google              | ✅       |
-| Authentication: Token         | ✅       |
-| Authentication: JWT           | 🚧       |
-| Authorization using RBAC      | 🚧       |
-| HTTP Cache Control            | ✅       |
-| Rate Limiter                  | ✅       |
-| - Requess per minute per IP   | ✅       |
-| - Avoid scanners with number of 404 limit | ✅       |
-| - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       |
-| Feature Flags                 | 🚧       |
-| Circuit breaker               | 🚧       |
-| Caching                       | 🚧       |
-| Load Balancing                | 🚧       |
-| robots.txt                    | 🚧       |
-| more...                       | 🚧       |
+| Feature                       | Status   | Since  |
+|-------------------------------|----------|--------|
+| API Gateway                   | ✅       | v0.0.1 |
+| Application Gateway           | ✅       | v0.0.1 |
+| Management Dashboard          | ✅       | v0.0.3 |
+| Logging                       | ✅       | v0.0.1 |
+| Analytics and Traffic metrics | ✅       | v0.0.4 |
+| - User Geo-location           | ✅       | v0.0.4 |
+| - User fingerprint (JA4)      | ✅       | v0.0.8 |
+| Sessions (Persistent)         | ✅       | v0.0.1 |
+| User management               | ✅       | v0.0.3 |
+| Authentication                | ✅       | v0.0.1 |
+| Authentication: Basic         | ✅       | v0.0.1 |
+| Authentication: OAuth2        | ✅       | v0.0.1 |
+| - OAuth2: GitHub              | ✅       | v0.0.1 |
+| - OAuth2: Google              | ✅       | v0.0.1 |
+| Authentication: Token         | ✅       | v0.0.9 |
+| Authentication: JWT           | 🚧       |        |
+| Authorization using RBAC      | 🚧       |        |
+| HTTP Cache Control            | ✅       | v0.0.12 |
+| Rate Limiter                  | ✅       | v0.0.22 |
+| - Requess per minute per IP   | ✅       | v0.0.22 |
+| - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
+| - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       | v0.0.22 |
+| Feature Flags                 | 🚧       |        |
+| Circuit breaker               | 🚧       |        |
+| Caching                       | 🚧       |        |
+| Load Balancing                | 🚧       |        |
+| robots.txt                    | 🚧       |        |
+| more...                       | 🚧       |        |
 
 # Installation
 
