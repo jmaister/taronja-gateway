@@ -62,6 +62,15 @@ func TestVersionedConfigPath(t *testing.T) {
 	}
 }
 
+// --- effectiveConfigVersion ---
+
+func TestEffectiveConfigVersion(t *testing.T) {
+	assert.Equal(t, legacyConfigVersion, effectiveConfigVersion(0), "zero/absent must map to legacyConfigVersion")
+	assert.Equal(t, 1, effectiveConfigVersion(1))
+	assert.Equal(t, 2, effectiveConfigVersion(2))
+	assert.Equal(t, 99, effectiveConfigVersion(99), "any explicit positive value must pass through unchanged")
+}
+
 // --- migrateConfigToCurrent ---
 
 func TestMigrateConfigToCurrent_AppliesRegisteredSteps(t *testing.T) {
@@ -200,6 +209,23 @@ func TestMigrateConfigContent_NewerThanSupported_ReturnsUnchanged(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, 99, fromVersion)
 	assert.Equal(t, raw, string(content), "a newer-than-supported file's content should be returned unchanged, not downgraded")
+}
+
+func TestMigrateConfigContent_MissingFile_Errors(t *testing.T) {
+	_, _, err := MigrateConfigContent(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+func TestMigrateConfigContent_InvalidYAML_Errors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	// Not valid YAML: a top-level scalar can't unmarshal into the version probe struct.
+	require.NoError(t, os.WriteFile(path, []byte("not: valid: yaml: at: all:\n\t- broken"), 0o644))
+
+	_, _, err := MigrateConfigContent(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse config file")
 }
 
 const minimalTestConfigYAML = `name: Test Gateway
