@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway"
@@ -52,14 +54,25 @@ var rootCmd = &cobra.Command{
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the Taronja API Gateway",
-	Long:  `Starts the Taronja API Gateway using the specified configuration file.`,
+	Long: `Starts the Taronja API Gateway using the specified configuration file.
+
+The config file can be reloaded without restarting the process: send the
+gateway process SIGHUP, or (unless --watch=false) simply save the file —
+both re-read it and, if it's still valid, swap in the new middleware chain,
+routes, and rate limiter for requests received from then on. An invalid
+edit is logged and ignored; the gateway keeps running its last-good config.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configFilePath, err := cmd.Flags().GetString("config")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
 			os.Exit(1)
 		}
-		runGateway(configFilePath)
+		watchConfig, err := cmd.Flags().GetBool("watch")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting watch flag: %v\n", err)
+			os.Exit(1)
+		}
+		runGateway(configFilePath, watchConfig)
 	},
 }
 
@@ -168,6 +181,7 @@ func init() {
 	if err := runCmd.MarkFlagRequired("config"); err != nil {
 		log.Fatalf("Failed to mark 'config' flag as required for runCmd: %v", err)
 	}
+	runCmd.Flags().Bool("watch", true, "Automatically reload the config file when it changes on disk (in addition to SIGHUP, which always works)")
 
 	middlewareListCmd.Flags().String("config", "", "Path to the configuration file")
 	if err := middlewareListCmd.MarkFlagRequired("config"); err != nil {
@@ -200,7 +214,7 @@ func main() {
 	}
 }
 
-func runGateway(configFilePath string) {
+func runGateway(configFilePath string, watchConfig bool) {
 	err := godotenv.Load() // 👈 load .env file
 	if err != nil {
 		log.Fatal(err)
@@ -232,9 +246,9 @@ func runGateway(configFilePath string) {
 	// Print OAuth callback URLs if configured
 	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
 
-	// Serve in the background so this goroutine can watch for either a
-	// startup/runtime error or an interrupt/terminate signal — whichever
-	// comes first — and react appropriately to each.
+	// Serve in the background so this goroutine can watch for a
+	// startup/runtime error, an interrupt/terminate signal, or a reload
+	// request — reacting appropriately to each — until shutdown.
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- gateway.Server.ListenAndServe()
@@ -243,24 +257,132 @@ func runGateway(configFilePath string) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	select {
-	case err := <-serverErr:
-		if err != nil && err != http.ErrServerClosed {
-			log.Fatalf("FATAL: Failed to start server: %v", err)
+	// SIGHUP is the traditional "reload your config" signal (nginx, most
+	// other long-running servers). Unlike stop, it never ends the loop
+	// below — it just triggers a ReloadConfig call and the gateway keeps
+	// running either way.
+	reload := make(chan os.Signal, 1)
+	signal.Notify(reload, syscall.SIGHUP)
+
+	// The complementary, opt-out way to trigger the same reload: watch the
+	// config file itself and reload whenever it's saved, so a local
+	// developer doesn't have to find the process and signal it by hand.
+	// --watch=false (or a watcher setup failure, e.g. an unusual filesystem)
+	// falls back to SIGHUP-only, which always works regardless.
+	if watchConfig {
+		watcherStop := make(chan struct{})
+		defer close(watcherStop)
+		if err := watchConfigFile(configFilePath, gateway, watcherStop); err != nil {
+			log.Printf("Warning: could not watch '%s' for changes (%v) — reload via SIGHUP still works.", configFilePath, err)
 		}
-	case sig := <-stop:
-		// Drain in-flight requests instead of dropping them, which killing
-		// the process outright (the previous behavior — ListenAndServe was
-		// simply never asked to stop) would do on every deploy or restart.
-		log.Printf("Received %s, shutting down gracefully (waiting up to %s for in-flight requests to finish)...", sig, gracefulShutdownTimeout)
-		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
-		defer cancel()
-		if err := gateway.Server.Shutdown(ctx); err != nil {
-			log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
+	}
+
+runLoop:
+	for {
+		select {
+		case err := <-serverErr:
+			if err != nil && err != http.ErrServerClosed {
+				log.Fatalf("FATAL: Failed to start server: %v", err)
+			}
+			break runLoop
+		case sig := <-stop:
+			// Drain in-flight requests instead of dropping them, which killing
+			// the process outright (the previous behavior — ListenAndServe was
+			// simply never asked to stop) would do on every deploy or restart.
+			log.Printf("Received %s, shutting down gracefully (waiting up to %s for in-flight requests to finish)...", sig, gracefulShutdownTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+			defer cancel()
+			if err := gateway.Server.Shutdown(ctx); err != nil {
+				log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
+			}
+			break runLoop
+		case <-reload:
+			log.Printf("Received SIGHUP, reloading configuration from %s...", configFilePath)
+			if err := gateway.ReloadConfig(configFilePath); err != nil {
+				log.Printf("Config reload failed, keeping previous configuration: %v", err)
+			}
 		}
 	}
 
 	log.Println("API Gateway shut down gracefully.")
+}
+
+// watchConfigFile watches configFilePath for changes and calls
+// gw.ReloadConfig whenever it's written, until stop is closed. It watches
+// the file's containing directory rather than the file itself — editors and
+// deployment tools commonly save by writing a new file and renaming it over
+// the original (fsnotify's own documented workaround for this: a watch on
+// the file itself would silently stop firing after the first such rename,
+// since the watch follows the inode, not the path), and filters events down
+// to the target file's own name. Events are debounced with a short timer
+// since a single save often produces several rapid events (e.g. a WRITE
+// followed by a CHMOD).
+func watchConfigFile(configFilePath string, gw *gateway.Gateway, stop <-chan struct{}) error {
+	absPath, err := filepath.Abs(configFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path: %w", err)
+	}
+	dir := filepath.Dir(absPath)
+	name := filepath.Base(absPath)
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+	if err := watcher.Add(dir); err != nil {
+		watcher.Close()
+		return fmt.Errorf("failed to watch directory '%s': %w", dir, err)
+	}
+
+	log.Printf("Watching '%s' for changes (reload on save; disable with --watch=false).", absPath)
+
+	go func() {
+		defer watcher.Close()
+
+		const debounce = 200 * time.Millisecond
+		var debounceTimer *time.Timer
+		pending := make(chan struct{}, 1)
+
+		for {
+			select {
+			case <-stop:
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if filepath.Base(event.Name) != name {
+					continue
+				}
+				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+					continue
+				}
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(debounce, func() {
+					select {
+					case pending <- struct{}{}:
+					default:
+					}
+				})
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("Warning: config file watcher error: %v", err)
+			case <-pending:
+				if err := gw.ReloadConfig(configFilePath); err != nil {
+					log.Printf("Config reload failed, keeping previous configuration: %v", err)
+				}
+			}
+		}
+	}()
+
+	return nil
 }
 
 func addUser(username, email, password string) {

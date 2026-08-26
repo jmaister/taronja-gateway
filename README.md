@@ -48,6 +48,7 @@ Features table, shows what is implemented and what is planned.
 | - Requess per minute per IP   | ✅       | v0.0.22 |
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
 | - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       | v0.0.22 |
+| Hot config reload             | ✅       |        |
 | Feature Flags                 | 🚧       |        |
 | Circuit breaker               | 🚧       |        |
 | Caching                       | 🚧       |        |
@@ -82,6 +83,8 @@ The Taronja Gateway CLI provides the following commands:
     ./tg run --config ./sample/config.yaml
     ```
     This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag. On `Ctrl+C` or a `SIGTERM` (e.g. from `docker stop` or a Kubernetes pod eviction), it shuts down gracefully — draining in-flight requests for up to 15 seconds before exiting, instead of dropping them.
+
+    The config file can be reloaded without restarting: save it (auto-reload is on by default; disable with `--watch=false`) or send the process a `SIGHUP` (`kill -HUP <pid>`). Either re-reads the file and, if it's still valid, swaps in the new routes, middleware chain, and rate limiter for requests received from then on — in-flight requests keep running against whatever was already serving them. An invalid edit is logged and ignored; the gateway keeps running its last-good config. `server.host`/`port` and the database connection can't be changed this way — those need a real restart.
 
 *   **Add a new user:**
     ```bash

@@ -14,6 +14,7 @@ replace github.com/jmaister/taronja-gateway => ./
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/dgraph-io/ristretto v0.2.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lucsky/cuid v1.2.1
 	github.com/lum8rjack/go-ja4h v0.0.0-20250828030157-fa5266d50650

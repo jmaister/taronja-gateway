@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath" // Still needed for user-defined static routes from OS filesystem
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -39,109 +40,65 @@ type Gateway struct {
 	RouteChainBuilder   *middleware.RouteChainBuilder
 	// Rate limiter instance (for stats/config APIs)
 	RateLimiter *middleware.RateLimiter
-	// Registry of global middleware factories, built by createHTTPServer. Kept
+	// Registry of global middleware factories, built by applyConfig. Kept
 	// on the Gateway so the middleware status/health/metrics API (see
 	// doc/refactor01.md Phase 3) can introspect it after startup.
 	MiddlewareRegistry *middleware.MiddlewareRegistryV2
 	templates          map[string]*template.Template
 	WebappEmbedFS      *embed.FS
 	StartTime          time.Time
+
+	// handler is the http.Server's actual Handler — see reload.go. Every
+	// field above that applyConfig swaps on a config reload (GatewayConfig,
+	// Mux, RateLimiter, MiddlewareRegistry, AuthMiddleware,
+	// HttpCacheMiddleware, RouteChainBuilder) is a snapshot belonging to
+	// whichever generation is currently live in handler.
+	handler *reloadableHandler
+	// configMu guards GatewayConfig specifically — see currentConfig's doc
+	// comment for why only that one field needs it.
+	configMu sync.RWMutex
+	// reloadMu serializes applyConfig calls (e.g. a file-watch event and a
+	// SIGHUP arriving together), so two reloads can never interleave.
+	reloadMu sync.Mutex
 }
 
 // --- NewGatewayWithDependencies Function ---
 
 // NewGatewayWithDependencies creates a new gateway instance with pre-initialized dependencies
-func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *embed.FS, deps *deps.Dependencies) (*Gateway, error) {
-	// Create middleware components from the core dependencies
-	authMiddleware := middleware.NewAuthMiddleware(deps.SessionStore, deps.TokenService, config.Management.Prefix)
-	cacheMiddleware := middleware.NewHttpCacheMiddleware()
-	routeChainBuilder := middleware.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
-
-	// Validate middleware dependencies
-	if err := middleware.ValidateAllMiddleware(deps, config); err != nil {
-		return nil, fmt.Errorf("middleware validation failed: %w", err)
-	}
-
-	// Log middleware status
-	middleware.LogMiddlewareStatus(config)
-
-	// Create HTTP server with middleware chain (also returns the rate limiter
-	// and the middleware registry, for introspection via the management API)
-	server, mux, rl, middlewareRegistry, err := createHTTPServer(config, deps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
-	}
-
+func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.FS, deps *deps.Dependencies) (*Gateway, error) {
 	// Initialize templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
-	// Create gateway instance
 	gateway := &Gateway{
-		GatewayConfig:       config,
-		Server:              server,
-		Mux:                 mux,
-		Dependencies:        deps,
-		AuthMiddleware:      authMiddleware,
-		HttpCacheMiddleware: cacheMiddleware,
-		RouteChainBuilder:   routeChainBuilder,
-		RateLimiter:         rl,
-		MiddlewareRegistry:  middlewareRegistry,
-		templates:           templates,
-		WebappEmbedFS:       webappEmbedFS,
-		StartTime:           time.Now(),
+		Dependencies:  deps,
+		templates:     templates,
+		WebappEmbedFS: webappEmbedFS,
+		StartTime:     time.Now(),
+		handler:       &reloadableHandler{},
 	}
 
-	// Configure routes
-	if err := configureRoutes(gateway); err != nil {
-		return nil, fmt.Errorf("failed to configure routes: %w", err)
+	// Validates, builds the middleware chain/mux/rate limiter, registers all
+	// routes, and ensures the admin user — the same sequence a later
+	// ReloadConfig runs. See applyConfig's doc comment.
+	if err := gateway.applyConfig(cfg); err != nil {
+		return nil, err
 	}
 
-	// Ensure admin user exists if configured
-	if err := ensureAdminUser(config, deps.UserRepo); err != nil {
-		return nil, fmt.Errorf("failed to ensure admin user: %w", err)
-	}
-
-	return gateway, nil
-}
-
-// createHTTPServer creates the HTTP server with middleware chain
-func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, *middleware.RateLimiter, *middleware.MiddlewareRegistryV2, error) {
-	mux := http.NewServeMux()
-
-	// Instantiate the rate limiter once and keep a reference. Built from the
-	// *effective* config — a per-entry `middleware.global` rate_limiter
-	// override if the config declares one, otherwise management.rateLimiter —
-	// not management.rateLimiter directly: RateLimiterFactory always reuses
-	// this shared instance's Handler once it exists (see factory.go), so
-	// building it from the wrong config would silently ignore an override.
-	rl := middleware.NewRateLimiter(middleware.EffectiveRateLimiterConfig(config))
-
-	// Build the global middleware chain via the factory/registry system (see
-	// doc/refactor01.md Phases 1-3). The registry is built separately from
-	// (and kept alongside) the chain so it can be introspected later — e.g.
-	// by the middleware status/health/metrics API endpoints.
-	registry, err := middleware.NewGlobalMiddlewareRegistry(deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to build middleware registry: %w", err)
-	}
-	globalChain, err := middleware.BuildGlobalChainFromConfigV2(registry, config)
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to build middleware chain: %w", err)
-	}
-	handler := globalChain.Build(mux)
-
-	server := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
+	gateway.Server = &http.Server{
+		// Host/port are fixed at construction: changing them on a reload
+		// would mean rebinding the listening socket, which applyConfig
+		// deliberately doesn't attempt — see ReloadConfig's doc comment.
+		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,
-		Handler:      handler,
+		Handler:      gateway.handler,
 	}
 
-	return server, mux, rl, registry, nil
+	return gateway, nil
 }
 
 // configureRoutes sets up all the gateway routes
@@ -200,7 +157,7 @@ func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.
 
 // configureManagementRoutes sets up internal gateway endpoints
 func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
-	prefix := g.GatewayConfig.Management.Prefix
+	prefix := g.currentConfig().Management.Prefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
 
 	// Login Routes for Basic and OAuth2 Authentication
@@ -304,7 +261,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.currentConfig().Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -326,7 +283,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.currentConfig().Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -386,17 +343,22 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes() {
+	cfg := g.currentConfig()
+
 	// Register all providers - basic, OAuth, etc.
-	if g.GatewayConfig.HasAnyAuthentication() {
+	if cfg.HasAnyAuthentication() {
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.Dependencies.SessionStore, g.GatewayConfig, g.Dependencies.UserRepo)
+		providers.RegisterProviders(g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
 	}
 
 	// Login page handler
-	loginPath := g.GatewayConfig.Management.Prefix + "/login"
+	loginPath := cfg.Management.Prefix + "/login"
 	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		// Populate data from config and request
-		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.GatewayConfig)
+		// Populate data from config and request. Reads the *live* config
+		// (not the cfg captured above at route-registration time) since this
+		// closure keeps running against whichever generation is current —
+		// see currentConfig's doc comment.
+		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.currentConfig())
 
 		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
 		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root
@@ -422,7 +384,7 @@ func (g *Gateway) registerLoginRoutes() {
 // This function continues to serve user-defined static routes from the OS filesystem.
 func (g *Gateway) configureUserRoutes() error {
 	log.Printf("Registering user-defined routes...")
-	for _, routeConfig := range g.GatewayConfig.Routes {
+	for _, routeConfig := range g.currentConfig().Routes {
 		var handler http.HandlerFunc
 
 		// Create the base handler (proxy or static)

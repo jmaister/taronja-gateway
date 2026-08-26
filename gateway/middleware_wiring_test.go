@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCreateHTTPServer_RateLimiterHonorsPerEntryOverride guards against a
+// TestBuildRuntime_RateLimiterHonorsPerEntryOverride guards against a
 // bug where the shared *RateLimiter instance was always built from
 // management.rateLimiter, silently ignoring a per-entry
 // `middleware.global[].rateLimiter` override — because RateLimiterFactory
 // reuses that shared instance's Handler whenever one exists, the override
 // computed by ResolveGlobalChainSpecs never actually took effect. See
 // middleware.EffectiveRateLimiterConfig.
-func TestCreateHTTPServer_RateLimiterHonorsPerEntryOverride(t *testing.T) {
+func TestBuildRuntime_RateLimiterHonorsPerEntryOverride(t *testing.T) {
 	testDeps := deps.NewTest()
 
 	override := config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 1, BlockMinutes: 1}
@@ -32,18 +32,18 @@ func TestCreateHTTPServer_RateLimiterHonorsPerEntryOverride(t *testing.T) {
 		{Name: config.MiddlewareNameRateLimiter, RateLimiter: &override}, // per-entry override says 5
 	}
 
-	_, _, rl, _, err := createHTTPServer(cfg, testDeps)
+	rt, err := buildRuntime(cfg, testDeps)
 	require.NoError(t, err)
-	require.NotNil(t, rl)
+	require.NotNil(t, rt.rateLimiter)
 
-	assert.Equal(t, 5, rl.Config().RequestsPerMinute, "the per-entry override should win over management.rateLimiter")
+	assert.Equal(t, 5, rt.rateLimiter.Config().RequestsPerMinute, "the per-entry override should win over management.rateLimiter")
 }
 
-// TestCreateHTTPServer_RateLimiterFallsBackToManagementConfig covers the
+// TestBuildRuntime_RateLimiterFallsBackToManagementConfig covers the
 // companion case: no per-entry override present (either no explicit
 // middleware: section, or an entry with no rateLimiter: block) should still
 // use management.rateLimiter, exactly as before this fix.
-func TestCreateHTTPServer_RateLimiterFallsBackToManagementConfig(t *testing.T) {
+func TestBuildRuntime_RateLimiterFallsBackToManagementConfig(t *testing.T) {
 	testDeps := deps.NewTest()
 
 	cfg := &config.GatewayConfig{
@@ -55,9 +55,9 @@ func TestCreateHTTPServer_RateLimiterFallsBackToManagementConfig(t *testing.T) {
 		},
 	}
 
-	_, _, rl, _, err := createHTTPServer(cfg, testDeps)
+	rt, err := buildRuntime(cfg, testDeps)
 	require.NoError(t, err)
-	require.NotNil(t, rl)
+	require.NotNil(t, rt.rateLimiter)
 
-	assert.Equal(t, 42, rl.Config().RequestsPerMinute)
+	assert.Equal(t, 42, rt.rateLimiter.Config().RequestsPerMinute)
 }

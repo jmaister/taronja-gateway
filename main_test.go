@@ -6,7 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -111,6 +115,42 @@ routes:
 	assert.Contains(t, stdout, "version 2")
 	assert.Contains(t, stdout, "1 route")
 	assert.Empty(t, stderr)
+}
+
+// TestWatchConfigFile_ReloadsOnWrite is the regression test for --watch:
+// saving a new version of the config file (a plain rewrite, the common case
+// for both a hand edit and most editors' "safe save" write) must trigger a
+// real gateway.ReloadConfig call without anything sending a signal or
+// restarting the process.
+func TestWatchConfigFile_ReloadsOnWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	write := func(name string) {
+		raw := "version: 2\nname: " + name + "\nserver:\n  host: 127.0.0.1\n  port: 8080\n" +
+			"management:\n  admin:\n    enabled: false\nroutes: []\n"
+		require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+	}
+	write("Before")
+
+	cfg, err := config.LoadConfig(path)
+	require.NoError(t, err)
+	gw, err := gateway.NewGatewayWithDependencies(cfg, nil, deps.NewTest())
+	require.NoError(t, err)
+	require.Equal(t, "Before", gw.CurrentConfig().Name)
+
+	stop := make(chan struct{})
+	defer close(stop)
+	require.NoError(t, watchConfigFile(path, gw, stop))
+
+	write("After")
+
+	deadline := time.Now().Add(5 * time.Second)
+	for gw.CurrentConfig().Name != "After" {
+		if time.Now().After(deadline) {
+			t.Fatalf("watchConfigFile did not reload within the deadline; gateway still has config %q", gw.CurrentConfig().Name)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // Note: migrateConfigFile's and validateConfigFile's error paths (a missing/
