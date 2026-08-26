@@ -62,7 +62,7 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	items, ok := resp.(api.GetMiddlewareStatus200JSONResponse)
 	require.True(t, ok)
-	require.Len(t, items, 5, "expected all 5 built-in global middleware factories")
+	require.Len(t, items, 6, "expected all 6 built-in global middleware factories")
 
 	byName := make(map[string]api.MiddlewareStatusItem, len(items))
 	for _, item := range items {

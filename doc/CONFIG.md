@@ -19,6 +19,9 @@ import "github.com/jmaister/taronja-gateway/config"
   - [func \(a \*AuthenticationProviders\) PrintOAuthCallbackURLs\(serverURL, managementPrefix string\)](<#AuthenticationProviders.PrintOAuthCallbackURLs>)
 - [type BasicAuthenticationConfig](<#BasicAuthenticationConfig>)
 - [type BrandingConfig](<#BrandingConfig>)
+- [type CORSConfig](<#CORSConfig>)
+  - [func \(c CORSConfig\) AllowsAnyOrigin\(\) bool](<#CORSConfig.AllowsAnyOrigin>)
+  - [func \(c CORSConfig\) IsEnabled\(\) bool](<#CORSConfig.IsEnabled>)
 - [type GatewayConfig](<#GatewayConfig>)
   - [func LoadConfig\(filename string\) \(\*GatewayConfig, error\)](<#LoadConfig>)
   - [func \(c \*GatewayConfig\) HasAnyAuthentication\(\) bool](<#GatewayConfig.HasAnyAuthentication>)
@@ -42,10 +45,11 @@ import "github.com/jmaister/taronja-gateway/config"
 
 ## Constants
 
-<a name="MiddlewareNameRateLimiter"></a>Known global middleware names. These are the identifiers accepted in \`middleware.global\[\].name\` \(see MiddlewareEntryConfig\) and are also used by the middleware package's factories \(middleware/factory.go\) so both sides agree on naming without middleware needing to import config, or config needing to import middleware \(which already imports config\).
+<a name="MiddlewareNameCORS"></a>Known global middleware names. These are the identifiers accepted in \`middleware.global\[\].name\` \(see MiddlewareEntryConfig\) and are also used by the middleware package's factories \(middleware/factory.go\) so both sides agree on naming without middleware needing to import config, or config needing to import middleware \(which already imports config\).
 
 ```go
 const (
+    MiddlewareNameCORS              = "cors"
     MiddlewareNameRateLimiter       = "rate_limiter"
     MiddlewareNameJA4Fingerprint    = "ja4_fingerprint"
     MiddlewareNameSessionExtraction = "session_extraction"
@@ -66,6 +70,7 @@ const CurrentConfigVersion = 2
 
 ```go
 var KnownMiddlewareNames = []string{
+    MiddlewareNameCORS,
     MiddlewareNameRateLimiter,
     MiddlewareNameJA4Fingerprint,
     MiddlewareNameSessionExtraction,
@@ -75,7 +80,7 @@ var KnownMiddlewareNames = []string{
 ```
 
 <a name="IsMiddlewareNameKnown"></a>
-## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L28>)
+## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L30>)
 
 ```go
 func IsMiddlewareNameKnown(name string) bool
@@ -175,8 +180,60 @@ type BrandingConfig struct {
 }
 ```
 
+<a name="CORSConfig"></a>
+## type [CORSConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/cors.go#L9-L34>)
+
+CORSConfig controls whether and how the gateway adds CORS \(Cross\-Origin Resource Sharing\) response headers to management API requests. Disabled by default \(IsEnabled reports false when AllowedOrigins is empty\) — the gateway's dashboard is always served same\-origin, so CORS is only needed when a separately\-hosted frontend needs to call the management API directly.
+
+```go
+type CORSConfig struct {
+    // AllowedOrigins lists the exact origins (scheme + host + optional port,
+    // e.g. "https://app.example.com") allowed to make cross-origin requests.
+    // A single literal "*" allows any origin, but only when AllowCredentials
+    // is false — the CORS spec forbids combining a wildcard origin with
+    // credentialed requests, and browsers reject it outright, so this
+    // combination is rejected at config load time instead of silently not
+    // working. Empty (the default) disables CORS entirely: no
+    // Access-Control-* headers are added, identical to before CORS support
+    // existed.
+    AllowedOrigins []string `yaml:"allowedOrigins"`
+    // AllowedMethods lists the HTTP methods allowed in a preflight response.
+    // Defaults to "GET, POST, PUT, PATCH, DELETE, OPTIONS" when unset.
+    AllowedMethods []string `yaml:"allowedMethods,omitempty"`
+    // AllowedHeaders lists the request headers allowed in a preflight
+    // response. Defaults to "Content-Type, Authorization" when unset.
+    AllowedHeaders []string `yaml:"allowedHeaders,omitempty"`
+    // AllowCredentials sets Access-Control-Allow-Credentials: true, letting
+    // browsers send cookies/credentials on cross-origin requests. Requires
+    // AllowedOrigins to be an explicit list — see the "*" restriction above.
+    AllowCredentials bool `yaml:"allowCredentials,omitempty"`
+    // MaxAgeSeconds sets Access-Control-Max-Age: how long browsers may cache
+    // a preflight response before sending another one. Defaults to 600 (10
+    // minutes) when unset.
+    MaxAgeSeconds int `yaml:"maxAgeSeconds,omitempty"`
+}
+```
+
+<a name="CORSConfig.AllowsAnyOrigin"></a>
+### func \(CORSConfig\) [AllowsAnyOrigin](<https://github.com/jmaister/taronja-gateway/blob/main/config/cors.go#L44>)
+
+```go
+func (c CORSConfig) AllowsAnyOrigin() bool
+```
+
+AllowsAnyOrigin reports whether AllowedOrigins contains the literal "\*" wildcard.
+
+<a name="CORSConfig.IsEnabled"></a>
+### func \(CORSConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/cors.go#L38>)
+
+```go
+func (c CORSConfig) IsEnabled() bool
+```
+
+IsEnabled reports whether CORS handling should run at all: only when at least one allowed origin is configured.
+
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L175-L186>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L176-L187>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -196,7 +253,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L189>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L190>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -205,7 +262,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L348>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L349>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -214,7 +271,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L168-L170>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L169-L171>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -225,7 +282,7 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L125-L132>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L125-L133>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
@@ -237,26 +294,28 @@ type ManagementConfig struct {
     Admin       AdminConfig       `yaml:"admin"`       // Admin dashboard access configuration
     Session     SessionConfig     `yaml:"session"`     // Session lifetime configuration for authenticated users
     RateLimiter RateLimiterConfig `yaml:"rateLimiter"` // Rate limiter settings. Optional; zero values disable.
+    CORS        CORSConfig        `yaml:"cors"`        // Cross-origin request settings. Optional; empty allowedOrigins disables CORS entirely (no headers added — the pre-CORS-support behavior).
 }
 ```
 
 <a name="MiddlewareEntryConfig"></a>
-## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L46-L50>)
+## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L48-L53>)
 
 MiddlewareEntryConfig declares one middleware in the \`middleware.global\` list, in the order it should run.
 
-Only rate\_limiter currently has its own typed per\-entry configuration \(RateLimiter\); the other built\-in middlewares \(ja4\_fingerprint, session\_extraction, traffic\_metrics, logging\) take no options today, so listing them just enables/positions them. Per\-middleware config for the rest is future work \(see doc/refactor01.md Improvement 4\) — adding it here without matching runtime support would be misleading.
+Only rate\_limiter and cors currently have their own typed per\-entry configuration; the other built\-in middlewares \(ja4\_fingerprint, session\_extraction, traffic\_metrics, logging\) take no options today, so listing them just enables/positions them. Per\-middleware config for the rest is future work \(see doc/refactor01.md Improvement 4\) — adding it here without matching runtime support would be misleading.
 
 ```go
 type MiddlewareEntryConfig struct {
     Name        string             `yaml:"name"`                  // Middleware identifier. Must be one of KnownMiddlewareNames.
     Enabled     *bool              `yaml:"enabled,omitempty"`     // Enable/disable this middleware. Default: true (listing it implies enabled).
     RateLimiter *RateLimiterConfig `yaml:"rateLimiter,omitempty"` // Per-entry override for "rate_limiter". Falls back to management.rateLimiter when nil.
+    CORS        *CORSConfig        `yaml:"cors,omitempty"`        // Per-entry override for "cors". Falls back to management.cors when nil.
 }
 ```
 
 <a name="MiddlewareEntryConfig.IsEnabled"></a>
-### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L54>)
+### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L57>)
 
 ```go
 func (e MiddlewareEntryConfig) IsEnabled() bool
@@ -265,7 +324,7 @@ func (e MiddlewareEntryConfig) IsEnabled() bool
 IsEnabled reports whether this entry is enabled. An absent Enabled field defaults to true: appearing in the list is enough to opt in.
 
 <a name="MiddlewareSection"></a>
-## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L70-L72>)
+## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L73-L75>)
 
 MiddlewareSection declares the global middleware chain explicitly, in execution order. When Global is nil — i.e. there's no \`middleware:\` section at all, the common case for existing config files — the gateway falls back to the legacy management.analytics / management.logging / management.rateLimiter flags. See middleware.ResolveGlobalChainSpecs.
 
@@ -299,7 +358,7 @@ type NotificationConfig struct {
 ```
 
 <a name="RateLimiterConfig"></a>
-## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L152-L158>)
+## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L153-L159>)
 
 RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address.
 
@@ -314,7 +373,7 @@ type RateLimiterConfig struct {
 ```
 
 <a name="RateLimiterConfig.IsEnabled"></a>
-### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L161>)
+### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L162>)
 
 ```go
 func (r RateLimiterConfig) IsEnabled() bool
@@ -343,7 +402,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L407>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L408>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -352,7 +411,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L415>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L416>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -405,7 +464,7 @@ func (s *SessionConfig) GetDuration() time.Duration
 
 
 <a name="VulnerabilityScanConfig"></a>
-## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L142-L146>)
+## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L143-L147>)
 
 RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address. VulnerabilityScanConfig contains a simple list of URL paths that are likely to be probed by automated scanners. When a client triggers too many 404 responses for those paths within the configured window, the IP is temporarily blocked. This is a lightweight signature‑free scanner detector.
 

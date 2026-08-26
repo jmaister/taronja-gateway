@@ -79,11 +79,43 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 	assert.Contains(t, stderr, "already version 2")
 }
 
-// Note: migrateConfigFile's error path (a missing/unparseable config file)
-// calls os.Exit(1) directly, which would kill the test process, so it isn't
-// covered here — config.MigrateConfigContent's own error paths (the thing
-// migrateConfigFile just forwards) are covered directly in
-// config/version_test.go instead. This file has no other tests: main.go
-// otherwise has no existing test coverage in this repo (it's a thin Cobra
-// wrapper, manually verified against the built binary), and that's
-// unchanged here except for this specific pipe-safety property.
+// TestValidateConfigFile_ValidConfig_PrintsSuccess covers validateConfigFile's
+// success path (tg validate). Its failure path — like migrateConfigFile's —
+// calls os.Exit(1) directly and isn't covered here for the same reason (see
+// the note below); config.LoadConfig's and middleware.ValidateConfigOnly's
+// own error cases (what validateConfigFile just forwards) are covered
+// directly in config/version_test.go and middleware/validation_test.go.
+func TestValidateConfigFile_ValidConfig_PrintsSuccess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	raw := `version: 2
+name: Test Gateway
+server:
+  host: 127.0.0.1
+  port: 8080
+management:
+  admin:
+    enabled: false
+routes:
+  - name: root
+    from: /
+    to: http://localhost:9999
+`
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	stdout, stderr := captureOutput(t, func() {
+		validateConfigFile(path)
+	})
+
+	assert.Contains(t, stdout, "is valid")
+	assert.Contains(t, stdout, "version 2")
+	assert.Contains(t, stdout, "1 route")
+	assert.Empty(t, stderr)
+}
+
+// Note: migrateConfigFile's and validateConfigFile's error paths (a missing/
+// unparseable/invalid config file) call os.Exit(1) directly, which would
+// kill the test process, so neither is covered here. This file has no other
+// tests: main.go otherwise has no existing test coverage in this repo (it's
+// a thin Cobra wrapper, manually verified against the built binary), and
+// that's unchanged here except for these specific properties.

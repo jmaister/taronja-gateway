@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -32,6 +35,13 @@ var (
 	buildOS   = "unknown"
 	buildArch = "unknown"
 )
+
+// gracefulShutdownTimeout bounds how long runGateway waits, after receiving
+// SIGINT/SIGTERM, for in-flight requests to finish before forcing the
+// process to exit anyway. Matches the http.Server's own ReadTimeout/
+// WriteTimeout (gateway/gateway.go) as the project's established "how long
+// is too long for one request" convention.
+const gracefulShutdownTimeout = 15 * time.Second
 
 var rootCmd = &cobra.Command{
 	Use:   "tg",
@@ -131,6 +141,28 @@ startup. Run this whenever "tg run" tells you to.`,
 	},
 }
 
+var validateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Validate a config file without starting the gateway",
+	Long: `Loads a config file and reports whether it's valid: parses successfully,
+declares a supported schema version, has well-formed routes and admin
+settings, and — if it has a middleware: section or the legacy analytics/
+logging/rateLimiter/cors flags — resolves to a global middleware chain with
+no unmet dependencies.
+
+Does not start the HTTP server, open a database connection, or make any
+network calls — safe to run in CI, or before deploying a config change, the
+same way "tg middleware list" and "tg migrate" are.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		configFilePath, err := cmd.Flags().GetString("config")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
+			os.Exit(1)
+		}
+		validateConfigFile(configFilePath)
+	},
+}
+
 func init() {
 	runCmd.Flags().String("config", "", "Path to the configuration file")
 	if err := runCmd.MarkFlagRequired("config"); err != nil {
@@ -148,11 +180,17 @@ func init() {
 		log.Fatalf("Failed to mark 'config' flag as required for migrateCmd: %v", err)
 	}
 
+	validateCmd.Flags().String("config", "", "Path to the configuration file to validate")
+	if err := validateCmd.MarkFlagRequired("config"); err != nil {
+		log.Fatalf("Failed to mark 'config' flag as required for validateCmd: %v", err)
+	}
+
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(addUserCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(middlewareCmd)
 	rootCmd.AddCommand(migrateCmd)
+	rootCmd.AddCommand(validateCmd)
 }
 
 func main() {
@@ -194,9 +232,32 @@ func runGateway(configFilePath string) {
 	// Print OAuth callback URLs if configured
 	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
 
-	err = gateway.Server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		log.Fatalf("FATAL: Failed to start server: %v", err)
+	// Serve in the background so this goroutine can watch for either a
+	// startup/runtime error or an interrupt/terminate signal — whichever
+	// comes first — and react appropriately to each.
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- gateway.Server.ListenAndServe()
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("FATAL: Failed to start server: %v", err)
+		}
+	case sig := <-stop:
+		// Drain in-flight requests instead of dropping them, which killing
+		// the process outright (the previous behavior — ListenAndServe was
+		// simply never asked to stop) would do on every deploy or restart.
+		log.Printf("Received %s, shutting down gracefully (waiting up to %s for in-flight requests to finish)...", sig, gracefulShutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+		defer cancel()
+		if err := gateway.Server.Shutdown(ctx); err != nil {
+			log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
+		}
 	}
 
 	log.Println("API Gateway shut down gracefully.")
@@ -315,4 +376,29 @@ func migrateConfigFile(configFilePath string) {
 	}
 
 	os.Stdout.Write(content)
+}
+
+// validateConfigFile implements `tg validate`: it reports whether
+// configFilePath is a valid config the gateway could actually run, without
+// starting anything. config.LoadConfig already validates most of the file
+// (schema version, server/admin/route settings, the middleware: section's
+// names); middleware.ValidateConfigOnly additionally checks the global
+// middleware chain's dependency graph (e.g. session_extraction without
+// ja4_fingerprint) and a few settings LoadConfig doesn't cover (rate
+// limiter/CORS value sanity) — all without needing a database connection or
+// any other real dependency, the same way "tg middleware list" doesn't.
+func validateConfigFile(configFilePath string) {
+	cfg, err := config.LoadConfig(configFilePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := middleware.ValidateConfigOnly(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("'%s' is valid (version %d): %d route(s), management prefix %q.\n",
+		configFilePath, cfg.Version, len(cfg.Routes), cfg.Management.Prefix)
 }

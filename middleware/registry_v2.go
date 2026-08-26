@@ -178,6 +178,7 @@ func (r *MiddlewareRegistryV2) ValidateSpecs(specs []MiddlewareSpec) error {
 // validation, only GetName()/GetDependencies().
 func referenceGlobalFactories() []MiddlewareFactory {
 	return []MiddlewareFactory{
+		NewCORSFactory(),
 		NewRateLimiterFactory(nil),
 		NewJA4Factory(),
 		NewSessionExtractionFactory(nil, nil),
@@ -281,11 +282,18 @@ func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]Middlewa
 		}
 
 		spec := MiddlewareSpec{Name: entry.Name}
-		if entry.Name == config.MiddlewareNameRateLimiter {
+		switch entry.Name {
+		case config.MiddlewareNameRateLimiter:
 			if entry.RateLimiter != nil {
 				spec.Config = *entry.RateLimiter
 			} else {
 				spec.Config = gatewayConfig.Management.RateLimiter
+			}
+		case config.MiddlewareNameCORS:
+			if entry.CORS != nil {
+				spec.Config = *entry.CORS
+			} else {
+				spec.Config = gatewayConfig.Management.CORS
 			}
 		}
 		specs = append(specs, spec)
@@ -295,11 +303,23 @@ func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]Middlewa
 }
 
 // legacySpecsFromConfig derives specs from the pre-Phase-2 configuration
-// flags: management.rateLimiter, management.analytics, management.logging.
+// flags: management.cors, management.rateLimiter, management.analytics,
+// management.logging.
 func legacySpecsFromConfig(gatewayConfig *config.GatewayConfig) []MiddlewareSpec {
 	specs := []MiddlewareSpec{}
 
-	// Rate limiter should run first, even before analytics.
+	// CORS runs first, before anything else gets a chance to reject a
+	// preflight OPTIONS request (rate limiting, auth, ...) — a preflight is
+	// never meant to reach application logic at all, so it needs to be
+	// answered before any of that runs.
+	if gatewayConfig.Management.CORS.IsEnabled() {
+		specs = append(specs, MiddlewareSpec{
+			Name:   config.MiddlewareNameCORS,
+			Config: gatewayConfig.Management.CORS,
+		})
+	}
+
+	// Rate limiter runs next, before analytics.
 	if gatewayConfig.Management.RateLimiter.IsEnabled() {
 		specs = append(specs, MiddlewareSpec{
 			Name:   config.MiddlewareNameRateLimiter,

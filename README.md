@@ -81,7 +81,7 @@ The Taronja Gateway CLI provides the following commands:
     ```bash
     ./tg run --config ./sample/config.yaml
     ```
-    This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag.
+    This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag. On `Ctrl+C` or a `SIGTERM` (e.g. from `docker stop` or a Kubernetes pod eviction), it shuts down gracefully — draining in-flight requests for up to 15 seconds before exiting, instead of dropping them.
 
 *   **Add a new user:**
     ```bash
@@ -105,6 +105,12 @@ The Taronja Gateway CLI provides the following commands:
     ./tg migrate --config ./sample/config.yaml > ./sample/config-v2.yaml
     ```
     Prints the migrated config to stdout — redirect it to save it; never modifies the original or writes a file itself. `tg run` refuses to start against an outdated config file and tells you to run this. See [Config File Versioning](#config-file-versioning).
+
+*   **Validate a config file:**
+    ```bash
+    ./tg validate --config ./sample/config.yaml
+    ```
+    Loads and validates the config — schema version, routes, admin settings, and the global middleware chain's dependencies — without starting the server, opening a database connection, or making any network calls. Prints `'<path>' is valid (version N): M route(s), management prefix "<prefix>".` on success, or `FATAL: <error>` (exit code 1) on the first problem found. Safe to run in CI or before deploying a config change.
 
 # Configuration
 
@@ -241,18 +247,24 @@ Controls the management dashboard and gateway features.
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
+- `cors.allowedOrigins`: Origins allowed to make cross-origin requests to the management API (e.g. `["https://app.example.com"]`). Omit or leave empty to disable CORS entirely — the default, since the dashboard is always served same-origin. A literal `"*"` allows any origin, but only when `allowCredentials` is not also `true` (browsers reject that combination; the gateway rejects it at startup instead of shipping a CORS setup that silently doesn't work)
+- `cors.allowCredentials`: Send `Access-Control-Allow-Credentials: true`, letting browsers include cookies on cross-origin requests
+- `cors.allowedMethods` / `cors.allowedHeaders` / `cors.maxAgeSeconds`: Preflight response details; sensible defaults are used if omitted
 
 ### Middleware (optional, advanced)
 
-By default, the global middleware chain (rate limiting, JA4 fingerprinting,
-session extraction, traffic metrics, request logging) is controlled by the
-`logging` / `analytics` / `rateLimiter` flags above. For explicit control over
-which middleware runs and in what order, add a `middleware:` section — when
-present it fully replaces those flags:
+By default, the global middleware chain (CORS, rate limiting, JA4
+fingerprinting, session extraction, traffic metrics, request logging) is
+controlled by the `cors` / `logging` / `analytics` / `rateLimiter` flags
+above. For explicit control over which middleware runs and in what order, add
+a `middleware:` section — when present it fully replaces those flags:
 
 ```yaml
 middleware:
   global:
+    - name: cors
+      cors:
+        allowedOrigins: ["https://app.example.com"]
     - name: rate_limiter
       rateLimiter:
         requestsPerMinute: 1000

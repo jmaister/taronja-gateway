@@ -40,6 +40,36 @@ func (f *ConcreteFactory) GetName() string           { return f.name }
 func (f *ConcreteFactory) GetDescription() string    { return f.description }
 func (f *ConcreteFactory) GetDependencies() []string { return f.dependencies }
 
+// --- CORSFactory -----------------------------------------------------------
+
+// CORSFactory creates the CORS (Cross-Origin Resource Sharing) response
+// header middleware. Has no runtime dependencies of its own — unlike
+// RateLimiterFactory, there's no shared instance to reuse, so Create simply
+// builds a fresh middleware from whatever config.CORSConfig it's given each
+// time.
+type CORSFactory struct{ ConcreteFactory }
+
+func NewCORSFactory() *CORSFactory {
+	return &CORSFactory{
+		ConcreteFactory: ConcreteFactory{
+			name:        config.MiddlewareNameCORS,
+			description: "Adds CORS response headers for cross-origin requests to the management API",
+		},
+	}
+}
+
+func (f *CORSFactory) Create(cfg interface{}) (Middleware, error) {
+	corsCfg, ok := cfg.(config.CORSConfig)
+	if !ok {
+		return nil, fmt.Errorf("cors: invalid config type %T, expected config.CORSConfig", cfg)
+	}
+	return CORSMiddleware(corsCfg), nil
+}
+
+func (f *CORSFactory) GetDefaultConfig() interface{} {
+	return config.CORSConfig{}
+}
+
 // --- RateLimiterFactory ---------------------------------------------------
 
 // RateLimiterFactory creates the request rate limiting / vulnerability scan detection middleware.

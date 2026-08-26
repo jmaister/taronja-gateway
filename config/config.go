@@ -129,6 +129,7 @@ type ManagementConfig struct {
 	Admin       AdminConfig       `yaml:"admin"`       // Admin dashboard access configuration
 	Session     SessionConfig     `yaml:"session"`     // Session lifetime configuration for authenticated users
 	RateLimiter RateLimiterConfig `yaml:"rateLimiter"` // Rate limiter settings. Optional; zero values disable.
+	CORS        CORSConfig        `yaml:"cors"`        // Cross-origin request settings. Optional; empty allowedOrigins disables CORS entirely (no headers added — the pre-CORS-support behavior).
 }
 
 // RateLimiterConfig contains simple in-memory rate limiting settings.

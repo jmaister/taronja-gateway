@@ -6,6 +6,7 @@ package config
 // agree on naming without middleware needing to import config, or config
 // needing to import middleware (which already imports config).
 const (
+	MiddlewareNameCORS              = "cors"
 	MiddlewareNameRateLimiter       = "rate_limiter"
 	MiddlewareNameJA4Fingerprint    = "ja4_fingerprint"
 	MiddlewareNameSessionExtraction = "session_extraction"
@@ -17,6 +18,7 @@ const (
 // understands today. Used to validate `middleware.global[].name` entries at
 // config load time.
 var KnownMiddlewareNames = []string{
+	MiddlewareNameCORS,
 	MiddlewareNameRateLimiter,
 	MiddlewareNameJA4Fingerprint,
 	MiddlewareNameSessionExtraction,
@@ -37,8 +39,8 @@ func IsMiddlewareNameKnown(name string) bool {
 // MiddlewareEntryConfig declares one middleware in the `middleware.global`
 // list, in the order it should run.
 //
-// Only rate_limiter currently has its own typed per-entry configuration
-// (RateLimiter); the other built-in middlewares (ja4_fingerprint,
+// Only rate_limiter and cors currently have their own typed per-entry
+// configuration; the other built-in middlewares (ja4_fingerprint,
 // session_extraction, traffic_metrics, logging) take no options today, so
 // listing them just enables/positions them. Per-middleware config for the
 // rest is future work (see doc/refactor01.md Improvement 4) — adding it here
@@ -47,6 +49,7 @@ type MiddlewareEntryConfig struct {
 	Name        string             `yaml:"name"`                  // Middleware identifier. Must be one of KnownMiddlewareNames.
 	Enabled     *bool              `yaml:"enabled,omitempty"`     // Enable/disable this middleware. Default: true (listing it implies enabled).
 	RateLimiter *RateLimiterConfig `yaml:"rateLimiter,omitempty"` // Per-entry override for "rate_limiter". Falls back to management.rateLimiter when nil.
+	CORS        *CORSConfig        `yaml:"cors,omitempty"`        // Per-entry override for "cors". Falls back to management.cors when nil.
 }
 
 // IsEnabled reports whether this entry is enabled. An absent Enabled field

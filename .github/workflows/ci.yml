@@ -31,8 +31,39 @@ jobs:
           sdk/package-lock.json
           webapp/package-lock.json
 
-    - name: Generate API client
-      run: npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
+    # Runs `npx @hey-api/openapi-ts` from inside webapp/, after `npm install`
+    # there, rather than a bare `npx --yes @hey-api/openapi-ts` from the repo
+    # root. The bare form resolves its own isolated `typescript` dependency,
+    # which can land on a version incompatible with @hey-api/openapi-ts's own
+    # codegen (this actually happened locally: typescript@7.x, the from-
+    # scratch Go-based rewrite, broke it outright). Running it from webapp/
+    # makes npm resolve the `@hey-api/openapi-ts` devDependency already
+    # pinned in webapp/package.json, whose typescript peer then resolves
+    # against the workspace's own pinned typescript instead. See AGENTS.md's
+    # "API Client Generation" section for the full explanation.
+    - name: Generate Go API code and TypeScript client
+      run: |
+        go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
+        cd webapp
+        npm install
+        npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
+
+    - name: Generate config docs
+      run: |
+        go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
+        gomarkdoc --output doc/CONFIG.md ./config
+
+    # api/api.gen.go and doc/CONFIG.md are committed, generated files —
+    # regenerating them just above and diffing catches anyone who edited the
+    # OpenAPI spec or a Go doc comment without regenerating and committing
+    # the result (webapp/src/apiclient is gitignored and intentionally not
+    # checked here; it only needs to exist for the steps below to build).
+    - name: Check generated files are up to date
+      run: |
+        if ! git diff --exit-code -- api/api.gen.go doc/CONFIG.md; then
+          echo "::error::api/api.gen.go and/or doc/CONFIG.md are out of date. Run 'make gen' and 'make config-docs' locally and commit the result."
+          exit 1
+        fi
 
     - name: Build React SDK and App
       run: |
@@ -40,9 +71,24 @@ jobs:
         npm install
         npm run build
         cd ../webapp
-        npm install
         npm run build
         cd ..
+
+    - name: Lint and type-check webapp
+      run: |
+        cd webapp
+        npm run lint
+        npx tsc --noEmit
+
+    - name: Format and vet Go code
+      run: |
+        UNFORMATTED=$(gofmt -l $(git ls-files '*.go'))
+        if [ -n "$UNFORMATTED" ]; then
+          echo "::error::The following files are not gofmt-formatted:"
+          echo "$UNFORMATTED"
+          exit 1
+        fi
+        go vet ./...
 
     - name: Build Go
       run: go build -v ./...
@@ -68,12 +114,12 @@ jobs:
           const fs = require('fs');
           const report = fs.readFileSync('package_coverage.txt', 'utf8');
           const lines = report.trim().split('\n');
-          
+
           let table = `<!-- coverage_comment -->\n`;
           table += `**Code Coverage Report**\n\n`;
           table += `| Package          | Coverage |\n`;
           table += `|------------------|----------|\n`;
-          
+
           let totalCoverageLine = ""; // Store the full line for total coverage
 
           for (const line of lines) {
@@ -81,14 +127,14 @@ jobs:
               totalCoverageLine = line; // Save the total line to be added last
               continue; // Skip processing for the table body
             }
-            
+
             // Attempt to split the line into package name and coverage percentage
             const lastSpaceIndex = line.lastIndexOf(' ');
             if (lastSpaceIndex === -1 || lastSpaceIndex === 0 || lastSpaceIndex === line.length - 1) {
               console.warn(`Skipping malformed line: ${line}`);
               continue; // Skip lines that don't have a clear space separation
             }
-            
+
             const pkgName = line.substring(0, lastSpaceIndex);
             const coverage = line.substring(lastSpaceIndex + 1);
 
@@ -97,10 +143,10 @@ jobs:
               console.warn(`Skipping line with invalid coverage format: ${line}`);
               continue;
             }
-            
+
             table += `| ${pkgName} | ${coverage} |\n`;
           }
-          
+
           // Add the total coverage line at the end
           if (totalCoverageLine) {
             const parts = totalCoverageLine.split(' '); // "Total" and "xx.x%"
@@ -140,7 +186,7 @@ jobs:
               body: commentBody,
             });
           }
-        
+
     - name: Check GoReleaser Config
       uses: goreleaser/goreleaser-action@v7
       with:

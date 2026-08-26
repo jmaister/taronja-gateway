@@ -171,6 +171,32 @@ func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.Gatew
 	return nil
 }
 
+// ValidateCORSMiddleware validates the CORS configuration.
+func ValidateCORSMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	cors := config.Management.CORS
+	if !cors.IsEnabled() {
+		return nil
+	}
+
+	// The CORS spec forbids a wildcard origin on a credentialed request —
+	// browsers reject "Access-Control-Allow-Origin: *" outright when
+	// Access-Control-Allow-Credentials is also true. Reject this combination
+	// at config load time instead of shipping a CORS setup that silently
+	// doesn't work in any browser.
+	if cors.AllowCredentials && cors.AllowsAnyOrigin() {
+		return &ValidationError{
+			Middleware: "cors",
+			Message:    "allowedOrigins cannot include \"*\" when allowCredentials is true (browsers reject that combination) — list the specific origins that need credentials instead",
+		}
+	}
+
+	if cors.MaxAgeSeconds < 0 {
+		return &ValidationError{Middleware: "cors", Message: "maxAgeSeconds cannot be negative"}
+	}
+
+	return nil
+}
+
 // ValidateMiddlewareChainConfig validates the global middleware chain
 // configuration — the explicit `middleware:` section if present, otherwise
 // the legacy management.analytics/logging/rateLimiter flags — by resolving it
@@ -300,12 +326,48 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 		return err
 	}
 
+	// Validate CORS settings
+	if err := ValidateCORSMiddleware(deps, config); err != nil {
+		return err
+	}
+
 	// Validate the global middleware chain's names and dependency graph
 	if err := ValidateMiddlewareChainConfig(config); err != nil {
 		return err
 	}
 
 	log.Printf("All middleware validation completed successfully")
+	return nil
+}
+
+// ValidateConfigOnly runs every ValidateAllMiddleware check that validates
+// the config file itself and never dereferences deps (ValidateRouteConfiguration,
+// ValidateAdminAccess, ValidateRateLimiterMiddleware, ValidateCORSMiddleware,
+// ValidateMiddlewareChainConfig) — deliberately skipping
+// ValidateAnalyticsMiddleware/ValidateAuthenticationMiddleware/ValidateDependencies,
+// which check that dependency injection wired real objects (a session store,
+// a DB-backed user repository, ...), not a property of the config file.
+//
+// This is what `tg validate` calls: it needs to check the config is well
+// formed without opening a database connection or constructing a real
+// deps.Dependencies, the same way `tg middleware list` and `tg migrate`
+// don't either.
+func ValidateConfigOnly(config *config.GatewayConfig) error {
+	if err := ValidateRouteConfiguration(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateAdminAccess(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateRateLimiterMiddleware(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateCORSMiddleware(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateMiddlewareChainConfig(config); err != nil {
+		return err
+	}
 	return nil
 }
 

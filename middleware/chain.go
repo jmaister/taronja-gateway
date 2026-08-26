@@ -109,7 +109,7 @@ func Chain(handler http.Handler, middlewares ...Middleware) http.Handler {
 }
 
 // NewGlobalMiddlewareRegistry builds a MiddlewareRegistryV2 with a factory
-// registered for every built-in global middleware (rate_limiter,
+// registered for every built-in global middleware (cors, rate_limiter,
 // ja4_fingerprint, session_extraction, traffic_metrics, logging), wired to
 // the given dependencies. It's exposed separately from BuildGlobalChainV2 so
 // callers that need to introspect the registry after building the chain —
@@ -124,6 +124,9 @@ func NewGlobalMiddlewareRegistry(
 ) (*MiddlewareRegistryV2, error) {
 	registry := NewMiddlewareRegistryV2()
 
+	if err := registry.RegisterFactory(NewCORSFactory()); err != nil {
+		return nil, err
+	}
 	if err := registry.RegisterFactory(NewRateLimiterFactory(rateLimiter)); err != nil {
 		return nil, err
 	}

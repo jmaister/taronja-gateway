@@ -49,13 +49,16 @@ taronja-gateway/
 
 ### `main.go` — CLI Entry Point
 
-- **Cobra CLI** with five subcommands:
-  - `run --config <path>` — starts the gateway server (config file path required)
+- **Cobra CLI** with six subcommands:
+  - `run --config <path>` — starts the gateway server (config file path required); handles `SIGINT`/`SIGTERM` by calling `http.Server.Shutdown()` with a `gracefulShutdownTimeout` (15s) deadline instead of dying mid-request — see "Graceful shutdown" below
   - `adduser <username> <email> <password>` — direct CLI user creation
   - `version` — displays version/commit/build date (injected by GoReleaser)
   - `middleware list --config <path>` — prints the resolved global middleware chain and status for a config file, without starting the server (see Phase 4 notes in the `middleware/` section below)
   - `migrate --config <path>` — prints a config file migrated to the version this build requires on stdout (unchanged if already current); writes nothing itself — redirect the output (`> config-v2.yaml`) to save it. Never touches the original. `run` and `middleware list` both refuse to load a config file older than current and point here (see "Config file versioning" in the `config/` section below)
+  - `validate --config <path>` — loads and validates a config file (`config.LoadConfig` + `middleware.ValidateConfigOnly`) and reports success/failure, without starting the server, opening a database connection, or making any network calls — same no-side-effects contract as `middleware list`/`migrate`. Prints a one-line summary on success (route count, prefix); a validation failure prints `FATAL: <error>` to stderr and exits 1
 - Embeds the built React dashboard (`webapp/dist`) into the binary using `//go:embed`
+
+**Graceful shutdown (`main.go`'s `runGateway`):** `gateway.Server.ListenAndServe()` runs in a goroutine so `runGateway` can `select` between it exiting on its own (a real startup/runtime error) and a `SIGINT`/`SIGTERM` arriving (`signal.Notify`). On a signal, it calls `gateway.Server.Shutdown(ctx)` with a `gracefulShutdownTimeout`-bounded context, which lets `net/http` drain in-flight requests before the process exits — previously `ListenAndServe()` was simply never asked to stop, so every deploy/restart/Ctrl+C dropped whatever was mid-flight. `Server.Shutdown` was already used throughout the test suite (`gateway/gateway_test.go`); this just wires the same call into the actual `run` command.
 - Loads environment variables from `.env` via `godotenv`
 
 ### `gateway/` and `gateway/deps/`
@@ -79,7 +82,7 @@ taronja-gateway/
 - **Defaults applied** then validated post-unmarshal (port required, admin credentials required if admin enabled)
 - **Main config sections:**
   - `server` — host, port, external URL
-  - `management` — API prefix (default `/_`), admin credentials, session config, rate limiter rules, geolocation provider
+  - `management` — API prefix (default `/_`), admin credentials, session config, rate limiter rules, CORS settings, geolocation provider
   - `routes` — list of `RouteConfig` (reverse proxy, static file, SPA routes)
   - `authenticationProviders` — Basic, Google OAuth2, GitHub OAuth2 config
   - `branding`, `geolocation`, `notification.email.smtp`
@@ -180,10 +183,17 @@ taronja-gateway/
 - `webapp/src/pages/MiddlewarePage.tsx` (route `/middleware`, nav entry in `Sidebar.tsx`) is the dashboard page Phase 3 marked "(if applicable)" and skipped; modeled directly on `RateLimiterStatsPage.tsx`'s layout/auto-refresh pattern. Uses `useMiddlewareStatus()` + `useMiddlewareMetrics()` (`services/services.ts`), merging the two responses client-side by middleware name.
 - Two other gaps found in the same review — per-middleware YAML config beyond `rate_limiter`, and a dedicated dependency-graph data structure — are deliberately **not** implemented; see Phase 5 in `doc/refactor01.md` for why.
 
-**Declarative `middleware:` config example** (opt-in; omit this section entirely to keep using `management.analytics`/`logging`/`rateLimiter`):
+**CORS middleware (`middleware/cors.go`, `config/cors.go`):** the sixth built-in global middleware, added when a later architecture review flagged that nothing added CORS response headers at all. `config.CORSConfig` (`management.cors`, and per-entry `middleware.global[].cors`, same override pattern as `rateLimiter`) is disabled by default — `IsEnabled()` is false unless `allowedOrigins` is non-empty, matching the pre-CORS behavior exactly when the section is omitted. `CORSMiddleware` handles both real cross-origin requests (adds `Access-Control-Allow-Origin`/`-Credentials`) and preflight `OPTIONS` requests (also adds `-Methods`/`-Headers`/`-Max-Age` and responds `204` directly, never reaching the wrapped handler). `ValidateCORSMiddleware` (`middleware/validation.go`) rejects `allowedOrigins: ["*"]` combined with `allowCredentials: true` at config-load time — browsers reject that combination outright, so it's caught before deploy rather than silently not working in any browser. In the legacy (non-`middleware:`-section) config path, CORS runs *first* in the chain, before rate limiting or auth — a preflight request is never meant to reach application logic, so it needs to be answered before anything that might reject it.
+
+**`tg validate` (`main.go`'s `validateConfigFile`):** loads a config via `config.LoadConfig`, then additionally runs `middleware.ValidateConfigOnly` — the subset of `ValidateAllMiddleware`'s checks that validate the config file itself (routes, admin, rate limiter, CORS, the middleware dependency graph) without dereferencing `deps.Dependencies`, since `tg validate` (like `middleware list` and `migrate`) never opens a database connection. `ValidateAllMiddleware`'s other checks (`ValidateAnalyticsMiddleware`, `ValidateAuthenticationMiddleware`, `ValidateDependencies`) are deliberately excluded — they check that dependency injection wired real objects, not a property of the config file, so they're meaningless without a real `deps.Dependencies`.
+
+**Declarative `middleware:` config example** (opt-in; omit this section entirely to keep using `management.analytics`/`logging`/`rateLimiter`/`cors`):
 ```yaml
 middleware:
   global:
+    - name: cors
+      cors:
+        allowedOrigins: ["https://app.example.com"]
     - name: rate_limiter
       rateLimiter:
         requestsPerMinute: 1000
@@ -326,7 +336,8 @@ webapp/src/
 - Command (`make gen`'s actual recipe): `cd webapp && npm install && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch` — run from inside `webapp/`, not the repo root
 - Regenerated whenever the spec changes; files carry auto-generated headers (`// This file is auto-generated`)
 - `webapp/src/apiclient` is gitignored (a generated artifact, same as `webapp/dist`), so a fresh checkout has no client at all until `make gen` (or the command above) is run once
-- **Fixed toolchain gotcha, keep it fixed**: `@hey-api/openapi-ts` is a pinned `devDependency` in `webapp/package.json` (not invoked via bare `npx --yes` from the repo root) specifically because that resolves its own isolated `typescript` dependency — which as of writing pulls in `typescript@7.x`, the from-scratch Go-based compiler rewrite, incompatible with `@hey-api/openapi-ts`'s TS AST codegen (`Cannot read properties of undefined (reading 'SyntaxKind')` / `'LineFeed'`, across multiple `@hey-api/openapi-ts` versions). Running it from inside `webapp/` as a local devDependency makes npm resolve its `typescript` peer against the workspace's own pinned `typescript` (6.0.3, which works) instead. If this starts failing again after a `@hey-api/openapi-ts` or `typescript` version bump, that's almost certainly the same class of issue recurring — don't revert to bare `npx --yes` from root as a "fix."
+- **Fixed toolchain gotcha, keep it fixed**: `@hey-api/openapi-ts` is a pinned `devDependency` in `webapp/package.json` (not invoked via bare `npx --yes` from the repo root) specifically because that resolves its own isolated `typescript` dependency — which as of writing pulls in `typescript@7.x`, the from-scratch Go-based compiler rewrite, incompatible with `@hey-api/openapi-ts`'s TS AST codegen (`Cannot read properties of undefined (reading 'SyntaxKind')` / `'LineFeed'`, across multiple `@hey-api/openapi-ts` versions). Running it from inside `webapp/` as a local devDependency makes npm resolve its `typescript` peer against the workspace's own pinned `typescript` (6.0.3, which works) instead. If this starts failing again after a `@hey-api/openapi-ts` or `typescript` version bump, that's almost certainly the same class of issue recurring — don't revert to bare `npx --yes` from root as a "fix." `.github/workflows/ci.yml` and `.github/workflows/release.yml` both had this exact bare `npx --yes` bug live (unnoticed since it happened to work on whatever GitHub Actions' runners resolved) until they were fixed to match — see their "Generate API client"/"Generate Go API code and TypeScript client" steps.
+- **CI enforces more than it used to**: `ci.yml` now also runs `gofmt -l` (against `git ls-files '*.go'`, not a bare recursive `gofmt -l .`, since that would also pick up vendored `.go` files under `webapp/node_modules` that aren't ours to reformat), `go vet ./...`, `npm run lint`, and `npx tsc --noEmit` for webapp — and a "Check generated files are up to date" step that regenerates `api/api.gen.go` and `doc/CONFIG.md` and fails the build on any diff. None of these existed before; concretely, `tsc --noEmit` would have caught two real bugs (a missing `UserResponse.createdAt`/`updatedAt` mapping, a JSON-import type error) that shipped silently earlier in this project's history because nothing ran it.
 
 **Dependencies** (key packages in [`webapp/package.json`](./webapp/package.json)):
 - React 19, react-dom 19, TypeScript 6
