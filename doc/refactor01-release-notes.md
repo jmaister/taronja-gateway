@@ -1,7 +1,7 @@
 # Release Notes: Middleware Architecture Refactor
 
 **Companion to:** [`doc/refactor01.md`](./refactor01.md) (the full design doc and phase-by-phase plan)
-**Scope:** All four phases — Foundation, Config Integration, Monitoring & Observability, Documentation & Tooling.
+**Scope:** All five phases — Foundation, Config Integration, Monitoring & Observability, Documentation & Tooling, and the Follow-ups from Self-Review phase added afterward.
 
 This refactor replaces the gateway's hardcoded, conditional middleware setup
 (`if config.Management.Analytics { chain.Add(...) }` inside
@@ -59,6 +59,9 @@ it's the only one with tunable options that already existed.
 - `GET <prefix>/api/middleware/{name}/metrics` — request count, error count,
   and average duration for one middleware, tracked in-memory since the chain
   was built.
+- `GET <prefix>/api/middleware/metrics` (Phase 5) — every middleware's
+  metrics in one call, plus a `/middleware` page in the admin dashboard that
+  renders all of the above (status, health, dependencies, live metrics).
 
 **A CLI command for offline introspection.**
 
