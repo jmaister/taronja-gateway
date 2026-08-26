@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 // CurrentConfigVersion is the config schema version this build of the
@@ -92,58 +94,95 @@ func setTopLevelVersionField(raw []byte, version int) []byte {
 	return append([]byte(line+"\n"), raw...)
 }
 
-// applyConfigVersioning determines the config file's effective version (an
-// absent/zero Version is treated as legacyConfigVersion), always logs it,
-// and — if it predates CurrentConfigVersion — migrates it and writes the
-// result to a sibling "-vN" file (versionedConfigPath) without touching the
-// original. cfg.Version is set to CurrentConfigVersion in this case too, so
-// the rest of the running gateway always behaves per the current schema
-// regardless of which file it was actually loaded from.
-//
-// raw must be the config file's original bytes, from before ${VAR}
-// expansion — a migrated file must never have resolved secrets baked into
-// it (see LoadConfig, which expands env vars into a separate copy before
-// unmarshaling for exactly this reason).
-//
-// This never fails LoadConfig: a migrated file that can't be written (e.g.
-// a read-only config directory) is logged as a warning, not an error, since
-// the running gateway doesn't depend on that file existing — it already has
-// what it needs in cfg.
-func applyConfigVersioning(configPath string, raw []byte, cfg *GatewayConfig) {
-	fileVersion := cfg.Version
-	if fileVersion == 0 {
-		fileVersion = legacyConfigVersion
+// effectiveConfigVersion returns v if positive, otherwise legacyConfigVersion
+// — the implicit version of a config file that predates the `version:`
+// field entirely.
+func effectiveConfigVersion(v int) int {
+	if v == 0 {
+		return legacyConfigVersion
 	}
+	return v
+}
+
+// checkConfigVersion determines cfg's effective version, always logs it, and
+// returns an error if it's older than CurrentConfigVersion: the gateway must
+// not run against an outdated config file (see doc/refactor01.md's config
+// versioning section — this used to migrate the file automatically instead
+// of refusing to start, but a silently-rewritten config someone might not
+// notice was the wrong tradeoff). The error message tells the user to run
+// `tg migrate` rather than leaving them to guess.
+//
+// A version *newer* than this build supports is logged as a warning, not an
+// error — there's no way to downgrade a config, and refusing to start over a
+// merely-unrecognized newer field would be more disruptive than useful.
+func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
+	fileVersion := effectiveConfigVersion(cfg.Version)
 	log.Printf("Config file version: %d (current: %d)", fileVersion, CurrentConfigVersion)
 
-	switch {
-	case fileVersion > CurrentConfigVersion:
+	if fileVersion > CurrentConfigVersion {
 		log.Printf("Warning: config file '%s' declares version %d, newer than this gateway version supports (%d). Proceeding, but some settings may not be recognized.",
 			configPath, fileVersion, CurrentConfigVersion)
-		return
-	case fileVersion == CurrentConfigVersion:
-		return
+		return nil
+	}
+	if fileVersion < CurrentConfigVersion {
+		return fmt.Errorf(
+			"config file '%s' is version %d, but this gateway requires version %d\n\n"+
+				"Run this to upgrade it (writes a new file; the original is left untouched):\n\n"+
+				"    tg migrate --config %s\n\n"+
+				"Then point --config at the migrated file (it's named with a \"-v%d\" suffix).",
+			configPath, fileVersion, CurrentConfigVersion, configPath, CurrentConfigVersion,
+		)
+	}
+	return nil
+}
+
+// MigrateConfigFile reads the config file at path, and — if its declared
+// version is older than CurrentConfigVersion — migrates its raw content
+// (migrateConfigToCurrent) and writes the result to a sibling "-vN" file
+// (versionedConfigPath), leaving the original completely untouched. This is
+// what `tg migrate` calls; see checkConfigVersion for why the gateway
+// doesn't do this automatically on every startup anymore.
+//
+// If the file is already at CurrentConfigVersion or newer, no file is
+// written: writtenPath is "" and err is nil. Callers should check for an
+// empty writtenPath rather than treating that case as an error.
+//
+// If the target file already exists, MigrateConfigFile fails unless force is
+// true — it may have been hand-edited since an earlier migration, and
+// silently clobbering it would be a worse default than asking.
+func MigrateConfigFile(path string, force bool) (writtenPath string, fromVersion int, err error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to read config file '%s': %w", path, err)
 	}
 
-	// fileVersion < CurrentConfigVersion: the running gateway still behaves
-	// per the current schema from here on, regardless of what's on disk.
-	cfg.Version = CurrentConfigVersion
+	// Only the version field is needed here; full parsing/validation happens
+	// later, in LoadConfig, once the migrated file is actually loaded.
+	var probe struct {
+		Version int `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(raw, &probe); err != nil {
+		return "", 0, fmt.Errorf("failed to parse config file '%s': %w", path, err)
+	}
+	fileVersion := effectiveConfigVersion(probe.Version)
 
-	targetPath := versionedConfigPath(configPath, CurrentConfigVersion)
-	if _, err := os.Stat(targetPath); err == nil {
-		log.Printf("Config file '%s' is version %d (current: %d). A migrated copy already exists at '%s' — leaving it as-is. Consider switching to it.",
-			configPath, fileVersion, CurrentConfigVersion, targetPath)
-		return
+	if fileVersion >= CurrentConfigVersion {
+		return "", fileVersion, nil
+	}
+
+	targetPath := versionedConfigPath(path, CurrentConfigVersion)
+	if !force {
+		if _, statErr := os.Stat(targetPath); statErr == nil {
+			return "", fileVersion, fmt.Errorf("migrated file '%s' already exists; pass --force to overwrite it", targetPath)
+		}
 	}
 
 	migrated := migrateConfigToCurrent(raw, fileVersion)
 	if err := os.WriteFile(targetPath, migrated, 0o644); err != nil {
-		log.Printf("Warning: config file '%s' is version %d (current: %d), but failed to write a migrated copy to '%s': %v. Continuing with the loaded config as-is; consider adding `version: %d` to '%s' manually.",
-			configPath, fileVersion, CurrentConfigVersion, targetPath, err, CurrentConfigVersion, configPath)
-		return
+		return "", fileVersion, fmt.Errorf("failed to write migrated config to '%s': %w", targetPath, err)
 	}
-	log.Printf("Config file '%s' is version %d (current: %d). Wrote a migrated copy to '%s' — consider switching to it; the original was left unchanged.",
-		configPath, fileVersion, CurrentConfigVersion, targetPath)
+
+	return targetPath, fileVersion, nil
 }
 
 // versionedConfigPath returns the path a migrated config should be written

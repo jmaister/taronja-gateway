@@ -216,12 +216,11 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
 	}
 
-	// Check the config file's schema version, and migrate it (writing a
-	// sibling "-vN" file, leaving the original untouched) if it predates
-	// CurrentConfigVersion. Uses the pre-expansion `data`, never
-	// `expandedData` — a migrated file on disk must never contain resolved
-	// secrets. See version.go.
-	applyConfigVersioning(configAbsPath, data, config)
+	// Refuse to run against a config file older than CurrentConfigVersion —
+	// see version.go. Run `tg migrate --config <path>` to upgrade it first.
+	if err := checkConfigVersion(configAbsPath, config); err != nil {
+		return nil, err
+	}
 
 	// --- Post-Unmarshal Validation and Path Resolution ---
 	// Validate server config

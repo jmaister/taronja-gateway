@@ -77,8 +77,54 @@ func TestMigrateConfigToCurrent_NoOpAtCurrentVersion(t *testing.T) {
 }
 
 // --- LoadConfig integration ---
+//
+// LoadConfig must refuse to run against a config file older than
+// CurrentConfigVersion, rather than silently migrating it — see
+// checkConfigVersion. Migration itself is a deliberate, explicit step via
+// `tg migrate` / config.MigrateConfigFile, tested separately below.
 
-func TestLoadConfig_LegacyFile_MigratesAndPreservesSecrets(t *testing.T) {
+func TestLoadConfig_LegacyFile_FailsWithMigrationAdvice(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(minimalTestConfigYAML), 0o644))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err, "LoadConfig must refuse to run against a config file older than CurrentConfigVersion")
+	assert.Contains(t, err.Error(), "version 1")
+	assert.Contains(t, err.Error(), "requires version 2")
+	assert.Contains(t, err.Error(), "tg migrate --config "+path, "the error must tell the user how to fix it")
+
+	// LoadConfig must not have written anything to disk on this path — that's
+	// what tg migrate is for now, not an automatic side effect of loading.
+	_, statErr := os.Stat(filepath.Join(dir, "config-v2.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "LoadConfig must not write a migrated file itself")
+}
+
+func TestLoadConfig_CurrentVersionFile_Succeeds(t *testing.T) {
+	raw := "version: 2\n" + minimalTestConfigYAML
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, CurrentConfigVersion, cfg.Version)
+}
+
+func TestLoadConfig_NewerVersionThanSupported_ProceedsWithWarning(t *testing.T) {
+	raw := "version: 99\n" + minimalTestConfigYAML
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err, "a newer-than-supported version should log a warning, not fail")
+	assert.Equal(t, 99, cfg.Version, "an unsupported newer version should be left as declared, not overwritten")
+}
+
+// --- MigrateConfigFile (tg migrate) ---
+
+func TestMigrateConfigFile_WritesUpgradedCopyAndPreservesSecrets(t *testing.T) {
 	t.Setenv("TEST_VERSION_MIGRATION_SECRET", "super-secret-value")
 
 	raw := `name: Test Gateway
@@ -101,9 +147,10 @@ routes:
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
-	cfg, err := LoadConfig(path)
+	writtenPath, fromVersion, err := MigrateConfigFile(path, false)
 	require.NoError(t, err)
-	assert.Equal(t, CurrentConfigVersion, cfg.Version, "in-memory config should behave as the current version")
+	assert.Equal(t, legacyConfigVersion, fromVersion)
+	assert.Equal(t, filepath.Join(dir, "config-v2.yaml"), writtenPath)
 
 	// Original file must be untouched.
 	originalAfter, err := os.ReadFile(path)
@@ -112,43 +159,36 @@ routes:
 
 	// Migrated file must exist, contain the new version field, preserve the
 	// comment, and — critically — must NOT contain the resolved secret.
-	migratedPath := filepath.Join(dir, "config-v2.yaml")
-	migrated, err := os.ReadFile(migratedPath)
-	require.NoError(t, err, "expected a migrated config-v2.yaml to be created")
+	migrated, err := os.ReadFile(writtenPath)
+	require.NoError(t, err)
 	migratedStr := string(migrated)
 	assert.Contains(t, migratedStr, "version: 2")
 	assert.Contains(t, migratedStr, "# a comment that must survive migration")
 	assert.Contains(t, migratedStr, "${TEST_VERSION_MIGRATION_SECRET}", "migrated file must keep the env var placeholder, not resolve it")
 	assert.NotContains(t, migratedStr, "super-secret-value", "migrated file must never contain a resolved secret")
+
+	// And the migrated file must now load successfully on its own.
+	cfg, err := LoadConfig(writtenPath)
+	require.NoError(t, err)
+	assert.Equal(t, CurrentConfigVersion, cfg.Version)
 }
 
-func TestLoadConfig_CurrentVersionFile_NoMigrationFileCreated(t *testing.T) {
-	raw := `version: 2
-name: Test Gateway
-server:
-  host: 127.0.0.1
-  port: 8080
-management:
-  admin:
-    enabled: false
-routes:
-  - name: root
-    from: /
-    to: http://localhost:9999
-`
+func TestMigrateConfigFile_AlreadyCurrent_NoOp(t *testing.T) {
+	raw := "version: 2\n" + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
-	cfg, err := LoadConfig(path)
+	writtenPath, fromVersion, err := MigrateConfigFile(path, false)
 	require.NoError(t, err)
-	assert.Equal(t, CurrentConfigVersion, cfg.Version)
+	assert.Equal(t, "", writtenPath, "nothing should be written when the file is already current")
+	assert.Equal(t, CurrentConfigVersion, fromVersion)
 
-	_, err = os.Stat(filepath.Join(dir, "config-v2.yaml"))
-	assert.True(t, os.IsNotExist(err), "no migrated file should be created when the config is already current")
+	_, statErr := os.Stat(filepath.Join(dir, "config-v2.yaml"))
+	assert.True(t, os.IsNotExist(statErr))
 }
 
-func TestLoadConfig_MigratedFileAlreadyExists_NotOverwritten(t *testing.T) {
+func TestMigrateConfigFile_ExistingTargetWithoutForce_Errors(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(minimalTestConfigYAML), 0o644))
@@ -157,26 +197,32 @@ func TestLoadConfig_MigratedFileAlreadyExists_NotOverwritten(t *testing.T) {
 	sentinel := "version: 2\n# hand-edited, do not clobber\nname: Hand Edited\n"
 	require.NoError(t, os.WriteFile(migratedPath, []byte(sentinel), 0o644))
 
-	_, err := LoadConfig(path)
-	require.NoError(t, err)
+	writtenPath, _, err := MigrateConfigFile(path, false)
+	require.Error(t, err, "must refuse to overwrite an existing migrated file without --force")
+	assert.Contains(t, err.Error(), "--force")
+	assert.Equal(t, "", writtenPath)
 
 	after, err := os.ReadFile(migratedPath)
 	require.NoError(t, err)
-	assert.Equal(t, sentinel, string(after), "an existing migrated file must not be overwritten")
+	assert.Equal(t, sentinel, string(after), "an existing migrated file must not be overwritten without --force")
 }
 
-func TestLoadConfig_NewerVersionThanSupported_ProceedsWithWarning(t *testing.T) {
-	raw := "version: 99\n" + minimalTestConfigYAML
+func TestMigrateConfigFile_ExistingTargetWithForce_Overwrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(minimalTestConfigYAML), 0o644))
 
-	cfg, err := LoadConfig(path)
-	require.NoError(t, err, "a newer-than-supported version should log a warning, not fail")
-	assert.Equal(t, 99, cfg.Version, "an unsupported newer version should be left as declared, not overwritten")
+	migratedPath := filepath.Join(dir, "config-v2.yaml")
+	require.NoError(t, os.WriteFile(migratedPath, []byte("version: 2\nname: Stale\n"), 0o644))
 
-	_, err = os.Stat(filepath.Join(dir, "config-v99.yaml"))
-	assert.True(t, os.IsNotExist(err), "no migration file should be created for a newer-than-supported version")
+	writtenPath, fromVersion, err := MigrateConfigFile(path, true)
+	require.NoError(t, err)
+	assert.Equal(t, migratedPath, writtenPath)
+	assert.Equal(t, legacyConfigVersion, fromVersion)
+
+	after, err := os.ReadFile(migratedPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(after), "Test Gateway", "--force must overwrite the stale migrated file")
 }
 
 const minimalTestConfigYAML = `name: Test Gateway

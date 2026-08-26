@@ -11,6 +11,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func IsMiddlewareNameKnown\(name string\) bool](<#IsMiddlewareNameKnown>)
+- [func MigrateConfigFile\(path string, force bool\) \(writtenPath string, fromVersion int, err error\)](<#MigrateConfigFile>)
 - [type AdminConfig](<#AdminConfig>)
 - [type AuthProviderCredentials](<#AuthProviderCredentials>)
 - [type AuthenticationConfig](<#AuthenticationConfig>)
@@ -81,6 +82,19 @@ func IsMiddlewareNameKnown(name string) bool
 ```
 
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
+
+<a name="MigrateConfigFile"></a>
+## func [MigrateConfigFile](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L153>)
+
+```go
+func MigrateConfigFile(path string, force bool) (writtenPath string, fromVersion int, err error)
+```
+
+MigrateConfigFile reads the config file at path, and — if its declared version is older than CurrentConfigVersion — migrates its raw content \(migrateConfigToCurrent\) and writes the result to a sibling "\-vN" file \(versionedConfigPath\), leaving the original completely untouched. This is what \`tg migrate\` calls; see checkConfigVersion for why the gateway doesn't do this automatically on every startup anymore.
+
+If the file is already at CurrentConfigVersion or newer, no file is written: writtenPath is "" and err is nil. Callers should check for an empty writtenPath rather than treating that case as an error.
+
+If the target file already exists, MigrateConfigFile fails unless force is true — it may have been hand\-edited since an earlier migration, and silently clobbering it would be a worse default than asking.
 
 <a name="AdminConfig"></a>
 ## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L107-L112>)
@@ -193,7 +207,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L349>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L348>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -331,7 +345,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L408>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L407>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -340,7 +354,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L416>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L415>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool

@@ -100,6 +100,12 @@ The Taronja Gateway CLI provides the following commands:
     ```
     Prints every global middleware's status, dependencies, and (where implemented) health for the given config — without starting the server. See [Middleware Architecture](#middleware-architecture).
 
+*   **Migrate a config file to the current schema version:**
+    ```bash
+    ./tg migrate --config ./sample/config.yaml
+    ```
+    Writes an upgraded copy named with a `-v<N>` suffix (e.g. `config.yaml` → `config-v2.yaml`); never modifies the original. `tg run` refuses to start against an outdated config file and tells you to run this. See [Config File Versioning](#config-file-versioning).
+
 # Configuration
 
 Taronja Gateway uses a YAML configuration file to define server settings, routes, authentication providers, and other features. The configuration file can reference environment variables using the `${VARIABLE_NAME}` syntax.
@@ -180,23 +186,44 @@ supports:
 Config file version: 2 (current: 2)
 ```
 
-**You don't need to add this field to keep an existing config file working.**
 A file with no `version:` key is treated as version 1 — the implicit version
-of every config written before this feature existed — and loads exactly as
-before. But when the gateway detects a config older than it supports, it
-automatically writes an upgraded copy alongside the original, named with a
-`-v<N>` suffix (e.g. `config.yaml` → `config-v2.yaml`), and logs what it did:
+of every config written before this feature existed.
+
+**The gateway refuses to start against an outdated config file.** If the
+version it detects is older than it supports, `tg run` (and `tg middleware
+list`) fail immediately with an error telling you what to do:
 
 ```
-Config file version: 1 (current: 2)
-Config file 'config.yaml' is version 1 (current: 2). Wrote a migrated copy to 'config-v2.yaml' — consider switching to it; the original was left unchanged.
+FATAL: Failed to load configuration: config file 'config.yaml' is version 1, but this gateway requires version 2
+
+Run this to upgrade it (writes a new file; the original is left untouched):
+
+    tg migrate --config config.yaml
+
+Then point --config at the migrated file (it's named with a "-v2" suffix).
 ```
 
-The original file is **never modified or deleted**, and a migrated file is
-**never overwritten** once created (in case you've since hand-edited it) —
-you decide when to switch `--config` over to the new file. The gateway runs
-correctly either way in the meantime: it behaves per the current schema
-internally regardless of which file it actually loaded.
+Run the suggested command:
+
+```bash
+./tg migrate --config config.yaml
+```
+
+```
+Migrated 'config.yaml' (version 1) to 'config-v2.yaml' (version 2).
+The original file was left unchanged. Point --config at the new file when you're ready:
+
+    tg run --config config-v2.yaml
+```
+
+`tg migrate` writes an upgraded copy named with a `-v<N>` suffix (e.g.
+`config.yaml` → `config-v2.yaml`) — it **never modifies or deletes the
+original**, and refuses to overwrite an existing migrated file unless you
+pass `--force` (in case you've since hand-edited it). Update your `--config`
+flag (or however you invoke `tg run`) to point at the new file once you're
+happy with it. A config spanning multiple versions is migrated one step at
+a time internally (e.g. v1→v2→v3), so a single `tg migrate` run always gets
+you all the way to the version this build requires.
 
 ## Configuration Sections
 

@@ -104,6 +104,36 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var migrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Migrate a config file to the version this gateway requires",
+	Long: `Reads a config file and, if it's older than the version this gateway
+requires, migrates it and writes the result to a new file named with a
+"-vN" suffix (e.g. config.yaml -> config-v2.yaml). The original file is
+never modified.
+
+The migration is applied one version step at a time (v1->v2, v2->v3, ...),
+same as if you'd run this once per intervening version.
+
+The gateway refuses to start ("run") against an outdated config file
+specifically so this migration is a deliberate step you take (and can
+review the result of) rather than something that happens silently on
+every startup. Run this whenever "tg run" tells you to.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		configFilePath, err := cmd.Flags().GetString("config")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
+			os.Exit(1)
+		}
+		force, err := cmd.Flags().GetBool("force")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting force flag: %v\n", err)
+			os.Exit(1)
+		}
+		migrateConfigFile(configFilePath, force)
+	},
+}
+
 func init() {
 	runCmd.Flags().String("config", "", "Path to the configuration file")
 	if err := runCmd.MarkFlagRequired("config"); err != nil {
@@ -116,10 +146,17 @@ func init() {
 	}
 	middlewareCmd.AddCommand(middlewareListCmd)
 
+	migrateCmd.Flags().String("config", "", "Path to the configuration file to migrate")
+	if err := migrateCmd.MarkFlagRequired("config"); err != nil {
+		log.Fatalf("Failed to mark 'config' flag as required for migrateCmd: %v", err)
+	}
+	migrateCmd.Flags().Bool("force", false, "Overwrite the migrated file if it already exists")
+
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(addUserCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(middlewareCmd)
+	rootCmd.AddCommand(migrateCmd)
 }
 
 func main() {
@@ -255,4 +292,29 @@ func listMiddleware(configFilePath string) {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, s.Status, health, dependsOn, s.Description)
 	}
 	tw.Flush()
+}
+
+// migrateConfigFile implements `tg migrate`: it upgrades a config file to
+// the version this gateway requires (config.CurrentConfigVersion),
+// stepping through each intervening version's migration in turn
+// (config.MigrateConfigFile), and writes the result to a new "-vN" file
+// without touching the original. This is the only supported way to move an
+// outdated config forward — config.LoadConfig (used by "tg run" and
+// "tg middleware list") refuses to run against one at all.
+func migrateConfigFile(configFilePath string, force bool) {
+	writtenPath, fromVersion, err := config.MigrateConfigFile(configFilePath, force)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	if writtenPath == "" {
+		fmt.Printf("'%s' is already version %d (current: %d) — nothing to migrate.\n",
+			configFilePath, fromVersion, config.CurrentConfigVersion)
+		return
+	}
+
+	fmt.Printf("Migrated '%s' (version %d) to '%s' (version %d).\n",
+		configFilePath, fromVersion, writtenPath, config.CurrentConfigVersion)
+	fmt.Printf("The original file was left unchanged. Point --config at the new file when you're ready:\n\n    tg run --config %s\n\n", writtenPath)
 }
