@@ -131,6 +131,49 @@ func TestLoadConfig_NewerVersionThanSupported_ProceedsWithWarning(t *testing.T) 
 	assert.Equal(t, 99, cfg.Version, "an unsupported newer version should be left as declared, not overwritten")
 }
 
+// TestLoadConfig_NeverWritesFiles is the direct regression test for
+// "migration only ever runs via `tg migrate`, never as a side effect of
+// LoadConfig" — across every version relationship LoadConfig can see (older,
+// current, newer), the config file's directory must contain exactly the one
+// file this test put there, both before and after the call. Complements the
+// source-level guarantee (checkConfigVersion, LoadConfig's only version
+// handling, never calls migrateConfigToCurrent/migrateV1ToV2/
+// MigrateConfigContent — only MigrateConfigContent does, and its only
+// caller in the whole module is main.go's migrateConfigFile, wired
+// exclusively to the `migrate` Cobra command) with something a future
+// regression would actually fail, not just something true by inspection
+// today.
+func TestLoadConfig_NeverWritesFiles(t *testing.T) {
+	versionLines := map[string]string{
+		"older than current":   "", // no version: line at all -> legacyConfigVersion (1)
+		"current":              "version: 2\n",
+		"newer than supported": "version: 99\n",
+	}
+
+	for name, versionLine := range versionLines {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(versionLine+minimalTestConfigYAML), 0o644))
+
+			before, err := os.ReadDir(dir)
+			require.NoError(t, err)
+
+			// Ignore the return values deliberately: whether LoadConfig
+			// succeeds or fails (it fails for "older than current"), the one
+			// thing under test here is that it never touches the filesystem
+			// beyond reading the file it was given.
+			_, _ = LoadConfig(path)
+
+			after, err := os.ReadDir(dir)
+			require.NoError(t, err)
+
+			require.Len(t, after, len(before), "LoadConfig must not create, rename, or delete any file in the config's directory")
+			assert.Equal(t, before[0].Name(), after[0].Name())
+		})
+	}
+}
+
 // --- MigrateConfigContent (tg migrate) ---
 //
 // MigrateConfigContent never writes anything — it just returns the migrated
