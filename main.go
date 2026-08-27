@@ -214,10 +214,22 @@ func main() {
 	}
 }
 
+// dotEnvLoadIsFatal reports whether an error from godotenv.Load() should
+// stop the gateway from starting: a missing .env is never fatal — see
+// runGateway's call site — only a present-but-unreadable/malformed one is.
+func dotEnvLoadIsFatal(err error) bool {
+	return err != nil && !os.IsNotExist(err)
+}
+
 func runGateway(configFilePath string, watchConfig bool) {
-	err := godotenv.Load() // 👈 load .env file
-	if err != nil {
-		log.Fatal(err)
+	// A missing .env is fine — plenty of deployments (this project's own
+	// Docker demo among them) rely on real environment variables only and
+	// never have one; only a present-but-unreadable/malformed one is worth
+	// stopping for. Same distinction gateway/reload.go's reloadDotEnv makes
+	// for every later reload, and the one addUser already made below — this
+	// was the one call site treating "no .env" as fatal.
+	if err := godotenv.Load(); dotEnvLoadIsFatal(err) {
+		log.Fatalf("FATAL: failed to load .env: %v", err)
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -386,9 +398,8 @@ func watchConfigFile(configFilePath string, gw *gateway.Gateway, stop <-chan str
 }
 
 func addUser(username, email, password string) {
-	// Load .env file
-	err := godotenv.Load()
-	if err != nil {
+	// Load .env file — a missing one is fine, see dotEnvLoadIsFatal.
+	if err := godotenv.Load(); dotEnvLoadIsFatal(err) {
 		log.Printf("Warning: Failed to load .env file: %v", err)
 	}
 
@@ -401,8 +412,7 @@ func addUser(username, email, password string) {
 		EmailConfirmed: false,
 	}
 
-	err = appDependencies.UserRepo.CreateUser(newUser)
-	if err != nil {
+	if err := appDependencies.UserRepo.CreateUser(newUser); err != nil {
 		log.Fatalf("Failed to create user: %v", err)
 	}
 

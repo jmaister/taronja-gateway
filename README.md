@@ -74,6 +74,10 @@ powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jmaister/taronja
 
 The Windows installer places the binary in `%USERPROFILE%\bin`. Add this directory to your PATH to use `tg` from anywhere.
 
+### Try it with Docker
+
+Prefer to see it running before installing anything? [`examples/docker-demo`](examples/docker-demo/) is a `docker compose up --build` away from a full stack with one of each route type (static, authenticated static, reverse proxy), the admin dashboard, and Google/GitHub OAuth wired up to `.env` — see its README.
+
 # Commands
 
 The Taronja Gateway CLI provides the following commands:

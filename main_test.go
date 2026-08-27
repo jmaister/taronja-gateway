@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -159,3 +160,25 @@ func TestWatchConfigFile_ReloadsOnWrite(t *testing.T) {
 // tests: main.go otherwise has no existing test coverage in this repo (it's
 // a thin Cobra wrapper, manually verified against the built binary), and
 // that's unchanged here except for these specific properties.
+
+// TestDotEnvLoadIsFatal is the regression test for a real bug found while
+// building examples/docker-demo: runGateway used to call log.Fatal on *any*
+// godotenv.Load() error, including the plain-missing-file case — which
+// meant the gateway refused to start at all in an environment with no .env
+// (a fresh clone, or a container relying on real environment variables
+// only, as the Docker demo does), even though .env is meant to be optional
+// (addUser already only warned, never fatally, on the same error). Testing
+// runGateway itself isn't practical (log.Fatalf calls os.Exit, which would
+// kill the test process — see the note above), so this tests the extracted
+// decision function directly instead.
+func TestDotEnvLoadIsFatal(t *testing.T) {
+	assert.False(t, dotEnvLoadIsFatal(nil), "no error at all must never be fatal")
+
+	dir := t.TempDir()
+	_, statErr := os.Open(filepath.Join(dir, ".env"))
+	require.Error(t, statErr)
+	require.True(t, os.IsNotExist(statErr), "test assumption: opening a nonexistent file gives an IsNotExist error")
+	assert.False(t, dotEnvLoadIsFatal(statErr), "a merely-missing .env must not be fatal")
+
+	assert.True(t, dotEnvLoadIsFatal(errors.New("permission denied")), "a real error (e.g. malformed .env, unreadable file) must still be fatal")
+}
