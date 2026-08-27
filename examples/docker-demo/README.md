@@ -125,3 +125,23 @@ docker compose exec gateway tg middleware list --config /etc/taronja-gateway/con
 docker compose down        # stop, keep the sqlite DB (admin user, sessions) in its volume
 docker compose down -v     # stop and delete it too — next `up` starts fresh
 ```
+
+## Troubleshooting
+
+**Gateway container exits immediately: `FATAL: Failed to load configuration:
+... open /etc/taronja-gateway/config.yaml: no such file or directory`** — the
+image built fine, but the bind mount that's supposed to put `config/` there
+came up empty. On Windows, this happens when the repo lives on a *mapped
+network drive* (a `net use`/`subst` drive letter, e.g. `M:` pointing at a
+`\\server\share`) rather than a real local disk: Docker Desktop's daemon
+runs inside its own Linux VM, which can resolve a build context from a
+mapped drive (the Windows-side CLI reads and streams those files itself)
+but cannot bind-mount live from one at container start — it silently mounts
+an empty directory instead of erroring, which is what produces this exact
+"file not found" further downstream. Confirmed directly: `docker run -v
+M:\...\config:/check:ro busybox ls /check` comes back empty; the identical
+command against a `C:\...` copy of the same folder shows the file. Clone or
+copy the repo onto a real local drive (or, better yet on Windows, into your
+WSL2 distro's own filesystem) and run `docker compose up --build` from
+there instead.
+
