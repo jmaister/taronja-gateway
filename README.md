@@ -84,7 +84,11 @@ The Taronja Gateway CLI provides the following commands:
     ```
     This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag. On `Ctrl+C` or a `SIGTERM` (e.g. from `docker stop` or a Kubernetes pod eviction), it shuts down gracefully — draining in-flight requests for up to 15 seconds before exiting, instead of dropping them.
 
-    The config file can be reloaded without restarting: save it (auto-reload is on by default; disable with `--watch=false`) or send the process a `SIGHUP` (`kill -HUP <pid>`). Either re-reads the file and, if it's still valid, swaps in the new routes, middleware chain, and rate limiter for requests received from then on — in-flight requests keep running against whatever was already serving them. An invalid edit is logged and ignored; the gateway keeps running its last-good config. `server.host`/`port` and the database connection can't be changed this way — those need a real restart.
+    The config file can be reloaded without restarting: save it (auto-reload is on by default; disable with `--watch=false`) or send the process a `SIGHUP` (`kill -HUP <pid>`). Either re-reads the file and, if it's still valid, swaps in the new routes, middleware chain, and rate limiter for requests received from then on — in-flight requests keep running against whatever was already serving them. An invalid edit is logged and ignored; the gateway keeps running its last-good config.
+
+    `.env` is re-read on every reload too (values there win over whatever the process started with), so an edited `${VARIABLE_NAME}` secret takes effect right along with a structural config change — though only for values that go through `.env` itself; a variable exported directly in the shell/process manager can never reach an already-running process, reload or not, since that's fixed for the life of the process at the OS level.
+
+    `server.host`/`port` and the database connection can't be changed this way — those need a real restart. Editing them and reloading anyway isn't silently ignored: the gateway logs a warning naming the port it's still actually listening on vs. the new one from the file.
 
 *   **Add a new user:**
     ```bash

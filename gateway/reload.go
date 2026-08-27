@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
+	"github.com/joho/godotenv"
 )
 
 // reloadableHandler is the http.Server's Handler: a small indirection that
@@ -129,6 +131,11 @@ func (g *Gateway) applyConfig(cfg *config.GatewayConfig) error {
 		return fmt.Errorf("failed to ensure admin user: %w", err)
 	}
 
+	// g.GatewayConfig is still the previous generation here (the swap below
+	// hasn't happened yet) — nil on the very first call, from
+	// NewGatewayWithDependencies, when there's nothing to compare against.
+	warnIfImmutableFieldsChanged(g.GatewayConfig, cfg)
+
 	g.configMu.Lock()
 	g.GatewayConfig = cfg
 	g.Mux = rt.mux
@@ -166,12 +173,18 @@ func (g *Gateway) applyConfig(cfg *config.GatewayConfig) error {
 // Requests already in flight keep running against whatever generation was
 // already serving them.
 //
+// It also re-reads .env first (see reloadDotEnv), so a `${VAR}` placeholder
+// in the config file picks up an edited .env value on this same reload, not
+// just a structural change to the YAML.
+//
 // Fails safe: any error (parse failure, unsupported schema version, a
 // route/middleware validation failure) is returned and the gateway keeps
 // running its previous configuration unchanged — a bad edit to the config
 // file never interrupts a running gateway, the same way "tg run" simply
 // refuses to start against an invalid file rather than starting broken.
 func (g *Gateway) ReloadConfig(configFilePath string) error {
+	reloadDotEnv()
+
 	cfg, err := config.LoadConfig(configFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -183,6 +196,58 @@ func (g *Gateway) ReloadConfig(configFilePath string) error {
 
 	log.Printf("Configuration reloaded from %s: %q (%d routes)", configFilePath, cfg.Name, len(cfg.Routes))
 	return nil
+}
+
+// reloadDotEnv re-reads the .env file (same default path — ".env" in the
+// current working directory — as main.go's own startup godotenv.Load call)
+// into the process environment, using godotenv.Overload rather than Load:
+// Load leaves an already-set key alone, which by the time a reload runs is
+// every key .env originally set, making it a no-op for exactly the case
+// that matters — Overload actually overwrites them, so an edited secret in
+// .env takes effect the next time config.LoadConfig expands `${VAR}`
+// placeholders (config.LoadConfig calls os.ExpandEnv on every call,
+// including from ReloadConfig, so the expansion itself was never the
+// missing piece — only the stale process environment it was reading from).
+//
+// This has a hard limit worth knowing, not a bug: it can only pick up
+// changes to .env itself. A value exported directly in the parent shell or
+// process manager's environment (never funneled through .env) cannot be
+// picked up by a running process at all, config reload or not — that's how
+// process environments work at the OS level, fixed at process start and
+// immune to changes in whatever spawned it.
+//
+// A missing .env is not logged as an error — plenty of deployments never
+// have one and rely on real environment variables only, same as any
+// individual reload skipping it is harmless — but a present, malformed one
+// is, so a typo doesn't fail silently.
+func reloadDotEnv() {
+	if err := godotenv.Overload(); err != nil && !os.IsNotExist(err) {
+		log.Printf("Warning: failed to reload .env: %v", err)
+	}
+}
+
+// warnIfImmutableFieldsChanged logs a clear warning when a reload's new
+// config disagrees with the one already running on a field that can only
+// take effect via a real process restart (see applyConfig's doc comment for
+// the full list and why: today, that's just server.host/port — everything
+// else in GatewayConfig is genuinely reapplied). The new value is still
+// stored — GatewayConfig ends up reflecting whatever the file says, since
+// there's no sane "partially apply this config" alternative — only the
+// actual running server keeps using the old one, so this exists purely so
+// that mismatch is never silent.
+//
+// oldCfg is the previous generation's config, still current at the call
+// site (applyConfig calls this before swapping it out). A nil oldCfg means
+// this is the gateway's very first applyConfig call, from
+// NewGatewayWithDependencies, with nothing yet to compare against.
+func warnIfImmutableFieldsChanged(oldCfg, newCfg *config.GatewayConfig) {
+	if oldCfg == nil {
+		return
+	}
+	if oldCfg.Server.Host != newCfg.Server.Host || oldCfg.Server.Port != newCfg.Server.Port {
+		log.Printf("Warning: config reload changed server.host/port (%s:%d -> %s:%d), but the gateway is already listening on %s:%d and cannot rebind without a full restart. The new value is stored but has no effect until then.",
+			oldCfg.Server.Host, oldCfg.Server.Port, newCfg.Server.Host, newCfg.Server.Port, oldCfg.Server.Host, oldCfg.Server.Port)
+	}
 }
 
 // currentConfig returns the gateway's currently-active config. Reads go

@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -226,4 +228,105 @@ func TestReloadConfig_ConcurrentWithLiveRequests(t *testing.T) {
 		require.NoError(t, gw.ReloadConfig(path))
 	}
 	<-done
+}
+
+// TestReloadConfig_PicksUpEditedDotEnvValue proves ReloadConfig's
+// reloadDotEnv step actually matters: the config file's text never changes
+// here, only the .env value a `${GW_NAME}` placeholder in it expands to —
+// without re-reading .env with overwrite semantics on every reload, this
+// would still resolve to the stale value from process startup.
+func TestReloadConfig_PicksUpEditedDotEnvValue(t *testing.T) {
+	dir := t.TempDir()
+
+	// godotenv.Overload (called by reloadDotEnv, with no explicit filename,
+	// same as main.go's own startup godotenv.Load) always reads "./.env" —
+	// there's no path parameter to point it elsewhere, so this needs to
+	// actually be the working directory for the reload below.
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { require.NoError(t, os.Chdir(origWD)) })
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("GW_NAME=Before\n"), 0o644))
+
+	// Simulates what main.go's own startup godotenv.Load already put in the
+	// process environment before the gateway's first config.LoadConfig —
+	// this test isn't calling that startup path, so it sets the equivalent
+	// baseline by hand.
+	require.NoError(t, os.Setenv("GW_NAME", "Before"))
+	t.Cleanup(func() { require.NoError(t, os.Unsetenv("GW_NAME")) })
+
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+version: 2
+name: ${GW_NAME}
+server:
+  host: 127.0.0.1
+  port: 8080
+management:
+  admin:
+    enabled: false
+routes: []
+`), 0o644))
+
+	cfg, err := config.LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, "Before", cfg.Name)
+
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps.NewTest())
+	require.NoError(t, err)
+
+	// The config file's own text is untouched — only .env changes.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("GW_NAME=After\n"), 0o644))
+
+	require.NoError(t, gw.ReloadConfig(path))
+	assert.Equal(t, "After", gw.GatewayConfig.Name,
+		"reload must re-expand ${GW_NAME} against the freshly-edited .env value, not whatever the process had at startup")
+}
+
+// TestReloadConfig_WarnsOnHostOrPortChange covers applyConfig's
+// warnIfImmutableFieldsChanged: editing server.host/port and reloading must
+// not be silently ignored — it should log clearly that the new value was
+// stored but has no effect until a real restart, since the running listener
+// can't rebind itself.
+func TestReloadConfig_WarnsOnHostOrPortChange(t *testing.T) {
+	dir := t.TempDir()
+	path := writeReloadTestConfig(t, dir, "") // server.port: 8080
+
+	cfg, err := config.LoadConfig(path)
+	require.NoError(t, err)
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps.NewTest())
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, []byte(`
+version: 2
+name: Reload Test Gateway
+server:
+  host: 127.0.0.1
+  port: 9999
+management:
+  prefix: /_
+  admin:
+    enabled: false
+routes:
+  - name: v1
+    from: /api/*
+    to: http://127.0.0.1:1
+`), 0o644))
+
+	var logBuf bytes.Buffer
+	origOutput := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(origOutput)
+
+	require.NoError(t, gw.ReloadConfig(path))
+
+	logged := logBuf.String()
+	assert.Contains(t, logged, "cannot rebind without a full restart")
+	assert.Contains(t, logged, "8080", "should name the port actually still listening")
+	assert.Contains(t, logged, "9999", "should name the new, not-yet-effective port from the file")
+
+	// The stored config still reflects the file, even though the listener
+	// didn't move — GatewayConfig has no "partially applied" representation.
+	assert.Equal(t, 9999, gw.GatewayConfig.Server.Port)
 }
