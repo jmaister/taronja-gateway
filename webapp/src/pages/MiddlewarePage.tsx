@@ -44,7 +44,7 @@ function MiddlewareRow({ item, metrics }: { item: MiddlewareStatusItem; metrics?
                 )}
             </td>
             <td className="px-4 py-3 text-sm">
-                {item.dependencies.length > 0 ? (
+                {item.dependencies && item.dependencies.length > 0 ? (
                     <span className="font-mono text-xs">{item.dependencies.join(', ')}</span>
                 ) : (
                     <span className="text-muted-fg">—</span>

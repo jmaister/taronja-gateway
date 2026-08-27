@@ -122,11 +122,22 @@ func (r *MiddlewareRegistryV2) GetStatus() map[string]MiddlewareStatus {
 
 	for name, factory := range r.factories {
 		enabled := r.built[name]
+		// Dependencies is declared as a required (non-nullable) array in the
+		// OpenAPI schema, but factories with no dependencies (e.g. CORSFactory)
+		// leave their dependencies field as a nil slice, which encoding/json
+		// marshals as `null` rather than `[]` since the field has no
+		// omitempty. That broke the admin console: item.dependencies.length
+		// throws on null. Normalize nil to an empty, non-nil slice here so
+		// GetStatus's contract always matches the schema.
+		deps := factory.GetDependencies()
+		if deps == nil {
+			deps = []string{}
+		}
 		s := MiddlewareStatus{
 			Name:         name,
 			Description:  factory.GetDescription(),
 			Enabled:      enabled,
-			Dependencies: factory.GetDependencies(),
+			Dependencies: deps,
 		}
 		if enabled {
 			s.Status = "active"
