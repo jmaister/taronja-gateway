@@ -717,6 +717,93 @@ func TestHelloEndpoint(t *testing.T) {
 	}
 }
 
+// TestProxyBackendUnreachable_ReturnsBadGatewayInstantly is a regression test for a bug
+// where the reverse proxy's ErrorHandler called rw.(http.Hijacker).Hijack() to "check"
+// whether a response had already been written, then abandoned the hijacked connection
+// without writing or closing anything. Since the plain http.ResponseWriter net/http hands
+// out for a real connection implements Hijacker, and neither Logging nor Analytics wrap it
+// unless explicitly enabled (both default false), this fired on every upstream failure in
+// an out-of-the-box config: the client received nothing at all and hung until its own
+// timeout instead of getting a fast 502. This must use a real listener (as TestHelloEndpoint
+// does), not httptest.NewRecorder, because only a real connection's ResponseWriter
+// implements http.Hijacker in the first place.
+func TestProxyBackendUnreachable_ReturnsBadGatewayInstantly(t *testing.T) {
+	// Bind a listener and immediately close it, so its address is guaranteed to refuse
+	// connections (nothing is listening there any more).
+	deadListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to allocate a dead address: %v", err)
+	}
+	deadAddr := deadListener.Addr().String()
+	deadListener.Close()
+
+	cfg := &config.GatewayConfig{
+		Server: config.ServerConfig{
+			Host: "localhost",
+			Port: 0,
+		},
+		Management: config.ManagementConfig{
+			Prefix: "/admin",
+			// Deliberately left at the zero value (false): Logging and Analytics
+			// off is the out-of-the-box default, and is what exposes the raw,
+			// hijackable http.ResponseWriter to the proxy's ErrorHandler.
+		},
+		Routes: []config.RouteConfig{
+			{
+				Name: "Unreachable Backend",
+				From: "/down",
+				To:   "http://" + deadAddr,
+				Authentication: config.AuthenticationConfig{
+					Enabled: false,
+				},
+			},
+		},
+	}
+
+	deps := deps.NewTest()
+	gateway, err := NewGatewayWithDependencies(cfg, nil, deps)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+
+	listener, err := net.Listen("tcp", gateway.Server.Addr)
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	port := listener.Addr().(*net.TCPAddr).Port
+	serverURL := fmt.Sprintf("http://localhost:%d", port)
+
+	go func() {
+		_ = gateway.Server.Serve(listener)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// A short client timeout: if the bug is present, the connection is hijacked and
+	// abandoned, so this request would hang and the test would fail on timeout instead
+	// of asserting on a fast, well-formed 502.
+	client := &http.Client{Timeout: 3 * time.Second}
+	start := time.Now()
+	resp, err := client.Get(serverURL + "/down")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Request to an unreachable backend should still get an HTTP response (fast 502), not hang/error out: %v (after %v)", err, elapsed)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("Expected 502 Bad Gateway, got %v", resp.StatusCode)
+	}
+	if elapsed > time.Second {
+		t.Errorf("Expected an immediate error response, took %v", elapsed)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = gateway.Server.Shutdown(ctx)
+}
+
 // TestGatewaySPARouting tests SPA (Single Page Application) routing functionality
 func TestGatewaySPARouting(t *testing.T) {
 	// Create temporary directory structure for testing SPA

@@ -568,19 +568,28 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 	}
 
-	// Set up error handler
+	// Set up error handler. This fires whenever the round trip to the
+	// upstream fails (connection refused, DNS failure, timeout, etc.).
+	//
+	// Previously this checked rw.(http.Hijacker) and, if the assertion
+	// succeeded, called Hijack() "to check whether the header was already
+	// written" before deciding whether it was safe to call http.Error.
+	// That check has a side effect: Hijack() unconditionally takes the raw
+	// connection away from net/http, and nothing here ever wrote to or
+	// closed it afterwards. Since the plain http.ResponseWriter net/http
+	// hands out implements Hijacker, and neither analytics nor request
+	// logging are wrapping it unless Management.Logging or .Analytics is
+	// turned on (both default false), this fired on essentially every
+	// upstream failure in an out-of-the-box config: the connection was
+	// hijacked and then abandoned, so the client received nothing at all
+	// and simply hung until its own timeout instead of a fast 502.
+	//
+	// http.Error's WriteHeader is safe to call even if a response was
+	// already partially written (net/http logs "superfluous
+	// WriteHeader call" and no-ops) — matching httputil.ReverseProxy's own
+	// default ErrorHandler, which just calls rw.WriteHeader unconditionally.
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, routeConfig.To, err)
-		// Avoid writing header if already written
-		if h, ok := rw.(http.Hijacker); ok {
-			_, _, hijackErr := h.Hijack()
-			if hijackErr == nil {
-				log.Printf("Proxy error occurred after response may have started for route '%s'. Connection hijacked.", routeConfig.Name)
-				// Cannot write status code anymore.
-				return
-			}
-		}
-		// Check if header has been written (best effort)
 		http.Error(rw, "Bad Gateway", http.StatusBadGateway)
 	}
 
