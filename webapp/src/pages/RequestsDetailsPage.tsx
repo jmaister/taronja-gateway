@@ -48,7 +48,7 @@ export function RequestsDetailsPage() {
             />
             
             {error && (
-                <Card className="border-danger/30 bg-danger/5">
+                <Card className="border-danger/30 bg-danger/5" role="alert">
                     <CardContent className="py-4">
                         <div className="flex items-center">
                             <div className="mr-3 text-xl text-danger">⚠️</div>

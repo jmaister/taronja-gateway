@@ -38,6 +38,14 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
         return `${decimalFormatter.format(ms / 3600000)} h`;
     };
     
+    if (totalRequests === 0) {
+        return (
+            <div className="w-full rounded-lg border border-border bg-surface p-6 text-center text-sm text-muted-fg shadow-soft">
+                No requests in this period.
+            </div>
+        );
+    }
+
     return (
         <div className="w-full">
             <div className="mb-2 flex flex-wrap gap-4 text-sm text-muted-fg">

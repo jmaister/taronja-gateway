@@ -147,7 +147,7 @@ export function MiddlewarePage() {
                             ))}
                         </div>
                     ) : error ? (
-                        <div className="p-6 text-sm text-danger">
+                        <div className="p-6 text-sm text-danger" role="alert">
                             Failed to load middleware status. Make sure you're signed in as an admin.
                         </div>
                     ) : items.length === 0 ? (

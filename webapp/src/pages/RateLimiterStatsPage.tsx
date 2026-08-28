@@ -114,7 +114,7 @@ export function RateLimiterStatsPage() {
                             ))}
                         </div>
                     ) : error ? (
-                        <div className="p-6 text-sm text-danger">
+                        <div className="p-6 text-sm text-danger" role="alert">
                             Failed to load rate limiter stats. Make sure the rate limiter is enabled.
                         </div>
                     ) : !stats || stats.length === 0 ? (

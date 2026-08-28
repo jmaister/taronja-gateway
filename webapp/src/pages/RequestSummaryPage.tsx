@@ -125,7 +125,7 @@ export function RequestSummaryPage() {
     if (error) {
         return (
             <div className="flex items-center justify-center py-20">
-                <div className="text-center">
+                <div className="text-center" role="alert">
                     <div className="mb-4 text-6xl text-danger">⚠️</div>
                     <h1 className="mb-2 text-2xl font-semibold">Error Loading Request Summary</h1>
                     <p className="mb-4 text-muted-fg">{error instanceof Error ? error.message : 'Unknown error'}</p>
@@ -193,7 +193,7 @@ export function RequestSummaryPage() {
                         100
                     ).toFixed(1)}%`}
                     icon="✅"
-                    accent="danger"
+                    accent="success"
                 />
             </div>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

@@ -62,8 +62,11 @@ export const queryClient = new QueryClient({
 // Helper to handle API responses: throws on error, returns data
 function handleResponse<T = any>(response: any): T {
   if (response && response.error) {
-    // Throw the error string directly so it can be shown in the UI
-    throw response.error;
+    // Throw a real Error (not the raw { code, message } API error object)
+    // so `error instanceof Error` checks and String(error) work consistently
+    // wherever a query/mutation's error is rendered, not just the call
+    // sites that know to reach for `.message` explicitly.
+    throw new Error(response.error.message || 'Request failed');
   }
   return response.data as T;
 }
@@ -120,7 +123,7 @@ export function useCreateUser() {
   return useMutation({
     mutationFn: async (userData: UserCreateRequest) => {
       const response = await apiCreateUser({ body: userData, client: customApiClient });
-      return response.data;
+      return handleResponse<UserResponse>(response);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users() });
@@ -209,7 +212,8 @@ export function useRevokeToken() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (tokenId: string) => {
-      await deleteToken({ path: { tokenId }, client: customApiClient });
+      const response = await deleteToken({ path: { tokenId }, client: customApiClient });
+      handleResponse(response);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tokens'] });
