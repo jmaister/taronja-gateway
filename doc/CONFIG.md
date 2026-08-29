@@ -26,7 +26,6 @@ import "github.com/jmaister/taronja-gateway/config"
   - [func \(route \*RouteConfig\) GetCacheControlHeader\(\) string](<#RouteConfig.GetCacheControlHeader>)
   - [func \(route \*RouteConfig\) ShouldSetCacheHeader\(\) bool](<#RouteConfig.ShouldSetCacheHeader>)
 - [type RouteOptions](<#RouteOptions>)
-  - [func \(opts \*RouteOptions\) GetCacheControlHeader\(\) string](<#RouteOptions.GetCacheControlHeader>)
 - [type ServerConfig](<#ServerConfig>)
 - [type SessionConfig](<#SessionConfig>)
   - [func \(s \*SessionConfig\) GetDuration\(\) time.Duration](<#SessionConfig.GetDuration>)
@@ -287,18 +286,33 @@ RouteOptions contains additional optional configuration for individual routes.
 
 ```go
 type RouteOptions struct {
-    CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N"
+    CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N", <0 = no cache header (same as nil)
 }
 ```
 
-<a name="RouteOptions.GetCacheControlHeader"></a>
-### func \(\*RouteOptions\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L320>)
+Example YAML:
 
-```go
-func (opts *RouteOptions) GetCacheControlHeader() string
+```yaml
+routes:
+  - name: Static Assets
+    from: /assets/*
+    toFolder: ./static/assets
+    static: true
+    options:
+      cacheControlSeconds: 86400  # Cache for 1 day
+
+  - name: API Endpoint
+    from: /api/data
+    to: http://backend.example.com/data
+    options:
+      cacheControlSeconds: 0  # Explicitly disable caching (sends "Cache-Control: no-cache")
+
+  - name: Default Route
+    from: /
+    toFolder: ./public
+    static: true
+    # No options section = no Cache-Control header set
 ```
-
-GetCacheControlHeader returns the appropriate Cache\-Control header value based on the configuration. Returns empty string if no cache header should be set.
 
 <a name="ServerConfig"></a>
 ## type [ServerConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L20-L24>)
