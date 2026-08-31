@@ -50,8 +50,7 @@ jobs:
 
     - name: Generate config docs
       run: |
-        go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
-        gomarkdoc --output doc/CONFIG.md ./config
+        go run github.com/princjef/gomarkdoc/cmd/gomarkdoc --output doc/CONFIG.md ./config
 
     # api/api.gen.go and doc/CONFIG.md are committed, generated files —
     # regenerating them just above and diffing catches anyone who edited the

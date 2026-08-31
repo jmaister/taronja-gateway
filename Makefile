@@ -90,7 +90,7 @@ gen:
 # Generate configuration documentation from Go structs
 config-docs:
 	@echo "Generating configuration documentation..."
-	@gomarkdoc --output doc/CONFIG.md ./config
+	@go run github.com/princjef/gomarkdoc/cmd/gomarkdoc --output doc/CONFIG.md ./config
 	@echo "Configuration documentation generated at doc/CONFIG.md"
 
 install: build
