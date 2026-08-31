@@ -38,6 +38,35 @@ bench:
 	@echo "Running benchmarks..."
 	go test -v ./gateway -bench=. -benchtime=2s
 
+# fullbuild mirrors ci.yml's build job end to end: regenerate the OpenAPI
+# Go server + TypeScript client and the config docs, then format/vet/build/
+# test Go, and build/lint/typecheck the webapp and SDK. Run this — not just
+# `make build`/`make test` — before committing anything that touches
+# api/taronja-gateway-api.yaml or a config/ doc comment: api/api.gen.go and
+# doc/CONFIG.md are committed, generated files, and CI's own "Check
+# generated files are up to date" step exists specifically because this is
+# easy to forget locally and only fails once it's already in CI.
+fullbuild: gen config-docs
+	@echo "Formatting and vetting Go code..."
+	@UNFORMATTED=$$(gofmt -l $$(git ls-files '*.go')); \
+	if [ -n "$$UNFORMATTED" ]; then \
+		echo "The following files are not gofmt-formatted:"; \
+		echo "$$UNFORMATTED"; \
+		exit 1; \
+	fi
+	go vet ./...
+	@echo "Building Go..."
+	go build -v ./...
+	@echo "Building SDK..."
+	cd sdk && npm install && npm run build
+	@echo "Building webapp..."
+	cd webapp && npm run build
+	@echo "Linting and type-checking webapp..."
+	cd webapp && npm run lint && npx tsc --noEmit
+	@echo "Running Go tests..."
+	go test -cover ./...
+	@echo "fullbuild complete."
+
 # Generate coverage and treemap SVG
 cover:
 	@echo "Generating coverage report..."
@@ -101,5 +130,5 @@ else
 endif
 
 # Default target
-.PHONY: all build build-windows run dev test bench cover clean fmt tidy
+.PHONY: all build build-windows run dev test bench fullbuild cover clean fmt tidy
 all: build
