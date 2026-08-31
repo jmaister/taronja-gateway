@@ -116,10 +116,29 @@ gen:
 	@echo "Generating TypeScript SDK..."
 	@cd webapp && npm install --no-audit --no-fund >/dev/null && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
 
-# Generate configuration documentation from Go structs
+# Generate configuration documentation from Go structs.
+#
+# --repository.url/--repository.default-branch pin the GitHub source links
+# gomarkdoc embeds in doc/CONFIG.md instead of letting it auto-detect them
+# from the local git checkout's state. Auto-detection produces different
+# output depending on whether HEAD is attached to a branch (a normal local
+# checkout, any branch — gomarkdoc resolves the *default* branch either
+# way, not the checked-out one) or detached at a specific commit, which is
+# exactly how actions/checkout leaves the repository in CI: with no branch
+# to detect, every generated link silently loses its "[Name](url)" markdown
+# and falls back to a bare name instead. That made CI's "Check generated
+# files are up to date" step fail on every single run regardless of
+# whether config/ had actually changed — not a flaky check, a
+# structurally-impossible-to-pass one, since a locally (branch-checkout)
+# regenerated file could never match what CI's own (detached-HEAD)
+# regeneration produced. These two flags make the output identical in both
+# cases.
 config-docs:
 	@echo "Generating configuration documentation..."
-	@go run github.com/princjef/gomarkdoc/cmd/gomarkdoc --output doc/CONFIG.md ./config
+	@go run github.com/princjef/gomarkdoc/cmd/gomarkdoc \
+		--repository.url "https://github.com/jmaister/taronja-gateway" \
+		--repository.default-branch "main" \
+		--output doc/CONFIG.md ./config
 	@echo "Configuration documentation generated at doc/CONFIG.md"
 
 install: build

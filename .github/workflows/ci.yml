@@ -48,9 +48,18 @@ jobs:
         npm install
         npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
 
+    # --repository.url/--repository.default-branch must match Makefile's
+    # config-docs target exactly — see its comment for why: without them,
+    # gomarkdoc's auto-detected GitHub source links differ between a normal
+    # (branch) checkout and actions/checkout's detached-HEAD one, which
+    # made the "Check generated files are up to date" step below fail on
+    # every run regardless of whether config/ had actually changed.
     - name: Generate config docs
       run: |
-        go run github.com/princjef/gomarkdoc/cmd/gomarkdoc --output doc/CONFIG.md ./config
+        go run github.com/princjef/gomarkdoc/cmd/gomarkdoc \
+          --repository.url "https://github.com/jmaister/taronja-gateway" \
+          --repository.default-branch "main" \
+          --output doc/CONFIG.md ./config
 
     # api/api.gen.go and doc/CONFIG.md are committed, generated files —
     # regenerating them just above and diffing catches anyone who edited the
