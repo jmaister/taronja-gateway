@@ -8,6 +8,7 @@ import (
 	"html/template" // Added for template parsing
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -186,26 +187,24 @@ func (g *Gateway) registerDashboard(prefix string) {
 		// Get the path after stripping the dashboard prefix
 		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
 
-		// Check if this looks like a static asset (has file extension)
-		isStaticAsset := strings.Contains(path, ".") && (strings.HasSuffix(path, ".js") ||
-			strings.HasSuffix(path, ".css") ||
-			strings.HasSuffix(path, ".json") ||
-			strings.HasSuffix(path, ".png") ||
-			strings.HasSuffix(path, ".jpg") ||
-			strings.HasSuffix(path, ".jpeg") ||
-			strings.HasSuffix(path, ".gif") ||
-			strings.HasSuffix(path, ".svg") ||
-			strings.HasSuffix(path, ".ico") ||
-			strings.HasSuffix(path, ".woff") ||
-			strings.HasSuffix(path, ".woff2") ||
-			strings.HasSuffix(path, ".ttf") ||
-			strings.HasSuffix(path, ".eot"))
+		// A path with a dot might be a real static asset; one without is
+		// certainly a client-side SPA route (e.g. /admin/users) and never
+		// worth an embed.FS lookup. This used to be a fixed 12-extension
+		// whitelist (.js/.css/.json/.png/...), which meant any asset type
+		// Vite happened to emit that wasn't on the list — a .wasm chunk, a
+		// .map source map, a .webmanifest, anything — would never even be
+		// attempted below and would silently always fall back to
+		// index.html instead of being served. The ReadFile attempt right
+		// after this is the real, authoritative check; this is only a
+		// cheap pre-filter to skip that attempt for the common case of an
+		// extensionless route.
+		looksLikeAsset := strings.Contains(path, ".")
 
 		var data []byte
 		var err error
 		var finalPath string
 
-		if path == "" || path == "/" || !isStaticAsset {
+		if path == "" || path == "/" || !looksLikeAsset {
 			// Serve index.html for root requests or SPA routes (no file extension)
 			finalPath = "webapp/dist/index.html"
 		} else {
@@ -228,32 +227,20 @@ func (g *Gateway) registerDashboard(prefix string) {
 			}
 		}
 
-		// Determine content type based on the final served file extension
-		contentType := "text/html"
-		if strings.HasSuffix(finalPath, ".js") {
-			contentType = "application/javascript"
-		} else if strings.HasSuffix(finalPath, ".css") {
-			contentType = "text/css"
-		} else if strings.HasSuffix(finalPath, ".json") {
-			contentType = "application/json"
-		} else if strings.HasSuffix(finalPath, ".png") {
-			contentType = "image/png"
-		} else if strings.HasSuffix(finalPath, ".jpg") || strings.HasSuffix(finalPath, ".jpeg") {
-			contentType = "image/jpeg"
-		} else if strings.HasSuffix(finalPath, ".gif") {
-			contentType = "image/gif"
-		} else if strings.HasSuffix(finalPath, ".svg") {
-			contentType = "image/svg+xml"
-		} else if strings.HasSuffix(finalPath, ".ico") {
-			contentType = "image/x-icon"
-		} else if strings.HasSuffix(finalPath, ".woff") {
-			contentType = "font/woff"
-		} else if strings.HasSuffix(finalPath, ".woff2") {
-			contentType = "font/woff2"
-		} else if strings.HasSuffix(finalPath, ".ttf") {
-			contentType = "font/ttf"
-		} else if strings.HasSuffix(finalPath, ".eot") {
-			contentType = "application/vnd.ms-fontobject"
+		// Determine content type from the final served file's extension.
+		// mime.TypeByExtension is a map lookup (O(1) and complete — every
+		// extension Go/the OS knows about) replacing what used to be a
+		// hand-maintained chain of up to 12 sequential HasSuffix checks
+		// that only covered exactly the same 12 extensions as
+		// looksLikeAsset above; any other real asset type fell through to
+		// "text/html", which is actively wrong for a binary file (a
+		// browser could try to render it as a page) rather than merely
+		// incomplete. index.html resolves correctly through the same
+		// lookup (mime.TypeByExtension(".html")), so it needs no special
+		// case here.
+		contentType := mime.TypeByExtension(filepath.Ext(finalPath))
+		if contentType == "" {
+			contentType = "application/octet-stream"
 		}
 
 		w.Header().Set("Content-Type", contentType)

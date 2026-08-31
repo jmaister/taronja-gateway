@@ -18,6 +18,65 @@ type RateLimiter struct {
 	cfg             config.RateLimiterConfig
 	entries         sync.Map // map[string]*rateEntry
 	cleanupInterval time.Duration
+	// scanPatterns is cfg.VulnerabilityScan.URLs, preprocessed once here
+	// instead of on every 404 — see scanPattern's doc comment.
+	scanPatterns []scanPattern
+}
+
+// scanPattern holds the precomputed forms of one
+// config.VulnerabilityScanConfig.URLs entry that matches actually needs:
+// the backslash-normalized pattern, and — only when applicable — the
+// "expanded" form that also matches the bare pattern at any nesting depth
+// (see matches' doc comment). Both depend only on the pattern string, never
+// on the request, so computing them here, once per pattern when the
+// RateLimiter is built, replaces work matchesVulnerabilityScanPath used to
+// redo on every single matching attempt: normalizing the pattern's
+// backslashes, checking it for "**", and building the expanded string via
+// strings.ReplaceAll, all from scratch, for every configured pattern, on
+// every 404 response. That's exactly the traffic this feature exists to
+// handle efficiently — a scanner generating many rapid 404s — so redoing
+// static, pattern-only work on that hot path was self-defeating.
+type scanPattern struct {
+	normalized string
+	expanded   string // "" if this pattern has no bare "*" to expand (see newScanPattern)
+}
+
+// normalizeScanPath normalizes a request path's separators the same way
+// newScanPattern normalizes a pattern's, so the two are comparable
+// regardless of platform.
+func normalizeScanPath(requestPath string) string {
+	return strings.ReplaceAll(requestPath, "\\", "/")
+}
+
+// newScanPattern precomputes the forms of pattern that matches(requestPath)
+// needs. Mirrors matchesVulnerabilityScanPath's normalization/expansion
+// rules exactly — that function is now a thin per-call wrapper around this
+// same logic, kept for its existing direct unit test coverage.
+func newScanPattern(pattern string) scanPattern {
+	normalized := strings.ReplaceAll(pattern, "\\", "/")
+	sp := scanPattern{normalized: normalized}
+	// Expand a pattern with a bare "*" (but no "**") so it also matches the
+	// pattern nested at any depth, e.g. "/*.php" -> "/**/*.php" matches
+	// "/dir/admin.php" too, not just a top-level "/admin.php".
+	if !strings.Contains(normalized, "**") && strings.Contains(normalized, "*") {
+		sp.expanded = strings.ReplaceAll(normalized, "*", "**/*")
+	}
+	return sp
+}
+
+// matches reports whether normalizedRequestPath (already backslash-
+// normalized by the caller — see the Handler's vulnerability-scan block)
+// matches this pattern, trying the expanded form (if any) as a fallback.
+func (sp scanPattern) matches(normalizedRequestPath string) bool {
+	if matched, _ := doublestar.Match(sp.normalized, normalizedRequestPath); matched {
+		return true
+	}
+	if sp.expanded != "" {
+		if matched, _ := doublestar.Match(sp.expanded, normalizedRequestPath); matched {
+			return true
+		}
+	}
+	return false
 }
 
 // rateEntry stores the state for a single IP address.
@@ -44,9 +103,15 @@ func NewRateLimiter(cfg config.RateLimiterConfig) *RateLimiter {
 	if cfg.BlockMinutes > 0 {
 		interval = time.Duration(cfg.BlockMinutes) * time.Minute
 	}
+	scanPatterns := make([]scanPattern, len(cfg.VulnerabilityScan.URLs))
+	for i, url := range cfg.VulnerabilityScan.URLs {
+		scanPatterns[i] = newScanPattern(url)
+	}
+
 	rl := &RateLimiter{
 		cfg:             cfg,
 		cleanupInterval: interval,
+		scanPatterns:    scanPatterns,
 	}
 	go rl.cleanupLoop()
 	return rl
@@ -111,11 +176,14 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 			entry.mu.Unlock()
 		}
 
-		// vulnerability scan paths: count only 404s on configured urls
-		if rw.status == http.StatusNotFound && len(rl.cfg.VulnerabilityScan.URLs) > 0 {
-			for _, pattern := range rl.cfg.VulnerabilityScan.URLs {
-				matched := matchesVulnerabilityScanPath(pattern, r.URL.Path)
-				if matched {
+		// vulnerability scan paths: count only 404s on configured urls.
+		// The request path is normalized once here, not once per pattern
+		// inside the loop — see scanPattern's doc comment for why that
+		// matters specifically on this path.
+		if rw.status == http.StatusNotFound && len(rl.scanPatterns) > 0 {
+			normalizedPath := normalizeScanPath(r.URL.Path)
+			for _, sp := range rl.scanPatterns {
+				if sp.matches(normalizedPath) {
 					entry := rl.getEntry(ip)
 					now := time.Now()
 					entry.mu.Lock()
@@ -132,32 +200,15 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	})
 }
 
+// matchesVulnerabilityScanPath reports whether requestPath matches pattern,
+// applying the same backslash-normalization and nested-path expansion
+// rules as scanPattern.matches. Kept as a per-call convenience (and its
+// existing exhaustive test coverage) for callers matching a one-off
+// pattern; RateLimiter.Handler's hot path uses precomputed scanPatterns
+// instead — see scanPattern's doc comment for why that distinction matters
+// here specifically.
 func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
-	// Normalize separators so matching works consistently on all platforms.
-	pattern = strings.ReplaceAll(pattern, "\\", "/")
-	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
-
-	// Use doublestar.Match (always uses '/' as separator) instead of PathMatch
-	// so behaviour is identical on Windows and Linux.
-
-	// First, try the user-specified pattern as-is.
-	if matched, _ := doublestar.Match(pattern, requestPath); matched {
-		return true
-	}
-
-	// Expand patterns without ** to also match nested paths at any depth.
-	// Examples:
-	//   "/*.php"          -> "/**/*.php"   matches /dir/admin.php
-	//   "/foo/*"          -> "/foo/**/*"   matches /foo/bar/baz
-	//   "/download/*/*.zip" -> "/download/**/*.zip" matches /download/a/b/archive.zip
-	if !strings.Contains(pattern, "**") && strings.Contains(pattern, "*") {
-		expandedPattern := strings.ReplaceAll(pattern, "*", "**/*")
-		if matched, _ := doublestar.Match(expandedPattern, requestPath); matched {
-			return true
-		}
-	}
-
-	return false
+	return newScanPattern(pattern).matches(normalizeScanPath(requestPath))
 }
 
 // statusRecorder is a minimal response writer that remembers the status code.

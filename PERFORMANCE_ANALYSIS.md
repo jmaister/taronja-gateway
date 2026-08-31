@@ -650,3 +650,114 @@ the ceiling is "how fast can one goroutine keep issuing 100-row
 Real traffic is far less saturated than a tight benchmark loop with no
 per-iteration work, so production headroom is larger than this number
 suggests — but this is the honest steady-state figure, not a best case.
+
+---
+
+## August 2026, part 4: filter algorithms — a rate-limiter fix, a dashboard cleanup, and a severe geolocation bug
+
+Asked to specifically audit "the algorithms used when applying filters" —
+middleware and other request-filtering logic — three findings, ranging from
+a clean micro-optimization to the most severe bug of this whole document.
+
+### 1. Vulnerability-scan pattern matching recompiled every pattern, every 404
+
+`RateLimiter.Handler`'s scanner-detection check looped over every configured
+`management.rateLimiter.vulnerabilityScan.urls` pattern on every 404
+response, and for each one re-derived its normalized/expanded form from
+scratch (`strings.ReplaceAll`, `strings.Contains`, another `ReplaceAll`) via
+`matchesVulnerabilityScanPath` — work that depends only on the *pattern*,
+never the request, redone from zero every single time regardless. The
+request path itself was also renormalized once per pattern rather than once
+per request. This is exactly the traffic this feature exists to handle
+efficiently — a scanner generating many rapid 404s — so redoing
+pattern-only, request-independent work on that specific hot path was
+self-defeating.
+
+Fixed by precomputing each pattern's normalized/expanded form once, in
+`NewRateLimiter` (a new `scanPattern` type), and normalizing the request
+path once per request instead of once per pattern.
+`matchesVulnerabilityScanPath` (kept for its existing exhaustive test table)
+is now a thin wrapper over the same precomputable logic, so there's one
+source of truth and its ~35 test cases now exercise the real code path.
+
+**Measured improvement** (`BenchmarkVulnerabilityScanMatch_PerCallRecompute`
+vs `_Precomputed`, `middleware/ratelimiter_scanpattern_bench_test.go`, 20
+realistic scanner-probe patterns, 3 runs):
+
+| | ns/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| Per-call recompute (before) | ~2,962 | 240 | 15 |
+| Precomputed (after) | ~1,645 | **0** | **0** |
+| **Improvement** | **~1.8×** | **∞** | **∞** |
+
+### 2. A third, inconsistent, incomplete "is this a static asset" check
+
+`gateway.go`'s admin-dashboard SPA handler had its own hand-rolled static-
+asset detector — 12 chained `strings.HasSuffix` calls — used to decide
+whether to even attempt reading a file from the embedded webapp build, plus
+a *second*, equally long `HasSuffix` chain to guess its Content-Type. This
+was the third independent "is this a static asset" implementation in the
+codebase this document has now found (after the one in the old, dead
+`middleware/performance.go`, and the canonical `session.IsStaticAssetPath`
+part 2 introduced) — inconsistent with both, and with two real bugs of its
+own: any asset extension not on its 12-item list (a `.wasm` chunk, a
+`.map` source map, anything future tooling emits) silently always fell back
+to serving `index.html` instead of the real file, and any served file type
+not on the *second* list got `Content-Type: text/html` — actively wrong for
+a binary asset, not merely a missing header.
+
+Fixed by replacing the first check with a single `strings.Contains(path,
+".")` (the real check is the `embed.FS.ReadFile` attempt immediately after
+it; this is only ever a cheap pre-filter for the common case of an
+extensionless SPA route) and the second with the standard library's
+`mime.TypeByExtension` — a complete, maintained, O(1) lookup — falling back
+to `application/octet-stream` (never silently to `text/html`) for anything
+it doesn't recognize.
+
+### 3. `GetGeoDataFromIP` never cached failures — the most severe bug in this document
+
+`session.NewClientInfo` (part of the same traffic-metrics/session-extraction
+filter pipeline part 1's uaparser fix lives in) calls `GetGeoDataFromIP` for
+every analytics-tracked request. Its cache only ever stored *successful*
+lookups; a failed one — the free geolocation API unreachable, rate-limiting,
+or just slow — was never cached at all, so every single request from an IP
+the API couldn't be reached for paid the *full* client timeout (5s) again,
+for as long as that IP kept sending requests, indefinitely. Confirmed
+directly, not hypothetically: with the geolocation API unreachable from the
+sandbox this was found in, `gateway/performance_test.go`'s `TestMemoryUsage`
+— 1,000 sequential requests from one IP — went from a sub-second test to an
+80+ minute hang.
+
+This is a real production risk for any deployment where the free API is
+unreachable (a corporate egress firewall, an air-gapped environment) or
+simply rate-limits the gateway's IP under load — not a sandbox artifact.
+Every analytics-tracked request would silently gain 5 seconds of latency,
+forever, until the outage or rate-limiting ended.
+
+Fixed with negative caching: a failed lookup is now cached too, just
+briefly (`geoFailureTTL`, 1 minute, vs. `geoSuccessTTL`'s 7 days) — long
+enough that repeated requests from the same client during an outage don't
+each pay the timeout, short enough that service recovers within a minute of
+the API coming back. `GeoData`'s now-redundant `Timestamp` field (TTL
+tracking moved to the cache entry itself, which now needs to track it for
+both outcomes) was removed.
+
+Fixing this surfaced three more tests silently depending on real network
+reachability to that same free API: `session.TestNewClientInfoWithJA4H` and
+two more in `session_test.go` all construct requests via
+`httptest.NewRequest`, whose default `RemoteAddr` (`192.0.2.1`) triggered a
+real, un-mockable lookup. One of them (`TestNewAndValidateSession`) had a
+5-second `assert.WithinDuration` tolerance that the API being unreachable
+blew straight through — a latent flakiness that predates this session
+(any sufficiently slow response, network-reachable or not, could have
+triggered it) newly exposed by consistently-unreachable-in-this-sandbox
+conditions rather than caused by them. Fixed by seeding one permanent,
+successful cache entry for that well-known test IP in the `session`
+package's `TestMain`, so nothing in the package's test suite depends on
+real network access any more (verified: the whole package now runs in
+~0.1s, down from ~15s of pure network-timeout waiting across three tests).
+`main`'s and `providers`' own test suites each still pay one such 5s
+network round trip on their first request through the full middleware
+chain — not a hang or a failure, and not chased further here, since (unlike
+the bug just fixed) it only costs once per test *binary*, not once per
+*request*.

@@ -19,6 +19,21 @@ func TestMain(m *testing.M) {
 	db.SetupTestDB("TestSession")
 	testSessionRepo = db.NewSessionRepositoryDB(db.GetConnection())
 	testSessionStore = NewSessionStore(testSessionRepo, 24*time.Hour)
+
+	// httptest.NewRequest defaults every request's RemoteAddr to
+	// "192.0.2.1:1234", and NewSession (via NewClientInfo) looks up geo
+	// data for whatever IP it's given. Seeding one permanent, successful
+	// cache entry here — for the whole package's test binary, one
+	// TestMain covers every _test.go file in it — means no test in this
+	// package ever makes a real network call for it: slow even when the
+	// geolocation API is reachable, and, as found fixing
+	// GetGeoDataFromIP's missing negative-caching, capable of hanging for
+	// over an hour when it isn't (see geoSuccessTTL/geoFailureTTL in
+	// ipgeo.go).
+	ipCache.mutex.Lock()
+	ipCache.cache["192.0.2.1"] = geoCacheEntry{data: GeoData{Country: "Testland"}, at: time.Now()}
+	ipCache.mutex.Unlock()
+
 	exitVal := m.Run()
 	os.Exit(exitVal)
 }
@@ -31,6 +46,9 @@ func TestGenerateToken(t *testing.T) {
 }
 
 func TestNewAndValidateSession(t *testing.T) {
+	// The assert.WithinDuration below used to race NewSession's real,
+	// synchronous geo lookup — see TestMain's ipCache seed for why that
+	// no longer happens.
 	user := &db.User{ID: "test-user-id", Username: "testuser", Email: "test@example.com"}
 	req := httptest.NewRequest("GET", "/", nil) // Mock request for NewSession
 
