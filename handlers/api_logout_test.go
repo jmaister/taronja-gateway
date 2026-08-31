@@ -73,15 +73,15 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check cache control header
-		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", logoutResp.Headers.CacheControl)
+		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", *logoutResp.Headers.CacheControl)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
-		assert.Contains(t, logoutResp.Headers.SetCookie, "Max-Age=0")
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, "Max-Age=0")
 
 		// Verify session was deleted from store
 		foundSession, err := sessionRepo.FindSessionByToken(sessionToken)
@@ -126,7 +126,7 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location is custom URL
-		assert.Equal(t, "/custom-redirect", logoutResp.Headers.Location)
+		assert.Equal(t, "/custom-redirect", *logoutResp.Headers.Location)
 
 		// Verify session was deleted from store
 		foundSession, err := sessionRepo.FindSessionByToken(sessionToken)
@@ -155,15 +155,15 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check cache control header
-		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", logoutResp.Headers.CacheControl)
+		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", *logoutResp.Headers.CacheControl)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
-		assert.Contains(t, logoutResp.Headers.SetCookie, "Max-Age=0")
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, "Max-Age=0")
 	})
 
 	t.Run("LogoutWithEmptySessionToken", func(t *testing.T) {
@@ -188,11 +188,11 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
 	})
 
 	t.Run("LogoutWithInvalidSessionToken", func(t *testing.T) {
@@ -217,11 +217,11 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
 
 		// Verify the invalid token still doesn't exist (nothing should have been created)
 		foundSession, err := sessionRepo.FindSessionByToken(invalidToken)
@@ -252,6 +252,6 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/" when empty
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 	})
 }
