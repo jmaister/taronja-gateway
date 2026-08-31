@@ -47,6 +47,17 @@ bench:
 # generated files are up to date" step exists specifically because this is
 # easy to forget locally and only fails once it's already in CI.
 fullbuild: gen config-docs
+	@echo "Checking regenerated files are byte-identical to what's committed..."
+	@if ! git diff --quiet -- api/api.gen.go doc/CONFIG.md; then \
+		echo "api/api.gen.go and/or doc/CONFIG.md changed after regenerating."; \
+		echo "If you edited api/taronja-gateway-api.yaml or a config/ doc comment,"; \
+		echo "this is expected — 'git add' the diff below and commit it."; \
+		echo "If you didn't, generation just produced different output than last"; \
+		echo "time for no source reason (this happened once already — see"; \
+		echo "config-docs's comment above) and needs investigating, not committing."; \
+		git diff --stat -- api/api.gen.go doc/CONFIG.md; \
+		exit 1; \
+	fi
 	@echo "Formatting and vetting Go code..."
 	@UNFORMATTED=$$(gofmt -l $$(git ls-files '*.go')); \
 	if [ -n "$$UNFORMATTED" ]; then \
