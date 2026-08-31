@@ -29,6 +29,32 @@ type Dependencies struct {
 	StartTime time.Time
 }
 
+// trafficMetricsBatchSize and trafficMetricsFlushInterval configure the
+// db.BatchingTrafficMetricRepository NewProduction wraps TrafficMetricRepo
+// in. Not user-configurable (unlike management.excludeStaticAssets): this
+// is a pure implementation-detail efficiency change with no user-visible
+// behavior difference beyond "up to this much recent traffic-metrics data
+// can be lost on a hard crash instead of a graceful shutdown", so there's
+// no meaningful trade-off for an operator to tune — 500ms/100 records is a
+// small enough window that it isn't one in practice.
+const (
+	trafficMetricsBatchSize     = 100
+	trafficMetricsFlushInterval = 500 * time.Millisecond
+)
+
+// Close releases resources that need an explicit, orderly shutdown rather
+// than just being dropped — today, just flushing TrafficMetricRepo's
+// buffered-but-not-yet-written records if it's batching (NewProduction
+// wraps it in one; NewTest/NewTestWithName don't, so this is a no-op for
+// test dependencies). Call once, after the HTTP server has stopped
+// accepting new requests (e.g. after http.Server.Shutdown returns) so nothing
+// is still calling Create concurrently.
+func (d *Dependencies) Close() {
+	if closer, ok := d.TrafficMetricRepo.(interface{ Close() }); ok {
+		closer.Close()
+	}
+}
+
 // NewProduction creates dependencies configured for production use
 func NewProduction() *Dependencies {
 	// Initialize database
@@ -38,7 +64,14 @@ func NewProduction() *Dependencies {
 	// Create repositories using database implementations
 	userRepo := db.NewDBUserRepository(gormDB)
 	sessionRepo := db.NewSessionRepositoryDB(gormDB)
-	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
+	// Wrapped in a batcher: see the trafficMetricsBatchSize doc comment and
+	// PERFORMANCE_ANALYSIS.md for why. Dependencies.Close flushes it on
+	// shutdown.
+	trafficMetricRepo := db.NewBatchingTrafficMetricRepository(
+		db.NewTrafficMetricRepository(gormDB),
+		trafficMetricsBatchSize,
+		trafficMetricsFlushInterval,
+	)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
 

@@ -130,6 +130,58 @@ func TestResolveGlobalChainSpecs_ExplicitRateLimiterOverride(t *testing.T) {
 	}
 }
 
+// --- ResolveGlobalChainSpecs: traffic_metrics / excludeStaticAssets ---
+
+func TestResolveGlobalChainSpecs_LegacyExcludeStaticAssetsFlowsIntoTrafficMetricsConfig(t *testing.T) {
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.Analytics = true
+	gatewayConfig.Management.ExcludeStaticAssets = true
+
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var found bool
+	for _, spec := range specs {
+		if spec.Name != config.MiddlewareNameTrafficMetrics {
+			continue
+		}
+		found = true
+		got, ok := spec.Config.(config.TrafficMetricsConfig)
+		if !ok {
+			t.Fatalf("expected config.TrafficMetricsConfig, got %T", spec.Config)
+		}
+		if !got.ExcludeStaticAssets {
+			t.Fatalf("expected management.excludeStaticAssets=true to flow into the traffic_metrics spec, got %+v", got)
+		}
+	}
+	if !found {
+		t.Fatalf("expected a traffic_metrics spec, got %+v", specs)
+	}
+}
+
+func TestResolveGlobalChainSpecs_ExplicitTrafficMetricsOverride(t *testing.T) {
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.ExcludeStaticAssets = false // legacy flag says "include everything"
+	override := config.TrafficMetricsConfig{ExcludeStaticAssets: true}
+	gatewayConfig.Middleware.Global = []config.MiddlewareEntryConfig{
+		{Name: config.MiddlewareNameTrafficMetrics, TrafficMetrics: &override},
+	}
+
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := specs[0].Config.(config.TrafficMetricsConfig)
+	if !ok {
+		t.Fatalf("expected config.TrafficMetricsConfig, got %T", specs[0].Config)
+	}
+	if !got.ExcludeStaticAssets {
+		t.Fatalf("expected per-entry override to win over management.excludeStaticAssets=false, got %+v", got)
+	}
+}
+
 func TestResolveGlobalChainSpecs_RateLimiterFallsBackToManagementConfig(t *testing.T) {
 	gatewayConfig := &config.GatewayConfig{}
 	gatewayConfig.Management.RateLimiter = config.RateLimiterConfig{RequestsPerMinute: 100}

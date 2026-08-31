@@ -85,23 +85,23 @@ func TestGetClientIP(t *testing.T) {
 	})
 }
 
-func TestConditionalStatisticsMiddleware(t *testing.T) {
+func TestTrafficMetricMiddleware_ExcludeStaticAssets(t *testing.T) {
 	// Initialize test database
-	db.SetupTestDB("TestConditionalStatisticsMiddleware")
+	db.SetupTestDB("TestTrafficMetricMiddleware_ExcludeStaticAssets")
 	gormDB := db.GetConnection()
 
 	statsRepo := db.NewTrafficMetricRepository(gormDB)
-	middleware := ConditionalStatisticsMiddleware(statsRepo)
+	excludingMiddleware := TrafficMetricMiddleware(statsRepo, true)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	t.Run("excludes health check endpoint", func(t *testing.T) {
-		wrappedHandler := middleware(handler)
+	t.Run("excludeStaticAssets=true skips a static asset path", func(t *testing.T) {
+		wrappedHandler := excludingMiddleware(handler)
 
-		req := httptest.NewRequest("GET", "/health", nil)
+		req := httptest.NewRequest("GET", "/_/static/style.css", nil)
 		w := httptest.NewRecorder()
 
 		wrappedHandler.ServeHTTP(w, req)
@@ -110,13 +110,13 @@ func TestConditionalStatisticsMiddleware(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Verify no statistics were recorded
-		stats, err := statsRepo.FindByPath("/health", 10)
+		stats, err := statsRepo.FindByPath("/_/static/style.css", 10)
 		require.NoError(t, err)
 		assert.Len(t, stats, 0)
 	})
 
-	t.Run("includes regular endpoints", func(t *testing.T) {
-		wrappedHandler := middleware(handler)
+	t.Run("excludeStaticAssets=true still records a non-static path", func(t *testing.T) {
+		wrappedHandler := excludingMiddleware(handler)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		w := httptest.NewRecorder()
@@ -131,30 +131,23 @@ func TestConditionalStatisticsMiddleware(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, stats, 1)
 	})
-}
 
-func TestShouldExcludeFromStats(t *testing.T) {
-	testCases := []struct {
-		path     string
-		excluded bool
-	}{
-		{"/health", true},
-		{"/favicon.ico", true},
-		{"/robots.txt", true},
-		{"/sitemap.xml", true},
-		{"/_/static/style.css", true},
-		{"/_/static/js/app.js", true},
-		{"/api/users", false},
-		{"/login", false},
-		{"/", false},
-	}
+	t.Run("excludeStaticAssets=false records a static asset path too", func(t *testing.T) {
+		includingMiddleware := TrafficMetricMiddleware(statsRepo, false)
+		wrappedHandler := includingMiddleware(handler)
 
-	for _, tc := range testCases {
-		t.Run(tc.path, func(t *testing.T) {
-			result := shouldExcludeFromStats(tc.path)
-			assert.Equal(t, tc.excluded, result)
-		})
-	}
+		req := httptest.NewRequest("GET", "/_/static/app.js", nil)
+		w := httptest.NewRecorder()
+
+		wrappedHandler.ServeHTTP(w, req)
+
+		time.Sleep(10 * time.Millisecond)
+
+		stats, err := statsRepo.FindByPath("/_/static/app.js", 10)
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.True(t, stats[0].IsStaticAsset)
+	})
 }
 
 func TestResponseWriterWithStats(t *testing.T) {

@@ -51,6 +51,18 @@ func createTestSession(gw *Gateway) *db.Session {
 	return session
 }
 
+// These benchmarks and tests exercise gw.handler, not gw.Mux. gw.Mux is only
+// the route table: request routing plus whatever middleware individual
+// routes attach directly (auth, cache-control). gw.handler is
+// gw.Mux wrapped in the global middleware chain (JA4H fingerprinting,
+// session extraction, traffic metrics, logging — see buildRuntime in
+// reload.go) and is what actually serves traffic in production. Calling
+// gw.Mux.ServeHTTP here would silently skip that entire chain, which is
+// exactly what let the uaparser.NewFromSaved()-per-request bug in
+// session/clientinfo.go (~200ms and ~45MB per analytics-tracked request) go
+// undetected by every benchmark in this file for as long as it did — see
+// PERFORMANCE_ANALYSIS.md's "August 2026 update" section.
+
 // BenchmarkAPIRequest benchmarks the handling of API requests
 func BenchmarkAPIRequest(b *testing.B) {
 	// Disable logging for cleaner benchmark output
@@ -73,7 +85,7 @@ func BenchmarkAPIRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			b.Errorf("Expected status 200, got %d", rr.Code)
@@ -102,7 +114,7 @@ func BenchmarkStaticRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			b.Errorf("Expected status 200, got %d", rr.Code)
@@ -139,7 +151,7 @@ func BenchmarkAuthenticatedRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		// Should get 200 (mock backend returns OK)
 		if rr.Code != http.StatusOK {
@@ -202,7 +214,7 @@ func BenchmarkProfileAPIRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 	}
 
 	// Memory profile
@@ -237,7 +249,7 @@ func TestMemoryUsage(t *testing.T) {
 	for i := 0; i < numRequests; i++ {
 		req := httptest.NewRequest("GET", "/_/health", nil)
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 	}
 
 	// Force garbage collection and measure memory after
@@ -282,7 +294,7 @@ func TestConcurrentRequests(t *testing.T) {
 			for j := 0; j < requestsPerGoroutine; j++ {
 				req := httptest.NewRequest("GET", "/_/health", nil)
 				rr := httptest.NewRecorder()
-				gw.Mux.ServeHTTP(rr, req)
+				gw.handler.ServeHTTP(rr, req)
 
 				if rr.Code != http.StatusOK {
 					t.Errorf("Expected status 200, got %d", rr.Code)
@@ -333,7 +345,7 @@ func TestRequestLatency(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		start := time.Now()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 		latencies[i] = time.Since(start)
 
 		if rr.Code != http.StatusOK {

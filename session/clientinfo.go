@@ -5,12 +5,36 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/ua-parser/uap-go/uaparser"
 )
+
+// uaParser is a package-level singleton. uaparser.New (and the deprecated
+// NewFromSaved it replaces) parses the entire embedded uap-core regex
+// database — several hundred patterns — from scratch on every call, which
+// costs on the order of 100ms+ and tens of MB of garbage per call. Building
+// it once and reusing it is essential: NewClientInfo runs on every request
+// that goes through the traffic-metrics/session-extraction middleware, so
+// constructing a parser per call (as this code used to do) turned every
+// analytics-tracked request into a ~200ms, ~45MB operation. *uaparser.Parser
+// itself holds an internal mutex-guarded LRU cache of parsed results and is
+// documented as safe for concurrent use, so a single shared instance is the
+// intended usage.
+var (
+	uaParserOnce sync.Once
+	uaParser     *uaparser.Parser
+)
+
+func getUAParser() *uaparser.Parser {
+	uaParserOnce.Do(func() {
+		uaParser = uaparser.NewFromSaved()
+	})
+	return uaParser
+}
 
 // stripPort removes the port from an IP address if present
 func stripPort(ip string) string {
@@ -61,8 +85,7 @@ func GetClientIP(r *http.Request) string {
 
 // NewClientInfo creates a ClientInfo instance from an HTTP request and geolocation data
 func NewClientInfo(req *http.Request) *db.ClientInfo {
-	parser := uaparser.NewFromSaved()
-	client := parser.Parse(req.UserAgent())
+	client := getUAParser().Parse(req.UserAgent())
 	ipAddress := GetClientIP(req)
 
 	geoData := GeoData{}
@@ -118,6 +141,7 @@ func NewTrafficMetric(req *http.Request) *db.TrafficMetric {
 		Error:          "",
 		UserID:         "",
 		SessionID:      "",
+		IsStaticAsset:  IsStaticAssetPath(req.URL.Path),
 		ClientInfo:     *NewClientInfo(req),
 	}
 }

@@ -316,6 +316,13 @@ runLoop:
 		}
 	}
 
+	// The server has stopped accepting new requests either way (a clean
+	// Shutdown, or ListenAndServe returning on its own) — nothing is still
+	// calling Dependencies.TrafficMetricRepo.Create concurrently by this
+	// point, so it's safe to flush and stop its batching goroutine (see
+	// Dependencies.Close and PERFORMANCE_ANALYSIS.md).
+	gateway.Dependencies.Close()
+
 	log.Println("API Gateway shut down gracefully.")
 }
 

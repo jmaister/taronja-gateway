@@ -494,6 +494,17 @@ paths:
           required: false
           description: Optional end date for filtering results (ISO 8601 format)
           example: "2025-12-31T23:59:59Z"
+        - in: query
+          name: is_static
+          schema:
+            type: boolean
+          required: false
+          description: >-
+            Optional filter on whether the request was for a static asset
+            (see management.excludeStaticAssets). true returns only static
+            asset requests, false returns only non-static requests, and
+            omitting it returns both.
+          example: false
       responses:
         '200':
           description: List of requests with detailed information
@@ -1320,6 +1331,9 @@ components:
         browser_version:
           type: string
           description: Version of the browser
+        is_static:
+          type: boolean
+          description: Whether the request path looked like a static asset (see management.excludeStaticAssets)
       required:
         - id
         - timestamp
@@ -1335,6 +1349,7 @@ components:
         - platform_version
         - browser
         - browser_version
+        - is_static
     RequestDetailsResponse:
       type: object
       properties:

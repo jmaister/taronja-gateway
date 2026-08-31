@@ -29,7 +29,7 @@ func BenchmarkStaticRequestNoAnalytics(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		// Static files might return 404 if not found, that's ok for performance testing
 		if rr.Code != http.StatusOK && rr.Code != http.StatusNotFound {

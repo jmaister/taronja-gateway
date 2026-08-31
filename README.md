@@ -254,6 +254,7 @@ Controls the management dashboard and gateway features.
 - `prefix`: URL prefix for management endpoints (default: `_`)
 - `logging`: Enable/disable request logging
 - `analytics`: Enable/disable traffic analytics and metrics
+- `excludeStaticAssets`: Skip traffic-metrics collection for static asset requests (CSS/JS/images/fonts/...). Default: `false`. Has no effect unless `analytics` is also `true`. Reduces per-request overhead and stats volume on asset-heavy sites; the Request Details report can still filter by request type either way (see below)
 - `session.secondsDuration`: Session timeout in seconds (e.g., 86400 = 24 hours)
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
@@ -284,6 +285,8 @@ middleware:
     - name: ja4_fingerprint
     - name: session_extraction
     - name: traffic_metrics
+      trafficMetrics:
+        excludeStaticAssets: true
     - name: logging
       enabled: false   # listed but disabled
 ```

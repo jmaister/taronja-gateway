@@ -234,11 +234,12 @@ func NewTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *Tra
 }
 
 func (f *TrafficMetricsFactory) Create(cfg interface{}) (Middleware, error) {
-	return TrafficMetricMiddleware(f.trafficMetricRepo), nil
+	tmCfg, _ := cfg.(config.TrafficMetricsConfig) // zero value (ExcludeStaticAssets: false) if cfg is unset/wrong type
+	return TrafficMetricMiddleware(f.trafficMetricRepo, tmCfg.ExcludeStaticAssets), nil
 }
 
 func (f *TrafficMetricsFactory) GetDefaultConfig() interface{} {
-	return struct{}{}
+	return config.TrafficMetricsConfig{}
 }
 
 // --- LoggingFactory ----------------------------------------------------------

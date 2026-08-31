@@ -189,7 +189,7 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 	if req.Params.EndDate != nil {
 		end = req.Params.EndDate
 	}
-	metrics, err := s.trafficMetricRepo.ListRequestDetails(start, end)
+	metrics, err := s.trafficMetricRepo.ListRequestDetails(start, end, req.Params.IsStatic)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +233,7 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 			PlatformVersion: m.TrafficMetric.OSVersion,
 			Browser:         m.TrafficMetric.BrowserFamily,
 			BrowserVersion:  m.TrafficMetric.BrowserVersion,
+			IsStatic:        m.TrafficMetric.IsStaticAsset,
 		})
 	}
 	return api.GetRequestDetails200JSONResponse{Requests: details}, nil

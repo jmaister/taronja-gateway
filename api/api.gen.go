@@ -220,6 +220,9 @@ type RequestDetail struct {
 	DeviceType     string `json:"device_type"`
 	Id             string `json:"id"`
 
+	// IsStatic Whether the request path looked like a static asset (see management.excludeStaticAssets)
+	IsStatic bool `json:"is_static"`
+
 	// Latitude GPS latitude coordinate
 	Latitude *float32 `json:"latitude"`
 
@@ -411,6 +414,9 @@ type GetRequestDetailsParams struct {
 
 	// EndDate Optional end date for filtering results (ISO 8601 format)
 	EndDate *time.Time `form:"end_date,omitempty" json:"end_date,omitempty"`
+
+	// IsStatic Optional filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false returns only non-static requests, and omitting it returns both.
+	IsStatic *bool `form:"is_static,omitempty" json:"is_static,omitempty"`
 }
 
 // LogoutUserParams defines parameters for LogoutUser.
@@ -901,6 +907,14 @@ func (siw *ServerInterfaceWrapper) GetRequestDetails(w http.ResponseWriter, r *h
 	err = runtime.BindQueryParameter("form", true, false, "end_date", r.URL.Query(), &params.EndDate)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "is_static" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "is_static", r.URL.Query(), &params.IsStatic)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "is_static", Err: err})
 		return
 	}
 

@@ -48,7 +48,7 @@ func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 
 		// Create middlewares in the same order as the gateway
 		sessionExtractionMiddleware := SessionExtractionMiddleware(sessionStore, tokenService)
-		trafficMetricMiddleware := TrafficMetricMiddleware(statsRepo)
+		trafficMetricMiddleware := TrafficMetricMiddleware(statsRepo, false)
 
 		// Create a simple handler
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +112,7 @@ func TestTrafficMetricWithSessionExtractionIntegration(t *testing.T) {
 
 		// Create middlewares in the same order as the gateway
 		sessionExtractionMiddleware := SessionExtractionMiddleware(sessionStore, tokenService)
-		trafficMetricMiddleware := TrafficMetricMiddleware(statsRepo)
+		trafficMetricMiddleware := TrafficMetricMiddleware(statsRepo, false)
 
 		// Create a simple handler
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

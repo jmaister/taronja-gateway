@@ -77,7 +77,8 @@ export const queryKeys = {
   user: (id: string) => ['users', id] as const,
   currentUser: () => ['currentUser'] as const,
   statistics: (startDate?: string, endDate?: string) => ['statistics', { startDate, endDate }] as const,
-  requestDetails: (startDate: string, endDate: string) => ['requestDetails', { startDate, endDate }] as const,
+  requestDetails: (startDate: string, endDate: string, isStatic?: boolean) =>
+    ['requestDetails', { startDate, endDate, isStatic }] as const,
   userTokens: (userId: string) => ['users', userId, 'tokens'] as const,
   token: (tokenId: string) => ['tokens', tokenId] as const,
   rateLimiterStats: () => ['rateLimiterStats'] as const,
@@ -150,14 +151,18 @@ export function useRequestStatistics(startDate?: string, endDate?: string) {
   });
 }
 
-export function useRequestDetails(startDate: string, endDate: string) {
+// isStatic filters by whether the request was for a static asset (see
+// management.excludeStaticAssets): true for only static-asset requests,
+// false for only non-static requests, undefined for both.
+export function useRequestDetails(startDate: string, endDate: string, isStatic?: boolean) {
   return useQuery({
-    queryKey: queryKeys.requestDetails(startDate, endDate),
+    queryKey: queryKeys.requestDetails(startDate, endDate, isStatic),
     queryFn: async () => {
       const response = await getRequestDetails({
         query: {
           start_date: startDate,
           end_date: endDate,
+          is_static: isStatic,
         },
         client: customApiClient,
       });

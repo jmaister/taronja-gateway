@@ -354,6 +354,82 @@ func TestStatisticsShowUsernames(t *testing.T) {
 	})
 }
 
+func TestGetRequestDetails_IsStaticFilter(t *testing.T) {
+	server, trafficMetricRepo := setupStatsTestServer()
+
+	adminSession := &db.Session{
+		Token:           "admin-session",
+		UserID:          "admin-1",
+		Username:        "admin",
+		IsAuthenticated: true,
+		IsAdmin:         true,
+		Provider:        "test",
+	}
+
+	now := time.Now()
+
+	staticMetric := &db.TrafficMetric{
+		HttpMethod:     "GET",
+		Path:           "/_/static/app.js",
+		HttpStatus:     200,
+		ResponseTimeNs: 100000,
+		Timestamp:      now,
+		IsStaticAsset:  true,
+	}
+	apiMetric := &db.TrafficMetric{
+		HttpMethod:     "GET",
+		Path:           "/api/widgets",
+		HttpStatus:     200,
+		ResponseTimeNs: 200000,
+		Timestamp:      now,
+		IsStaticAsset:  false,
+	}
+	assert.NoError(t, trafficMetricRepo.Create(staticMetric))
+	assert.NoError(t, trafficMetricRepo.Create(apiMetric))
+
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+	startDate := now.Add(-1 * time.Hour)
+	endDate := now.Add(1 * time.Hour)
+
+	getDetails := func(isStatic *bool) []api.RequestDetail {
+		request := api.GetRequestDetailsRequestObject{
+			Params: api.GetRequestDetailsParams{
+				StartDate: &startDate,
+				EndDate:   &endDate,
+				IsStatic:  isStatic,
+			},
+		}
+		response, err := server.GetRequestDetails(ctx, request)
+		assert.NoError(t, err)
+		success, ok := response.(api.GetRequestDetails200JSONResponse)
+		assert.True(t, ok)
+		return success.Requests
+	}
+
+	t.Run("no filter returns both", func(t *testing.T) {
+		requests := getDetails(nil)
+		assert.Len(t, requests, 2)
+	})
+
+	t.Run("is_static=true returns only the static asset request", func(t *testing.T) {
+		yes := true
+		requests := getDetails(&yes)
+		if assert.Len(t, requests, 1) {
+			assert.Equal(t, "/_/static/app.js", requests[0].Path)
+			assert.True(t, requests[0].IsStatic)
+		}
+	})
+
+	t.Run("is_static=false returns only the non-static request", func(t *testing.T) {
+		no := false
+		requests := getDetails(&no)
+		if assert.Len(t, requests, 1) {
+			assert.Equal(t, "/api/widgets", requests[0].Path)
+			assert.False(t, requests[0].IsStatic)
+		}
+	})
+}
+
 func TestRateLimiterEndpoints(t *testing.T) {
 	// create server with a limiter
 	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}

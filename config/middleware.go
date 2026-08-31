@@ -36,20 +36,27 @@ func IsMiddlewareNameKnown(name string) bool {
 	return false
 }
 
+// TrafficMetricsConfig holds the options for the "traffic_metrics" global
+// middleware.
+type TrafficMetricsConfig struct {
+	ExcludeStaticAssets bool `yaml:"excludeStaticAssets"` // See ManagementConfig.ExcludeStaticAssets; same meaning, per-entry override.
+}
+
 // MiddlewareEntryConfig declares one middleware in the `middleware.global`
 // list, in the order it should run.
 //
-// Only rate_limiter and cors currently have their own typed per-entry
+// rate_limiter, cors, and traffic_metrics have their own typed per-entry
 // configuration; the other built-in middlewares (ja4_fingerprint,
-// session_extraction, traffic_metrics, logging) take no options today, so
-// listing them just enables/positions them. Per-middleware config for the
-// rest is future work (see doc/refactor01.md Improvement 4) — adding it here
-// without matching runtime support would be misleading.
+// session_extraction, logging) take no options today, so listing them just
+// enables/positions them. Per-middleware config for the rest is future work
+// (see doc/refactor01.md Improvement 4) — adding it here without matching
+// runtime support would be misleading.
 type MiddlewareEntryConfig struct {
-	Name        string             `yaml:"name"`                  // Middleware identifier. Must be one of KnownMiddlewareNames.
-	Enabled     *bool              `yaml:"enabled,omitempty"`     // Enable/disable this middleware. Default: true (listing it implies enabled).
-	RateLimiter *RateLimiterConfig `yaml:"rateLimiter,omitempty"` // Per-entry override for "rate_limiter". Falls back to management.rateLimiter when nil.
-	CORS        *CORSConfig        `yaml:"cors,omitempty"`        // Per-entry override for "cors". Falls back to management.cors when nil.
+	Name           string                `yaml:"name"`                     // Middleware identifier. Must be one of KnownMiddlewareNames.
+	Enabled        *bool                 `yaml:"enabled,omitempty"`        // Enable/disable this middleware. Default: true (listing it implies enabled).
+	RateLimiter    *RateLimiterConfig    `yaml:"rateLimiter,omitempty"`    // Per-entry override for "rate_limiter". Falls back to management.rateLimiter when nil.
+	CORS           *CORSConfig           `yaml:"cors,omitempty"`           // Per-entry override for "cors". Falls back to management.cors when nil.
+	TrafficMetrics *TrafficMetricsConfig `yaml:"trafficMetrics,omitempty"` // Per-entry override for "traffic_metrics". Falls back to management.excludeStaticAssets when nil.
 }
 
 // IsEnabled reports whether this entry is enabled. An absent Enabled field

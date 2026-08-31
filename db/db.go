@@ -81,9 +81,19 @@ func SetupTestDB(testName string) {
 		panic("Failed to get underlying sql.DB: " + err.Error())
 	}
 
-	// Set connection pool settings
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
+	// A "file::memory:" DSN without cache=shared gives every pooled
+	// connection its own independent, empty in-memory database — only the
+	// one connection AutoMigrate happened to run on has the schema. With
+	// MaxOpenConns > 1, any query the pool hands to a different connection
+	// then fails with "no such table: ...", intermittently and only under
+	// enough concurrent load to actually check out a second connection
+	// (e.g. the async traffic-metrics write racing a session lookup). A
+	// single connection makes that impossible: there is only ever one
+	// in-memory database for this test to talk to. (cache=shared would be
+	// the other fix, but is deliberately not used here — see the comment
+	// above on dbName.)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
 	// Migrate all schemas

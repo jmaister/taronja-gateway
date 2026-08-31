@@ -306,6 +306,12 @@ func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]Middlewa
 			} else {
 				spec.Config = gatewayConfig.Management.CORS
 			}
+		case config.MiddlewareNameTrafficMetrics:
+			if entry.TrafficMetrics != nil {
+				spec.Config = *entry.TrafficMetrics
+			} else {
+				spec.Config = config.TrafficMetricsConfig{ExcludeStaticAssets: gatewayConfig.Management.ExcludeStaticAssets}
+			}
 		}
 		specs = append(specs, spec)
 	}
@@ -342,7 +348,10 @@ func legacySpecsFromConfig(gatewayConfig *config.GatewayConfig) []MiddlewareSpec
 	if gatewayConfig.Management.Analytics {
 		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameJA4Fingerprint})
 		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameSessionExtraction})
-		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameTrafficMetrics})
+		specs = append(specs, MiddlewareSpec{
+			Name:   config.MiddlewareNameTrafficMetrics,
+			Config: config.TrafficMetricsConfig{ExcludeStaticAssets: gatewayConfig.Management.ExcludeStaticAssets},
+		})
 	}
 
 	// Logging.

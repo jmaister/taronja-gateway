@@ -120,6 +120,7 @@ type TrafficMetric struct {
 	Error          string    `gorm:"type:text"`                  // Any error message if the request failed
 	UserID         string    `gorm:"type:varchar(255)"`          // ID of the user making the request, if authenticated
 	SessionID      string    `gorm:"type:varchar(255)"`          // ID of the session, if applicable
+	IsStaticAsset  bool      `gorm:"not null;index"`             // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
 	// Embed common client and geographical information
 	ClientInfo
 }
