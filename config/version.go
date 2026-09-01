@@ -23,18 +23,8 @@ import (
 // existed in a released config file. Renumbering it 1 for the first public
 // release avoids implying there was ever a real, released "version 1"
 // format publicly using this project name to migrate away from — there
-// wasn't. legacyConfigVersion documents the one thing that's still true
-// either way: an absent `version:` field.
+// wasn't.
 const CurrentConfigVersion = 1
-
-// legacyConfigVersion is the version LoadConfig treats an absent (zero-value)
-// `version:` field as — not an error, since the field is optional, not
-// required. It's deliberately its own constant rather than a copy of
-// CurrentConfigVersion's value: it must stay 1 even after a future config
-// schema change moves CurrentConfigVersion past it, since an absent field
-// will always mean the same (first, pre-versioning-aware) format regardless
-// of how many schema versions have shipped since.
-const legacyConfigVersion = 1
 
 // configMigration transforms the raw YAML bytes of a config file written for
 // one version into the equivalent content for the next version up. It
@@ -105,29 +95,33 @@ func setTopLevelVersionField(raw []byte, version int) []byte {
 	return append([]byte(line+"\n"), raw...)
 }
 
-// effectiveConfigVersion returns v if positive, otherwise legacyConfigVersion
-// — the implicit version of a config file that predates the `version:`
-// field entirely.
-func effectiveConfigVersion(v int) int {
-	if v == 0 {
-		return legacyConfigVersion
-	}
-	return v
-}
-
-// checkConfigVersion determines cfg's effective version, always logs it, and
-// returns an error if it's older than CurrentConfigVersion: the gateway must
-// not run against an outdated config file (see doc/refactor01.md's config
-// versioning section — this used to migrate the file automatically instead
-// of refusing to start, but a silently-rewritten config someone might not
-// notice was the wrong tradeoff). The error message tells the user to run
-// `tg migrate` rather than leaving them to guess.
+// checkConfigVersion logs cfg's declared config schema version — or that
+// none was declared — and returns an error if a declared version is older
+// than CurrentConfigVersion: the gateway must not run against an outdated
+// config file (see doc/refactor01.md's config versioning section — this
+// used to migrate the file automatically instead of refusing to start, but
+// a silently-rewritten config someone might not notice was the wrong
+// tradeoff). The error message tells the user to run `tg migrate` rather
+// than leaving them to guess.
+//
+// A nil cfg.Version — no `version:` field in the file at all — is accepted
+// without comparison, not treated as any particular version number: every
+// config file written before v1.0.0 (the `version:` field's own first
+// released version) has no version field, so treating its absence as an
+// error would refuse to start against every existing user's config. See
+// GatewayConfig.Version's doc comment for why this is a distinct state from
+// an explicit "version: 1", not the same thing spelled two ways.
 //
 // A version *newer* than this build supports is logged as a warning, not an
 // error — there's no way to downgrade a config, and refusing to start over a
 // merely-unrecognized newer field would be more disruptive than useful.
 func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
-	fileVersion := effectiveConfigVersion(cfg.Version)
+	if cfg.Version == nil {
+		log.Printf("Config file version: not declared (current: %d)", CurrentConfigVersion)
+		return nil
+	}
+
+	fileVersion := *cfg.Version
 	log.Printf("Config file version: %d (current: %d)", fileVersion, CurrentConfigVersion)
 
 	if fileVersion > CurrentConfigVersion {
@@ -149,39 +143,38 @@ func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 
 // MigrateConfigContent reads the config file at path and returns its content
 // migrated up to CurrentConfigVersion (migrateConfigToCurrent) — or
-// unchanged, if it's already at CurrentConfigVersion or newer. It never
-// writes anything: this is what `tg migrate` calls to produce the output it
-// prints to stdout, leaving it up to the caller (a shell redirect, in the
-// CLI's case) to decide whether and where to save it. See checkConfigVersion
-// for why the gateway doesn't migrate a config file automatically or write
-// one on its own anymore.
+// unchanged, if it declares no version at all, or is already at
+// CurrentConfigVersion or newer. It never writes anything: this is what `tg
+// migrate` calls to produce the output it prints to stdout, leaving it up
+// to the caller (a shell redirect, in the CLI's case) to decide whether and
+// where to save it. See checkConfigVersion for why the gateway doesn't
+// migrate a config file automatically or write one on its own anymore.
 //
-// fromVersion is the file's effective declared version, useful for callers
-// that want to report whether a migration actually happened (fromVersion <
-// CurrentConfigVersion) or the input was already current/newer (fromVersion
-// >= CurrentConfigVersion, in which case content is simply the file's
-// original bytes).
-func MigrateConfigContent(path string) (content []byte, fromVersion int, err error) {
+// fromVersion is the file's declared version exactly as read from it — nil
+// if it has no `version:` field, which is always treated the same as
+// already-current: there's no version before CurrentConfigVersion (1) for
+// an undeclared file to be migrated from. Useful for callers that want to
+// report whether a migration actually happened.
+func MigrateConfigContent(path string) (content []byte, fromVersion *int, err error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read config file '%s': %w", path, err)
+		return nil, nil, fmt.Errorf("failed to read config file '%s': %w", path, err)
 	}
 
 	// Only the version field is needed here; full parsing/validation happens
 	// later, in LoadConfig, once the migrated content is actually loaded.
 	var probe struct {
-		Version int `yaml:"version"`
+		Version *int `yaml:"version"`
 	}
 	if err := yaml.Unmarshal(raw, &probe); err != nil {
-		return nil, 0, fmt.Errorf("failed to parse config file '%s': %w", path, err)
-	}
-	fileVersion := effectiveConfigVersion(probe.Version)
-
-	if fileVersion >= CurrentConfigVersion {
-		return raw, fileVersion, nil
+		return nil, nil, fmt.Errorf("failed to parse config file '%s': %w", path, err)
 	}
 
-	return migrateConfigToCurrent(raw, fileVersion, CurrentConfigVersion), fileVersion, nil
+	if probe.Version == nil || *probe.Version >= CurrentConfigVersion {
+		return raw, probe.Version, nil
+	}
+
+	return migrateConfigToCurrent(raw, *probe.Version, CurrentConfigVersion), probe.Version, nil
 }
 
 // versionedConfigPath returns a conventional suggested filename for a

@@ -11,7 +11,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [Constants](<#constants>)
 - [Variables](<#variables>)
 - [func IsMiddlewareNameKnown\(name string\) bool](<#IsMiddlewareNameKnown>)
-- [func MigrateConfigContent\(path string\) \(content \[\]byte, fromVersion int, err error\)](<#MigrateConfigContent>)
+- [func MigrateConfigContent\(path string\) \(content \[\]byte, fromVersion \*int, err error\)](<#MigrateConfigContent>)
 - [type AdminConfig](<#AdminConfig>)
 - [type AuthProviderCredentials](<#AuthProviderCredentials>)
 - [type AuthenticationConfig](<#AuthenticationConfig>)
@@ -61,7 +61,7 @@ const (
 
 <a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build of the gateway expects a config file to declare via its top\-level \`version:\` field. Bump it, and add a corresponding entry to configMigrations, whenever a config schema change should be reflected in the version a config file declares.
 
-This is 1 — not 2 — as of the gateway's v1.0.0 release: the \`version:\` field and its migration machinery were built and tested ahead of ever shipping, so what was internally "version 2" during development never existed in a released config file. Renumbering it 1 for the first public release avoids implying there was ever a real, released "version 1" format publicly using this project name to migrate away from — there wasn't. legacyConfigVersion documents the one thing that's still true either way: an absent \`version:\` field.
+This is 1 — not 2 — as of the gateway's v1.0.0 release: the \`version:\` field and its migration machinery were built and tested ahead of ever shipping, so what was internally "version 2" during development never existed in a released config file. Renumbering it 1 for the first public release avoids implying there was ever a real, released "version 1" format publicly using this project name to migrate away from — there wasn't.
 
 ```go
 const CurrentConfigVersion = 1
@@ -92,15 +92,15 @@ func IsMiddlewareNameKnown(name string) bool
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
 
 <a name="MigrateConfigContent"></a>
-## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L164>)
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L158>)
 
 ```go
-func MigrateConfigContent(path string) (content []byte, fromVersion int, err error)
+func MigrateConfigContent(path string) (content []byte, fromVersion *int, err error)
 ```
 
-MigrateConfigContent reads the config file at path and returns its content migrated up to CurrentConfigVersion \(migrateConfigToCurrent\) — or unchanged, if it's already at CurrentConfigVersion or newer. It never writes anything: this is what \`tg migrate\` calls to produce the output it prints to stdout, leaving it up to the caller \(a shell redirect, in the CLI's case\) to decide whether and where to save it. See checkConfigVersion for why the gateway doesn't migrate a config file automatically or write one on its own anymore.
+MigrateConfigContent reads the config file at path and returns its content migrated up to CurrentConfigVersion \(migrateConfigToCurrent\) — or unchanged, if it declares no version at all, or is already at CurrentConfigVersion or newer. It never writes anything: this is what \`tg migrate\` calls to produce the output it prints to stdout, leaving it up to the caller \(a shell redirect, in the CLI's case\) to decide whether and where to save it. See checkConfigVersion for why the gateway doesn't migrate a config file automatically or write one on its own anymore.
 
-fromVersion is the file's effective declared version, useful for callers that want to report whether a migration actually happened \(fromVersion \< CurrentConfigVersion\) or the input was already current/newer \(fromVersion \>= CurrentConfigVersion, in which case content is simply the file's original bytes\).
+fromVersion is the file's declared version exactly as read from it — nil if it has no \`version:\` field, which is always treated the same as already\-current: there's no version before CurrentConfigVersion \(1\) for an undeclared file to be migrated from. Useful for callers that want to report whether a migration actually happened.
 
 <a name="AdminConfig"></a>
 ## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L107-L112>)
@@ -242,7 +242,7 @@ GatewayConfig is the root configuration structure for Taronja Gateway. It contai
 
 ```go
 type GatewayConfig struct {
-    Version                 int                     `yaml:"version,omitempty"`       // Config schema version. Optional; absent (or 0) is treated as version 1, the implicit version of every config file written before this field existed. See CurrentConfigVersion and LoadConfig's migration behavior in version.go.
+    Version                 *int                    `yaml:"version,omitempty"`       // Config schema version. Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1" explicitly, not the same thing spelled two ways. See CurrentConfigVersion and LoadConfig's version-check behavior in version.go.
     Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
     Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
     Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.

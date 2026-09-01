@@ -175,7 +175,7 @@ type GeolocationConfig struct {
 // It contains all settings needed to run the gateway including server, routing, authentication, and management.
 // Configuration is loaded from a YAML file and supports environment variable expansion (${VAR_NAME}).
 type GatewayConfig struct {
-	Version                 int                     `yaml:"version,omitempty"`       // Config schema version. Optional; absent (or 0) is treated as version 1, the implicit version of every config file written before this field existed. See CurrentConfigVersion and LoadConfig's migration behavior in version.go.
+	Version                 *int                    `yaml:"version,omitempty"`       // Config schema version. Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1" explicitly, not the same thing spelled two ways. See CurrentConfigVersion and LoadConfig's version-check behavior in version.go.
 	Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
 	Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
 	Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.

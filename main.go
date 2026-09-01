@@ -508,10 +508,17 @@ func migrateConfigFile(configFilePath string) {
 	// Informational note only for the no-op case: someone redirecting this to
 	// a "new" file should know it's actually identical to the source, since
 	// that's not otherwise obvious from the output. Otherwise stay quiet on
-	// stderr so the command composes cleanly in a pipeline.
-	if fromVersion >= config.CurrentConfigVersion {
+	// stderr so the command composes cleanly in a pipeline. fromVersion is
+	// nil when the file has no version: field at all — see
+	// config.GatewayConfig.Version's doc comment for why that's reported
+	// distinctly rather than as "version 1".
+	switch {
+	case fromVersion == nil:
+		fmt.Fprintf(os.Stderr, "Note: '%s' has no declared version (current: %d) — printing it unchanged.\n",
+			configFilePath, config.CurrentConfigVersion)
+	case *fromVersion >= config.CurrentConfigVersion:
 		fmt.Fprintf(os.Stderr, "Note: '%s' is already version %d (current: %d) — printing it unchanged.\n",
-			configFilePath, fromVersion, config.CurrentConfigVersion)
+			configFilePath, *fromVersion, config.CurrentConfigVersion)
 	}
 
 	os.Stdout.Write(content)
@@ -538,6 +545,10 @@ func validateConfigFile(configFilePath string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("'%s' is valid (version %d): %d route(s), management prefix %q.\n",
-		configFilePath, cfg.Version, len(cfg.Routes), cfg.Management.Prefix)
+	versionDesc := "no declared version"
+	if cfg.Version != nil {
+		versionDesc = fmt.Sprintf("version %d", *cfg.Version)
+	}
+	fmt.Printf("'%s' is valid (%s): %d route(s), management prefix %q.\n",
+		configFilePath, versionDesc, len(cfg.Routes), cfg.Management.Prefix)
 }

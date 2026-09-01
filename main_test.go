@@ -49,15 +49,17 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return outBuf.String(), errBuf.String()
 }
 
-// TestMigrateConfigFile_AbsentVersion_AlreadyCurrent_NoteOnStderrOnly is the
+// TestMigrateConfigFile_AbsentVersion_NoteOnStderrOnly is the
 // current-schema equivalent of what used to be a genuine migration: with
 // config.CurrentConfigVersion at 1 (the first released schema — see its doc
-// comment), a config file with no `version:` field at all is already
-// current, so `tg migrate` echoes it unchanged to stdout and notes that on
-// stderr, exactly like TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout
-// below does for a file with an explicit version: field — there's no longer
-// a real "older" config to actually migrate.
-func TestMigrateConfigFile_AbsentVersion_AlreadyCurrent_NoteOnStderrOnly(t *testing.T) {
+// comment), a config file with no `version:` field at all (fromVersion nil
+// — see config.GatewayConfig.Version's doc comment) is accepted as-is, so
+// `tg migrate` echoes it unchanged to stdout and notes that on stderr,
+// distinctly from the "already version N" note
+// TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout below
+// covers for a file with an explicit version: field — there's no longer a
+// real "older" config to actually migrate either way.
+func TestMigrateConfigFile_AbsentVersion_NoteOnStderrOnly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	raw := "name: Test\nserver:\n  port: 8080\n"
@@ -68,7 +70,7 @@ func TestMigrateConfigFile_AbsentVersion_AlreadyCurrent_NoteOnStderrOnly(t *test
 	})
 
 	assert.Equal(t, raw, stdout, "stdout must be exactly the unchanged config content, nothing else mixed in")
-	assert.Contains(t, stderr, fmt.Sprintf("already version %d", config.CurrentConfigVersion))
+	assert.Contains(t, stderr, "has no declared version")
 }
 
 // TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout guards
