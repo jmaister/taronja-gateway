@@ -251,24 +251,34 @@ Defines the gateway server settings.
 
 ### Management
 
-Controls the management dashboard and gateway features.
+Controls the management dashboard and gateway features. Every setting below
+that belongs to a specific global middleware links to that middleware's
+full reference page — see [doc/middleware/](doc/middleware/README.md) for
+all of them together (options, dependencies, chain order).
 
 - `prefix`: URL prefix for management endpoints (default: `_`)
-- `logging`: Enable/disable request logging
-- `analytics`: Enable/disable traffic analytics and metrics
-- `excludeStaticAssets`: Skip traffic-metrics collection for static asset requests (CSS/JS/images/fonts/...). Default: `false`. Has no effect unless `analytics` is also `true`. Reduces per-request overhead and stats volume on asset-heavy sites; the Request Details report can still filter by request type either way (see below)
+- `logging`: Enable/disable request logging — see [`logging`](doc/middleware/logging.md)
+- `analytics`: Enable/disable traffic analytics and metrics — turns on the
+  [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md),
+  [`session_extraction`](doc/middleware/session-extraction.md), and
+  [`traffic_metrics`](doc/middleware/traffic-metrics.md) middlewares together
+- `excludeStaticAssets`: Skip traffic-metrics collection for static asset requests (CSS/JS/images/fonts/...). Default: `false`. Has no effect unless `analytics` is also `true`. Reduces per-request overhead and stats volume on asset-heavy sites; the Request Details report can still filter by request type either way (see below) — see [`traffic_metrics`](doc/middleware/traffic-metrics.md)
 - `session.secondsDuration`: Session timeout in seconds (e.g., 86400 = 24 hours)
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
+- `rateLimiter.*`: Requests-per-minute, error-count, and vulnerability-scan
+  limits per client IP — see [`rate_limiter`](doc/middleware/rate-limiter.md)
+  for the full option list and scan-path wildcard syntax
 - `cors.allowedOrigins`: Origins allowed to make cross-origin requests to the management API (e.g. `["https://app.example.com"]`). Omit or leave empty to disable CORS entirely — the default, since the dashboard is always served same-origin. A literal `"*"` allows any origin, but only when `allowCredentials` is not also `true` (browsers reject that combination; the gateway rejects it at startup instead of shipping a CORS setup that silently doesn't work)
 - `cors.allowCredentials`: Send `Access-Control-Allow-Credentials: true`, letting browsers include cookies on cross-origin requests
-- `cors.allowedMethods` / `cors.allowedHeaders` / `cors.maxAgeSeconds`: Preflight response details; sensible defaults are used if omitted
+- `cors.allowedMethods` / `cors.allowedHeaders` / `cors.maxAgeSeconds`: Preflight response details; sensible defaults are used if omitted — see [`cors`](doc/middleware/cors.md) for the full default values
 
 ### Middleware (optional, advanced)
 
 By default, the global middleware chain (CORS, rate limiting, JA4
-fingerprinting, session extraction, traffic metrics, request logging) is
+fingerprinting, session extraction, traffic metrics, request logging — see
+[doc/middleware/](doc/middleware/README.md) for what each one does) is
 controlled by the `cors` / `logging` / `analytics` / `rateLimiter` flags
 above. For explicit control over which middleware runs and in what order, add
 a `middleware:` section — when present it fully replaces those flags:
@@ -486,7 +496,10 @@ See the complete example configuration in `sample/config.yaml`.
 The gateway's global middleware chain (rate limiting, JA4 fingerprinting,
 session extraction, traffic metrics, request logging) is built from a small
 Factory + Registry system rather than hardcoded conditionals, so it can be
-inspected, configured declaratively, monitored, and extended:
+inspected, configured declaratively, monitored, and extended. For what each
+individual middleware does, its config options, and its dependencies, see
+[doc/middleware/](doc/middleware/README.md) — one reference page per
+middleware. This section is about the system they're all built on:
 
 - **Inspect** what's active for a config file without starting the server:
   ```bash
