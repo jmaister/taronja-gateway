@@ -16,12 +16,24 @@ import (
 // field. Bump it, and add a corresponding entry to configMigrations,
 // whenever a config schema change should be reflected in the version a
 // config file declares.
-const CurrentConfigVersion = 2
+//
+// This is 1 — not 2 — as of the gateway's v1.0.0 release: the `version:`
+// field and its migration machinery were built and tested ahead of ever
+// shipping, so what was internally "version 2" during development never
+// existed in a released config file. Renumbering it 1 for the first public
+// release avoids implying there was ever a real, released "version 1"
+// format publicly using this project name to migrate away from — there
+// wasn't. legacyConfigVersion documents the one thing that's still true
+// either way: an absent `version:` field.
+const CurrentConfigVersion = 1
 
-// legacyConfigVersion is the implicit version of every config file written
-// before the `version:` field existed — i.e. every config file that
-// predates this feature. LoadConfig treats an absent (zero-value) Version
-// as this, not as an error: the field is new, not required.
+// legacyConfigVersion is the version LoadConfig treats an absent (zero-value)
+// `version:` field as — not an error, since the field is optional, not
+// required. It's deliberately its own constant rather than a copy of
+// CurrentConfigVersion's value: it must stay 1 even after a future config
+// schema change moves CurrentConfigVersion past it, since an absent field
+// will always mean the same (first, pre-versioning-aware) format regardless
+// of how many schema versions have shipped since.
 const legacyConfigVersion = 1
 
 // configMigration transforms the raw YAML bytes of a config file written for
@@ -39,29 +51,28 @@ type configMigration func(raw []byte) []byte
 // back to just stamping the version forward if one is ever missing, but
 // that's a bug-safety net, not something to rely on).
 //
-// migrateV1ToV2 is the only step today, since the version field itself is
-// the only schema change so far. A future migration that needs to
-// restructure the document — not just add or update a field — will need a
-// different strategy than the line-level text edit setTopLevelVersionField
+// Empty today: CurrentConfigVersion is 1, and there is no version before 1
+// to migrate from (see its doc comment) — this is genuinely the first
+// released schema. Add the first real entry here (keyed 1, migrating to a
+// new version 2) whenever the schema next changes. A migration that needs
+// to restructure the document — not just add or update a field — will need
+// a different strategy than the line-level text edit setTopLevelVersionField
 // uses (e.g. parsing into yaml.Node to edit the AST while still preserving
 // comments), since re-marshaling a GatewayConfig struct would drop every
 // comment in the file.
-var configMigrations = map[int]configMigration{
-	1: migrateV1ToV2,
-}
-
-// migrateV1ToV2 stamps an explicit `version: 2` field onto a config file
-// that predates the version field entirely, or that (hypothetically, since
-// nothing ever wrote one) still explicitly declares `version: 1`.
-func migrateV1ToV2(raw []byte) []byte {
-	return setTopLevelVersionField(raw, 2)
-}
+var configMigrations = map[int]configMigration{}
 
 // migrateConfigToCurrent steps raw config bytes forward from fromVersion to
-// CurrentConfigVersion by applying each intervening version's migration in
-// turn. Returns raw unchanged if fromVersion is already current (or newer).
-func migrateConfigToCurrent(raw []byte, fromVersion int) []byte {
-	for v := fromVersion; v < CurrentConfigVersion; v++ {
+// toVersion by applying each intervening version's migration in turn.
+// Returns raw unchanged if fromVersion is already at or past toVersion.
+// toVersion is a parameter rather than always CurrentConfigVersion so tests
+// can exercise the actual step-through-multiple-versions logic with
+// synthetic version numbers, independent of how many real migrations
+// configMigrations currently holds (none, as of CurrentConfigVersion 1 —
+// see its doc comment). MigrateConfigContent, the only production caller,
+// always passes CurrentConfigVersion.
+func migrateConfigToCurrent(raw []byte, fromVersion, toVersion int) []byte {
+	for v := fromVersion; v < toVersion; v++ {
 		migrate, ok := configMigrations[v]
 		if !ok {
 			// No migration registered for this step. This shouldn't happen if
@@ -170,7 +181,7 @@ func MigrateConfigContent(path string) (content []byte, fromVersion int, err err
 		return raw, fileVersion, nil
 	}
 
-	return migrateConfigToCurrent(raw, fileVersion), fileVersion, nil
+	return migrateConfigToCurrent(raw, fileVersion, CurrentConfigVersion), fileVersion, nil
 }
 
 // versionedConfigPath returns a conventional suggested filename for a

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -72,45 +73,90 @@ func TestEffectiveConfigVersion(t *testing.T) {
 }
 
 // --- migrateConfigToCurrent ---
+//
+// toVersion is a parameter specifically so these can exercise the
+// step-through-multiple-versions logic with synthetic version numbers,
+// independent of configMigrations' real (empty, as of CurrentConfigVersion
+// 1 — see its doc comment) content.
 
-func TestMigrateConfigToCurrent_AppliesRegisteredSteps(t *testing.T) {
-	raw := []byte("name: Test\n")
-	got := migrateConfigToCurrent(raw, 1)
-	assert.Equal(t, "version: 2\nname: Test\n", string(got))
+func TestMigrateConfigToCurrent_AppliesOneRegisteredStep(t *testing.T) {
+	original := configMigrations
+	defer func() { configMigrations = original }()
+	configMigrations = map[int]configMigration{
+		5: func(raw []byte) []byte { return setTopLevelVersionField(raw, 6) },
+	}
+
+	got := migrateConfigToCurrent([]byte("name: Test\n"), 5, 6)
+	assert.Equal(t, "version: 6\nname: Test\n", string(got))
 }
 
-func TestMigrateConfigToCurrent_NoOpAtCurrentVersion(t *testing.T) {
-	raw := []byte("version: 2\nname: Test\n")
-	got := migrateConfigToCurrent(raw, CurrentConfigVersion)
+func TestMigrateConfigToCurrent_ChainsMultipleRegisteredSteps(t *testing.T) {
+	original := configMigrations
+	defer func() { configMigrations = original }()
+	configMigrations = map[int]configMigration{
+		5: func(raw []byte) []byte { return append(raw, []byte("step5-to-6\n")...) },
+		6: func(raw []byte) []byte { return append(raw, []byte("step6-to-7\n")...) },
+	}
+
+	got := migrateConfigToCurrent([]byte("name: Test\n"), 5, 7)
+	assert.Equal(t, "name: Test\nstep5-to-6\nstep6-to-7\n", string(got), "each intervening version's migration must run in order")
+}
+
+func TestMigrateConfigToCurrent_MissingStepStampsVersionForwardAsSafetyNet(t *testing.T) {
+	original := configMigrations
+	defer func() { configMigrations = original }()
+	configMigrations = map[int]configMigration{} // no entry for version 5
+
+	got := migrateConfigToCurrent([]byte("name: Test\n"), 5, 6)
+	assert.Equal(t, "version: 6\nname: Test\n", string(got), "a missing migration step must still stamp the version forward, not leave the file unchanged")
+}
+
+func TestMigrateConfigToCurrent_NoOpWhenFromVersionAtOrPastToVersion(t *testing.T) {
+	raw := []byte(fmt.Sprintf("version: %d\nname: Test\n", CurrentConfigVersion))
+	got := migrateConfigToCurrent(raw, CurrentConfigVersion, CurrentConfigVersion)
+	assert.Equal(t, string(raw), string(got))
+}
+
+// TestMigrateConfigToCurrent_NoOpForRealCurrentVersion is the production
+// case, not a synthetic one: CurrentConfigVersion is 1 today and
+// configMigrations has no real entries (there is no version before 1 to
+// migrate from — this is the first released schema), so migrating a
+// version-1 file must be a true no-op.
+func TestMigrateConfigToCurrent_NoOpForRealCurrentVersion(t *testing.T) {
+	raw := []byte("name: Test\n")
+	got := migrateConfigToCurrent(raw, legacyConfigVersion, CurrentConfigVersion)
 	assert.Equal(t, string(raw), string(got))
 }
 
 // --- LoadConfig integration ---
 //
-// LoadConfig must refuse to run against a config file older than
+// LoadConfig would refuse to run against a config file older than
 // CurrentConfigVersion, rather than silently migrating it — see
-// checkConfigVersion. Migration itself is a deliberate, explicit step via
+// checkConfigVersion — but there's no real "older" file to test that with
+// today (CurrentConfigVersion is 1, the first released schema version; see
+// its doc comment). Migration itself is a deliberate, explicit step via
 // `tg migrate` / config.MigrateConfigFile, tested separately below.
 
-func TestLoadConfig_LegacyFile_FailsWithMigrationAdvice(t *testing.T) {
+// TestLoadConfig_AbsentVersionFile_TreatedAsCurrent_Succeeds is the
+// no-migration-needed counterpart of what used to be
+// TestLoadConfig_LegacyFile_FailsWithMigrationAdvice: with
+// CurrentConfigVersion at 1 (see its doc comment — this is the first
+// released schema, so there's no real older version to refuse), a config
+// file with no `version:` field at all is exactly as valid as one that
+// declares `version: 1` explicitly — both are legacyConfigVersion, which is
+// current.
+func TestLoadConfig_AbsentVersionFile_TreatedAsCurrent_Succeeds(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(minimalTestConfigYAML), 0o644))
 
-	_, err := LoadConfig(path)
-	require.Error(t, err, "LoadConfig must refuse to run against a config file older than CurrentConfigVersion")
-	assert.Contains(t, err.Error(), "version 1")
-	assert.Contains(t, err.Error(), "requires version 2")
-	assert.Contains(t, err.Error(), "tg migrate --config "+path, "the error must tell the user how to fix it")
-
-	// LoadConfig must not have written anything to disk on this path — that's
-	// what tg migrate is for now, not an automatic side effect of loading.
-	_, statErr := os.Stat(filepath.Join(dir, "config-v2.yaml"))
-	assert.True(t, os.IsNotExist(statErr), "LoadConfig must not write a migrated file itself")
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cfg.Version, "an absent version: field must be left as the zero value, not silently stamped")
 }
 
 func TestLoadConfig_CurrentVersionFile_Succeeds(t *testing.T) {
-	raw := "version: 2\n" + minimalTestConfigYAML
+	raw := fmt.Sprintf("version: %d\n", CurrentConfigVersion) + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
@@ -133,21 +179,23 @@ func TestLoadConfig_NewerVersionThanSupported_ProceedsWithWarning(t *testing.T) 
 
 // TestLoadConfig_NeverWritesFiles is the direct regression test for
 // "migration only ever runs via `tg migrate`, never as a side effect of
-// LoadConfig" — across every version relationship LoadConfig can see (older,
-// current, newer), the config file's directory must contain exactly the one
+// LoadConfig" — across every version relationship LoadConfig can see today
+// (there's no "older than current" case any more: CurrentConfigVersion is 1,
+// and an absent version: field is legacyConfigVersion, also 1 — see both
+// constants' doc comments — so "current" now covers what used to be two
+// separate cases), the config file's directory must contain exactly the one
 // file this test put there, both before and after the call. Complements the
 // source-level guarantee (checkConfigVersion, LoadConfig's only version
-// handling, never calls migrateConfigToCurrent/migrateV1ToV2/
-// MigrateConfigContent — only MigrateConfigContent does, and its only
-// caller in the whole module is main.go's migrateConfigFile, wired
-// exclusively to the `migrate` Cobra command) with something a future
-// regression would actually fail, not just something true by inspection
-// today.
+// handling, never calls migrateConfigToCurrent/MigrateConfigContent — only
+// MigrateConfigContent does, and its only caller in the whole module is
+// main.go's migrateConfigFile, wired exclusively to the `migrate` Cobra
+// command) with something a future regression would actually fail, not just
+// something true by inspection today.
 func TestLoadConfig_NeverWritesFiles(t *testing.T) {
 	versionLines := map[string]string{
-		"older than current":   "", // no version: line at all -> legacyConfigVersion (1)
-		"current":              "version: 2\n",
-		"newer than supported": "version: 99\n",
+		"current, absent version:  field":  "", // no version: line at all -> legacyConfigVersion (1), which is current
+		"current, explicit version: field": fmt.Sprintf("version: %d\n", CurrentConfigVersion),
+		"newer than supported":             "version: 99\n",
 	}
 
 	for name, versionLine := range versionLines {
@@ -159,10 +207,9 @@ func TestLoadConfig_NeverWritesFiles(t *testing.T) {
 			before, err := os.ReadDir(dir)
 			require.NoError(t, err)
 
-			// Ignore the return values deliberately: whether LoadConfig
-			// succeeds or fails (it fails for "older than current"), the one
-			// thing under test here is that it never touches the filesystem
-			// beyond reading the file it was given.
+			// Ignore the return values deliberately: the one thing under test
+			// here is that LoadConfig never touches the filesystem beyond
+			// reading the file it was given, regardless of outcome.
 			_, _ = LoadConfig(path)
 
 			after, err := os.ReadDir(dir)
@@ -182,14 +229,22 @@ func TestLoadConfig_NeverWritesFiles(t *testing.T) {
 // controls the destination via shell redirection, the same as any other
 // stdout-producing command.
 
-func TestMigrateConfigContent_ReturnsMigratedContentAndPreservesSecrets(t *testing.T) {
+// TestMigrateConfigContent_AbsentVersion_AlreadyCurrent_PreservesEverything
+// covers what used to require a real migration to demonstrate: with
+// CurrentConfigVersion at 1 (see its doc comment — nothing before 1 exists
+// to migrate from), a config file with no `version:` field at all is
+// legacyConfigVersion, which is current, so MigrateConfigContent returns it
+// completely untouched — the strongest possible guarantee that comments and
+// unresolved secret placeholders survive, since nothing rewrites the file
+// at all.
+func TestMigrateConfigContent_AbsentVersion_AlreadyCurrent_PreservesEverything(t *testing.T) {
 	t.Setenv("TEST_VERSION_MIGRATION_SECRET", "super-secret-value")
 
 	raw := `name: Test Gateway
 server:
   host: 127.0.0.1
   port: 8080
-  # a comment that must survive migration
+  # a comment that must survive
 management:
   admin:
     enabled: false
@@ -208,30 +263,26 @@ routes:
 	content, fromVersion, err := MigrateConfigContent(path)
 	require.NoError(t, err)
 	assert.Equal(t, legacyConfigVersion, fromVersion)
+	assert.Equal(t, raw, string(content), "an absent-version (already current) file must be returned byte-for-byte unchanged")
 
-	// Original file must be untouched.
+	contentStr := string(content)
+	assert.Contains(t, contentStr, "# a comment that must survive")
+	assert.Contains(t, contentStr, "${TEST_VERSION_MIGRATION_SECRET}", "content must keep the env var placeholder, not resolve it")
+	assert.NotContains(t, contentStr, "super-secret-value", "content must never contain a resolved secret")
+
+	// Original file must be untouched too.
 	originalAfter, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, raw, string(originalAfter), "the original config file must not be modified")
 
-	// Returned content must contain the new version field, preserve the
-	// comment, and — critically — must NOT contain the resolved secret.
-	contentStr := string(content)
-	assert.Contains(t, contentStr, "version: 2")
-	assert.Contains(t, contentStr, "# a comment that must survive migration")
-	assert.Contains(t, contentStr, "${TEST_VERSION_MIGRATION_SECRET}", "migrated content must keep the env var placeholder, not resolve it")
-	assert.NotContains(t, contentStr, "super-secret-value", "migrated content must never contain a resolved secret")
-
-	// And writing it out must produce a file that loads successfully on its own.
-	migratedPath := filepath.Join(dir, "config-v2.yaml")
-	require.NoError(t, os.WriteFile(migratedPath, content, 0o644))
-	cfg, err := LoadConfig(migratedPath)
+	// And it must load successfully as-is.
+	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
-	assert.Equal(t, CurrentConfigVersion, cfg.Version)
+	assert.Equal(t, 0, cfg.Version)
 }
 
 func TestMigrateConfigContent_AlreadyCurrent_ReturnsUnchanged(t *testing.T) {
-	raw := "version: 2\n" + minimalTestConfigYAML
+	raw := fmt.Sprintf("version: %d\n", CurrentConfigVersion) + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))

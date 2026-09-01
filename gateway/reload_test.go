@@ -15,14 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// writeReloadTestConfig writes a minimal, valid (version: 2) config file to
+// writeReloadTestConfig writes a minimal, valid (version: 1) config file to
 // a temp directory and returns its path, so ReloadConfig — which always
 // re-reads from disk via config.LoadConfig, exactly like "tg run" — has
 // something real to load.
 func writeReloadTestConfig(t *testing.T, dir string, extraYAML string) string {
 	t.Helper()
 	base := `
-version: 2
+version: 1
 name: Reload Test Gateway
 server:
   host: 127.0.0.1
@@ -62,7 +62,7 @@ func TestReloadConfig_SwapsRoutes(t *testing.T) {
 
 	// Rewrite the file with an added route, then reload.
 	require.NoError(t, os.WriteFile(path, []byte(`
-version: 2
+version: 1
 name: Reload Test Gateway
 server:
   host: 127.0.0.1
@@ -92,7 +92,7 @@ routes:
 
 // TestReloadConfig_InvalidConfigLeavesRunningConfigUnchanged is the
 // regression this feature exists to make safe: a bad edit to the config
-// file (here, an unsupported schema version) must not interrupt or corrupt
+// file (here, a missing required server.port) must not interrupt or corrupt
 // an already-running gateway — ReloadConfig should report the error and
 // leave the previous, still-valid generation serving exactly as before.
 func TestReloadConfig_InvalidConfigLeavesRunningConfigUnchanged(t *testing.T) {
@@ -108,19 +108,18 @@ func TestReloadConfig_InvalidConfigLeavesRunningConfigUnchanged(t *testing.T) {
 	originalConfig := gw.GatewayConfig
 	originalMux := gw.Mux
 
-	// Overwrite with a config declaring an unsupported (too old) version —
+	// Overwrite with a config missing a required field (server.port) —
 	// config.LoadConfig refuses this outright, same as it would for "tg run".
 	require.NoError(t, os.WriteFile(path, []byte(`
 version: 1
 name: Broken Reload
 server:
   host: 127.0.0.1
-  port: 8080
 routes: []
 `), 0o644))
 
 	err = gw.ReloadConfig(path)
-	require.Error(t, err, "reloading an outdated/invalid config must fail, not silently apply")
+	require.Error(t, err, "reloading an invalid config must fail, not silently apply")
 
 	assert.Same(t, originalConfig, gw.GatewayConfig, "GatewayConfig must be untouched after a failed reload")
 	assert.Same(t, originalMux, gw.Mux, "Mux must be untouched after a failed reload")
@@ -142,7 +141,7 @@ func TestReloadConfig_RateLimiterPicksUpNewLimits(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(`
-version: 2
+version: 1
 name: Reload Test Gateway
 server:
   host: 127.0.0.1
@@ -168,7 +167,7 @@ routes:
 	require.Equal(t, 10, gw.RateLimiter.Config().RequestsPerMinute)
 
 	require.NoError(t, os.WriteFile(path, []byte(`
-version: 2
+version: 1
 name: Reload Test Gateway
 server:
   host: 127.0.0.1
@@ -258,7 +257,7 @@ func TestReloadConfig_PicksUpEditedDotEnvValue(t *testing.T) {
 
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(`
-version: 2
+version: 1
 name: ${GW_NAME}
 server:
   host: 127.0.0.1
@@ -299,7 +298,7 @@ func TestReloadConfig_WarnsOnHostOrPortChange(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, os.WriteFile(path, []byte(`
-version: 2
+version: 1
 name: Reload Test Gateway
 server:
   host: 127.0.0.1

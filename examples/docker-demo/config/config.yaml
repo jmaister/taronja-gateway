@@ -4,7 +4,7 @@
 # volume for the sqlite DB file so it survives `docker compose down`/`up`);
 # ports/hostnames like "web-service:80" are Docker Compose service names,
 # resolved by Docker's internal DNS.
-version: 2
+version: 1
 name: Taronja Gateway - Docker Demo
 
 server:

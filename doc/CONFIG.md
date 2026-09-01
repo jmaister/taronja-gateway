@@ -61,8 +61,10 @@ const (
 
 <a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build of the gateway expects a config file to declare via its top\-level \`version:\` field. Bump it, and add a corresponding entry to configMigrations, whenever a config schema change should be reflected in the version a config file declares.
 
+This is 1 — not 2 — as of the gateway's v1.0.0 release: the \`version:\` field and its migration machinery were built and tested ahead of ever shipping, so what was internally "version 2" during development never existed in a released config file. Renumbering it 1 for the first public release avoids implying there was ever a real, released "version 1" format publicly using this project name to migrate away from — there wasn't. legacyConfigVersion documents the one thing that's still true either way: an absent \`version:\` field.
+
 ```go
-const CurrentConfigVersion = 2
+const CurrentConfigVersion = 1
 ```
 
 ## Variables
@@ -90,7 +92,7 @@ func IsMiddlewareNameKnown(name string) bool
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
 
 <a name="MigrateConfigContent"></a>
-## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L153>)
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L164>)
 
 ```go
 func MigrateConfigContent(path string) (content []byte, fromVersion int, err error)

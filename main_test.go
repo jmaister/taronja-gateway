@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -48,22 +49,26 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return outBuf.String(), errBuf.String()
 }
 
-// TestMigrateConfigFile_LegacyConfig_WritesOnlyContentToStdout is the core
-// regression test for `tg migrate`'s pipe-friendliness: a genuine migration
-// must write nothing but the migrated config to stdout, since that's what
-// `tg migrate --config x.yaml > x-v2.yaml` captures.
-func TestMigrateConfigFile_LegacyConfig_WritesOnlyContentToStdout(t *testing.T) {
+// TestMigrateConfigFile_AbsentVersion_AlreadyCurrent_NoteOnStderrOnly is the
+// current-schema equivalent of what used to be a genuine migration: with
+// config.CurrentConfigVersion at 1 (the first released schema — see its doc
+// comment), a config file with no `version:` field at all is already
+// current, so `tg migrate` echoes it unchanged to stdout and notes that on
+// stderr, exactly like TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout
+// below does for a file with an explicit version: field — there's no longer
+// a real "older" config to actually migrate.
+func TestMigrateConfigFile_AbsentVersion_AlreadyCurrent_NoteOnStderrOnly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("name: Test\nserver:\n  port: 8080\n"), 0o644))
+	raw := "name: Test\nserver:\n  port: 8080\n"
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
 	stdout, stderr := captureOutput(t, func() {
 		migrateConfigFile(path)
 	})
 
-	assert.Contains(t, stdout, "version: 2", "migrated content must be on stdout")
-	assert.Contains(t, stdout, "name: Test")
-	assert.Empty(t, stderr, "a genuine migration should print nothing to stderr")
+	assert.Equal(t, raw, stdout, "stdout must be exactly the unchanged config content, nothing else mixed in")
+	assert.Contains(t, stderr, fmt.Sprintf("already version %d", config.CurrentConfigVersion))
 }
 
 // TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout guards
@@ -73,7 +78,7 @@ func TestMigrateConfigFile_LegacyConfig_WritesOnlyContentToStdout(t *testing.T) 
 func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	raw := "version: 2\nname: Test\nserver:\n  port: 8080\n"
+	raw := fmt.Sprintf("version: %d\nname: Test\nserver:\n  port: 8080\n", config.CurrentConfigVersion)
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
 	stdout, stderr := captureOutput(t, func() {
@@ -81,7 +86,7 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 	})
 
 	assert.Equal(t, raw, stdout, "stdout must be exactly the unchanged config content, nothing else mixed in")
-	assert.Contains(t, stderr, "already version 2")
+	assert.Contains(t, stderr, fmt.Sprintf("already version %d", config.CurrentConfigVersion))
 }
 
 // TestValidateConfigFile_ValidConfig_PrintsSuccess covers validateConfigFile's
@@ -93,8 +98,7 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 func TestValidateConfigFile_ValidConfig_PrintsSuccess(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	raw := `version: 2
-name: Test Gateway
+	raw := fmt.Sprintf("version: %d\n", config.CurrentConfigVersion) + `name: Test Gateway
 server:
   host: 127.0.0.1
   port: 8080
@@ -113,7 +117,7 @@ routes:
 	})
 
 	assert.Contains(t, stdout, "is valid")
-	assert.Contains(t, stdout, "version 2")
+	assert.Contains(t, stdout, fmt.Sprintf("version %d", config.CurrentConfigVersion))
 	assert.Contains(t, stdout, "1 route")
 	assert.Empty(t, stderr)
 }
@@ -127,7 +131,7 @@ func TestWatchConfigFile_ReloadsOnWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	write := func(name string) {
-		raw := "version: 2\nname: " + name + "\nserver:\n  host: 127.0.0.1\n  port: 8080\n" +
+		raw := fmt.Sprintf("version: %d\nname: %s\nserver:\n  host: 127.0.0.1\n  port: 8080\n", config.CurrentConfigVersion, name) +
 			"management:\n  admin:\n    enabled: false\nroutes: []\n"
 		require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 	}

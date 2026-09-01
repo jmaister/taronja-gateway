@@ -42,7 +42,7 @@ func TestIsMiddlewareNameKnown(t *testing.T) {
 func writeTestConfig(t *testing.T, extraYAML string) string {
 	t.Helper()
 	base := `
-version: 2
+version: 1
 name: Test Gateway
 server:
   host: 127.0.0.1

@@ -130,7 +130,7 @@ Taronja Gateway uses a YAML configuration file to define server settings, routes
 ## Basic Structure
 
 ```yaml
-version: 2 # Config schema version — see "Config File Versioning" below
+version: 1 # Config schema version — see "Config File Versioning" below
 
 name: Example Gateway Configuration
 
@@ -193,22 +193,24 @@ notification:
 The config file declares a schema version:
 
 ```yaml
-version: 2
+version: 1
 ```
 
 On startup, the gateway logs the version it detected and what it currently
 supports:
 
 ```
-Config file version: 2 (current: 2)
+Config file version: 1 (current: 1)
 ```
 
-A file with no `version:` key is treated as version 1 — the implicit version
-of every config written before this feature existed.
+A file with no `version:` key at all is also treated as version 1 — every
+config file is version 1 as of this release, whether or not it says so
+explicitly.
 
-**The gateway refuses to start against an outdated config file.** If the
-version it detects is older than it supports, `tg run` (and `tg middleware
-list`) fail immediately with an error telling you what to do:
+**The gateway refuses to start against an outdated config file.** If a
+future release raises the schema version, `tg run` (and `tg middleware
+list`) will fail immediately for a config file older than that release
+supports, with an error telling you what to do:
 
 ```
 FATAL: Failed to load configuration: config file 'config.yaml' is version 1, but this gateway requires version 2
