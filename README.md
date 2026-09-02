@@ -260,12 +260,16 @@ Defines the gateway server settings.
 ### TLS / HTTPS
 
 The gateway can terminate HTTPS itself, on `server.port`. There are two ways
-to give it a certificate — pick one:
+to give it a certificate — pick one (they're mutually exclusive; configuring
+both is a config-load error):
 
-1. **[Your own certificate files](#option-1-your-own-certificate-files)** (`certFile`/`keyFile`) — you obtain and renew the certificate (via `certbot`, a commercial CA, an internal PKI, etc.); the gateway just serves it and picks up renewals automatically.
-2. **[Automatic via ACME / Let's Encrypt](#option-2-automatic-certificates-via-acme--lets-encrypt)** (`acme`) — the gateway obtains and renews its own certificate, no external tool needed.
-
-They're mutually exclusive — configuring both is a config-load error.
+| | [Option 1: your own certificate files](#option-1-your-own-certificate-files) | [Option 2: ACME / Let's Encrypt](#option-2-automatic-certificates-via-acme--lets-encrypt) |
+|---|---|---|
+| Config key | `certFile` / `keyFile` | `acme` |
+| **Who obtains/renews the certificate** | **You** — `certbot`, a commercial CA, an internal PKI, etc., running independently of the gateway. The gateway only *notices the file changed* and hot-swaps it in; it never requests anything itself. | **The gateway itself**, automatically, for as long as it keeps running — no external tool, no cron job, nothing else to keep working. |
+| **Network requirement** | None — works on a fully private/internal network, behind a firewall, with no public DNS at all. | The domain(s) must have **public DNS pointing at this gateway** and be **reachable from the internet** on port 80 and/or 443 — Let's Encrypt's own servers connect *to* the gateway to prove domain ownership. Won't work for internal-only services. |
+| Wildcard domains (`*.example.com`) | Supported, if your certificate provider issues them | **Not supported** (needs a `dns-01` challenge; unimplemented here) |
+| Best for | Internal/private services, an existing CDN- or org-issued certificate, wildcard certs | Public-facing services where you just want HTTPS with zero ongoing certificate management |
 
 #### Option 1: Your own certificate files
 
@@ -329,7 +333,7 @@ openssl x509 -noout -pubkey -in fullchain.pem | openssl md5
 openssl pkey  -pubout       -in privkey.pem    | openssl md5
 ```
 
-**Certificate renewal is automatic, with zero downtime.** The gateway watches `certFile`/`keyFile` for changes and hot-swaps the in-memory certificate the moment a renewal tool (certbot, etc.) replaces them — no restart, no reload, no dropped connections; already-open connections keep using whatever certificate they negotiated. This is independent of [hot config reload](#commands): renewing the certificate files doesn't require touching `config.yaml` at all.
+**Picking up a renewed certificate is automatic, with zero downtime — but you still need something else actually renewing it.** The gateway itself never requests or renews a certificate in this mode; that's `certbot` (or whatever issued it)'s job, typically on its own cron job/systemd timer, same as it would be for e.g. nginx. What the gateway does automatically is *notice* when that tool replaces `certFile`/`keyFile` and hot-swap the in-memory certificate the moment it does — no restart, no reload, no dropped connections; already-open connections keep using whatever certificate they negotiated. This is independent of [hot config reload](#commands): a renewed certificate file doesn't require touching `config.yaml` at all. (Compare this to Option 2 below, where the gateway handles the entire renewal itself.)
 
 #### Option 2: Automatic certificates via ACME / Let's Encrypt
 
