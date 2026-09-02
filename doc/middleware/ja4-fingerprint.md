@@ -14,8 +14,10 @@ request — a hash derived from HTTP-level characteristics (method, header
 names, `Accept-Language`, cookie/referer presence). It's stored on the
 request as the `X-Taronja-JA4H` header
 (`middleware/fingerprint.JA4HHeaderName`) for later middleware and
-application code to read via `fingerprint.GetJA4FromRequest(req)` — it is
-not sent to the backend the request is proxied to.
+application code to read via `fingerprint.GetJA4FromRequest(req)`. Nothing
+in the reverse proxy strips it, so it currently also reaches whatever
+backend the request is proxied to, the same as any other request header —
+if you don't want a proxied backend to see it, strip it there.
 
 **It is not a stable per-visitor identifier — the same real client
 routinely produces several different JA4H values within a single page
@@ -107,6 +109,44 @@ explicit chain with `traffic_metrics` but not `ja4_fingerprint` fails fast
 at startup with a clear dependency error instead of silently recording
 metrics with an empty fingerprint.
 
+## Two companion fingerprints, computed alongside JA4H
+
+This middleware also sets two more headers on every request — not
+separately configurable, not separately enable/disable-able, since both
+are cheap enough to always compute once `ja4_fingerprint` is running at
+all:
+
+- **`X-Taronja-Stable-Fingerprint`** (`fingerprint.GetStableFingerprintFromRequest`,
+  `StableFingerprint` field on `ClientInfo`/`TrafficMetric`) — a
+  deliberately reduced-entropy fingerprint built only from request
+  properties that don't vary by request type: `User-Agent`,
+  `Accept-Encoding`, `Accept-Language`, and the low-entropy User-Agent
+  Client Hints (`Sec-Ch-Ua*`). It exists specifically to answer "how do I
+  reduce JA4H's volatility" (JA4H's own header-count and header-name-set
+  components are what makes it change between a navigation and its
+  subresource/API requests — see "What it does" above) without waiting for
+  TLS. It is **not** part of the JA4 spec family — a custom,
+  project-specific signal, named to avoid implying otherwise — and being
+  coarser by design, it's meaningfully easier for a deliberately evasive
+  client to fake than either JA4 variant. See
+  `middleware/fingerprint/stable.go` for the exact field list and
+  rationale.
+- **`X-Taronja-JA4-TLS`** (`fingerprint.GetJA4TLSFromRequest`,
+  `JA4TLSFingerprint` field) — the real TLS-level JA4 fingerprint (cipher
+  suites, extensions, ALPN, TLS version from the `ClientHello`), which is
+  the most stable of the three by a wide margin since it's a property of
+  the client's TLS stack rather than of any individual HTTP request or
+  header set. Only populated when the gateway terminates TLS itself
+  (`server.tls.enabled`) — see [TLS / HTTPS](../../README.md#tls--https)'s
+  "A free bonus of terminating TLS yourself" section, and
+  `gateway/ja4tls.go` for the implementation (it isn't wired through the
+  `ja4_fingerprint` middleware/factory at all — it's TLS-connection-level
+  plumbing set up alongside `server.tls` itself, not a global middleware
+  with its own enable/disable flag).
+
+Rough reliability ranking, most to least stable for the same real client
+across a browsing session: TLS JA4 > stable fingerprint > JA4H.
+
 ## See also
 
 - [Middleware Architecture](../../README.md#middleware-architecture) — the
@@ -114,3 +154,6 @@ metrics with an empty fingerprint.
 - [doc/middleware/session-extraction.md](session-extraction.md) and
   [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the rest of the
   "analytics" group, run immediately after this one.
+- [README.md's TLS / HTTPS section](../../README.md#tls--https) — TLS JA4
+  fingerprinting, the more reliable alternative available whenever the
+  gateway terminates TLS itself.

@@ -138,10 +138,27 @@ Why IP is not being parsed correctly? Is it because of the attack vector in the 
     - Show if URL matches any of the blocking rules
     - Show the METHOD + PATH
 - Does JA4 fingerprinting make any sense at all?
-    - Can we use it to identify users?
-    - Can we identify bots?
-    - Can we identify returning users/attackers?
-    - Filter by JA4 fingerprint separate parts? 
+    - Answered, at least for JA4H specifically: not as a stable per-user
+      identifier — it varies per request type for the same real client
+      (see doc/middleware/ja4-fingerprint.md's "What it does"). Two
+      follow-ups shipped to address this directly:
+        - TLS-level JA4 (`server.tls.enabled` required) — much more
+          stable, since it's a property of the client's TLS stack, not of
+          any individual HTTP request. See `gateway/ja4tls.go`.
+        - `StableFingerprint` — a reduced-entropy, non-TLS fallback built
+          only from headers that don't vary by request type. See
+          `middleware/fingerprint/stable.go`.
+    - Can we use it to identify users? — still no for JA4H alone; TLS JA4
+      and the stable fingerprint are meaningfully better for "same real
+      client," but none of the three should be trusted as a hard 1:1
+      identifier (all are still spoofable by a deliberately evasive
+      client, to varying degrees — TLS JA4 hardest, JA4H easiest).
+    - Can we identify bots? Can we identify returning users/attackers? —
+      still open; a composite signal (IP + parsed User-Agent + these three
+      fingerprints, tolerating partial drift) is the likely next step
+      rather than trusting any single field exactly.
+    - Filter by JA4 fingerprint separate parts? — still open, and now
+      applies to three fields instead of one.
 
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 

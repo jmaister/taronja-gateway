@@ -38,8 +38,28 @@ type ClientInfo struct {
 	Region      string  `gorm:"type:varchar(100)"`  // State/Province/Region
 	Continent   string  `gorm:"type:varchar(50)"`   // Continent name
 
-	// JA4H HTTP fingerprint
+	// JA4H HTTP fingerprint — see doc/middleware/ja4-fingerprint.md. Noisy:
+	// varies for the same real client across different request types
+	// (navigation vs. subresource vs. XHR/fetch), by design of the JA4H
+	// spec itself, not a bug in this gateway.
 	JA4Fingerprint string `gorm:"type:varchar(100)"`
+	// JA4TLSFingerprint is the TLS-level JA4 fingerprint (cipher suites,
+	// extensions, ALPN, TLS version from the ClientHello) — a property of
+	// the client's TLS stack, stable across every request on the same
+	// connection unlike JA4Fingerprint above. Only ever populated when the
+	// gateway terminates TLS itself (server.tls.enabled) — see
+	// gateway/ja4tls.go. Empty otherwise, including for plain-HTTP
+	// requests and for TLS terminated by something else in front of this
+	// gateway.
+	JA4TLSFingerprint string `gorm:"type:varchar(100)"`
+	// StableFingerprint is a deliberately reduced-entropy, project-specific
+	// fingerprint (not part of the JA4 family) computed only from request
+	// properties that don't vary by request type — see
+	// middleware/fingerprint.StableFingerprint. Meant to identify the same
+	// real client more consistently than JA4Fingerprint across a browsing
+	// session, at the cost of being coarser and, unlike JA4TLSFingerprint,
+	// still spoofable/variable the way any header-based signal is.
+	StableFingerprint string `gorm:"type:varchar(64)"`
 }
 
 // User struct definition

@@ -51,6 +51,14 @@ type Gateway struct {
 	// gateway/tls.go's newACMEManager. nil when TLS is disabled or using a
 	// static certFile/keyFile.
 	acmeManager *autocert.Manager
+	// tlsJA4 captures a TLS-level JA4 fingerprint per connection when TLS is
+	// enabled (either certificate source) — see gateway/ja4tls.go. nil when
+	// TLS is disabled, since JA4 needs the ClientHello, only visible at the
+	// TLS layer this gateway itself terminates. Must be set before the
+	// first applyConfig call (which wraps the built handler with
+	// tlsJA4.middleware), independent of gateway.Server's own construction
+	// further below — see the comment at its construction site.
+	tlsJA4 *tlsJA4
 	// Middleware components (created during gateway initialization)
 	AuthMiddleware      *middleware.AuthMiddleware
 	HttpCacheMiddleware *middleware.HttpCacheMiddleware
@@ -95,6 +103,17 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		WebappEmbedFS: webappEmbedFS,
 		StartTime:     time.Now(),
 		handler:       &reloadableHandler{},
+	}
+
+	// Built before applyConfig (which wraps its built handler with
+	// tlsJA4.middleware — see reload.go) even though the TLS-specific
+	// *tls.Config/ConnState wiring below needs gateway.Server to already
+	// exist and so has to happen after it. The tlsJA4 value itself doesn't
+	// depend on Server at all — only StoreFingerprintFromClientHello does,
+	// wired in further down — so splitting its construction from that
+	// wiring is what lets applyConfig run in between.
+	if cfg.Server.TLS.Enabled {
+		gateway.tlsJA4 = newTLSJA4()
 	}
 
 	// Validates, builds the middleware chain/mux/rate limiter, registers all
@@ -150,6 +169,12 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 			gateway.tlsCertReloader = reloader
 			gateway.Server.TLSConfig = newTLSConfig(reloader)
 		}
+
+		// Wired the same way regardless of which certificate source just
+		// set gateway.Server.TLSConfig above: JA4 capture only needs the
+		// ClientHello, which every TLS connection presents either way.
+		gateway.tlsJA4.configureTLSConfig(gateway.Server.TLSConfig)
+		gateway.Server.ConnState = gateway.tlsJA4.connStateCallback
 	}
 
 	return gateway, nil

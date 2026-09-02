@@ -130,6 +130,12 @@ func OptimizedJA4Middleware(enableCaching bool) func(http.Handler) http.Handler 
 			// Store the fingerprint in a custom header
 			r.Header.Set(fingerprint.JA4HHeaderName, ja4hFingerprint)
 
+			// Also compute and store the reduced-entropy "stable"
+			// fingerprint — cheap enough (a handful of header reads plus
+			// one SHA256) that it doesn't need its own cache the way JA4H
+			// does. See fingerprint.StableFingerprint's doc comment.
+			r.Header.Set(fingerprint.StableFingerprintHeaderName, fingerprint.StableFingerprint(r))
+
 			next.ServeHTTP(w, r)
 		})
 	}

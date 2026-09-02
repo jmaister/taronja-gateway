@@ -101,6 +101,11 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 
 	// Extract JA4H fingerprint from request context (set by JA4 middleware)
 	ja4Fingerprint := fingerprint.GetJA4FromRequest(req)
+	// TLS-level JA4 (empty unless the gateway terminates TLS itself — see
+	// gateway/ja4tls.go) and the reduced-entropy "stable" fingerprint (set
+	// by the same middleware that sets ja4Fingerprint above).
+	ja4TLSFingerprint := fingerprint.GetJA4TLSFromRequest(req)
+	stableFingerprint := fingerprint.GetStableFingerprintFromRequest(req)
 
 	return &db.ClientInfo{
 		IPAddress:      ipAddress,
@@ -124,7 +129,9 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 		Region:      geoData.Region,
 		Continent:   geoData.Continent,
 		// JA4H fingerprinting
-		JA4Fingerprint: ja4Fingerprint,
+		JA4Fingerprint:    ja4Fingerprint,
+		JA4TLSFingerprint: ja4TLSFingerprint,
+		StableFingerprint: stableFingerprint,
 	}
 }
 

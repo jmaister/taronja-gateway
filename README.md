@@ -369,6 +369,12 @@ server:
 
 **The first certificate for a new domain is requested lazily**, on that domain's first real TLS handshake — not at gateway startup. This means a misconfigured domain (DNS not yet pointed at this gateway, port 80/443 unreachable from the internet) surfaces as a failed handshake for a real client hitting it, not as a startup error — check the gateway's logs if HTTPS connections are failing right after enabling this. Renewal happens automatically in the background well before expiry, with no restart, reload, or file-watching involved (there's no cert/key file for you to manage at all in this mode).
 
+#### A free bonus of terminating TLS yourself: TLS-level client fingerprinting
+
+Whichever certificate source you use, enabling TLS also turns on **TLS-level JA4 fingerprinting** automatically — no extra config. Unlike [JA4H](doc/middleware/ja4-fingerprint.md) (computed per HTTP request from header count/order, which varies constantly between a page load and its own subresource/API requests — see that page for why), TLS JA4 is computed once per TLS connection from the client's actual TLS stack (cipher suites, extensions, ALPN, TLS version): a property of the client's OS/browser/TLS library, not of any individual request, so it stays the same across every request on that connection. It's only possible because the gateway itself sees the raw `ClientHello` — this is the concrete meaning of "if we control the TLS certificates" in practice: TLS terminated by something else in front of this gateway (a CDN, a load balancer) means this gateway never sees a `ClientHello` at all.
+
+It's exposed the same way JA4H already is — a `ja4TLSFingerprint` field on every session/traffic-metric row and in `X-User-Data` (empty when TLS is disabled) — see the [`X-User-Data` field reference](#field-reference) below.
+
 #### Restarting vs. reloading
 
 Enabling or disabling TLS itself, switching between the two certificate sources above, or changing either one's settings (cert/key paths, ACME domains, `redirectPort`) **does** require a full restart — like `server.host`/`port`, that means rebinding the listening socket, which a config reload can't do. Editing these and reloading (`SIGHUP` or `--watch`) anyway isn't silently ignored: the gateway logs a warning and keeps serving on whatever TLS configuration it started with.
@@ -818,7 +824,9 @@ The `X-User-Data` header contains a JSON-encoded session object with the followi
   "countryCode": "string",
   "region": "string",
   "continent": "string",
-  "ja4Fingerprint": "string"
+  "ja4Fingerprint": "string",
+  "ja4TLSFingerprint": "string",
+  "stableFingerprint": "string"
 }
 ```
 
@@ -857,7 +865,9 @@ The `X-User-Data` header contains a JSON-encoded session object with the followi
 | `countryCode`      | `string`  | ISO country code (2-3 characters).                               |
 | `region`           | `string`  | State, province, or region.                                      |
 | `continent`        | `string`  | Continent name.                                                  |
-| `ja4Fingerprint`   | `string`  | JA4H HTTP fingerprint of the client.                             |
+| `ja4Fingerprint`   | `string`  | JA4H HTTP fingerprint of the client — varies by request type (navigation vs. subresource vs. API call), by design; see [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md). |
+| `ja4TLSFingerprint`| `string`  | TLS-level JA4 fingerprint (cipher suites, extensions, ALPN, TLS version) — stable across every request on the same connection. Only set when the gateway terminates TLS itself (`server.tls.enabled`); empty otherwise. |
+| `stableFingerprint`| `string`  | Reduced-entropy fingerprint from headers that don't vary by request type (User-Agent, Accept-Encoding, Accept-Language, low-entropy Client Hints) — not part of the JA4 family, a custom signal meant to identify the same client more consistently than `ja4Fingerprint` when TLS isn't available. |
 
 ## Authentication Methods
 

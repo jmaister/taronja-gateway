@@ -160,9 +160,22 @@ func (g *Gateway) applyConfig(cfg *config.GatewayConfig) error {
 
 	session.SetGeolocationConfig(&cfg.Geolocation)
 
+	// TLS JA4 capture (see gateway/ja4tls.go) wraps outside rt.handler
+	// entirely, rather than going through the MiddlewareRegistryV2 like the
+	// seven global middlewares: it's a TLS-connection-level concern, not an
+	// HTTP one, with no per-config enable/disable of its own (it's tied
+	// directly to server.tls.enabled, fixed at construction — see
+	// warnIfImmutableFieldsChanged). g.tlsJA4 is nil when TLS is disabled,
+	// and stays whatever NewGatewayWithDependencies set it to across every
+	// later reload, same as g.tlsCertReloader/g.acmeManager.
+	finalHandler := rt.handler
+	if g.tlsJA4 != nil {
+		finalHandler = g.tlsJA4.middleware(finalHandler)
+	}
+
 	// The one step that actually takes effect for traffic: everything above
 	// prepared the new generation without it being reachable yet.
-	g.handler.Store(rt.handler)
+	g.handler.Store(finalHandler)
 
 	return nil
 }
