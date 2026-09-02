@@ -519,6 +519,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/statistics/timeseries:
+    get:
+      summary: >-
+        Get request/visitor counts bucketed over time (per minute, hour,
+        day, week, or month) — powers "traffic over time" style graphs.
+      operationId: getRequestTimeSeries
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: false
+          description: Start date for the series (ISO 8601 format). Defaults to 24 hours before end_date.
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-01T00:00:00Z"
+        - name: end_date
+          in: query
+          required: false
+          description: End date for the series (ISO 8601 format). Defaults to now.
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-02T00:00:00Z"
+        - name: granularity
+          in: query
+          required: false
+          description: >-
+            Bucket size. Defaults to "day". Each is capped to a maximum
+            start_date/end_date span, to keep the number of returned
+            points bounded: minute (24 hours), hour (31 days), day (366
+            days), week (2 years), month (5 years).
+          schema:
+            $ref: '#/components/schemas/TimeSeriesGranularity'
+      responses:
+        '200':
+          description: Time-bucketed request/visitor counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesResponse'
+        '400':
+          description: >-
+            Bad Request (unknown granularity, or start_date/end_date span
+            exceeds that granularity's cap)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/statistics/rate-limiter:
     get:
       summary: Get current rate limiter statistics
@@ -1398,7 +1463,64 @@ components:
             $ref: '#/components/schemas/RequestDetail'
       required:
         - requests
-    
+
+    TimeSeriesGranularity:
+      type: string
+      enum: ["minute", "hour", "day", "week", "month"]
+
+    TimeSeriesPoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Start of this bucket, in UTC.
+        requestCount:
+          type: integer
+          description: Total requests recorded in this bucket.
+        uniqueFingerprints:
+          type: integer
+          description: >-
+            Distinct client fingerprints (ClientInfo.Fingerprint) seen in
+            this bucket — a proxy for unique visitors/devices, including
+            anonymous ones. See doc/middleware/ja4-fingerprint.md for what
+            "fingerprint" means here and its reliability caveats.
+        uniqueUsers:
+          type: integer
+          description: Distinct authenticated user IDs seen in this bucket. Excludes anonymous traffic.
+        errorCount:
+          type: integer
+          description: Requests with an HTTP status of 400 or higher in this bucket.
+        averageResponseTime:
+          type: number
+          format: float
+          description: Average response time in milliseconds for requests in this bucket. 0 if the bucket has no requests.
+      required:
+        - timestamp
+        - requestCount
+        - uniqueFingerprints
+        - uniqueUsers
+        - errorCount
+        - averageResponseTime
+
+    TimeSeriesResponse:
+      type: object
+      properties:
+        granularity:
+          $ref: '#/components/schemas/TimeSeriesGranularity'
+        points:
+          type: array
+          description: >-
+            One point per bucket across the full requested range, in order,
+            including zero-valued buckets for time windows with no
+            recorded requests at all (a continuous series is easier to
+            chart correctly than one with gaps).
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+      required:
+        - granularity
+        - points
+
     TokenResponse:
       type: object
       properties:

@@ -38,6 +38,10 @@ type TrafficMetricRepository interface {
 	// algorithm, independent of the specific fingerprint values.
 	GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error)
 	ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error)
+	// GetTimeSeries returns request/visitor counts bucketed over time — see
+	// db/timeseries.go for the full doc comment, granularity options, and
+	// range validation (ValidateTimeSeriesRange).
+	GetTimeSeries(startDate, endDate time.Time, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error)
 }
 
 // TrafficMetricRepositoryDB implements TrafficMetricRepository using GORM.

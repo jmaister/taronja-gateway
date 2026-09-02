@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -253,6 +254,83 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 		})
 	}
 	return api.GetRequestDetails200JSONResponse{Requests: details}, nil
+}
+
+// defaultTimeSeriesGranularity is used whenever the request omits
+// granularity entirely — "day" is a reasonable default for the also-optional
+// start_date/end_date defaults below (a rolling 24-hour window), and for
+// any other range a caller might pass without specifying one.
+const defaultTimeSeriesGranularity = api.Day
+
+// GetRequestTimeSeries implements GET /_/api/statistics/timeseries —
+// request/visitor counts bucketed over time, for "traffic over time" style
+// graphs. See db/timeseries.go for the bucketing and range-validation logic
+// this delegates to.
+func (s *StrictApiServer) GetRequestTimeSeries(ctx context.Context, request api.GetRequestTimeSeriesRequestObject) (api.GetRequestTimeSeriesResponseObject, error) {
+	sessionData, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sessionData == nil || !sessionData.IsAuthenticated {
+		return api.GetRequestTimeSeries401JSONResponse{}, nil
+	}
+	if !sessionData.IsAdmin {
+		return api.GetRequestTimeSeries401JSONResponse{}, nil
+	}
+
+	granularity := defaultTimeSeriesGranularity
+	if request.Params.Granularity != nil {
+		granularity = *request.Params.Granularity
+	}
+
+	endDate := time.Now()
+	if request.Params.EndDate != nil {
+		endDate = *request.Params.EndDate
+	}
+	// Default span depends on granularity, not a fixed "last 30 days" like
+	// GetRequestStatistics: 24 hours suits "day" (and finer) granularities,
+	// but would be a near-empty single-point series for "month". Anything
+	// finer than a day defaults to a day; day/week/month each default to a
+	// span proportional to their own bucket size.
+	startDate := endDate.Add(-24 * time.Hour)
+	if request.Params.StartDate != nil {
+		startDate = *request.Params.StartDate
+	} else {
+		switch granularity {
+		case api.Week:
+			startDate = endDate.AddDate(0, 0, -7*12) // ~12 weeks
+		case api.Month:
+			startDate = endDate.AddDate(-1, 0, 0) // 12 months
+		}
+	}
+
+	dbGranularity := db.TimeSeriesGranularity(granularity)
+	if err := db.ValidateTimeSeriesRange(startDate, endDate, dbGranularity); err != nil {
+		return api.GetRequestTimeSeries400JSONResponse{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		}, nil
+	}
+
+	dbPoints, err := s.trafficMetricRepo.GetTimeSeries(startDate, endDate, dbGranularity)
+	if err != nil {
+		log.Printf("Error getting request time series: %v", err)
+		return api.GetRequestTimeSeries500JSONResponse{}, nil
+	}
+
+	points := make([]api.TimeSeriesPoint, 0, len(dbPoints))
+	for _, p := range dbPoints {
+		points = append(points, api.TimeSeriesPoint{
+			Timestamp:           p.Timestamp,
+			RequestCount:        p.RequestCount,
+			UniqueFingerprints:  p.UniqueFingerprints,
+			UniqueUsers:         p.UniqueUsers,
+			ErrorCount:          p.ErrorCount,
+			AverageResponseTime: float32(p.AverageResponseTimeMs),
+		})
+	}
+
+	return api.GetRequestTimeSeries200JSONResponse{
+		Granularity: granularity,
+		Points:      points,
+	}, nil
 }
 
 // GetRateLimiterStats implements GET /_/api/statistics/rate-limiter

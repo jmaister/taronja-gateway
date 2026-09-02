@@ -140,6 +140,12 @@ taronja-gateway/
 - One interface + GORM implementation per model (`UserRepository`, `SessionRepository`, `TokenRepository`, `TrafficMetricRepository`, `CountersRepository`)
 - Each has unit tests; no mocks — tests use the in-memory SQLite DB
 
+**Time-series bucketing (`db/timeseries.go`):** `TrafficMetricRepositoryDB.GetTimeSeries(start, end, granularity)` powers the `/api/statistics/timeseries` endpoint's "traffic over time" graphs — one `TimeSeriesPoint` (request count, unique fingerprints, unique authenticated users, error count, average response time) per bucket, backfilled with zero-valued points for buckets with no data so the series has no gaps for a chart to render oddly.
+- **Bucketing happens in Go, not SQL** — this is the one thing to know before touching this file. The obvious approach (`strftime(...)` on the `timestamp` column in a `GROUP BY`) silently returns `NULL`/empty for every row: `modernc.org/sqlite` stores `time.Time` values as Go's default `.String()` representation (`"2026-06-10 08:00:00 +0000 UTC"`), which isn't one of the formats SQLite's date/time functions recognize, and a raw SQL function applied directly to a column's stored bytes doesn't go through the driver's parameter-binding conversion the way `Where("timestamp BETWEEN ? AND ?", ...)` does. Confirmed by hand against a real DB (`typeof(timestamp)` and `CAST(timestamp AS TEXT)` both showed the mismatch) before switching to fetching matching rows with `Find` and bucketing them with `truncateToBucket`/`nextBucket` in Go — the same "load everything matching the filter, no pagination" approach `ListRequestDetails` already uses elsewhere in this repository. `db/timeseries_test.go`'s `TestGetTimeSeries_BucketsAndBackfillsAndCountsDistinctly` is what actually caught this (it failed against the SQL-based first attempt, passed once rewritten) — a case where the real-DB integration test caught something a mocked/unit-only test never would have.
+- `ValidateTimeSeriesRange` caps how large a `[start, end]` span each granularity accepts (minute: 24h, hour: 31d, day: 366d, week: 2y, month: 5y) so a minute-bucketed request over a year can't backfill hundreds of thousands of empty points — called from the handler, not enforced by `GetTimeSeries` itself.
+- Week buckets start on Monday (`truncateToBucket`'s ISO-week alignment: back up `(weekday+6)%7` days from the given date), matching common convention over Sunday-first weeks.
+- `db.TimeSeriesGranularity` is a plain string type, not the OpenAPI-generated `api.TimeSeriesGranularity` — keeping `db` from depending on `api` (which itself already depends on nothing in `db` beyond what's needed for generated types); `handlers/api_statistics.go`'s `GetRequestTimeSeries` converts between the two at the boundary.
+
 ### `auth/` — API Token Service
 
 **`auth/token_service.go`:**
@@ -262,6 +268,8 @@ middleware:
 - `api_impl.go` defines `StrictApiServer` struct with all repo/service/store dependencies; each handler method signature satisfies the generated interface
 - **API-first workflow:** when adding a new endpoint, edit the OpenAPI spec first, regenerate with `make gen`, then implement in a handler file
 
+**`GET <prefix>/api/statistics/timeseries`** (`handlers/api_statistics.go`'s `GetRequestTimeSeries`, admin-only): request/visitor counts bucketed over time — see `db/timeseries.go` for the bucketing implementation. Defaults `granularity` to `"day"` and, when `start_date` is also omitted, picks a default span proportional to the chosen granularity (24h for minute/hour/day, ~12 weeks for week, 12 months for month) rather than one fixed "last 30 days" default like `GetRequestStatistics` uses — a fixed 30-day default would be a near-single-point series at month granularity. Validates the resolved range via `db.ValidateTimeSeriesRange` before querying, returning `400` (not `500`) for an unrecognized granularity or a span too large for it. Powers `webapp/src/pages/RequestSummaryPage.tsx`'s "Traffic Over Time" section (`TrafficOverTimeSection`, using the new `webapp/src/components/charts/TimeSeriesChart.tsx`) — a preset dropdown (Last hour/24h/7d/30d/12mo, each with its own matching granularity, the same pattern Grafana/Cloudflare/Vercel Analytics use) driving three charts: requests+unique-fingerprints+unique-users, errors, and average response time. The chart itself uses chart.js's plain `CategoryScale` with pre-formatted date-fns labels rather than the built-in `TimeScale`, since this project doesn't have `chartjs-adapter-date-fns` as a dependency and adding one wasn't necessary to get a correct axis.
+
 ### `encryption/` — Password Hashing
 
 **`encryption/password.go`:**
@@ -325,7 +333,7 @@ webapp/src/
 │   ├── layout/                 # Sidebar.tsx, Header.tsx, MainLayout.tsx (app shell)
 │   ├── ui/                     # Design system: Badge, Button, Card, FormField, Input, PageHeader, StatusPill
 │   ├── theme/                  # ThemeSwitcher.tsx (light/dark + color palette selection)
-│   ├── charts/                 # SampleBarChart.tsx (chart.js 4 + react-chartjs-2)
+│   ├── charts/                 # TimeSeriesChart.tsx (chart.js 4 + react-chartjs-2, real data); SampleBarChart.tsx (unused hardcoded-data demo, predates TimeSeriesChart)
 │   ├── RequestsWorldMap.tsx, LazyRequestsWorldMap.tsx  # maplibre-gl world map
 │   └── [other components]
 ├── pages/                      # One file per route

@@ -14,6 +14,7 @@ import (
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
@@ -456,4 +457,95 @@ func TestRateLimiterEndpoints(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotNil(t, conf.RequestsPerMinute)
 	assert.Equal(t, cfg.RequestsPerMinute, *conf.RequestsPerMinute)
+}
+
+func TestGetRequestTimeSeries_Unauthorized(t *testing.T) {
+	defer db.ResetConnection()
+	server, _ := setupStatsTestServer()
+
+	response, err := server.GetRequestTimeSeries(context.Background(), api.GetRequestTimeSeriesRequestObject{})
+	assert.NoError(t, err)
+	_, ok := response.(api.GetRequestTimeSeries401JSONResponse)
+	assert.True(t, ok, "expected 401 for an unauthenticated request")
+}
+
+func TestGetRequestTimeSeries_InvalidGranularity(t *testing.T) {
+	server, _ := setupStatsTestServer()
+	adminSession := &db.Session{Token: "admin", IsAuthenticated: true, IsAdmin: true}
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+	badGranularity := api.TimeSeriesGranularity("fortnight")
+	response, err := server.GetRequestTimeSeries(ctx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{Granularity: &badGranularity},
+	})
+	assert.NoError(t, err)
+	_, ok := response.(api.GetRequestTimeSeries400JSONResponse)
+	assert.True(t, ok, "expected 400 for an unrecognized granularity")
+}
+
+func TestGetRequestTimeSeries_SpanExceedsGranularityCap(t *testing.T) {
+	server, _ := setupStatsTestServer()
+	adminSession := &db.Session{Token: "admin", IsAuthenticated: true, IsAdmin: true}
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+	minuteGranularity := api.Minute
+	start := time.Now().Add(-48 * time.Hour) // exceeds minute's 24h cap
+	end := time.Now()
+	response, err := server.GetRequestTimeSeries(ctx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{
+			Granularity: &minuteGranularity,
+			StartDate:   &start,
+			EndDate:     &end,
+		},
+	})
+	assert.NoError(t, err)
+	_, ok := response.(api.GetRequestTimeSeries400JSONResponse)
+	assert.True(t, ok, "expected 400 when the span exceeds minute granularity's cap")
+}
+
+func TestGetRequestTimeSeries_Success(t *testing.T) {
+	server, trafficMetricRepo := setupStatsTestServer()
+	adminSession := &db.Session{Token: "admin", IsAuthenticated: true, IsAdmin: true}
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+	day := time.Now().Truncate(24 * time.Hour) // today at 00:00 local, well within range either way
+	require.NoError(t, trafficMetricRepo.Create(&db.TrafficMetric{
+		HttpMethod: "GET", Path: "/x", HttpStatus: 200, ResponseTimeNs: 1_000_000,
+		Timestamp:  day.Add(2 * time.Hour),
+		ClientInfo: db.ClientInfo{Fingerprint: "fp-a"},
+	}))
+	require.NoError(t, trafficMetricRepo.Create(&db.TrafficMetric{
+		HttpMethod: "GET", Path: "/x", HttpStatus: 500, ResponseTimeNs: 3_000_000,
+		Timestamp:  day.Add(2*time.Hour + 10*time.Minute),
+		ClientInfo: db.ClientInfo{Fingerprint: "fp-b"},
+	}))
+
+	hourGranularity := api.Hour
+	start := day
+	end := day.Add(23 * time.Hour)
+	response, err := server.GetRequestTimeSeries(ctx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{
+			Granularity: &hourGranularity,
+			StartDate:   &start,
+			EndDate:     &end,
+		},
+	})
+	require.NoError(t, err)
+	success, ok := response.(api.GetRequestTimeSeries200JSONResponse)
+	require.True(t, ok, "expected 200")
+	assert.Equal(t, api.Hour, success.Granularity)
+	assert.Len(t, success.Points, 24, "one point per hour from 00:00 to 23:00 inclusive")
+
+	var hour2 *api.TimeSeriesPoint
+	for i := range success.Points {
+		if success.Points[i].Timestamp.Hour() == 2 {
+			hour2 = &success.Points[i]
+			break
+		}
+	}
+	require.NotNil(t, hour2, "the 02:00 bucket must be present")
+	assert.Equal(t, 2, hour2.RequestCount)
+	assert.Equal(t, 2, hour2.UniqueFingerprints)
+	assert.Equal(t, 1, hour2.ErrorCount)
+	assert.InDelta(t, 2.0, hour2.AverageResponseTime, 0.01, "average of 1ms and 3ms")
 }

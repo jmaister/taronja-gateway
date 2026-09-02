@@ -20,16 +20,17 @@ import type {
 } from '@/apiclient/types.gen';
 
 
-import { 
-  TokenCreateRequest, 
-  UserCreateRequest, 
-  UserResponse, 
+import {
+  TokenCreateRequest,
+  UserCreateRequest,
+  UserResponse,
   listUsers,
   getUserById,
   getCurrentUser,
   createUser as apiCreateUser,
   getRequestStatistics,
   getRequestDetails,
+  getRequestTimeSeries,
   listTokens,
   getToken,
   createToken as apiCreateToken,
@@ -37,6 +38,8 @@ import {
   TokenResponse,
   RequestStatistics,
   RequestDetailsResponse,
+  TimeSeriesResponse,
+  TimeSeriesGranularity,
   TokenCreateResponse
 } from '@/apiclient';
 import { createClient } from '@/apiclient/client';
@@ -79,6 +82,8 @@ export const queryKeys = {
   statistics: (startDate?: string, endDate?: string) => ['statistics', { startDate, endDate }] as const,
   requestDetails: (startDate: string, endDate: string, isStatic?: boolean) =>
     ['requestDetails', { startDate, endDate, isStatic }] as const,
+  timeSeries: (startDate: string, endDate: string, granularity: TimeSeriesGranularity) =>
+    ['timeSeries', { startDate, endDate, granularity }] as const,
   userTokens: (userId: string) => ['users', userId, 'tokens'] as const,
   token: (tokenId: string) => ['tokens', tokenId] as const,
   rateLimiterStats: () => ['rateLimiterStats'] as const,
@@ -148,6 +153,28 @@ export function useRequestStatistics(startDate?: string, endDate?: string) {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+  });
+}
+
+// Powers "traffic over time" style graphs (requests/unique visitors/errors
+// per minute, hour, day, week, or month) — see doc/middleware/ja4-fingerprint.md
+// for what "unique visitors" (fingerprint-based) actually means here.
+export function useRequestTimeSeries(startDate: string, endDate: string, granularity: TimeSeriesGranularity) {
+  return useQuery({
+    queryKey: queryKeys.timeSeries(startDate, endDate, granularity),
+    queryFn: async () => {
+      const response = await getRequestTimeSeries({
+        query: {
+          start_date: startDate,
+          end_date: endDate,
+          granularity,
+        },
+        client: customApiClient,
+      });
+      return handleResponse<TimeSeriesResponse>(response);
+    },
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 

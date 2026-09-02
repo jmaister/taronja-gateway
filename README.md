@@ -33,6 +33,7 @@ Features table, shows what is implemented and what is planned.
 | Analytics and Traffic metrics | ✅       | v0.0.4 |
 | - User Geo-location           | ✅       | v0.0.4 |
 | - User fingerprint (JA4)      | ✅       | v0.0.8 |
+| - Traffic-over-time graphs (per minute/hour/day/week/month) | ✅ | v1.0.0 |
 | Sessions (Persistent)         | ✅       | v0.0.1 |
 | User management               | ✅       | v0.0.3 |
 | Authentication                | ✅       | v0.0.1 |

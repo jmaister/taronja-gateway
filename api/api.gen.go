@@ -85,6 +85,33 @@ func (e RequestDetailFingerprintType) Valid() bool {
 	}
 }
 
+// Defines values for TimeSeriesGranularity.
+const (
+	Day    TimeSeriesGranularity = "day"
+	Hour   TimeSeriesGranularity = "hour"
+	Minute TimeSeriesGranularity = "minute"
+	Month  TimeSeriesGranularity = "month"
+	Week   TimeSeriesGranularity = "week"
+)
+
+// Valid indicates whether the value is a known member of the TimeSeriesGranularity enum.
+func (e TimeSeriesGranularity) Valid() bool {
+	switch e {
+	case Day:
+		return true
+	case Hour:
+		return true
+	case Minute:
+		return true
+	case Month:
+		return true
+	case Week:
+		return true
+	default:
+		return false
+	}
+}
+
 // AllUserCountersResponse defines model for AllUserCountersResponse.
 type AllUserCountersResponse struct {
 	// CounterId ID of the counter type
@@ -454,6 +481,38 @@ type RequestStatistics struct {
 	TotalRequests int `json:"totalRequests"`
 }
 
+// TimeSeriesGranularity defines model for TimeSeriesGranularity.
+type TimeSeriesGranularity string
+
+// TimeSeriesPoint defines model for TimeSeriesPoint.
+type TimeSeriesPoint struct {
+	// AverageResponseTime Average response time in milliseconds for requests in this bucket. 0 if the bucket has no requests.
+	AverageResponseTime float32 `json:"averageResponseTime"`
+
+	// ErrorCount Requests with an HTTP status of 400 or higher in this bucket.
+	ErrorCount int `json:"errorCount"`
+
+	// RequestCount Total requests recorded in this bucket.
+	RequestCount int `json:"requestCount"`
+
+	// Timestamp Start of this bucket, in UTC.
+	Timestamp time.Time `json:"timestamp"`
+
+	// UniqueFingerprints Distinct client fingerprints (ClientInfo.Fingerprint) seen in this bucket — a proxy for unique visitors/devices, including anonymous ones. See doc/middleware/ja4-fingerprint.md for what "fingerprint" means here and its reliability caveats.
+	UniqueFingerprints int `json:"uniqueFingerprints"`
+
+	// UniqueUsers Distinct authenticated user IDs seen in this bucket. Excludes anonymous traffic.
+	UniqueUsers int `json:"uniqueUsers"`
+}
+
+// TimeSeriesResponse defines model for TimeSeriesResponse.
+type TimeSeriesResponse struct {
+	Granularity TimeSeriesGranularity `json:"granularity"`
+
+	// Points One point per bucket across the full requested range, in order, including zero-valued buckets for time windows with no recorded requests at all (a continuous series is easier to chart correctly than one with gaps).
+	Points []TimeSeriesPoint `json:"points"`
+}
+
 // TokenCreateRequest defines model for TokenCreateRequest.
 type TokenCreateRequest struct {
 	// ExpiresAt When the token should expire (null for no expiration)
@@ -617,6 +676,18 @@ type GetRequestDetailsParams struct {
 	IsStatic *bool `form:"is_static,omitempty" json:"is_static,omitempty"`
 }
 
+// GetRequestTimeSeriesParams defines parameters for GetRequestTimeSeries.
+type GetRequestTimeSeriesParams struct {
+	// StartDate Start date for the series (ISO 8601 format). Defaults to 24 hours before end_date.
+	StartDate *time.Time `form:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// EndDate End date for the series (ISO 8601 format). Defaults to now.
+	EndDate *time.Time `form:"end_date,omitempty" json:"end_date,omitempty"`
+
+	// Granularity Bucket size. Defaults to "day". Each is capped to a maximum start_date/end_date span, to keep the number of returned points bounded: minute (24 hours), hour (31 days), day (366 days), week (2 years), month (5 years).
+	Granularity *TimeSeriesGranularity `form:"granularity,omitempty" json:"granularity,omitempty"`
+}
+
 // LogoutUserParams defines parameters for LogoutUser.
 type LogoutUserParams struct {
 	// Redirect URL to redirect to after successful logout
@@ -673,6 +744,9 @@ type ServerInterface interface {
 	// GetRequestDetails Retrieve detailed information about requests made to the gateway
 	// (GET /api/statistics/requests/details)
 	GetRequestDetails(w http.ResponseWriter, r *http.Request, params GetRequestDetailsParams)
+	// GetRequestTimeSeries Get request/visitor counts bucketed over time (per minute, hour, day, week, or month) — powers "traffic over time" style graphs.
+	// (GET /api/statistics/timeseries)
+	GetRequestTimeSeries(w http.ResponseWriter, r *http.Request, params GetRequestTimeSeriesParams)
 	// DeleteToken Revoke/delete a token (admin only)
 	// (DELETE /api/tokens/{tokenId})
 	DeleteToken(w http.ResponseWriter, r *http.Request, tokenId string)
@@ -1107,6 +1181,65 @@ func (siw *ServerInterfaceWrapper) GetRequestDetails(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetRequestTimeSeries operation middleware
+func (siw *ServerInterfaceWrapper) GetRequestTimeSeries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRequestTimeSeriesParams
+
+	// ------------- Optional query parameter "start_date" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "start_date", r.URL.Query(), &params.StartDate, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "start_date"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_date", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "end_date" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "end_date", r.URL.Query(), &params.EndDate, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "end_date"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "granularity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "granularity", r.URL.Query(), &params.Granularity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "granularity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "granularity", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRequestTimeSeries(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteToken operation middleware
 func (siw *ServerInterfaceWrapper) DeleteToken(w http.ResponseWriter, r *http.Request) {
 
@@ -1488,6 +1621,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.GetToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/timeseries", wrapper.GetRequestTimeSeries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/rate-limiter", wrapper.GetRateLimiterStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/config/rate-limiter", wrapper.GetRateLimiterConfig)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/middleware", wrapper.GetMiddlewareStatus)
@@ -2201,6 +2335,70 @@ func (response GetRequestDetails401JSONResponse) VisitGetRequestDetailsResponse(
 	return err
 }
 
+type GetRequestTimeSeriesRequestObject struct {
+	Params GetRequestTimeSeriesParams
+}
+
+type GetRequestTimeSeriesResponseObject interface {
+	VisitGetRequestTimeSeriesResponse(w http.ResponseWriter) error
+}
+
+type GetRequestTimeSeries200JSONResponse TimeSeriesResponse
+
+func (response GetRequestTimeSeries200JSONResponse) VisitGetRequestTimeSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRequestTimeSeries400JSONResponse Error
+
+func (response GetRequestTimeSeries400JSONResponse) VisitGetRequestTimeSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRequestTimeSeries401JSONResponse Error
+
+func (response GetRequestTimeSeries401JSONResponse) VisitGetRequestTimeSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRequestTimeSeries500JSONResponse Error
+
+func (response GetRequestTimeSeries500JSONResponse) VisitGetRequestTimeSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteTokenRequestObject struct {
 	TokenId string `json:"tokenId"`
 }
@@ -2840,6 +3038,9 @@ type StrictServerInterface interface {
 	// GetRequestDetails Retrieve detailed information about requests made to the gateway
 	// (GET /api/statistics/requests/details)
 	GetRequestDetails(ctx context.Context, request GetRequestDetailsRequestObject) (GetRequestDetailsResponseObject, error)
+	// GetRequestTimeSeries Get request/visitor counts bucketed over time (per minute, hour, day, week, or month) — powers "traffic over time" style graphs.
+	// (GET /api/statistics/timeseries)
+	GetRequestTimeSeries(ctx context.Context, request GetRequestTimeSeriesRequestObject) (GetRequestTimeSeriesResponseObject, error)
 	// DeleteToken Revoke/delete a token (admin only)
 	// (DELETE /api/tokens/{tokenId})
 	DeleteToken(ctx context.Context, request DeleteTokenRequestObject) (DeleteTokenResponseObject, error)
@@ -3221,6 +3422,32 @@ func (sh *strictHandler) GetRequestDetails(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetRequestDetailsResponseObject); ok {
 		if err := validResponse.VisitGetRequestDetailsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRequestTimeSeries operation middleware
+func (sh *strictHandler) GetRequestTimeSeries(w http.ResponseWriter, r *http.Request, params GetRequestTimeSeriesParams) {
+	var request GetRequestTimeSeriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRequestTimeSeries(ctx, request.(GetRequestTimeSeriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRequestTimeSeries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRequestTimeSeriesResponseObject); ok {
+		if err := validResponse.VisitGetRequestTimeSeriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { subDays, subHours, subMonths } from 'date-fns';
 import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
-import { useRequestStatistics } from '../services/services';
+import { useRequestStatistics, useRequestTimeSeries } from '../services/services';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';
+import { TimeSeriesChart } from '../components/charts/TimeSeriesChart';
+import type { TimeSeriesGranularity } from '@/apiclient';
 
 interface StatCard {
     title: string;
@@ -97,6 +100,91 @@ function DataTable({ title, data, accent = 'primary' }: DataTableProps) {
                         </div>
                     ))}
                 </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+interface TimeSeriesPreset {
+    label: string;
+    granularity: TimeSeriesGranularity;
+    getRange: () => { start: Date; end: Date };
+}
+
+// Quick-range presets, the same pattern Grafana/Cloudflare/Vercel Analytics
+// use: pick a window, get the granularity that suits it for free, rather
+// than making every viewer independently reason about "which bucket size
+// makes sense for a 12-month range" themselves.
+const timeSeriesPresets: TimeSeriesPreset[] = [
+    { label: 'Last hour', granularity: 'minute', getRange: () => ({ start: subHours(new Date(), 1), end: new Date() }) },
+    { label: 'Last 24 hours', granularity: 'hour', getRange: () => ({ start: subHours(new Date(), 24), end: new Date() }) },
+    { label: 'Last 7 days', granularity: 'day', getRange: () => ({ start: subDays(new Date(), 7), end: new Date() }) },
+    { label: 'Last 30 days', granularity: 'day', getRange: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
+    { label: 'Last 12 months', granularity: 'month', getRange: () => ({ start: subMonths(new Date(), 12), end: new Date() }) },
+];
+
+function TrafficOverTimeSection() {
+    const [presetIndex, setPresetIndex] = useState(1); // "Last 24 hours" by default
+
+    const preset = timeSeriesPresets[presetIndex];
+    // Recompute the range only when the preset changes, not on every
+    // render — "Last hour" et al. are relative to "now", so this still
+    // drifts forward on refetch/refresh, just not on every keystroke
+    // elsewhere on the page.
+    const { start, end } = useMemo(() => preset.getRange(), [preset]);
+
+    const { data, isLoading, error } = useRequestTimeSeries(start.toISOString(), end.toISOString(), preset.granularity);
+
+    return (
+        <Card>
+            <CardHeader className="flex items-center justify-between">
+                <h3 className="text-base font-semibold">Traffic Over Time</h3>
+                <select
+                    className="tg-input py-1.5"
+                    value={presetIndex}
+                    onChange={(e) => setPresetIndex(Number(e.target.value))}
+                >
+                    {timeSeriesPresets.map((p, i) => (
+                        <option key={p.label} value={i}>
+                            {p.label}
+                        </option>
+                    ))}
+                </select>
+            </CardHeader>
+            <CardContent>
+                {isLoading && <p className="py-8 text-center text-sm text-muted-fg">Loading…</p>}
+                {error && (
+                    <p className="py-8 text-center text-sm text-danger">
+                        {error instanceof Error ? error.message : 'Failed to load traffic over time'}
+                    </p>
+                )}
+                {data && (
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <TimeSeriesChart
+                            title="Requests & Unique Visitors"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[
+                                { key: 'requestCount', label: 'Requests', color: '#4299E1' },
+                                { key: 'uniqueFingerprints', label: 'Unique Visitors (fingerprint)', color: '#48BB78' },
+                                { key: 'uniqueUsers', label: 'Authenticated Users', color: '#9F7AEA' },
+                            ]}
+                        />
+                        <TimeSeriesChart
+                            title="Errors Over Time"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[{ key: 'errorCount', label: 'Errors (4xx/5xx)', color: '#F56565' }]}
+                        />
+                        <TimeSeriesChart
+                            title="Average Response Time"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[{ key: 'averageResponseTime', label: 'Avg Response Time', color: '#ED8936' }]}
+                            unit="ms"
+                        />
+                    </div>
+                )}
             </CardContent>
         </Card>
     );
@@ -196,6 +284,7 @@ export function RequestSummaryPage() {
                     accent="success"
                 />
             </div>
+            <TrafficOverTimeSection />
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <DataTable title="Requests by Status Code" data={statistics.requestsByStatus} accent="primary" />
                 <DataTable title="Requests by Country" data={statistics.requestsByCountry} accent="primary" />
