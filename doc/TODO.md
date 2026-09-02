@@ -154,10 +154,14 @@ we're working through these one at a time — see status notes.
 - [x] **Response compression (gzip/deflate)** — done: `middleware/compression.go`,
       `management.compression` flag / `compression` middleware name. See
       `doc/middleware/compression.md`.
-- [ ] **TLS termination.** `gateway/gateway.go` only calls `ListenAndServe`,
-      never `ListenAndServeTLS` — no cert config at all today. Ideally with
-      optional ACME/Let's Encrypt auto-issuance (Traefik/Caddy/APISIX all do
-      this). Currently taronja must always sit behind something else for HTTPS.
+- [x] **TLS termination** — done: static cert/key files (`server.tls.*`),
+      automatic HTTP→HTTPS redirect (`redirectPort`, default 80), and
+      zero-downtime certificate hot-reload on renewal (watches the cert/key
+      files independently of config reload). See `gateway/tls.go`,
+      `config/tls.go`, and the README's "TLS / HTTPS" section. Automatic
+      ACME/Let's Encrypt issuance was explicitly deferred — see the "Cert
+      source" decision recorded when this was implemented — and would be a
+      separate follow-up if ever needed.
 - [ ] **Upstream health checks (active + passive)** for the load balancer
       (`gateway/loadbalancer.go`). Today it only reacts to a failed connection
       *during* a request — no background probing, no ejection of a backend

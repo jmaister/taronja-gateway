@@ -4,6 +4,19 @@ server:
   host: 127.0.0.1
   port: 8080
   url: http://localhost:8080
+  # tls:
+  #   # Disabled by default (plain HTTP). Enable to have the gateway
+  #   # terminate HTTPS itself, on the same server.port above.
+  #   enabled: true
+  #   certFile: /path/to/fullchain.pem
+  #   keyFile: /path/to/privkey.pem
+  #   # Plain-HTTP port that redirects every request to HTTPS. Defaults to
+  #   # 80 when tls.enabled and this key is omitted; set to 0 to disable the
+  #   # redirect listener (e.g. if something else already owns port 80).
+  #   # redirectPort: 80
+  #
+  #   # Renewing certFile/keyFile in place (e.g. via certbot) is picked up
+  #   # automatically, with zero downtime — no restart or reload needed.
 management:
   prefix: _
   logging: true

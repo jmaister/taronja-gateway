@@ -251,7 +251,11 @@ func runGateway(configFilePath string, watchConfig bool) {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}
 
-	log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
+	if config.Server.TLS.Enabled {
+		log.Printf("API Gateway '%s' listening on %s (TLS)", config.Name, gateway.Server.Addr)
+	} else {
+		log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
+	}
 	log.Printf("Gateway public URL set to: %s", config.Server.URL)
 	log.Printf("Management API prefix: %s", config.Management.Prefix)
 
@@ -260,11 +264,35 @@ func runGateway(configFilePath string, watchConfig bool) {
 
 	// Serve in the background so this goroutine can watch for a
 	// startup/runtime error, an interrupt/terminate signal, or a reload
-	// request — reacting appropriately to each — until shutdown.
-	serverErr := make(chan error, 1)
+	// request — reacting appropriately to each — until shutdown. Buffered
+	// for 2: with TLS enabled, gateway.RedirectServer sends into the same
+	// channel too (see below), and a clean shutdown can leave one send
+	// sitting unread once runLoop breaks on the first — harmless since the
+	// channel is buffered and never read past that.
+	serverErr := make(chan error, 2)
 	go func() {
-		serverErr <- gateway.Server.ListenAndServe()
+		if config.Server.TLS.Enabled {
+			// Empty certFile/keyFile: the cert comes from
+			// gateway.Server.TLSConfig.GetCertificate (see gateway/tls.go's
+			// certReloader), not from files ListenAndServeTLS itself opens.
+			serverErr <- gateway.Server.ListenAndServeTLS("", "")
+		} else {
+			serverErr <- gateway.Server.ListenAndServe()
+		}
 	}()
+
+	// The plain-HTTP redirect listener (server.tls.redirectPort, default 80)
+	// is just as much a startup requirement as the main listener when TLS is
+	// enabled — if it can't bind (e.g. port 80 already in use, or requires a
+	// privilege this process doesn't have), that's worth failing loudly for
+	// rather than silently running without the redirect the config asked
+	// for. Set server.tls.redirectPort: 0 to opt out of it entirely instead.
+	if gateway.RedirectServer != nil {
+		log.Printf("HTTP->HTTPS redirect listening on %s", gateway.RedirectServer.Addr)
+		go func() {
+			serverErr <- gateway.RedirectServer.ListenAndServe()
+		}()
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -287,6 +315,19 @@ func runGateway(configFilePath string, watchConfig bool) {
 		if err := watchConfigFile(configFilePath, gateway, watcherStop); err != nil {
 			log.Printf("Warning: could not watch '%s' for changes (%v) — reload via SIGHUP still works.", configFilePath, err)
 		}
+
+		// The cert/key files' *content* (e.g. a renewal tool replacing them
+		// in place) hot-reloads independently of the config file itself —
+		// see Gateway.ReloadTLSCertificate's doc comment for why this is a
+		// separate concern from config reload entirely, not just another
+		// case watchConfigFile happens to handle.
+		if config.Server.TLS.Enabled {
+			certWatcherStop := make(chan struct{})
+			defer close(certWatcherStop)
+			if err := watchCertFiles(config.Server.TLS.CertFile, config.Server.TLS.KeyFile, gateway, certWatcherStop); err != nil {
+				log.Printf("Warning: could not watch TLS cert/key files for changes (%v) — restart the gateway to pick up a renewed certificate.", err)
+			}
+		}
 	}
 
 runLoop:
@@ -306,6 +347,11 @@ runLoop:
 			defer cancel()
 			if err := gateway.Server.Shutdown(ctx); err != nil {
 				log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
+			}
+			if gateway.RedirectServer != nil {
+				if err := gateway.RedirectServer.Shutdown(ctx); err != nil {
+					log.Printf("Warning: HTTP->HTTPS redirect listener did not shut down cleanly within %s: %v", gracefulShutdownTimeout, err)
+				}
 			}
 			break runLoop
 		case <-reload:
@@ -396,6 +442,84 @@ func watchConfigFile(configFilePath string, gw *gateway.Gateway, stop <-chan str
 			case <-pending:
 				if err := gw.ReloadConfig(configFilePath); err != nil {
 					log.Printf("Config reload failed, keeping previous configuration: %v", err)
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+// watchCertFiles watches certFile and keyFile (config.LoadConfig has
+// already resolved both to absolute paths) and calls
+// gw.ReloadTLSCertificate whenever either changes, so a renewal tool (e.g.
+// certbot) replacing them in place takes effect without a restart. Same
+// directory-watch-plus-debounce approach as watchConfigFile, for the same
+// reason: watching the file itself, rather than its containing directory,
+// silently stops working after the first write-then-rename a renewal tool
+// typically does.
+func watchCertFiles(certFile, keyFile string, gw *gateway.Gateway, stop <-chan struct{}) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+
+	// certFile and keyFile are very often the same directory (sometimes the
+	// same file, for a combined cert+key PEM) — watch each directory once.
+	dirs := map[string]bool{filepath.Dir(certFile): true, filepath.Dir(keyFile): true}
+	for dir := range dirs {
+		if err := watcher.Add(dir); err != nil {
+			watcher.Close()
+			return fmt.Errorf("failed to watch directory '%s': %w", dir, err)
+		}
+	}
+	names := map[string]bool{filepath.Base(certFile): true, filepath.Base(keyFile): true}
+
+	log.Printf("Watching TLS cert/key files ('%s', '%s') for changes.", certFile, keyFile)
+
+	go func() {
+		defer watcher.Close()
+
+		const debounce = 200 * time.Millisecond
+		var debounceTimer *time.Timer
+		pending := make(chan struct{}, 1)
+
+		for {
+			select {
+			case <-stop:
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if !names[filepath.Base(event.Name)] {
+					continue
+				}
+				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+					continue
+				}
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(debounce, func() {
+					select {
+					case pending <- struct{}{}:
+					default:
+					}
+				})
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("Warning: TLS cert/key file watcher error: %v", err)
+			case <-pending:
+				if err := gw.ReloadTLSCertificate(); err != nil {
+					log.Printf("TLS certificate reload failed, keeping previous certificate: %v", err)
+				} else {
+					log.Printf("TLS certificate reloaded from '%s'/'%s'.", certFile, keyFile)
 				}
 			}
 		}

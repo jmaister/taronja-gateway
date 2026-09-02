@@ -56,6 +56,9 @@ Features table, shows what is implemented and what is planned.
 | Load Balancing                | ✅       | v1.0.0 |
 | - Round-robin across multiple `to` backends | ✅ | v1.0.0 |
 | - Automatic failover on connection failure | ✅ | v1.0.0 |
+| TLS Termination (HTTPS)       | ✅       | v1.0.0 |
+| - Automatic HTTP → HTTPS redirect | ✅  | v1.0.0 |
+| - Zero-downtime certificate reload on renewal | ✅ | v1.0.0 |
 | robots.txt                    | 🚧       |        |
 | more...                       | 🚧       |        |
 
@@ -249,8 +252,33 @@ pollute the redirected output).
 Defines the gateway server settings.
 
 - `host`: The host address to bind to (default: 127.0.0.1)
-- `port`: The port number to listen on (default: 8080)
+- `port`: The port number to listen on (default: 8080). The HTTPS port when `tls.enabled` is true.
 - `url`: The full URL where the gateway is accessible
+- `tls`: HTTPS termination settings — see [TLS / HTTPS](#tls--https) below
+
+### TLS / HTTPS
+
+The gateway can terminate HTTPS itself, on `server.port`:
+
+```yaml
+server:
+  port: 443
+  tls:
+    enabled: true
+    certFile: /etc/letsencrypt/live/example.com/fullchain.pem
+    keyFile: /etc/letsencrypt/live/example.com/privkey.pem
+```
+
+- `enabled`: Turn on HTTPS termination. Requires `certFile` and `keyFile`. Default: `false` (plain HTTP).
+- `certFile`: Path to the PEM certificate (or full chain — leaf cert followed by any intermediates).
+- `keyFile`: Path to the PEM private key matching `certFile`.
+- `redirectPort`: Plain-HTTP port the gateway also listens on, redirecting every request there to the HTTPS equivalent on `server.port`. Omit for the default (80); set to `0` to disable the redirect listener entirely (e.g. if something else already owns port 80 in front of the gateway).
+
+A bad or unparseable cert/key pair is rejected at config-load time (`tg validate` catches it before deploy), the same way a bad admin/CORS/route setting is.
+
+**Certificate renewal is automatic, with zero downtime.** The gateway watches `certFile`/`keyFile` for changes and hot-swaps the in-memory certificate the moment a renewal tool (certbot, etc.) replaces them — no restart, no reload, no dropped connections; already-open connections keep using whatever certificate they negotiated. This is independent of [hot config reload](#commands): renewing the certificate files doesn't require touching `config.yaml` at all.
+
+Enabling or disabling TLS itself, or changing which cert/key files it points at, **does** require a full restart — like `server.host`/`port`, that means rebinding the listening socket, which a config reload can't do. Editing these and reloading (`SIGHUP` or `--watch`) anyway isn't silently ignored: the gateway logs a warning and keeps serving on whatever TLS configuration it started with.
 
 ### Management
 

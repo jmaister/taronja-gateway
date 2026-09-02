@@ -35,6 +35,15 @@ type Gateway struct {
 	GatewayConfig *config.GatewayConfig
 	Mux           *http.ServeMux
 	Dependencies  *deps.Dependencies
+	// RedirectServer is the plain-HTTP listener that redirects every request
+	// to HTTPS on Server's port, when TLS is enabled — see gateway/tls.go.
+	// nil when TLS is disabled or the redirect listener is turned off
+	// (server.tls.redirectPort: 0).
+	RedirectServer *http.Server
+	// tlsCertReloader holds the live TLS certificate when TLS is enabled —
+	// see Gateway.ReloadTLSCertificate and gateway/tls.go's certReloader.
+	// nil when TLS is disabled.
+	tlsCertReloader *certReloader
 	// Middleware components (created during gateway initialization)
 	AuthMiddleware      *middleware.AuthMiddleware
 	HttpCacheMiddleware *middleware.HttpCacheMiddleware
@@ -97,6 +106,22 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		Handler:      gateway.handler,
+	}
+
+	// TLS, like host/port, is fixed at construction — enabling/disabling it
+	// or changing the cert/key paths on a reload would mean rebinding the
+	// listener with a different protocol entirely, which applyConfig
+	// deliberately doesn't attempt (see warnIfImmutableFieldsChanged). Only
+	// the certificate's *content* hot-reloads, via ReloadTLSCertificate,
+	// independent of config reload entirely — see gateway/tls.go.
+	if cfg.Server.TLS.Enabled {
+		reloader, err := newCertReloader(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+		gateway.tlsCertReloader = reloader
+		gateway.Server.TLSConfig = newTLSConfig(reloader)
+		gateway.RedirectServer = buildRedirectServer(cfg)
 	}
 
 	return gateway, nil

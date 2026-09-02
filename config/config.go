@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -18,9 +19,10 @@ import (
 // ServerConfig defines the gateway server's network configuration.
 // All fields are required.
 type ServerConfig struct {
-	Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
-	Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
-	URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	Host string    `yaml:"host"`          // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
+	Port int       `yaml:"port"`          // Server port number (e.g., 8080). Required. The HTTPS port when tls.enabled is true.
+	URL  string    `yaml:"url"`           // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	TLS  TLSConfig `yaml:"tls,omitempty"` // HTTPS termination. Optional; disabled by default (plain HTTP).
 }
 
 // AuthenticationConfig controls whether authentication is required for a specific route.
@@ -334,6 +336,29 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	log.Printf("Current working directory: %s", currentDir)
+
+	// Validate TLS config. Resolving the paths and confirming the cert/key
+	// actually parse here (not just deferring to the gateway's own startup)
+	// means "tg validate" catches a bad cert/key pair before deploy, the
+	// same way it already catches a bad admin/CORS/route config — this is a
+	// pure local file read, no network call, so it's safe for validate's
+	// no-side-effects contract. The gateway loads the pair again for real at
+	// startup (config doesn't hold a *tls.Certificate itself); the point
+	// here is catching the error early with a clear message, not caching it.
+	if config.Server.TLS.Enabled {
+		if config.Server.TLS.CertFile == "" || config.Server.TLS.KeyFile == "" {
+			return nil, fmt.Errorf("server.tls.enabled is true but certFile and/or keyFile is not set")
+		}
+		if !filepath.IsAbs(config.Server.TLS.CertFile) {
+			config.Server.TLS.CertFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.CertFile))
+		}
+		if !filepath.IsAbs(config.Server.TLS.KeyFile) {
+			config.Server.TLS.KeyFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.KeyFile))
+		}
+		if _, err := tls.LoadX509KeyPair(config.Server.TLS.CertFile, config.Server.TLS.KeyFile); err != nil {
+			return nil, fmt.Errorf("server.tls: failed to load certificate/key pair (certFile=%q, keyFile=%q): %w", config.Server.TLS.CertFile, config.Server.TLS.KeyFile, err)
+		}
+	}
 
 	for i := range config.Routes {
 		route := &config.Routes[i]
