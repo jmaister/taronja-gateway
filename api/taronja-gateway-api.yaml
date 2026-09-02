@@ -1262,15 +1262,35 @@ components:
             bob: 900
             guest: 300
           description: Number of requests grouped by user (username or user ID)
-        requestsByJA4Fingerprint:
+        requestsByFingerprint:
           type: object
           additionalProperties:
             type: integer
           example:
             "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac": 1500
-            "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1": 800
-            "ge11nn05_1a2b3c4d5e6f_f1e2d3c4b5a6": 500
-          description: Number of requests grouped by JA4 HTTP fingerprint
+            "t13i1311h2_f57a46bbacb6_e5728521abd4": 800
+            "8eeef6e7162cf91b": 500
+          description: >-
+            Number of requests grouped by client fingerprint
+            (ClientInfo.Fingerprint) — the single consolidated value chosen
+            per request among the three fingerprinting algorithms (see
+            requestsByFingerprintType for the algorithm breakdown, and
+            doc/middleware/ja4-fingerprint.md for what each algorithm is).
+        requestsByFingerprintType:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            ja4_tls: 1200
+            stable: 600
+            ja4h: 200
+          description: >-
+            Number of requests grouped by which fingerprinting algorithm
+            actually produced the value in requestsByFingerprint for that
+            request: "ja4_tls" (TLS-level JA4, only possible when the
+            gateway terminates TLS itself), "stable" (reduced-entropy
+            header-based fingerprint), or "ja4h" (the noisiest, HTTP-header
+            JA4H fingerprint).
       required:
         - totalRequests
         - requestsByStatus
@@ -1281,7 +1301,8 @@ components:
         - requestsByPlatform
         - requestsByBrowser
         - requestsByUser
-        - requestsByJA4Fingerprint
+        - requestsByFingerprint
+        - requestsByFingerprintType
     RequestDetail:
       type: object
       properties:
@@ -1334,6 +1355,22 @@ components:
         is_static:
           type: boolean
           description: Whether the request path looked like a static asset (see management.excludeStaticAssets)
+        fingerprint:
+          type: string
+          description: >-
+            The single consolidated client fingerprint value for this
+            request (ClientInfo.Fingerprint) — see fingerprint_type for
+            which algorithm produced it. Empty if none was available.
+        fingerprint_type:
+          type: string
+          enum: ["ja4_tls", "stable", "ja4h", ""]
+          description: >-
+            Which fingerprinting algorithm produced the value in
+            fingerprint: "ja4_tls" (TLS-level JA4, only possible when the
+            gateway terminates TLS itself), "stable" (reduced-entropy
+            header-based fingerprint), "ja4h" (HTTP-header JA4H
+            fingerprint — the noisiest of the three), or "" if fingerprint
+            is empty too.
       required:
         - id
         - timestamp
@@ -1350,6 +1387,8 @@ components:
         - browser
         - browser_version
         - is_static
+        - fingerprint
+        - fingerprint_type
     RequestDetailsResponse:
       type: object
       properties:

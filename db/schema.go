@@ -14,52 +14,48 @@ const AdminProvider = "tg_admin_provider"
 
 // ClientInfo contains common client and geographical information
 type ClientInfo struct {
-	IPAddress string `gorm:"type:varchar(45)"`  // IP address of the client
-	UserAgent string `gorm:"type:text"`         // User agent string
-	Referrer  string `gorm:"type:varchar(500)"` // HTTP referrer
+	IPAddress string `gorm:"type:varchar(45)" json:"ipAddress"` // IP address of the client
+	UserAgent string `gorm:"type:text" json:"userAgent"`        // User agent string
+	Referrer  string `gorm:"type:varchar(500)" json:"referrer"` // HTTP referrer
 
 	// Device (UserAgent) information
-	BrowserFamily  string `gorm:"type:varchar(100)"` // Browser family (Chrome, Firefox, etc.)
-	BrowserVersion string `gorm:"type:varchar(100)"` // Browser version
-	OSFamily       string `gorm:"type:varchar(100)"` // Operating system
-	OSVersion      string `gorm:"type:varchar(100)"` // Operating system version
-	DeviceFamily   string `gorm:"type:varchar(100)"` // Device type (mobile, desktop, tablet)
-	DeviceBrand    string `gorm:"type:varchar(100)"` // Device brand (if applicable)
-	DeviceModel    string `gorm:"type:varchar(100)"` // Device model (if applicable)
+	BrowserFamily  string `gorm:"type:varchar(100)" json:"browserFamily"`  // Browser family (Chrome, Firefox, etc.)
+	BrowserVersion string `gorm:"type:varchar(100)" json:"browserVersion"` // Browser version
+	OSFamily       string `gorm:"type:varchar(100)" json:"osFamily"`       // Operating system
+	OSVersion      string `gorm:"type:varchar(100)" json:"osVersion"`      // Operating system version
+	DeviceFamily   string `gorm:"type:varchar(100)" json:"deviceFamily"`   // Device type (mobile, desktop, tablet)
+	DeviceBrand    string `gorm:"type:varchar(100)" json:"deviceBrand"`    // Device brand (if applicable)
+	DeviceModel    string `gorm:"type:varchar(100)" json:"deviceModel"`    // Device model (if applicable)
 
 	// Detailed geographical information (might be the address, city, etc.)
-	GeoLocation string  `gorm:"type:varchar(200)"`  // General geo location string
-	Latitude    float64 `gorm:"type:decimal(10,8)"` // GPS latitude
-	Longitude   float64 `gorm:"type:decimal(11,8)"` // GPS longitude
-	City        string  `gorm:"type:varchar(100)"`  // City name
-	ZipCode     string  `gorm:"type:varchar(20)"`   // Postal/ZIP code
-	Country     string  `gorm:"type:varchar(100)"`  // Country name
-	CountryCode string  `gorm:"type:varchar(3)"`    // ISO country code
-	Region      string  `gorm:"type:varchar(100)"`  // State/Province/Region
-	Continent   string  `gorm:"type:varchar(50)"`   // Continent name
+	GeoLocation string  `gorm:"type:varchar(200)" json:"geoLocation"` // General geo location string
+	Latitude    float64 `gorm:"type:decimal(10,8)" json:"latitude"`   // GPS latitude
+	Longitude   float64 `gorm:"type:decimal(11,8)" json:"longitude"`  // GPS longitude
+	City        string  `gorm:"type:varchar(100)" json:"city"`        // City name
+	ZipCode     string  `gorm:"type:varchar(20)" json:"zipCode"`      // Postal/ZIP code
+	Country     string  `gorm:"type:varchar(100)" json:"country"`     // Country name
+	CountryCode string  `gorm:"type:varchar(3)" json:"countryCode"`   // ISO country code
+	Region      string  `gorm:"type:varchar(100)" json:"region"`      // State/Province/Region
+	Continent   string  `gorm:"type:varchar(50)" json:"continent"`    // Continent name
 
-	// JA4H HTTP fingerprint — see doc/middleware/ja4-fingerprint.md. Noisy:
-	// varies for the same real client across different request types
-	// (navigation vs. subresource vs. XHR/fetch), by design of the JA4H
-	// spec itself, not a bug in this gateway.
-	JA4Fingerprint string `gorm:"type:varchar(100)"`
-	// JA4TLSFingerprint is the TLS-level JA4 fingerprint (cipher suites,
-	// extensions, ALPN, TLS version from the ClientHello) — a property of
-	// the client's TLS stack, stable across every request on the same
-	// connection unlike JA4Fingerprint above. Only ever populated when the
-	// gateway terminates TLS itself (server.tls.enabled) — see
-	// gateway/ja4tls.go. Empty otherwise, including for plain-HTTP
-	// requests and for TLS terminated by something else in front of this
-	// gateway.
-	JA4TLSFingerprint string `gorm:"type:varchar(100)"`
-	// StableFingerprint is a deliberately reduced-entropy, project-specific
-	// fingerprint (not part of the JA4 family) computed only from request
-	// properties that don't vary by request type — see
-	// middleware/fingerprint.StableFingerprint. Meant to identify the same
-	// real client more consistently than JA4Fingerprint across a browsing
-	// session, at the cost of being coarser and, unlike JA4TLSFingerprint,
-	// still spoofable/variable the way any header-based signal is.
-	StableFingerprint string `gorm:"type:varchar(64)"`
+	// Fingerprint is the single client fingerprint value for this
+	// request/session — see FingerprintType for which algorithm produced
+	// it. Only one is ever stored, chosen by priority among the available
+	// signals (most reliable wins) via fingerprint.SelectFingerprint:
+	// TLS-level JA4 (fingerprint.TypeJA4TLS, only available when the
+	// gateway terminates TLS itself — see gateway/ja4tls.go) over the
+	// reduced-entropy "stable" fingerprint (fingerprint.TypeStable, works
+	// without TLS but still request-type-independent — see
+	// middleware/fingerprint.StableFingerprint) over JA4H
+	// (fingerprint.TypeJA4H, always available but the noisiest of the
+	// three — see doc/middleware/ja4-fingerprint.md). Empty if none of the
+	// three produced anything at all.
+	Fingerprint string `gorm:"type:varchar(100)" json:"fingerprint"`
+	// FingerprintType names which algorithm produced Fingerprint —
+	// fingerprint.TypeJA4TLS ("ja4_tls"), fingerprint.TypeStable
+	// ("stable"), or fingerprint.TypeJA4H ("ja4h"). Empty exactly when
+	// Fingerprint is empty too.
+	FingerprintType string `gorm:"type:varchar(20)" json:"fingerprintType"`
 }
 
 // User struct definition
@@ -108,20 +104,31 @@ func (u *User) BeforeSave(tx *gorm.DB) error {
 }
 
 // Session struct definition for persistent sessions
+//
+// JSON tags on this struct (and the embedded ClientInfo's) are what
+// actually shape the X-User-Data header a backend route receives — see
+// gateway.go's json.Marshal(sessionObject) and README.md's "X-User-Data
+// JSON Structure" reference, which documents the exact camelCase shape
+// these tags produce. Note gorm.Model's own embedded fields (ID,
+// CreatedAt, UpdatedAt, DeletedAt) have no tags of their own and so still
+// serialize in Go's default PascalCase — that's a pre-existing gap in the
+// X-User-Data contract this change doesn't attempt to close, since
+// suppressing an embedded struct's fields from JSON needs shadowing it
+// entirely, a larger change than what was asked for here.
 type Session struct {
 	gorm.Model
-	Token           string `gorm:"primaryKey;column:token;type:varchar(255);not null"`
-	UserID          string `gorm:"column:user_id;type:varchar(255)"`
-	Username        string
-	Email           string
-	IsAuthenticated bool
-	IsAdmin         bool
-	ValidUntil      time.Time
-	Provider        string
-	ClosedOn        *time.Time
-	LastActivity    time.Time
-	SessionName     string `gorm:"type:varchar(100)"`
-	CreatedFrom     string `gorm:"type:varchar(100)"` // How the session was created
+	Token           string     `gorm:"primaryKey;column:token;type:varchar(255);not null" json:"token"`
+	UserID          string     `gorm:"column:user_id;type:varchar(255)" json:"userId"`
+	Username        string     `json:"username"`
+	Email           string     `json:"email"`
+	IsAuthenticated bool       `json:"isAuthenticated"`
+	IsAdmin         bool       `json:"isAdmin"`
+	ValidUntil      time.Time  `json:"validUntil"`
+	Provider        string     `json:"provider"`
+	ClosedOn        *time.Time `json:"closedOn"`
+	LastActivity    time.Time  `json:"lastActivity"`
+	SessionName     string     `gorm:"type:varchar(100)" json:"sessionName"`
+	CreatedFrom     string     `gorm:"type:varchar(100)" json:"createdFrom"` // How the session was created
 
 	// Embed common client information
 	ClientInfo

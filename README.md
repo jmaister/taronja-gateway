@@ -373,7 +373,7 @@ server:
 
 Whichever certificate source you use, enabling TLS also turns on **TLS-level JA4 fingerprinting** automatically — no extra config. Unlike [JA4H](doc/middleware/ja4-fingerprint.md) (computed per HTTP request from header count/order, which varies constantly between a page load and its own subresource/API requests — see that page for why), TLS JA4 is computed once per TLS connection from the client's actual TLS stack (cipher suites, extensions, ALPN, TLS version): a property of the client's OS/browser/TLS library, not of any individual request, so it stays the same across every request on that connection. It's only possible because the gateway itself sees the raw `ClientHello` — this is the concrete meaning of "if we control the TLS certificates" in practice: TLS terminated by something else in front of this gateway (a CDN, a load balancer) means this gateway never sees a `ClientHello` at all.
 
-It's exposed the same way JA4H already is — a `ja4TLSFingerprint` field on every session/traffic-metric row and in `X-User-Data` (empty when TLS is disabled) — see the [`X-User-Data` field reference](#field-reference) below.
+It's exposed the same way as every other fingerprint signal — via the single `fingerprint`/`fingerprintType` pair on every session/traffic-metric row and in `X-User-Data` (`fingerprintType: "ja4_tls"` when TLS produced it) — see [doc/middleware/ja4-fingerprint.md](doc/middleware/ja4-fingerprint.md#one-consolidated-fingerprint-not-three) for how the three fingerprinting signals get reduced to that single pair, and the [`X-User-Data` field reference](#field-reference) below for the exact JSON shape.
 
 #### Restarting vs. reloading
 
@@ -824,9 +824,8 @@ The `X-User-Data` header contains a JSON-encoded session object with the followi
   "countryCode": "string",
   "region": "string",
   "continent": "string",
-  "ja4Fingerprint": "string",
-  "ja4TLSFingerprint": "string",
-  "stableFingerprint": "string"
+  "fingerprint": "string",
+  "fingerprintType": "string"
 }
 ```
 
@@ -865,9 +864,8 @@ The `X-User-Data` header contains a JSON-encoded session object with the followi
 | `countryCode`      | `string`  | ISO country code (2-3 characters).                               |
 | `region`           | `string`  | State, province, or region.                                      |
 | `continent`        | `string`  | Continent name.                                                  |
-| `ja4Fingerprint`   | `string`  | JA4H HTTP fingerprint of the client — varies by request type (navigation vs. subresource vs. API call), by design; see [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md). |
-| `ja4TLSFingerprint`| `string`  | TLS-level JA4 fingerprint (cipher suites, extensions, ALPN, TLS version) — stable across every request on the same connection. Only set when the gateway terminates TLS itself (`server.tls.enabled`); empty otherwise. |
-| `stableFingerprint`| `string`  | Reduced-entropy fingerprint from headers that don't vary by request type (User-Agent, Accept-Encoding, Accept-Language, low-entropy Client Hints) — not part of the JA4 family, a custom signal meant to identify the same client more consistently than `ja4Fingerprint` when TLS isn't available. |
+| `fingerprint`      | `string`  | The client's fingerprint value — see `fingerprintType` for which algorithm produced it. Whichever of the three available signals is most reliable wins; see [doc/middleware/ja4-fingerprint.md](doc/middleware/ja4-fingerprint.md#one-consolidated-fingerprint-not-three) for the full priority order and why. |
+| `fingerprintType`  | `string`  | Which algorithm produced `fingerprint`: `ja4_tls` (TLS-level JA4 — most stable, only possible when `server.tls.enabled`), `stable` (reduced-entropy header-based fingerprint), or `ja4h` (HTTP-header JA4H — the noisiest of the three). Empty string if `fingerprint` is empty too. |
 
 ## Authentication Methods
 

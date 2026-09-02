@@ -11,6 +11,7 @@ import (
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 )
@@ -103,11 +104,11 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 			ResponseSize:   1024,       // 1KB
 			Timestamp:      now.Add(-time.Hour),
 			ClientInfo: db.ClientInfo{
-				Country:        "US",
-				DeviceFamily:   "desktop",
-				OSFamily:       "Windows",
-				BrowserFamily:  "Chrome",
-				JA4Fingerprint: "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac",
+				Country:       "US",
+				DeviceFamily:  "desktop",
+				OSFamily:      "Windows",
+				BrowserFamily: "Chrome",
+				Fingerprint:   "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", FingerprintType: fingerprint.TypeJA4H,
 			},
 		},
 		{
@@ -118,11 +119,11 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 			ResponseSize:   2048,       // 2KB
 			Timestamp:      now.Add(-30 * time.Minute),
 			ClientInfo: db.ClientInfo{
-				Country:        "ES",
-				DeviceFamily:   "mobile",
-				OSFamily:       "Android",
-				BrowserFamily:  "Firefox",
-				JA4Fingerprint: "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1",
+				Country:       "ES",
+				DeviceFamily:  "mobile",
+				OSFamily:      "Android",
+				BrowserFamily: "Firefox",
+				Fingerprint:   "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1", FingerprintType: fingerprint.TypeJA4H,
 			},
 		},
 		{
@@ -133,11 +134,11 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 			ResponseSize:   512,       // 0.5KB
 			Timestamp:      now.Add(-15 * time.Minute),
 			ClientInfo: db.ClientInfo{
-				Country:        "US",
-				DeviceFamily:   "tablet",
-				OSFamily:       "iOS",
-				BrowserFamily:  "Safari",
-				JA4Fingerprint: "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", // Same as first request
+				Country:       "US",
+				DeviceFamily:  "tablet",
+				OSFamily:      "iOS",
+				BrowserFamily: "Safari",
+				Fingerprint:   "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", FingerprintType: fingerprint.TypeJA4H, // Same as first request
 			},
 		},
 	}
@@ -206,11 +207,14 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 	assert.Contains(t, stats.RequestsByBrowser, "Firefox")
 	assert.Contains(t, stats.RequestsByBrowser, "Safari")
 
-	// Verify JA4 fingerprint data
-	assert.Contains(t, stats.RequestsByJA4Fingerprint, "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac")
-	assert.Contains(t, stats.RequestsByJA4Fingerprint, "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1")
-	assert.Equal(t, 2, stats.RequestsByJA4Fingerprint["ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac"]) // First and third request
-	assert.Equal(t, 1, stats.RequestsByJA4Fingerprint["ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1"]) // Second request
+	// Verify fingerprint data
+	assert.Contains(t, stats.RequestsByFingerprint, "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac")
+	assert.Contains(t, stats.RequestsByFingerprint, "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1")
+	assert.Equal(t, 2, stats.RequestsByFingerprint["ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac"]) // First and third request
+	assert.Equal(t, 1, stats.RequestsByFingerprint["ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1"]) // Second request
+
+	// All three seeded rows used fingerprint.TypeJA4H
+	assert.Equal(t, 3, stats.RequestsByFingerprintType[fingerprint.TypeJA4H])
 }
 
 func TestStatisticsShowUsernames(t *testing.T) {

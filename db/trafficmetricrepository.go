@@ -27,7 +27,16 @@ type TrafficMetricRepository interface {
 	GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) // NEW
-	GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error)
+	// GetRequestCountByFingerprint groups by ClientInfo.Fingerprint — the
+	// single, consolidated fingerprint value (see
+	// fingerprint.SelectFingerprint), which may have come from any of the
+	// three algorithms per row. Pair with GetRequestCountByFingerprintType
+	// if the algorithm breakdown matters.
+	GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error)
+	// GetRequestCountByFingerprintType groups by ClientInfo.FingerprintType
+	// ("ja4_tls"/"stable"/"ja4h") — how many recorded requests got each
+	// algorithm, independent of the specific fingerprint values.
+	GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error)
 	ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error)
 }
 
@@ -322,30 +331,64 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate tim
 	return userCounts, nil
 }
 
-// GetRequestCountByJA4Fingerprint returns request counts grouped by JA4 fingerprint within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error) {
+// GetRequestCountByFingerprint returns request counts grouped by the
+// consolidated client fingerprint (ClientInfo.Fingerprint) within a date
+// range. A given key may be a JA4H, TLS JA4, or stable-fingerprint value
+// depending on what was available per request — see
+// fingerprint.SelectFingerprint and GetRequestCountByFingerprintType if the
+// algorithm breakdown matters.
+func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error) {
 	var results []struct {
-		JA4Fingerprint string
-		Count          int
+		Fingerprint string
+		Count       int
 	}
 
 	err := r.DB.Model(&TrafficMetric{}).
-		Select("ja4_fingerprint, COUNT(*) as count").
+		Select("fingerprint, COUNT(*) as count").
 		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("ja4_fingerprint").
+		Group("fingerprint").
 		Scan(&results).Error
 
 	if err != nil {
-		log.Printf("Error getting request count by JA4 fingerprint: %v", err)
+		log.Printf("Error getting request count by fingerprint: %v", err)
 		return nil, err
 	}
 
-	ja4Counts := make(map[string]int)
+	counts := make(map[string]int)
 	for _, result := range results {
-		ja4Counts[result.JA4Fingerprint] = result.Count
+		counts[result.Fingerprint] = result.Count
 	}
 
-	return ja4Counts, nil
+	return counts, nil
+}
+
+// GetRequestCountByFingerprintType returns request counts grouped by which
+// fingerprinting algorithm actually produced a value
+// (ClientInfo.FingerprintType — fingerprint.TypeJA4TLS/TypeStable/TypeJA4H)
+// within a date range.
+func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error) {
+	var results []struct {
+		FingerprintType string
+		Count           int
+	}
+
+	err := r.DB.Model(&TrafficMetric{}).
+		Select("fingerprint_type, COUNT(*) as count").
+		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
+		Group("fingerprint_type").
+		Scan(&results).Error
+
+	if err != nil {
+		log.Printf("Error getting request count by fingerprint type: %v", err)
+		return nil, err
+	}
+
+	counts := make(map[string]int)
+	for _, result := range results {
+		counts[result.FingerprintType] = result.Count
+	}
+
+	return counts, nil
 }
 
 // ListRequestDetails returns request details in a date range (or all if nil),

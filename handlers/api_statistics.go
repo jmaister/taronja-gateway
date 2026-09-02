@@ -100,10 +100,16 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
 
-	// Get requests by JA4 fingerprint
-	requestsByJA4Fingerprint, err := s.trafficMetricRepo.GetRequestCountByJA4Fingerprint(startDate, endDate)
+	// Get requests by consolidated fingerprint, and by which algorithm
+	// produced it — see fingerprint.SelectFingerprint.
+	requestsByFingerprint, err := s.trafficMetricRepo.GetRequestCountByFingerprint(startDate, endDate)
 	if err != nil {
-		log.Printf("Error getting requests by JA4 fingerprint: %v", err)
+		log.Printf("Error getting requests by fingerprint: %v", err)
+		return api.GetRequestStatistics500JSONResponse{}, nil
+	}
+	requestsByFingerprintType, err := s.trafficMetricRepo.GetRequestCountByFingerprintType(startDate, endDate)
+	if err != nil {
+		log.Printf("Error getting requests by fingerprint type: %v", err)
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
 
@@ -148,25 +154,33 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		}
 	}
 
-	ja4FingerprintMap := make(map[string]int)
-	for ja4Fingerprint, count := range requestsByJA4Fingerprint {
-		if ja4Fingerprint != "" {
-			ja4FingerprintMap[ja4Fingerprint] = count
+	fingerprintMap := make(map[string]int)
+	for fp, count := range requestsByFingerprint {
+		if fp != "" {
+			fingerprintMap[fp] = count
+		}
+	}
+
+	fingerprintTypeMap := make(map[string]int)
+	for fpType, count := range requestsByFingerprintType {
+		if fpType != "" {
+			fingerprintTypeMap[fpType] = count
 		}
 	}
 
 	// Create the response
 	response := api.RequestStatistics{
-		TotalRequests:            int(totalRequests),
-		RequestsByStatus:         statusMap,
-		AverageResponseTime:      float32(avgResponseTimeMs),
-		AverageResponseSize:      float32(avgResponseSize),
-		RequestsByCountry:        countryMap,
-		RequestsByDeviceType:     deviceMap,
-		RequestsByPlatform:       platformMap,
-		RequestsByBrowser:        browserMap,
-		RequestsByUser:           userMap,
-		RequestsByJA4Fingerprint: ja4FingerprintMap,
+		TotalRequests:             int(totalRequests),
+		RequestsByStatus:          statusMap,
+		AverageResponseTime:       float32(avgResponseTimeMs),
+		AverageResponseSize:       float32(avgResponseSize),
+		RequestsByCountry:         countryMap,
+		RequestsByDeviceType:      deviceMap,
+		RequestsByPlatform:        platformMap,
+		RequestsByBrowser:         browserMap,
+		RequestsByUser:            userMap,
+		RequestsByFingerprint:     fingerprintMap,
+		RequestsByFingerprintType: fingerprintTypeMap,
 	}
 
 	return api.GetRequestStatistics200JSONResponse(response), nil
@@ -234,6 +248,8 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 			Browser:         m.TrafficMetric.BrowserFamily,
 			BrowserVersion:  m.TrafficMetric.BrowserVersion,
 			IsStatic:        m.TrafficMetric.IsStaticAsset,
+			Fingerprint:     m.TrafficMetric.Fingerprint,
+			FingerprintType: api.RequestDetailFingerprintType(m.TrafficMetric.FingerprintType),
 		})
 	}
 	return api.GetRequestDetails200JSONResponse{Requests: details}, nil

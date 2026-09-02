@@ -148,15 +148,22 @@ Why IP is not being parsed correctly? Is it because of the attack vector in the 
         - `StableFingerprint` — a reduced-entropy, non-TLS fallback built
           only from headers that don't vary by request type. See
           `middleware/fingerprint/stable.go`.
+      All three then got consolidated into a single `Fingerprint` +
+      `FingerprintType` field pair (`db.ClientInfo`, `X-User-Data`, the
+      stats API) rather than three parallel columns, picked by priority
+      (TLS JA4 > stable > JA4H) via `fingerprint.SelectFingerprint` — see
+      `middleware/fingerprint/select.go` and
+      doc/middleware/ja4-fingerprint.md's "One consolidated fingerprint,
+      not three".
     - Can we use it to identify users? — still no for JA4H alone; TLS JA4
       and the stable fingerprint are meaningfully better for "same real
       client," but none of the three should be trusted as a hard 1:1
       identifier (all are still spoofable by a deliberately evasive
       client, to varying degrees — TLS JA4 hardest, JA4H easiest).
     - Can we identify bots? Can we identify returning users/attackers? —
-      still open; a composite signal (IP + parsed User-Agent + these three
-      fingerprints, tolerating partial drift) is the likely next step
-      rather than trusting any single field exactly.
+      still open; a composite signal (IP + parsed User-Agent + Fingerprint/
+      FingerprintType, tolerating partial drift) is the likely next step
+      rather than trusting Fingerprint alone.
     - Filter by JA4 fingerprint separate parts? — still open, and now
       applies to three fields instead of one.
 

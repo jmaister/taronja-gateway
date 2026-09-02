@@ -109,16 +109,15 @@ explicit chain with `traffic_metrics` but not `ja4_fingerprint` fails fast
 at startup with a clear dependency error instead of silently recording
 metrics with an empty fingerprint.
 
-## Two companion fingerprints, computed alongside JA4H
+## Two companion signals, computed alongside JA4H
 
 This middleware also sets two more headers on every request — not
 separately configurable, not separately enable/disable-able, since both
 are cheap enough to always compute once `ja4_fingerprint` is running at
 all:
 
-- **`X-Taronja-Stable-Fingerprint`** (`fingerprint.GetStableFingerprintFromRequest`,
-  `StableFingerprint` field on `ClientInfo`/`TrafficMetric`) — a
-  deliberately reduced-entropy fingerprint built only from request
+- **`X-Taronja-Stable-Fingerprint`** (`fingerprint.GetStableFingerprintFromRequest`) —
+  a deliberately reduced-entropy fingerprint built only from request
   properties that don't vary by request type: `User-Agent`,
   `Accept-Encoding`, `Accept-Language`, and the low-entropy User-Agent
   Client Hints (`Sec-Ch-Ua*`). It exists specifically to answer "how do I
@@ -131,21 +130,49 @@ all:
   client to fake than either JA4 variant. See
   `middleware/fingerprint/stable.go` for the exact field list and
   rationale.
-- **`X-Taronja-JA4-TLS`** (`fingerprint.GetJA4TLSFromRequest`,
-  `JA4TLSFingerprint` field) — the real TLS-level JA4 fingerprint (cipher
-  suites, extensions, ALPN, TLS version from the `ClientHello`), which is
-  the most stable of the three by a wide margin since it's a property of
-  the client's TLS stack rather than of any individual HTTP request or
-  header set. Only populated when the gateway terminates TLS itself
-  (`server.tls.enabled`) — see [TLS / HTTPS](../../README.md#tls--https)'s
-  "A free bonus of terminating TLS yourself" section, and
-  `gateway/ja4tls.go` for the implementation (it isn't wired through the
-  `ja4_fingerprint` middleware/factory at all — it's TLS-connection-level
-  plumbing set up alongside `server.tls` itself, not a global middleware
-  with its own enable/disable flag).
+- **`X-Taronja-JA4-TLS`** (`fingerprint.GetJA4TLSFromRequest`) — the real
+  TLS-level JA4 fingerprint (cipher suites, extensions, ALPN, TLS version
+  from the `ClientHello`), which is the most stable of the three by a wide
+  margin since it's a property of the client's TLS stack rather than of
+  any individual HTTP request or header set. Only populated when the
+  gateway terminates TLS itself (`server.tls.enabled`) — see
+  [TLS / HTTPS](../../README.md#tls--https)'s "A free bonus of terminating
+  TLS yourself" section, and `gateway/ja4tls.go` for the implementation
+  (it isn't wired through the `ja4_fingerprint` middleware/factory at all —
+  it's TLS-connection-level plumbing set up alongside `server.tls` itself,
+  not a global middleware with its own enable/disable flag).
 
-Rough reliability ranking, most to least stable for the same real client
-across a browsing session: TLS JA4 > stable fingerprint > JA4H.
+## One consolidated fingerprint, not three
+
+`db.ClientInfo` (and so every `Session`/`TrafficMetric` row, and
+`X-User-Data`) doesn't carry all three signals above as separate fields.
+It has exactly two: **`Fingerprint`** and **`FingerprintType`** — one
+value, tagged with which of the three algorithms produced it.
+`session.NewClientInfo` picks the single most reliable signal actually
+present, via `fingerprint.SelectFingerprint`, in this priority order
+(most to least stable for the same real client across a browsing
+session):
+
+1. **TLS JA4** (`fingerprint.TypeJA4TLS`, `"ja4_tls"`) — wins whenever
+   present, i.e. whenever the gateway terminates TLS.
+2. **Stable fingerprint** (`fingerprint.TypeStable`, `"stable"`) — wins
+   over JA4H whenever present, which in practice is almost always true for
+   a real browser request (it needs only a `User-Agent`, which JA4H itself
+   already assumes). This is the type most rows actually end up with on a
+   plain-HTTP gateway.
+3. **JA4H** (`fingerprint.TypeJA4H`, `"ja4h"`) — the fallback when neither
+   of the above produced anything; rarely the type actually selected in
+   practice, since tier 2's bar is so low.
+
+`FingerprintType` is `""` exactly when `Fingerprint` is `""` too — no
+signal was available at all (no `ja4_fingerprint` middleware ran on this
+request). The three underlying headers above still all get set
+independently by this middleware — `SelectFingerprint` (and so
+`session.NewClientInfo`) is just one consumer of them; a custom consumer
+wanting a specific algorithm rather than "whichever is best" can still
+read `fingerprint.GetJA4FromRequest`/`GetStableFingerprintFromRequest`/
+`GetJA4TLSFromRequest` directly. See `middleware/fingerprint/select.go`
+for the exact implementation.
 
 ## See also
 

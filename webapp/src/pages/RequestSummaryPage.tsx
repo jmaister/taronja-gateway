@@ -206,8 +206,13 @@ export function RequestSummaryPage() {
                     <DataTable title="Requests by User" data={statistics.requestsByUser} accent="primary" />
                 )}
                 <DataTable
-                    title="Requests by JA4 Fingerprint"
-                    data={statistics.requestsByJA4Fingerprint}
+                    title="Requests by Fingerprint"
+                    data={statistics.requestsByFingerprint}
+                    accent="warning"
+                />
+                <DataTable
+                    title="Requests by Fingerprint Type"
+                    data={statistics.requestsByFingerprintType}
                     accent="warning"
                 />
             </div>
