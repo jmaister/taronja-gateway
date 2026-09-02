@@ -1,6 +1,6 @@
 module github.com/jmaister/taronja-gateway
 
-go 1.26
+go 1.27
 
 tool (
 	github.com/cortesi/modd/cmd/modd

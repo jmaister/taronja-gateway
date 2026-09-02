@@ -14,7 +14,7 @@
 taronja-gateway/
 ├── main.go                     # CLI entry point (Cobra: run, adduser, version commands)
 ├── Makefile                    # Build/dev/test automation
-├── go.mod, go.sum              # Go module def (1.26)
+├── go.mod, go.sum              # Go module def (1.27)
 ├── .env, .env.sample           # Environment (OAuth secrets, SMTP config)
 ├── modd.conf                   # Dev file-watch config
 ├── .goreleaser.yml             # Release build (cross-platform binaries)
@@ -392,7 +392,7 @@ webapp/src/
 ### CI/CD
 
 - **GitHub Actions** (`.github/workflows/`):
-  - `ci.yml` — on push/PR: setup Go 1.26 + Node 22, regenerate API clients, build SDK/webapp, `go build`, `go test -cover`, post coverage table as PR comment, run `goreleaser check`
+  - `ci.yml` — on push/PR: setup Go 1.27 + Node 22, regenerate API clients, build SDK/webapp, `go build`, `go test -cover`, post coverage table as PR comment, run `goreleaser check`
   - `sdk-release.yml` — publish SDK to npm (triggered on tag or manual workflow dispatch)
   - `release.yml` — build release binaries and Docker images via GoReleaser (disabled/commented out Docker section)
 
