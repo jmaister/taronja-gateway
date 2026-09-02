@@ -41,7 +41,7 @@ func TestNewGateway(t *testing.T) {
 					{
 						Name: "Test Route",
 						From: "/",
-						To:   "http://localhost:8081",
+						To:   []string{"http://localhost:8081"},
 					},
 					{
 						Name:     "Test Route 2",
@@ -416,7 +416,7 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 				{
 					Name: "Empty To",
 					From: "/empty",
-					To:   "",
+					To:   nil,
 				},
 			},
 			expectError: true, // Validation should catch this configuration error early
@@ -440,7 +440,7 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 				{
 					Name: "Proxy Route",
 					From: "/api",
-					To:   "http://localhost:8080",
+					To:   []string{"http://localhost:8080"},
 				},
 			},
 			expectError: false,
@@ -636,7 +636,7 @@ func TestHelloEndpoint(t *testing.T) {
 			{
 				Name: "Hello Endpoint",
 				From: "/hello",
-				To:   testServer.URL, // Forward to our test server
+				To:   []string{testServer.URL}, // Forward to our test server
 				Authentication: config.AuthenticationConfig{
 					Enabled: false, // No authentication
 				},
@@ -752,7 +752,7 @@ func TestProxyBackendUnreachable_ReturnsBadGatewayInstantly(t *testing.T) {
 			{
 				Name: "Unreachable Backend",
 				From: "/down",
-				To:   "http://" + deadAddr,
+				To:   []string{"http://" + deadAddr},
 				Authentication: config.AuthenticationConfig{
 					Enabled: false,
 				},
@@ -1069,7 +1069,7 @@ func TestProxySPAFallback(t *testing.T) {
 					{
 						Name:  "Proxy SPA Route",
 						From:  "/*",
-						To:    upstream.URL,
+						To:    []string{upstream.URL},
 						IsSPA: tt.isSPA,
 					},
 				},

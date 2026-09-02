@@ -382,18 +382,30 @@ func (g *Gateway) configureUserRoutes() error {
 				continue
 			}
 		} else {
-			if routeConfig.To == "" {
+			if len(routeConfig.To) == 0 {
 				log.Printf("Warning: Empty 'to' URL for proxy route '%s'. Skipping registration.", routeConfig.Name)
 				continue
 			}
-			targetURL, parseErr := url.Parse(routeConfig.To)
+			targetURLs := make([]*url.URL, 0, len(routeConfig.To))
+			var parseErr error
+			for _, to := range routeConfig.To {
+				targetURL, err := url.Parse(to)
+				if err != nil {
+					parseErr = fmt.Errorf("target %q: %w", to, err)
+					break
+				}
+				targetURLs = append(targetURLs, targetURL)
+			}
 			if parseErr != nil {
-				log.Printf("Warning: Invalid target URL '%s' for proxy route '%s': %v. Skipping registration.", routeConfig.To, routeConfig.Name, parseErr)
+				log.Printf("Warning: Invalid target URL(s) %v for proxy route '%s': %v. Skipping registration.", []string(routeConfig.To), routeConfig.Name, parseErr)
 				continue
 			}
-			handler = g.createProxyHandlerFunc(routeConfig, targetURL)
+			handler = g.createProxyHandlerFunc(routeConfig, targetURLs)
+			if len(targetURLs) > 1 {
+				log.Printf("Proxy Route [%s]: load balancing across %d backends: %s", routeConfig.Name, len(targetURLs), formatTargets(routeConfig.To))
+			}
 			if routeConfig.IsSPA {
-				log.Printf("Proxy Route [%s]: SPA mode enabled - upstream 404s will fall back to base URL: %s", routeConfig.Name, routeConfig.To)
+				log.Printf("Proxy Route [%s]: SPA mode enabled - upstream 404s will fall back to base URL: %s", routeConfig.Name, formatTargets(routeConfig.To))
 			}
 		}
 
@@ -408,7 +420,7 @@ func (g *Gateway) configureUserRoutes() error {
 			basePattern := strings.TrimSuffix(pattern, "*")
 			g.Mux.HandleFunc(basePattern, handler)
 			log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
-				routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, basePattern, pattern)
+				routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled, basePattern, pattern)
 		} else {
 			// For static file routes, register both with and without trailing slash to avoid redirects
 			if routeConfig.Static && routeConfig.ToFile != "" {
@@ -423,7 +435,7 @@ func (g *Gateway) configureUserRoutes() error {
 				g.Mux.HandleFunc(patternWithSlash, handler)
 
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
-					routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled,
+					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled,
 					routeConfig.From, patternWithSlash)
 			} else {
 				// For other routes, ensure the pattern ends with a slash for consistency
@@ -432,7 +444,7 @@ func (g *Gateway) configureUserRoutes() error {
 				}
 				g.Mux.HandleFunc(pattern, handler)
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (pattern: %s)",
-					routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, pattern)
+					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled, pattern)
 			}
 		}
 	}
@@ -458,10 +470,23 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 }
 
 // --- Route Handler Creation ---
-// createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
-func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
+// createProxyHandlerFunc generates the core handler function for proxy
+// routes (without auth). targetURLs holds one entry for a plain
+// single-backend route, or more than one for a load-balanced route (see
+// config.RouteTargets) — either way, targetURLs[0] is used to build the
+// base httputil.ReverseProxy and for path composition below, since
+// multiple targets are assumed to be interchangeable replicas sharing the
+// same path structure. Backend *selection* per request (round-robin, with
+// failover to the next target if one's connection attempt fails) happens
+// in proxy.Transport (see newRoundRobinTransport), not here — everything
+// in this function runs once, at route-registration time, the same as
+// before targetURLs could hold more than one entry.
+func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURLs []*url.URL) http.HandlerFunc {
+	targetURL := targetURLs[0]
+
 	// Create the proxy once when the handler is created
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name)
 
 	// Store the original director
 	originalDirector := proxy.Director
@@ -519,10 +544,23 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				return nil
 			}
 
-			log.Printf("Proxy Route [%s]: SPA fallback - upstream returned 404 for %s, fetching base URL: %s",
-				routeConfig.Name, resp.Request.URL.Path, targetURL.String())
+			// resp.Request is the request roundRobinTransport actually sent —
+			// for a load-balanced route that's whichever backend answered
+			// this specific request, not necessarily targetURLs[0]. Reusing
+			// its Scheme/Host (and targetURL.Path, the shared base path —
+			// see createProxyHandlerFunc's doc comment) means the SPA
+			// fallback re-fetches from the same backend that returned the
+			// 404, rather than always the first configured target.
+			fallbackBaseURL := &url.URL{
+				Scheme: resp.Request.URL.Scheme,
+				Host:   resp.Request.URL.Host,
+				Path:   targetURL.Path,
+			}
 
-			fallbackReq, err := http.NewRequestWithContext(resp.Request.Context(), http.MethodGet, targetURL.String(), nil)
+			log.Printf("Proxy Route [%s]: SPA fallback - upstream returned 404 for %s, fetching base URL: %s",
+				routeConfig.Name, resp.Request.URL.Path, fallbackBaseURL.String())
+
+			fallbackReq, err := http.NewRequestWithContext(resp.Request.Context(), http.MethodGet, fallbackBaseURL.String(), nil)
 			if err != nil {
 				log.Printf("Proxy Route [%s]: SPA fallback failed - could not create request: %v", routeConfig.Name, err)
 				return nil
@@ -576,7 +614,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	// WriteHeader call" and no-ops) — matching httputil.ReverseProxy's own
 	// default ErrorHandler, which just calls rw.WriteHeader unconditionally.
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, routeConfig.To, err)
+		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), err)
 		http.Error(rw, "Bad Gateway", http.StatusBadGateway)
 	}
 
@@ -900,6 +938,14 @@ func hasMiddleWildcard(from string) bool {
 		return false
 	}
 	return true
+}
+
+// formatTargets renders a route's config.RouteTargets for a log line — a
+// single target prints as itself, unadorned, so existing single-backend
+// routes' log output is unchanged; more than one prints comma-joined
+// rather than Go's default "[a b]" slice format.
+func formatTargets(targets config.RouteTargets) string {
+	return strings.Join(targets, ", ")
 }
 
 // singleJoiningSlash remains unchanged

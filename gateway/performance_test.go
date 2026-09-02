@@ -425,7 +425,7 @@ func createTestConfig() *config.GatewayConfig {
 			{
 				Name:   "test-api",
 				From:   "/api/*",
-				To:     testBackendServerURL,
+				To:     []string{testBackendServerURL},
 				Static: false,
 				Authentication: config.AuthenticationConfig{
 					Enabled: false,

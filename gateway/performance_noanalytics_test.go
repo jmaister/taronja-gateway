@@ -74,7 +74,7 @@ func createTestConfigNoAnalytics() *config.GatewayConfig {
 			{
 				Name:   "test-api",
 				From:   "/api/*",
-				To:     "http://localhost:3000",
+				To:     []string{"http://localhost:3000"},
 				Static: false,
 				Authentication: config.AuthenticationConfig{
 					Enabled: false,

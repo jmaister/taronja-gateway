@@ -33,12 +33,57 @@ type RouteOptions struct {
 	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N"
 }
 
+// RouteTargets is one or more backend URLs a proxy route sends requests to.
+// A `to:` field accepts either a single scalar string (the original,
+// still-most-common form: one backend, no load balancing) or a YAML list
+// (multiple backends: the gateway round-robins across them per request and
+// fails over to the next one if a backend's connection attempt fails — see
+// gateway.newRoundRobinTransport). Both forms unmarshal into this same
+// []string-backed type, so every existing single-backend config keeps
+// working unchanged.
+//
+// Multiple targets are assumed to be interchangeable replicas of the same
+// backend (same path structure, differing only in scheme/host) — this is
+// what "load balancing" means here, not a way to route different paths to
+// different places. Use separate route entries (with different `from:`
+// patterns) for that instead.
+type RouteTargets []string
+
+// UnmarshalYAML implements custom decoding so `to:` accepts a bare string
+// or a list interchangeably. yaml.v3 calls this with the value node for the
+// `to:` key itself (not the whole route mapping), so Kind is always either
+// ScalarNode (a string) or SequenceNode (a list) for valid input.
+func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var single string
+		if err := value.Decode(&single); err != nil {
+			return err
+		}
+		if single == "" {
+			*t = nil
+			return nil
+		}
+		*t = RouteTargets{single}
+		return nil
+	case yaml.SequenceNode:
+		var list []string
+		if err := value.Decode(&list); err != nil {
+			return err
+		}
+		*t = RouteTargets(list)
+		return nil
+	default:
+		return fmt.Errorf("line %d: 'to' must be a string or a list of strings", value.Line)
+	}
+}
+
 // RouteConfig defines a single routing rule for the gateway.
 // Routes can proxy to remote servers or serve static files.
 type RouteConfig struct {
 	Name           string               `yaml:"name"`              // Human-readable route name for logging. Required.
 	From           string               `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
-	To             string               `yaml:"to"`                // Target URL for proxying (e.g., "https://api.example.com"). Required for proxy routes.
+	To             RouteTargets         `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
 	ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
 	ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
 	Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false

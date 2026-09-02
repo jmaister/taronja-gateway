@@ -261,7 +261,7 @@ func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayC
 	for _, route := range config.Routes {
 		// Validate static routes
 		if route.Static {
-			if route.ToFile == "" && route.To == "" && route.ToFolder == "" {
+			if route.ToFile == "" && len(route.To) == 0 && route.ToFolder == "" {
 				return &ValidationError{
 					Middleware: "static",
 					Message:    fmt.Sprintf("static route '%s' must have either ToFile, ToFolder, or To configured", route.Name),
@@ -269,7 +269,7 @@ func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayC
 			}
 		} else {
 			// Validate proxy routes
-			if route.To == "" {
+			if len(route.To) == 0 {
 				return &ValidationError{
 					Middleware: "proxy",
 					Message:    fmt.Sprintf("proxy route '%s' must have To URL configured", route.Name),

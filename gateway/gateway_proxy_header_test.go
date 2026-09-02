@@ -76,7 +76,7 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 			{
 				Name:           "ProxyWithAuth",
 				From:           "/proxy",
-				To:             backend.URL,
+				To:             []string{backend.URL},
 				Authentication: config.AuthenticationConfig{Enabled: false}, // Disable authentication for this test
 			},
 		},
