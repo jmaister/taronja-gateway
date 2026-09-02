@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // certReloader holds the gateway's current TLS certificate behind an atomic
@@ -106,12 +108,53 @@ func requestHost(r *http.Request) string {
 // its MinVersion choice has one place to be documented: TLS 1.2 is the
 // floor every major gateway (nginx, Traefik, Envoy) still defaults to for
 // broad client compatibility, with TLS 1.3 preferred automatically whenever
-// both ends support it.
+// both ends support it. Shared with the ACME path (see newACMEManager) so
+// both certificate sources enforce the same minimum.
 func newTLSConfig(reloader *certReloader) *tls.Config {
 	return &tls.Config{
 		MinVersion:     tls.VersionTLS12,
 		GetCertificate: reloader.GetCertificate,
 	}
+}
+
+// newACMEManager builds the autocert.Manager that obtains and renews the
+// gateway's certificate automatically via the ACME protocol, from
+// server.tls.acme. It makes no network calls itself — registration and
+// certificate issuance only happen lazily, on a real TLS handshake for a
+// configured domain (autocert.Manager.GetCertificate's own behavior) — so
+// constructing this at gateway startup has no side effects to worry about,
+// the same property config.LoadConfig's TLS validation relies on for ACME
+// (see its comment: there's nothing more to check than the config's shape).
+//
+// HostPolicy is always set to exactly cfg.Domains (autocert.HostWhitelist):
+// leaving it nil would let anyone connecting by IP with an arbitrary SNI
+// hostname trigger a real certificate request for that hostname, which is
+// both a request-forgery risk and a fast way to exhaust the CA's rate
+// limit — see the HostPolicy field's own doc comment in autocert for the
+// same warning.
+func newACMEManager(cfg *config.ACMEConfig) *autocert.Manager {
+	manager := &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(cfg.CacheDir),
+		HostPolicy: autocert.HostWhitelist(cfg.Domains...),
+		Email:      cfg.Email,
+	}
+	if cfg.DirectoryURL != "" {
+		manager.Client = &acme.Client{DirectoryURL: cfg.DirectoryURL}
+	}
+	return manager
+}
+
+// acmeTLSConfig returns the *tls.Config for an ACME-backed listener:
+// manager.TLSConfig() already wires GetCertificate and the NextProtos ACME
+// needs (including "acme-tls/1" for the tls-alpn-01 challenge, alongside
+// "h2"/"http/1.1" for normal traffic) — this only adds the same MinVersion
+// floor newTLSConfig uses for the static-file path, so both certificate
+// sources enforce it identically.
+func acmeTLSConfig(manager *autocert.Manager) *tls.Config {
+	tlsConfig := manager.TLSConfig()
+	tlsConfig.MinVersion = tls.VersionTLS12
+	return tlsConfig
 }
 
 // buildRedirectServer returns the plain-HTTP server that redirects to

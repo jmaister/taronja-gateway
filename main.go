@@ -251,9 +251,16 @@ func runGateway(configFilePath string, watchConfig bool) {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}
 
-	if config.Server.TLS.Enabled {
+	switch {
+	case config.Server.TLS.Enabled && config.Server.TLS.ACME != nil:
+		log.Printf("API Gateway '%s' listening on %s (TLS via ACME for domain(s): %s; certificates cached under %s)",
+			config.Name, gateway.Server.Addr, strings.Join(config.Server.TLS.ACME.Domains, ", "), config.Server.TLS.ACME.CacheDir)
+		if config.Server.TLS.ACME.DirectoryURL != "" {
+			log.Printf("Using non-default ACME directory URL: %s (remove server.tls.acme.directoryURL once testing is done, to get a browser-trusted certificate)", config.Server.TLS.ACME.DirectoryURL)
+		}
+	case config.Server.TLS.Enabled:
 		log.Printf("API Gateway '%s' listening on %s (TLS)", config.Name, gateway.Server.Addr)
-	} else {
+	default:
 		log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
 	}
 	log.Printf("Gateway public URL set to: %s", config.Server.URL)
@@ -320,8 +327,10 @@ func runGateway(configFilePath string, watchConfig bool) {
 		// in place) hot-reloads independently of the config file itself —
 		// see Gateway.ReloadTLSCertificate's doc comment for why this is a
 		// separate concern from config reload entirely, not just another
-		// case watchConfigFile happens to handle.
-		if config.Server.TLS.Enabled {
+		// case watchConfigFile happens to handle. Not applicable to ACME —
+		// there's no static cert/key file to watch, since the gateway's own
+		// autocert.Manager obtains and renews the certificate itself.
+		if config.Server.TLS.Enabled && config.Server.TLS.ACME == nil {
 			certWatcherStop := make(chan struct{})
 			defer close(certWatcherStop)
 			if err := watchCertFiles(config.Server.TLS.CertFile, config.Server.TLS.KeyFile, gateway, certWatcherStop); err != nil {

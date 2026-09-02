@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -23,6 +24,8 @@ import (
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // writeSelfSignedCert generates a throwaway self-signed cert/key pair
@@ -324,4 +327,124 @@ func TestGatewayTLS_RedirectServer_RealRequest(t *testing.T) {
 	location := resp.Header.Get("Location")
 	assert.Contains(t, location, "https://127.0.0.1:")
 	assert.Contains(t, location, "/some/path")
+}
+
+// --- ACME wiring -----------------------------------------------------------
+//
+// These deliberately never trigger a real ACME order: autocert.Manager only
+// touches the network lazily, from inside GetCertificate on a real TLS
+// handshake for a configured domain, or from an http-01 challenge request
+// that finds a token actually pending. Nothing here does either, so these
+// stay fast and offline — what's under test is the *wiring* (HostPolicy,
+// Cache, Email, DirectoryURL, NextProtos, and the RedirectServer handler
+// composition), not a real certificate issuance, which is inherently
+// untestable outside of a real public domain and a reachable port 80/443.
+
+func TestNewACMEManager_WiresFieldsFromConfig(t *testing.T) {
+	cacheDir := t.TempDir()
+	cfg := &config.ACMEConfig{
+		Domains:  []string{"example.com", "www.example.com"},
+		Email:    "admin@example.com",
+		CacheDir: cacheDir,
+	}
+	manager := newACMEManager(cfg)
+
+	require.NotNil(t, manager.HostPolicy)
+	assert.NoError(t, manager.HostPolicy(context.Background(), "example.com"))
+	assert.NoError(t, manager.HostPolicy(context.Background(), "www.example.com"))
+	assert.Error(t, manager.HostPolicy(context.Background(), "not-configured.example.com"),
+		"a domain not in the config must be rejected — this is the guard against arbitrary-SNI cert request abuse")
+
+	assert.Equal(t, autocert.DirCache(cacheDir), manager.Cache)
+	assert.Equal(t, "admin@example.com", manager.Email)
+	assert.Nil(t, manager.Client, "no directoryURL override configured, so the default (Let's Encrypt production) applies")
+}
+
+func TestNewACMEManager_DirectoryURLOverride(t *testing.T) {
+	cfg := &config.ACMEConfig{
+		Domains:      []string{"example.com"},
+		CacheDir:     t.TempDir(),
+		DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
+	}
+	manager := newACMEManager(cfg)
+
+	require.NotNil(t, manager.Client)
+	assert.Equal(t, "https://acme-staging-v02.api.letsencrypt.org/directory", manager.Client.DirectoryURL)
+}
+
+func TestAcmeTLSConfig_SetsMinVersionAndACMEProtocols(t *testing.T) {
+	manager := newACMEManager(&config.ACMEConfig{Domains: []string{"example.com"}, CacheDir: t.TempDir()})
+	tlsConfig := acmeTLSConfig(manager)
+
+	assert.Equal(t, uint16(tls.VersionTLS12), tlsConfig.MinVersion)
+	assert.Contains(t, tlsConfig.NextProtos, "h2", "ACME must not cost the gateway its existing HTTP/2 support")
+	assert.Contains(t, tlsConfig.NextProtos, "http/1.1")
+	assert.Contains(t, tlsConfig.NextProtos, acme.ALPNProto, "required for the tls-alpn-01 challenge to work at all")
+	require.NotNil(t, tlsConfig.GetCertificate)
+}
+
+func TestGatewayACME_WiresManagerAndRedirectChallengeHandler(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "hello from backend")
+	}))
+	t.Cleanup(backend.Close)
+
+	cfg := &config.GatewayConfig{
+		Server:     config.ServerConfig{Host: "127.0.0.1", Port: 0},
+		Management: config.ManagementConfig{Prefix: "/admin"},
+		Routes: []config.RouteConfig{
+			{Name: "Backend", From: "/*", To: []string{backend.URL}},
+		},
+	}
+	cfg.Server.TLS.Enabled = true
+	cfg.Server.TLS.ACME = &config.ACMEConfig{
+		Domains:  []string{"example.com"},
+		CacheDir: t.TempDir(),
+	}
+
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps.NewTest())
+	require.NoError(t, err)
+
+	require.NotNil(t, gw.acmeManager, "ACME-enabled config must build an autocert.Manager")
+	assert.Nil(t, gw.tlsCertReloader, "ACME mode has no static cert/key file to reload")
+	require.NotNil(t, gw.Server.TLSConfig)
+	require.NotNil(t, gw.Server.TLSConfig.GetCertificate)
+
+	require.NotNil(t, gw.RedirectServer, "ACME with the default redirectPort must still build the http-01 challenge listener")
+
+	// A normal request must still fall through to the ordinary HTTPS
+	// redirect, unaffected by ACME's own handler wrapping it.
+	rr := httptest.NewRecorder()
+	gw.RedirectServer.Handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/some/path", nil))
+	assert.Equal(t, http.StatusPermanentRedirect, rr.Code)
+	assert.Contains(t, rr.Header().Get("Location"), "/some/path")
+
+	// A well-known ACME challenge path must be intercepted by the manager
+	// instead of reaching the redirect — asserted indirectly: with no real
+	// order/token pending, autocert answers it itself (never a 308), which
+	// is proof the request didn't fall through to the fallback handler.
+	rr = httptest.NewRecorder()
+	gw.RedirectServer.Handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/.well-known/acme-challenge/some-token", nil))
+	assert.NotEqual(t, http.StatusPermanentRedirect, rr.Code, "a challenge path must never be redirected to HTTPS — the CA fetches it over plain HTTP")
+}
+
+func TestGatewayACME_RedirectDisabled_StillBuildsTLSConfig(t *testing.T) {
+	// server.tls.redirectPort: 0 with ACME means relying solely on
+	// tls-alpn-01 (answered on the main HTTPS listener itself, no separate
+	// port) — this must not be treated as a misconfiguration.
+	zero := 0
+	cfg := &config.GatewayConfig{
+		Server:     config.ServerConfig{Host: "127.0.0.1", Port: 0},
+		Management: config.ManagementConfig{Prefix: "/admin"},
+	}
+	cfg.Server.TLS.Enabled = true
+	cfg.Server.TLS.RedirectPort = &zero
+	cfg.Server.TLS.ACME = &config.ACMEConfig{Domains: []string{"example.com"}, CacheDir: t.TempDir()}
+
+	gw, err := NewGatewayWithDependencies(cfg, nil, deps.NewTest())
+	require.NoError(t, err)
+
+	assert.Nil(t, gw.RedirectServer)
+	require.NotNil(t, gw.Server.TLSConfig)
+	assert.Contains(t, gw.Server.TLSConfig.NextProtos, acme.ALPNProto)
 }

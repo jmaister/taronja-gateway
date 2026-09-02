@@ -27,6 +27,7 @@ import (
 	"github.com/jmaister/taronja-gateway/providers"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // --- Gateway Struct ---
@@ -40,10 +41,16 @@ type Gateway struct {
 	// nil when TLS is disabled or the redirect listener is turned off
 	// (server.tls.redirectPort: 0).
 	RedirectServer *http.Server
-	// tlsCertReloader holds the live TLS certificate when TLS is enabled —
-	// see Gateway.ReloadTLSCertificate and gateway/tls.go's certReloader.
-	// nil when TLS is disabled.
+	// tlsCertReloader holds the live TLS certificate when TLS is enabled with
+	// a static certFile/keyFile — see Gateway.ReloadTLSCertificate and
+	// gateway/tls.go's certReloader. nil when TLS is disabled or using ACME
+	// (acmeManager manages its own certificate lifecycle instead).
 	tlsCertReloader *certReloader
+	// acmeManager obtains and renews the gateway's certificate automatically
+	// via ACME when TLS is enabled with server.tls.acme — see
+	// gateway/tls.go's newACMEManager. nil when TLS is disabled or using a
+	// static certFile/keyFile.
+	acmeManager *autocert.Manager
 	// Middleware components (created during gateway initialization)
 	AuthMiddleware      *middleware.AuthMiddleware
 	HttpCacheMiddleware *middleware.HttpCacheMiddleware
@@ -108,20 +115,41 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		Handler:      gateway.handler,
 	}
 
-	// TLS, like host/port, is fixed at construction — enabling/disabling it
-	// or changing the cert/key paths on a reload would mean rebinding the
-	// listener with a different protocol entirely, which applyConfig
+	// TLS, like host/port, is fixed at construction — enabling/disabling it,
+	// switching between a static cert/key pair and ACME, or changing either
+	// one's settings on a reload would mean rebinding the listener with a
+	// different protocol/certificate-source entirely, which applyConfig
 	// deliberately doesn't attempt (see warnIfImmutableFieldsChanged). Only
-	// the certificate's *content* hot-reloads, via ReloadTLSCertificate,
-	// independent of config reload entirely — see gateway/tls.go.
+	// a static certificate's *content* hot-reloads, via
+	// ReloadTLSCertificate, independent of config reload entirely — ACME
+	// manages its own certificate lifecycle instead, with nothing for
+	// ReloadTLSCertificate to do (see its doc comment). See gateway/tls.go.
 	if cfg.Server.TLS.Enabled {
-		reloader, err := newCertReloader(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
-		if err != nil {
-			return nil, err
-		}
-		gateway.tlsCertReloader = reloader
-		gateway.Server.TLSConfig = newTLSConfig(reloader)
 		gateway.RedirectServer = buildRedirectServer(cfg)
+
+		if cfg.Server.TLS.ACME != nil {
+			manager := newACMEManager(cfg.Server.TLS.ACME)
+			gateway.acmeManager = manager
+			gateway.Server.TLSConfig = acmeTLSConfig(manager)
+			if gateway.RedirectServer != nil {
+				// http-01 domain validation needs to answer plain HTTP
+				// requests under /.well-known/acme-challenge/ on this
+				// listener; everything else still gets the normal redirect
+				// (manager.HTTPHandler falls through to it unchanged). If
+				// the redirect listener is disabled (redirectPort: 0),
+				// tls-alpn-01 (answered automatically via TLSConfig above,
+				// no extra port needed) is the only challenge type left
+				// available — see ACMEConfig's doc comment.
+				gateway.RedirectServer.Handler = manager.HTTPHandler(gateway.RedirectServer.Handler)
+			}
+		} else {
+			reloader, err := newCertReloader(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+			if err != nil {
+				return nil, err
+			}
+			gateway.tlsCertReloader = reloader
+			gateway.Server.TLSConfig = newTLSConfig(reloader)
+		}
 	}
 
 	return gateway, nil

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"sync"
 
 	"github.com/jmaister/taronja-gateway/config"
@@ -249,16 +250,22 @@ func warnIfImmutableFieldsChanged(oldCfg, newCfg *config.GatewayConfig) {
 			oldCfg.Server.Host, oldCfg.Server.Port, newCfg.Server.Host, newCfg.Server.Port, oldCfg.Server.Host, oldCfg.Server.Port)
 	}
 
-	// Enabling/disabling TLS, or changing which cert/key files it points at,
-	// means switching what protocol the listener speaks — not something a
-	// reload can do without rebinding the socket. This is distinct from the
-	// cert/key *files'* content changing, which hot-reloads independently
-	// of config reload entirely — see Gateway.ReloadTLSCertificate.
+	// Enabling/disabling TLS, switching between a static cert/key pair and
+	// ACME, or changing either one's settings means switching what
+	// protocol/certificate-source the listener uses — not something a
+	// reload can do without rebinding the socket. This is distinct from a
+	// static cert/key *file's* content changing, which hot-reloads
+	// independently of config reload entirely — see
+	// Gateway.ReloadTLSCertificate. reflect.DeepEqual for the ACME struct
+	// pointers: nil-vs-nil and nil-vs-non-nil compare correctly with it,
+	// and it's simpler than field-by-field comparison for ACMEConfig's
+	// Domains slice.
 	if oldCfg.Server.TLS.Enabled != newCfg.Server.TLS.Enabled ||
 		oldCfg.Server.TLS.CertFile != newCfg.Server.TLS.CertFile ||
 		oldCfg.Server.TLS.KeyFile != newCfg.Server.TLS.KeyFile ||
-		oldCfg.Server.TLS.EffectiveRedirectPort() != newCfg.Server.TLS.EffectiveRedirectPort() {
-		log.Printf("Warning: config reload changed server.tls settings, but TLS can't be enabled/disabled or have its cert/key paths or redirect port changed without a full restart (only the *contents* of an already-configured cert/key file hot-reload automatically). The new value is stored but has no effect until then.")
+		oldCfg.Server.TLS.EffectiveRedirectPort() != newCfg.Server.TLS.EffectiveRedirectPort() ||
+		!reflect.DeepEqual(oldCfg.Server.TLS.ACME, newCfg.Server.TLS.ACME) {
+		log.Printf("Warning: config reload changed server.tls settings, but TLS can't be enabled/disabled or have its certificate source (cert/key paths, acme settings) or redirect port changed without a full restart (only the *contents* of an already-configured static cert/key file hot-reload automatically). The new value is stored but has no effect until then.")
 	}
 }
 

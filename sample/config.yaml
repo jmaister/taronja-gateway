@@ -6,17 +6,34 @@ server:
   url: http://localhost:8080
   # tls:
   #   # Disabled by default (plain HTTP). Enable to have the gateway
-  #   # terminate HTTPS itself, on the same server.port above.
+  #   # terminate HTTPS itself, on the same server.port above. Pick exactly
+  #   # one certificate source below — certFile/keyFile and acme are
+  #   # mutually exclusive. See README.md's "TLS / HTTPS" section for the
+  #   # full certificate-format reference and a comparison of the two.
   #   enabled: true
+  #
+  #   # --- Option 1: your own certificate files ---
   #   certFile: /path/to/fullchain.pem
   #   keyFile: /path/to/privkey.pem
-  #   # Plain-HTTP port that redirects every request to HTTPS. Defaults to
-  #   # 80 when tls.enabled and this key is omitted; set to 0 to disable the
-  #   # redirect listener (e.g. if something else already owns port 80).
-  #   # redirectPort: 80
-  #
   #   # Renewing certFile/keyFile in place (e.g. via certbot) is picked up
   #   # automatically, with zero downtime — no restart or reload needed.
+  #
+  #   # --- Option 2: automatic certificates via ACME / Let's Encrypt ---
+  #   # (comment out certFile/keyFile above if using this instead)
+  #   # acme:
+  #   #   domains: ["example.com", "www.example.com"]  # no wildcards
+  #   #   email: admin@example.com                     # optional
+  #   #   # cacheDir: .autocert-cache                   # default shown
+  #   #   # Uncomment while testing, to avoid production rate limits —
+  #   #   # staging certs aren't trusted by real browsers:
+  #   #   # directoryURL: https://acme-staging-v02.api.letsencrypt.org/directory
+  #
+  #   # Plain-HTTP port that redirects every request to HTTPS (and, with
+  #   # acme configured, also answers its "http-01" domain-validation
+  #   # challenge). Defaults to 80 when tls.enabled and this key is
+  #   # omitted; set to 0 to disable the redirect listener (e.g. if
+  #   # something else already owns port 80).
+  #   # redirectPort: 80
 management:
   prefix: _
   logging: true

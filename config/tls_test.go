@@ -95,11 +95,63 @@ func TestLoadConfig_TLSDisabledByDefault(t *testing.T) {
 	assert.False(t, cfg.Server.TLS.Enabled, "TLS must default to disabled when the section is omitted entirely")
 }
 
-func TestLoadConfig_TLSEnabledRequiresCertAndKey(t *testing.T) {
+func TestLoadConfig_TLSEnabledRequiresACertificateSource(t *testing.T) {
 	path := writeServerTestConfig(t, "  host: 127.0.0.1\n  port: 8443\n  tls:\n    enabled: true\n")
 	_, err := LoadConfig(path)
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "neither certFile/keyFile nor acme is set")
+}
+
+func TestLoadConfig_TLSEnabledRequiresBothCertAndKey(t *testing.T) {
+	certPath, _ := writeSelfSignedCert(t)
+	path := writeServerTestConfig(t, "  host: 127.0.0.1\n  port: 8443\n  tls:\n"+
+		"    enabled: true\n    certFile: "+certPath+"\n") // keyFile deliberately omitted
+	_, err := LoadConfig(path)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "certFile and/or keyFile is not set")
+}
+
+func TestLoadConfig_TLSRejectsBothFilesAndACME(t *testing.T) {
+	certPath, keyPath := writeSelfSignedCert(t)
+	path := writeServerTestConfig(t, "  host: 127.0.0.1\n  port: 8443\n  tls:\n"+
+		"    enabled: true\n    certFile: "+certPath+"\n    keyFile: "+keyPath+"\n"+
+		"    acme:\n      domains: [\"example.com\"]\n")
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mutually exclusive")
+}
+
+func TestLoadConfig_TLSACMERequiresAtLeastOneDomain(t *testing.T) {
+	path := writeServerTestConfig(t, "  host: 127.0.0.1\n  port: 8443\n  tls:\n"+
+		"    enabled: true\n    acme:\n      email: admin@example.com\n")
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "acme.domains must list at least one domain")
+}
+
+func TestLoadConfig_TLSACMEDefaultsCacheDir(t *testing.T) {
+	path := writeServerTestConfig(t, "  host: 127.0.0.1\n  port: 8443\n  tls:\n"+
+		"    enabled: true\n    acme:\n      domains: [\"example.com\"]\n")
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Server.TLS.ACME)
+	assert.True(t, filepath.IsAbs(cfg.Server.TLS.ACME.CacheDir))
+	assert.Equal(t, defaultACMECacheDir, filepath.Base(cfg.Server.TLS.ACME.CacheDir))
+}
+
+func TestLoadConfig_TLSACMEHonorsExplicitCacheDirAndDirectoryURL(t *testing.T) {
+	dir := t.TempDir()
+	path := writeServerTestConfig(t, "  host: 127.0.0.1\n  port: 8443\n  tls:\n"+
+		"    enabled: true\n    acme:\n      domains: [\"example.com\", \"www.example.com\"]\n"+
+		"      email: admin@example.com\n      cacheDir: "+dir+"\n"+
+		"      directoryURL: https://acme-staging-v02.api.letsencrypt.org/directory\n")
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Server.TLS.ACME)
+	assert.Equal(t, dir, cfg.Server.TLS.ACME.CacheDir)
+	assert.Equal(t, []string{"example.com", "www.example.com"}, cfg.Server.TLS.ACME.Domains)
+	assert.Equal(t, "admin@example.com", cfg.Server.TLS.ACME.Email)
+	assert.Equal(t, "https://acme-staging-v02.api.letsencrypt.org/directory", cfg.Server.TLS.ACME.DirectoryURL)
 }
 
 func TestLoadConfig_TLSEnabledRejectsUnparseableCert(t *testing.T) {

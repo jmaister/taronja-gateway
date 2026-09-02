@@ -155,13 +155,14 @@ we're working through these one at a time — see status notes.
       `management.compression` flag / `compression` middleware name. See
       `doc/middleware/compression.md`.
 - [x] **TLS termination** — done: static cert/key files (`server.tls.*`),
-      automatic HTTP→HTTPS redirect (`redirectPort`, default 80), and
+      automatic HTTP→HTTPS redirect (`redirectPort`, default 80),
       zero-downtime certificate hot-reload on renewal (watches the cert/key
-      files independently of config reload). See `gateway/tls.go`,
-      `config/tls.go`, and the README's "TLS / HTTPS" section. Automatic
-      ACME/Let's Encrypt issuance was explicitly deferred — see the "Cert
-      source" decision recorded when this was implemented — and would be a
-      separate follow-up if ever needed.
+      files independently of config reload), **and** automatic ACME /
+      Let's Encrypt issuance+renewal (`server.tls.acme`, mutually exclusive
+      with `certFile`/`keyFile` — no wildcard domains, since that needs a
+      `dns-01` challenge this integration doesn't implement). See
+      `gateway/tls.go`, `config/tls.go`, and the README's "TLS / HTTPS"
+      section (including the certificate file format reference).
 - [ ] **Upstream health checks (active + passive)** for the load balancer
       (`gateway/loadbalancer.go`). Today it only reacts to a failed connection
       *during* a request — no background probing, no ejection of a backend
