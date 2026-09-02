@@ -47,6 +47,13 @@ middleware:
     - name: traffic_metrics
 ```
 
+See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
+for which form to use, and the important gotcha: an explicit
+`middleware:` section replaces *every* legacy flag at once, not just this
+one. It's also the only way to enable this middleware without the other
+two "analytics" ones — `analytics: true` always turns on all three
+together.
+
 ## Config options
 
 None. `GetDefaultConfig()` returns an empty struct — listing

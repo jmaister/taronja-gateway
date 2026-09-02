@@ -59,6 +59,11 @@ middleware:
         blockMinutes: 15
 ```
 
+See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
+for which form to use, and the important gotcha: an explicit
+`middleware:` section replaces *every* legacy flag at once, not just this
+one.
+
 ## Config options
 
 All under `management.rateLimiter` (legacy flag path) or a `rateLimiter:`

@@ -36,3 +36,28 @@ Route-level middleware (authentication, cache-control headers) isn't part
 of this global chain and isn't covered here — see the main README's
 [Routes](../../README.md#routes) section and
 [`doc/CACHE_CONTROL.md`](../CACHE_CONTROL.md).
+
+## Two ways to enable any of these
+
+Every page above shows two YAML snippets under "Enabling it" — a legacy
+`management.*` flag and an explicit `middleware:` section entry — without
+saying which to reach for. Here's the comparison:
+
+| | Legacy `management.*` flags | Explicit `middleware:` section |
+|---|---|---|
+| Where it lives | Scattered: `management.logging`, `.compression`, `.analytics`, `.rateLimiter`, `.cors`, `.excludeStaticAssets` | One ordered list: `middleware.global[]` |
+| Execution order | Fixed — the order in the table above, not adjustable | Whatever order you list entries in |
+| Enable/disable granularity | Per flag, except the `analytics` group, which turns [`ja4_fingerprint`](ja4-fingerprint.md), [`session_extraction`](session-extraction.md), and [`traffic_metrics`](traffic-metrics.md) on/off **together** — no way to have just one or two of them | Fully individual — list exactly the middlewares you want, in any combination, including just one of the three "analytics" middlewares alone |
+| Per-entry config overrides | Not possible — one `management.rateLimiter`/`.cors`/`.excludeStaticAssets` value applies everywhere | Possible for `rate_limiter`, `cors`, and `traffic_metrics`: a config block on that entry overrides the shared `management.*` value for just that one middleware |
+| Explicitly running zero global middleware | Not expressible — the absence of every flag just means "nothing enabled," indistinguishable from "not thought about yet" | `middleware: {global: []}` — an explicit, self-documenting empty chain |
+| Best for | An existing config file, or a setup that's happy with the default order and the common on/off flags | Needing a non-default order, a per-middleware config override, or selective control over the `analytics` group |
+
+**The one thing to know before adding a `middleware:` section: it's
+all-or-nothing.** The moment a config file has a `middleware:` section with
+a `global:` key — even one entry — it **fully replaces every legacy flag**,
+not just the middleware(s) you listed. A `middleware: {global: [{name:
+rate_limiter, ...}]}` added purely to reorder or reconfigure the rate
+limiter silently turns off logging, CORS, compression, and analytics too,
+if their `management.*` flags were still set in the same file — those flags
+are no longer read at all once the section exists. Bring every middleware
+you still want across explicitly when you switch.

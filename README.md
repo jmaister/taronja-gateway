@@ -430,6 +430,11 @@ middleware:
       enabled: false   # listed but disabled
 ```
 
+See [doc/middleware/README.md#two-ways-to-enable-any-of-these](doc/middleware/README.md#two-ways-to-enable-any-of-these)
+for a full comparison of the two forms (including the "fully replaces those
+flags" gotcha above spelled out in more detail — it's easy to trip on when
+adding this section just to reorder or reconfigure one middleware).
+
 See [Middleware Architecture](#middleware-architecture) below for how to
 inspect this at runtime, and `doc/middleware_development.md` for adding your
 own middleware.

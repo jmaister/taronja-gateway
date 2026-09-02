@@ -66,6 +66,11 @@ middleware:
     - name: compression
 ```
 
+See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
+for which form to use, and the important gotcha: an explicit
+`middleware:` section replaces *every* legacy flag at once, not just this
+one.
+
 ## Config options
 
 None. Listing it (via either form above) just enables it.
