@@ -44,6 +44,7 @@ Features table, shows what is implemented and what is planned.
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
+| Response Compression (gzip/deflate) | ✅ | v1.0.0 |
 | Rate Limiter                  | ✅       | v0.0.22 |
 | - Requess per minute per IP   | ✅       | v0.0.22 |
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
@@ -260,6 +261,7 @@ all of them together (options, dependencies, chain order).
 
 - `prefix`: URL prefix for management endpoints (default: `_`)
 - `logging`: Enable/disable request logging — see [`logging`](doc/middleware/logging.md)
+- `compression`: Enable gzip/deflate response compression, negotiated per-request from the client's `Accept-Encoding` header — no other options. See [`compression`](doc/middleware/compression.md)
 - `analytics`: Enable/disable traffic analytics and metrics — turns on the
   [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md),
   [`session_extraction`](doc/middleware/session-extraction.md), and
@@ -278,16 +280,18 @@ all of them together (options, dependencies, chain order).
 
 ### Middleware (optional, advanced)
 
-By default, the global middleware chain (CORS, rate limiting, JA4
-fingerprinting, session extraction, traffic metrics, request logging — see
-[doc/middleware/](doc/middleware/README.md) for what each one does) is
-controlled by the `cors` / `logging` / `analytics` / `rateLimiter` flags
-above. For explicit control over which middleware runs and in what order, add
-a `middleware:` section — when present it fully replaces those flags:
+By default, the global middleware chain (compression, CORS, rate limiting,
+JA4 fingerprinting, session extraction, traffic metrics, request logging —
+see [doc/middleware/](doc/middleware/README.md) for what each one does) is
+controlled by the `compression` / `cors` / `logging` / `analytics` /
+`rateLimiter` flags above. For explicit control over which middleware runs
+and in what order, add a `middleware:` section — when present it fully
+replaces those flags:
 
 ```yaml
 middleware:
   global:
+    - name: compression
     - name: cors
       cors:
         allowedOrigins: ["https://app.example.com"]
@@ -530,10 +534,11 @@ See the complete example configuration in `sample/config.yaml`.
 
 # Middleware Architecture
 
-The gateway's global middleware chain (rate limiting, JA4 fingerprinting,
-session extraction, traffic metrics, request logging) is built from a small
-Factory + Registry system rather than hardcoded conditionals, so it can be
-inspected, configured declaratively, monitored, and extended. For what each
+The gateway's global middleware chain (compression, rate limiting, JA4
+fingerprinting, session extraction, traffic metrics, request logging) is
+built from a small Factory + Registry system rather than hardcoded
+conditionals, so it can be inspected, configured declaratively, monitored,
+and extended. For what each
 individual middleware does, its config options, and its dependencies, see
 [doc/middleware/](doc/middleware/README.md) — one reference page per
 middleware. This section is about the system they're all built on:

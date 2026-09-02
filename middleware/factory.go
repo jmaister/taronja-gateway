@@ -70,6 +70,30 @@ func (f *CORSFactory) GetDefaultConfig() interface{} {
 	return config.CORSConfig{}
 }
 
+// --- CompressionFactory -----------------------------------------------------
+
+// CompressionFactory creates the gzip/deflate response compression
+// middleware. Has no runtime dependencies and no configuration of its own —
+// see CompressionMiddleware's doc comment for why.
+type CompressionFactory struct{ ConcreteFactory }
+
+func NewCompressionFactory() *CompressionFactory {
+	return &CompressionFactory{
+		ConcreteFactory: ConcreteFactory{
+			name:        config.MiddlewareNameCompression,
+			description: "Compresses response bodies with gzip or deflate when the client accepts it",
+		},
+	}
+}
+
+func (f *CompressionFactory) Create(cfg interface{}) (Middleware, error) {
+	return CompressionMiddleware, nil
+}
+
+func (f *CompressionFactory) GetDefaultConfig() interface{} {
+	return struct{}{}
+}
+
 // --- RateLimiterFactory ---------------------------------------------------
 
 // RateLimiterFactory creates the request rate limiting / vulnerability scan detection middleware.

@@ -1,7 +1,7 @@
 # Global Middleware Reference
 
 One page per built-in global middleware — what it does, how to enable and
-configure it, and what it depends on. These are the six middlewares
+configure it, and what it depends on. These are the seven middlewares
 `middleware.NewGlobalMiddlewareRegistry` registers; see [Middleware
 Architecture](../../README.md#middleware-architecture) in the main README
 for the factory/registry system they're built on, how to inspect a running
@@ -12,6 +12,7 @@ Listed in the order they run by default:
 
 | Middleware | Enabled by default | Depends on | Summary |
 |---|---|---|---|
+| [`compression`](compression.md) | No | — | Compresses response bodies with gzip or deflate when the client accepts it. |
 | [`cors`](cors.md) | No | — | Adds CORS response headers for cross-origin requests to the management API. |
 | [`rate_limiter`](rate-limiter.md) | No | — | Limits request rate per client IP and detects vulnerability scans. |
 | [`ja4_fingerprint`](ja4-fingerprint.md) | No¹ | — | Computes and caches a JA4H fingerprint for each request. |
@@ -28,7 +29,8 @@ Every middleware here has no config beyond enable/disable **except**
 `rate_limiter` (requests-per-minute, error, and vulnerability-scan limits),
 `cors` (allowed origins/methods/headers), and `traffic_metrics`
 (`excludeStaticAssets`) — see their individual pages for the full option
-tables.
+tables. `compression` in particular is deliberately option-free by design,
+not just undocumented — see its page for why.
 
 Route-level middleware (authentication, cache-control headers) isn't part
 of this global chain and isn't covered here — see the main README's

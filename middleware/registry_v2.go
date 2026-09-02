@@ -189,6 +189,7 @@ func (r *MiddlewareRegistryV2) ValidateSpecs(specs []MiddlewareSpec) error {
 // validation, only GetName()/GetDependencies().
 func referenceGlobalFactories() []MiddlewareFactory {
 	return []MiddlewareFactory{
+		NewCompressionFactory(),
 		NewCORSFactory(),
 		NewRateLimiterFactory(nil),
 		NewJA4Factory(),
@@ -228,9 +229,11 @@ func ValidateGlobalChainSpecs(specs []MiddlewareSpec) error {
 // absent section and silently falling back to the legacy flags below.
 //
 // Otherwise (Global is nil), the legacy management.analytics /
-// management.logging / management.rateLimiter flags are translated into the
-// equivalent specs — identical to Phase 1 / the original hardcoded
-// BuildGlobalChain — so existing config files keep working unchanged.
+// management.logging / management.rateLimiter / management.cors /
+// management.compression flags are translated into the equivalent specs —
+// identical to Phase 1 / the original hardcoded BuildGlobalChain (plus cors
+// and compression, added later the same way) — so existing config files
+// keep working unchanged.
 func ResolveGlobalChainSpecs(gatewayConfig *config.GatewayConfig) ([]MiddlewareSpec, error) {
 	if gatewayConfig.Middleware.Global != nil {
 		return specsFromMiddlewareSection(gatewayConfig)
@@ -320,12 +323,24 @@ func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]Middlewa
 }
 
 // legacySpecsFromConfig derives specs from the pre-Phase-2 configuration
-// flags: management.cors, management.rateLimiter, management.analytics,
-// management.logging.
+// flags: management.compression, management.cors, management.rateLimiter,
+// management.analytics, management.logging.
 func legacySpecsFromConfig(gatewayConfig *config.GatewayConfig) []MiddlewareSpec {
 	specs := []MiddlewareSpec{}
 
-	// CORS runs first, before anything else gets a chance to reject a
+	// Compression runs first (outermost): it wraps the ResponseWriter that
+	// every other middleware and the final route handler write through, so
+	// it must sit at the very edge of the chain to compress the bytes that
+	// actually reach the socket. Middlewares added after it (traffic_metrics,
+	// logging) still observe the uncompressed status/byte count the handler
+	// produced, since compression only affects what compressingResponseWriter
+	// forwards to the real ResponseWriter beneath it, not what gets recorded
+	// by wrappers above it in the chain.
+	if gatewayConfig.Management.Compression {
+		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameCompression})
+	}
+
+	// CORS runs next, before anything else gets a chance to reject a
 	// preflight OPTIONS request (rate limiting, auth, ...) — a preflight is
 	// never meant to reach application logic at all, so it needs to be
 	// answered before any of that runs.

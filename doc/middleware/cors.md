@@ -1,9 +1,11 @@
 # CORS
 
 **Middleware name:** `cors`
-**Global chain position:** first — before rate limiting or anything else,
-since a CORS preflight (`OPTIONS`) request is never meant to reach
-application logic, rate limiting included.
+**Global chain position:** second, right after `compression` (which only
+wraps the response writer and never rejects a request) — and first among
+the middlewares that can actually reject or answer a request, since a CORS
+preflight (`OPTIONS`) request is never meant to reach application logic,
+rate limiting included.
 **Depends on:** nothing.
 **Enabled by default:** no.
 

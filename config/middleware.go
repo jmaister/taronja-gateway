@@ -7,6 +7,7 @@ package config
 // needing to import middleware (which already imports config).
 const (
 	MiddlewareNameCORS              = "cors"
+	MiddlewareNameCompression       = "compression"
 	MiddlewareNameRateLimiter       = "rate_limiter"
 	MiddlewareNameJA4Fingerprint    = "ja4_fingerprint"
 	MiddlewareNameSessionExtraction = "session_extraction"
@@ -19,6 +20,7 @@ const (
 // config load time.
 var KnownMiddlewareNames = []string{
 	MiddlewareNameCORS,
+	MiddlewareNameCompression,
 	MiddlewareNameRateLimiter,
 	MiddlewareNameJA4Fingerprint,
 	MiddlewareNameSessionExtraction,
@@ -47,9 +49,11 @@ type TrafficMetricsConfig struct {
 //
 // rate_limiter, cors, and traffic_metrics have their own typed per-entry
 // configuration; the other built-in middlewares (ja4_fingerprint,
-// session_extraction, logging) take no options today, so listing them just
-// enables/positions them. Per-middleware config for the rest is future work
-// (see doc/refactor01.md Improvement 4) — adding it here without matching
+// session_extraction, logging, compression) take no options today, so
+// listing them just enables/positions them. compression in particular is
+// deliberately option-free — see middleware.CompressionMiddleware's doc
+// comment for why. Per-middleware config for the rest is future work (see
+// doc/refactor01.md Improvement 4) — adding it here without matching
 // runtime support would be misleading.
 type MiddlewareEntryConfig struct {
 	Name           string                `yaml:"name"`                     // Middleware identifier. Must be one of KnownMiddlewareNames.
