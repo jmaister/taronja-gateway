@@ -139,12 +139,17 @@ func NewTrafficMetric(req *http.Request) *db.TrafficMetric {
 		Path:           req.URL.Path,
 		HttpStatus:     0,
 		ResponseTimeNs: 0,
-		Timestamp:      time.Now(),
-		ResponseSize:   0,
-		Error:          "",
-		UserID:         "",
-		SessionID:      "",
-		IsStaticAsset:  IsStaticAssetPath(req.URL.Path),
-		ClientInfo:     *NewClientInfo(req),
+		// UTC explicitly, not just relying on TrafficMetric.BeforeCreate's
+		// defensive normalization: db/timeseries.go's SQL-side bucketing
+		// interprets the stored value as UTC wall-clock time directly, so
+		// this is the one call site that actually needs to get it right,
+		// not just eventually-corrected before it hits the database.
+		Timestamp:     time.Now().UTC(),
+		ResponseSize:  0,
+		Error:         "",
+		UserID:        "",
+		SessionID:     "",
+		IsStaticAsset: IsStaticAssetPath(req.URL.Path),
+		ClientInfo:    *NewClientInfo(req),
 	}
 }

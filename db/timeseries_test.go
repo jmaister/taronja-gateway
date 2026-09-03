@@ -157,3 +157,64 @@ func TestGetTimeSeries_BucketsAndBackfillsAndCountsDistinctly(t *testing.T) {
 	assert.Equal(t, 1, hour10.RequestCount)
 	assert.Equal(t, 0, hour10.UniqueFingerprints, "an empty fingerprint must not count as a unique value")
 }
+
+func TestGetTimeSeries_NewVsReturningVisitors(t *testing.T) {
+	SetupTestDB(t.Name())
+	repo := &TrafficMetricRepositoryDB{DB: GetConnection()}
+
+	day := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	queryStart := day.Add(8 * time.Hour)
+
+	seed := []TrafficMetric{
+		// fp-veteran: first ever seen well BEFORE the query window even
+		// starts. Its only appearance *inside* the window (hour 11) must
+		// count as returning, not new — and must not appear in any
+		// bucket's NewVisitors at all, since its true first-seen bucket
+		// is outside the requested range entirely.
+		{Timestamp: day.Add(-30 * 24 * time.Hour), HttpStatus: 200, ClientInfo: ClientInfo{Fingerprint: "fp-veteran"}},
+		{Timestamp: day.Add(11 * time.Hour), HttpStatus: 200, ClientInfo: ClientInfo{Fingerprint: "fp-veteran"}},
+
+		// fp-new-then-back: first ever seen at hour 8, *inside* the
+		// window, then seen again at hour 10. Hour 8 must count it as
+		// new; hour 10 must count it as returning.
+		{Timestamp: day.Add(8 * time.Hour), HttpStatus: 200, ClientInfo: ClientInfo{Fingerprint: "fp-new-then-back"}},
+		{Timestamp: day.Add(10 * time.Hour), HttpStatus: 200, ClientInfo: ClientInfo{Fingerprint: "fp-new-then-back"}},
+
+		// fp-brand-new: only ever appears once, at hour 9, with no prior
+		// history at all. Purely new, no return visit in range.
+		{Timestamp: day.Add(9 * time.Hour), HttpStatus: 200, ClientInfo: ClientInfo{Fingerprint: "fp-brand-new"}},
+	}
+	for i := range seed {
+		seed[i].HttpMethod = "GET"
+		seed[i].Path = "/test"
+		require.NoError(t, repo.DB.Create(&seed[i]).Error)
+	}
+
+	points, err := repo.GetTimeSeries(queryStart, queryStart.Add(4*time.Hour), GranularityHour)
+	require.NoError(t, err)
+
+	byHour := make(map[int]TimeSeriesPoint, len(points))
+	for _, p := range points {
+		byHour[p.Timestamp.Hour()] = p
+	}
+
+	hour8 := byHour[8]
+	assert.Equal(t, 1, hour8.UniqueFingerprints)
+	assert.Equal(t, 1, hour8.NewVisitors, "fp-new-then-back's first-ever appearance is this bucket")
+	assert.Equal(t, 0, hour8.ReturningVisitors)
+
+	hour9 := byHour[9]
+	assert.Equal(t, 1, hour9.UniqueFingerprints)
+	assert.Equal(t, 1, hour9.NewVisitors, "fp-brand-new has no prior history at all")
+	assert.Equal(t, 0, hour9.ReturningVisitors)
+
+	hour10 := byHour[10]
+	assert.Equal(t, 1, hour10.UniqueFingerprints)
+	assert.Equal(t, 0, hour10.NewVisitors, "fp-new-then-back was already seen at hour 8")
+	assert.Equal(t, 1, hour10.ReturningVisitors)
+
+	hour11 := byHour[11]
+	assert.Equal(t, 1, hour11.UniqueFingerprints)
+	assert.Equal(t, 0, hour11.NewVisitors, "fp-veteran's true first-ever appearance is 30 days before this query range")
+	assert.Equal(t, 1, hour11.ReturningVisitors)
+}

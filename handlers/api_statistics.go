@@ -321,6 +321,8 @@ func (s *StrictApiServer) GetRequestTimeSeries(ctx context.Context, request api.
 			Timestamp:           p.Timestamp,
 			RequestCount:        p.RequestCount,
 			UniqueFingerprints:  p.UniqueFingerprints,
+			NewVisitors:         p.NewVisitors,
+			ReturningVisitors:   p.ReturningVisitors,
 			UniqueUsers:         p.UniqueUsers,
 			ErrorCount:          p.ErrorCount,
 			AverageResponseTime: float32(p.AverageResponseTimeMs),

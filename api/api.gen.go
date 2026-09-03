@@ -492,13 +492,19 @@ type TimeSeriesPoint struct {
 	// ErrorCount Requests with an HTTP status of 400 or higher in this bucket.
 	ErrorCount int `json:"errorCount"`
 
+	// NewVisitors Of uniqueFingerprints, how many had their first-ever appearance (across this gateway's whole recorded history, not just the requested range) fall within this bucket.
+	NewVisitors int `json:"newVisitors"`
+
 	// RequestCount Total requests recorded in this bucket.
 	RequestCount int `json:"requestCount"`
+
+	// ReturningVisitors Of uniqueFingerprints, how many were already known from an earlier bucket — possibly long before the requested range even started. uniqueFingerprints - newVisitors.
+	ReturningVisitors int `json:"returningVisitors"`
 
 	// Timestamp Start of this bucket, in UTC.
 	Timestamp time.Time `json:"timestamp"`
 
-	// UniqueFingerprints Distinct client fingerprints (ClientInfo.Fingerprint) seen in this bucket — a proxy for unique visitors/devices, including anonymous ones. See doc/middleware/ja4-fingerprint.md for what "fingerprint" means here and its reliability caveats.
+	// UniqueFingerprints Distinct client fingerprints (ClientInfo.Fingerprint) seen in this bucket — a proxy for unique visitors/devices, including anonymous ones. See doc/middleware/ja4-fingerprint.md for what "fingerprint" means here and its reliability caveats. Equal to newVisitors + returningVisitors.
 	UniqueFingerprints int `json:"uniqueFingerprints"`
 
 	// UniqueUsers Distinct authenticated user IDs seen in this bucket. Excludes anonymous traffic.

@@ -1484,7 +1484,20 @@ components:
             Distinct client fingerprints (ClientInfo.Fingerprint) seen in
             this bucket — a proxy for unique visitors/devices, including
             anonymous ones. See doc/middleware/ja4-fingerprint.md for what
-            "fingerprint" means here and its reliability caveats.
+            "fingerprint" means here and its reliability caveats. Equal to
+            newVisitors + returningVisitors.
+        newVisitors:
+          type: integer
+          description: >-
+            Of uniqueFingerprints, how many had their first-ever
+            appearance (across this gateway's whole recorded history, not
+            just the requested range) fall within this bucket.
+        returningVisitors:
+          type: integer
+          description: >-
+            Of uniqueFingerprints, how many were already known from an
+            earlier bucket — possibly long before the requested range even
+            started. uniqueFingerprints - newVisitors.
         uniqueUsers:
           type: integer
           description: Distinct authenticated user IDs seen in this bucket. Excludes anonymous traffic.
@@ -1499,6 +1512,8 @@ components:
         - timestamp
         - requestCount
         - uniqueFingerprints
+        - newVisitors
+        - returningVisitors
         - uniqueUsers
         - errorCount
         - averageResponseTime

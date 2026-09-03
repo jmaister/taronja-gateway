@@ -49,8 +49,13 @@ type ClientInfo struct {
 	// middleware/fingerprint.StableFingerprint) over JA4H
 	// (fingerprint.TypeJA4H, always available but the noisiest of the
 	// three — see doc/middleware/ja4-fingerprint.md). Empty if none of the
-	// three produced anything at all.
-	Fingerprint string `gorm:"type:varchar(100)" json:"fingerprint"`
+	// three produced anything at all. Indexed (on whichever table embeds
+	// ClientInfo) since db/timeseries.go's new-vs-returning-visitor
+	// calculation does a MIN(timestamp) GROUP BY fingerprint over the
+	// entire TrafficMetric table — an unindexed scan of that would get
+	// more expensive as the table grows, the opposite of that feature's
+	// entire point.
+	Fingerprint string `gorm:"type:varchar(100);index" json:"fingerprint"`
 	// FingerprintType names which algorithm produced Fingerprint —
 	// fingerprint.TypeJA4TLS ("ja4_tls"), fingerprint.TypeStable
 	// ("stable"), or fingerprint.TypeJA4H ("ja4h"). Empty exactly when
@@ -150,6 +155,25 @@ type TrafficMetric struct {
 	IsStaticAsset  bool      `gorm:"not null;index"`             // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
 	// Embed common client and geographical information
 	ClientInfo
+}
+
+// BeforeCreate normalizes Timestamp to UTC before it's persisted.
+// db/timeseries.go's SQL-side bucketing (GetTimeSeries) extracts just the
+// "YYYY-MM-DD HH:MM:SS" prefix of the stored value — the pure-Go SQLite
+// driver this project uses stores time.Time as Go's default .String()
+// representation ("2026-06-10 08:00:00 +0200 CEST"), which none of
+// SQLite's date/time functions parse, but stripping the trailing
+// offset/zone leaves a format they do — and interprets that prefix
+// directly as UTC wall-clock time, with no offset conversion applied. A
+// non-UTC Timestamp would silently bucket at the wrong hour (its own local
+// wall-clock hour, not the equivalent UTC one) without this normalization,
+// which is why it happens here — once, defensively, on every insert path
+// (including CreateBatch, since GORM invokes model hooks per-record in a
+// batch create) — rather than trusting every call site that constructs a
+// TrafficMetric to remember `.UTC()` itself.
+func (t *TrafficMetric) BeforeCreate(tx *gorm.DB) error {
+	t.Timestamp = t.Timestamp.UTC()
+	return nil
 }
 
 // TrafficMetricWithUser combines TrafficMetric with User information for detailed reports

@@ -546,6 +546,8 @@ func TestGetRequestTimeSeries_Success(t *testing.T) {
 	require.NotNil(t, hour2, "the 02:00 bucket must be present")
 	assert.Equal(t, 2, hour2.RequestCount)
 	assert.Equal(t, 2, hour2.UniqueFingerprints)
+	assert.Equal(t, 2, hour2.NewVisitors, "both fingerprints have no prior history at all")
+	assert.Equal(t, 0, hour2.ReturningVisitors)
 	assert.Equal(t, 1, hour2.ErrorCount)
 	assert.InDelta(t, 2.0, hour2.AverageResponseTime, 0.01, "average of 1ms and 3ms")
 }

@@ -40,7 +40,14 @@ function formatBucketLabel(timestamp: string, granularity: TimeSeriesGranularity
 
 export interface TimeSeriesLine {
     /** Which TimeSeriesPoint numeric field this line plots. */
-    key: 'requestCount' | 'uniqueFingerprints' | 'uniqueUsers' | 'errorCount' | 'averageResponseTime';
+    key:
+        | 'requestCount'
+        | 'uniqueFingerprints'
+        | 'newVisitors'
+        | 'returningVisitors'
+        | 'uniqueUsers'
+        | 'errorCount'
+        | 'averageResponseTime';
     label: string;
     color: string;
 }

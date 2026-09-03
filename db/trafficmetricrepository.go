@@ -104,6 +104,21 @@ func (r *TrafficMetricRepositoryDB) CreateBatch(stats []*TrafficMetric) error {
 
 // FindByDateRange retrieves statistics within a date range.
 func (r *TrafficMetricRepositoryDB) FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error) {
+	// .UTC() here, and at the top of every other method in this file that
+	// takes a date range: `timestamp BETWEEN ? AND ?` compares the stored
+	// value's text representation against these bound parameters' own text
+	// representation (modernc.org/sqlite's driver binds a time.Time as its
+	// default .String() form, and the `timestamp` column has TEXT affinity
+	// — there's no numeric/chronological comparison happening underneath).
+	// TrafficMetric.BeforeCreate always normalizes what gets *stored* to
+	// UTC; without normalizing the query bounds the same way, a caller
+	// passing a non-UTC time.Time (e.g. plain time.Now(), which carries the
+	// server's local zone) would compare "2026-...+0000 UTC" stored values
+	// against "2026-...+0100 BST" bounds — different strings for the same
+	// instant, silently matching the wrong rows (confirmed by hand: this
+	// caused three existing tests to fail the moment BeforeCreate started
+	// normalizing storage without this normalizing the read side too).
+	startDate, endDate = startDate.UTC(), endDate.UTC()
 	var stats []TrafficMetric
 	err := r.DB.Where("timestamp BETWEEN ? AND ?", startDate, endDate).Find(&stats).Error
 	if err != nil {
@@ -126,6 +141,7 @@ func (r *TrafficMetricRepositoryDB) FindByPath(path string, limit int) ([]Traffi
 
 // GetAverageResponseTime calculates the average response time within a date range.
 func (r *TrafficMetricRepositoryDB) GetAverageResponseTime(startDate, endDate time.Time) (float64, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var result struct {
 		Average float64
 	}
@@ -145,6 +161,7 @@ func (r *TrafficMetricRepositoryDB) GetAverageResponseTime(startDate, endDate ti
 
 // GetRequestCountByStatus returns request counts grouped by status code within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByStatus(startDate, endDate time.Time) (map[int]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		HttpStatus int
 		Count      int
@@ -171,6 +188,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByStatus(startDate, endDate t
 
 // GetTotalRequestCount returns the total number of requests within a date range.
 func (r *TrafficMetricRepositoryDB) GetTotalRequestCount(startDate, endDate time.Time) (int64, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var count int64
 	err := r.DB.Model(&TrafficMetric{}).
 		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
@@ -186,6 +204,7 @@ func (r *TrafficMetricRepositoryDB) GetTotalRequestCount(startDate, endDate time
 
 // GetAverageResponseSize calculates the average response size within a date range.
 func (r *TrafficMetricRepositoryDB) GetAverageResponseSize(startDate, endDate time.Time) (float64, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var result struct {
 		Average float64
 	}
@@ -205,6 +224,7 @@ func (r *TrafficMetricRepositoryDB) GetAverageResponseSize(startDate, endDate ti
 
 // GetRequestCountByCountry returns request counts grouped by country within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByCountry(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		Country string
 		Count   int
@@ -231,6 +251,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByCountry(startDate, endDate 
 
 // GetRequestCountByDeviceType returns request counts grouped by device type within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByDeviceType(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		DeviceFamily string
 		Count        int
@@ -257,6 +278,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByDeviceType(startDate, endDa
 
 // GetRequestCountByPlatform returns request counts grouped by platform within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		OSFamily string
 		Count    int
@@ -283,6 +305,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByPlatform(startDate, endDate
 
 // GetRequestCountByBrowser returns request counts grouped by browser within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		BrowserFamily string
 		Count         int
@@ -309,6 +332,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByBrowser(startDate, endDate 
 
 // GetRequestCountByUser returns request counts grouped by user within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		Username string
 		Count    int
@@ -342,6 +366,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate tim
 // fingerprint.SelectFingerprint and GetRequestCountByFingerprintType if the
 // algorithm breakdown matters.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		Fingerprint string
 		Count       int
@@ -371,6 +396,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprint(startDate, endD
 // (ClientInfo.FingerprintType — fingerprint.TypeJA4TLS/TypeStable/TypeJA4H)
 // within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		FingerprintType string
 		Count           int
@@ -399,6 +425,16 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprintType(startDate, 
 // optionally filtered to only static-asset requests (isStatic true), only
 // non-static requests (isStatic false), or both (isStatic nil).
 func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error) {
+	// see FindByDateRange's comment for why
+	if start != nil {
+		utcStart := start.UTC()
+		start = &utcStart
+	}
+	if end != nil {
+		utcEnd := end.UTC()
+		end = &utcEnd
+	}
+
 	var stats []TrafficMetricWithUser
 	query := r.DB.Model(&TrafficMetric{}).Preload("User")
 	if start != nil && end != nil {

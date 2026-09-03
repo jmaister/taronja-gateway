@@ -171,6 +171,15 @@ function TrafficOverTimeSection() {
                             ]}
                         />
                         <TimeSeriesChart
+                            title="New vs Returning Visitors"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[
+                                { key: 'newVisitors', label: 'New', color: '#48BB78' },
+                                { key: 'returningVisitors', label: 'Returning', color: '#4299E1' },
+                            ]}
+                        />
+                        <TimeSeriesChart
                             title="Errors Over Time"
                             points={data.points}
                             granularity={data.granularity}
