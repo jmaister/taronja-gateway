@@ -13,8 +13,11 @@ import (
 // local zone either — every assertion below would still pass by accident if
 // it merely happened to match the test machine's TZ, so a value nothing in
 // this codebase could confuse for "already UTC" is what actually exercises
-// the normalization.
-var nonUTC = time.FixedZone("TEST+0500", 5*60*60)
+// the normalization. Named "IST" (a real zone abbreviation, coincidentally
+// also +05:00 in reality) rather than something synthetic: the driver's own
+// decode of a stored zone abbreviation only recognizes plain alphabetic
+// text, same as every real zone name.
+var nonUTC = time.FixedZone("IST", 5*60*60)
 
 // assertStoredUTC re-reads a single time value straight out of SQLite via a
 // fresh query (not off the in-memory struct a hook already normalized in

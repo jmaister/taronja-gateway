@@ -68,6 +68,13 @@ func Init() {
 		panic("Failed to migration DB: " + err2.Error())
 	}
 
+	// Data-level migrations AutoMigrate itself can't do (see
+	// applyDBMigrations' comment) — after AutoMigrate, since a migration may
+	// depend on a column/table it only just added.
+	if err := applyDBMigrations(db); err != nil {
+		panic("Failed to apply DB migrations: " + err.Error())
+	}
+
 	conn = db
 }
 
