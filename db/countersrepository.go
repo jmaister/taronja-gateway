@@ -140,8 +140,8 @@ func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*Counte
 			UserID:      userID,
 			CounterID:   counterID,
 			Balance:     0,
-			LastUpdated: time.Now(), // Use current time for users with no history
-			HasHistory:  false,      // User has no transaction history
+			LastUpdated: time.Now().UTC(), // Use current time (UTC, matching the CreatedAt this stands in for) for users with no history
+			HasHistory:  false,            // User has no transaction history
 		}, nil
 	}
 

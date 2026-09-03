@@ -1,6 +1,8 @@
 package db
 
 import (
+	"time"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -8,6 +10,20 @@ import (
 )
 
 var conn *gorm.DB
+
+// utcNowFunc replaces GORM's default clock (a bare time.Now(), which carries
+// the server process's local zone) so every timestamp GORM sets on our
+// behalf — gorm.Model's CreatedAt/UpdatedAt/DeletedAt on every model that
+// embeds it, and any autoCreateTime/autoUpdateTime-tagged field (Token's
+// CreatedAt/UpdatedAt) — is stored as UTC, consistently, regardless of what
+// timezone the host machine happens to be running in. This doesn't cover
+// fields the application sets explicitly outside GORM's own create/update
+// bookkeeping (e.g. Session.ValidUntil, Token.ExpiresAt) — those are
+// normalized individually, at the model's BeforeSave hook or the call site
+// that constructs them, since GORM's clock never touches them.
+func utcNowFunc() time.Time {
+	return time.Now().UTC()
+}
 
 func Init() {
 	// Don't re-initialize if already done
@@ -28,7 +44,9 @@ func Init() {
 	db, err := gorm.Open(sqlite.Dialector{
 		DriverName: "sqlite",
 		DSN:        dsn,
-	}, &gorm.Config{})
+	}, &gorm.Config{
+		NowFunc: utcNowFunc,
+	})
 	if err != nil {
 		panic("Failed to connect database: " + err.Error())
 	}
@@ -69,7 +87,8 @@ func SetupTestDB(testName string) {
 		DriverName: "sqlite",
 		DSN:        dbName,
 	}, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent), // Suppress logging during tests
+		Logger:  logger.Default.LogMode(logger.Silent), // Suppress logging during tests
+		NowFunc: utcNowFunc,
 	})
 	if err != nil {
 		panic("Failed to connect to test database: " + err.Error())

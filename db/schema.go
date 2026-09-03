@@ -96,7 +96,12 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// BeforeSave will handle password encryption if the password field is set
+// BeforeSave will handle password encryption if the password field is set,
+// and normalizes PasswordResetExpires/EmailConfirmationExpires to UTC —
+// see TrafficMetric.BeforeCreate's comment for why this needs doing
+// defensively here rather than trusting every call site that sets these
+// (e.g. a password-reset handler building the expiry from time.Now(), which
+// carries the server's local zone) to remember .UTC() itself.
 func (u *User) BeforeSave(tx *gorm.DB) error {
 	if u.Password != "" && !encryption.IsPasswordHashed(u.Password) {
 		hashedPassword, err := encryption.GeneratePasswordHash(u.Password)
@@ -104,6 +109,14 @@ func (u *User) BeforeSave(tx *gorm.DB) error {
 			return err
 		}
 		u.Password = hashedPassword
+	}
+	if u.PasswordResetExpires != nil {
+		utcExpires := u.PasswordResetExpires.UTC()
+		u.PasswordResetExpires = &utcExpires
+	}
+	if u.EmailConfirmationExpires != nil {
+		utcExpires := u.EmailConfirmationExpires.UTC()
+		u.EmailConfirmationExpires = &utcExpires
 	}
 	return nil
 }
@@ -137,6 +150,30 @@ type Session struct {
 
 	// Embed common client information
 	ClientInfo
+}
+
+// BeforeSave normalizes ValidUntil, LastActivity, and ClosedOn to UTC
+// before they're persisted — see TrafficMetric.BeforeCreate's comment for
+// the same reasoning applied here: every one of these is set from a plain
+// time.Now() somewhere (session/session.go), which carries the server
+// process's local zone, and this makes the schema's UTC convention hold
+// regardless of what any given call site remembers to do. Only reaches the
+// paths that pass a full *Session through GORM's Create/Save — the one
+// raw-column update in this codebase (SessionRepository.CloseSession's
+// Update("closed_on", ...)) normalizes its own value at the call site
+// instead, since a hook on an empty *Session{} model can't see it.
+func (s *Session) BeforeSave(tx *gorm.DB) error {
+	if !s.ValidUntil.IsZero() {
+		s.ValidUntil = s.ValidUntil.UTC()
+	}
+	if !s.LastActivity.IsZero() {
+		s.LastActivity = s.LastActivity.UTC()
+	}
+	if s.ClosedOn != nil {
+		utcClosedOn := s.ClosedOn.UTC()
+		s.ClosedOn = &utcClosedOn
+	}
+	return nil
 }
 
 // TrafficMetric struct definition
@@ -210,6 +247,32 @@ func (t *Token) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 	t.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes ExpiresAt, LastUsedAt, and RevokedAt to UTC before
+// they're persisted — see TrafficMetric.BeforeCreate's comment for the same
+// reasoning applied here. ExpiresAt in particular is API-caller-supplied
+// (handlers/api_tokens.go, from request JSON) rather than always built from
+// time.Now() server-side, so this is the one place that can normalize it
+// regardless of what offset a client happened to send. Only reaches the
+// paths that pass a full *Token through GORM's Create/Save — the two
+// raw-column updates in this codebase (TokenRepository's RevokeToken and
+// IncrementUsageCount) normalize their own values at the call site instead,
+// since a hook on an empty *Token{} model can't see them.
+func (t *Token) BeforeSave(tx *gorm.DB) error {
+	if t.ExpiresAt != nil {
+		utcExpiresAt := t.ExpiresAt.UTC()
+		t.ExpiresAt = &utcExpiresAt
+	}
+	if t.LastUsedAt != nil {
+		utcLastUsedAt := t.LastUsedAt.UTC()
+		t.LastUsedAt = &utcLastUsedAt
+	}
+	if t.RevokedAt != nil {
+		utcRevokedAt := t.RevokedAt.UTC()
+		t.RevokedAt = &utcRevokedAt
+	}
 	return nil
 }
 
