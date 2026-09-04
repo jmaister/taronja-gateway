@@ -175,7 +175,7 @@ we're working through these one at a time — see status notes.
 
 ## Tier 1 — near-universal, currently absent
 
-- [x] **Response compression (gzip/deflate)** — done: `middleware/compression.go`,
+- [x] **Response compression (brotli/zstd/gzip/deflate)** — done: `middleware/compression.go`,
       `management.compression` flag / `compression` middleware name. See
       `doc/middleware/compression.md`.
 - [x] **TLS termination** — done: static cert/key files (`server.tls.*`),

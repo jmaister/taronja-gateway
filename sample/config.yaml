@@ -37,7 +37,7 @@ server:
 management:
   prefix: _
   logging: true
-  compression: true    # gzip/deflate response compression, negotiated via Accept-Encoding
+  compression: true    # brotli/zstd/gzip/deflate response compression, negotiated via Accept-Encoding
   analytics: true
   excludeStaticAssets: false  # set true to skip traffic-metrics collection for static assets (CSS/JS/images/fonts/...)
   session:

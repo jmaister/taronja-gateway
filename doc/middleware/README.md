@@ -12,7 +12,7 @@ Listed in the order they run by default:
 
 | Middleware | Enabled by default | Depends on | Summary |
 |---|---|---|---|
-| [`compression`](compression.md) | No | — | Compresses response bodies with gzip or deflate when the client accepts it. |
+| [`compression`](compression.md) | No | — | Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it. |
 | [`cors`](cors.md) | No | — | Adds CORS response headers for cross-origin requests to the management API. |
 | [`rate_limiter`](rate-limiter.md) | No | — | Limits request rate per client IP and detects vulnerability scans. |
 | [`ja4_fingerprint`](ja4-fingerprint.md) | No¹ | — | Computes and caches a JA4H fingerprint for each request. |

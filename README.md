@@ -45,7 +45,7 @@ Features table, shows what is implemented and what is planned.
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
-| Response Compression (gzip/deflate) | ✅ | v1.0.0 |
+| Response Compression (brotli/zstd/gzip/deflate) | ✅ | v1.0.0 |
 | Rate Limiter                  | ✅       | v0.0.22 |
 | - Requess per minute per IP   | ✅       | v0.0.22 |
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
@@ -389,7 +389,7 @@ all of them together (options, dependencies, chain order).
 
 - `prefix`: URL prefix for management endpoints (default: `_`)
 - `logging`: Enable/disable request logging — see [`logging`](doc/middleware/logging.md)
-- `compression`: Enable gzip/deflate response compression, negotiated per-request from the client's `Accept-Encoding` header — no other options. See [`compression`](doc/middleware/compression.md)
+- `compression`: Enable brotli/zstd/gzip/deflate response compression, negotiated per-request from the client's `Accept-Encoding` header — no other options. See [`compression`](doc/middleware/compression.md)
 - `analytics`: Enable/disable traffic analytics and metrics — turns on the
   [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md),
   [`session_extraction`](doc/middleware/session-extraction.md), and

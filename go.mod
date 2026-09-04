@@ -13,11 +13,13 @@ replace github.com/jmaister/taronja-gateway => ./
 // replace gorm.io/driver/sqlite => gorm.io/driver/sqlite v1.6.0
 
 require (
+	github.com/andybalholm/brotli v1.2.3
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/exaring/ja4plus v0.0.3
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/joho/godotenv v1.5.1
+	github.com/klauspost/compress v1.20.0
 	github.com/lucsky/cuid v1.2.1
 	github.com/lum8rjack/go-ja4h v0.0.0-20250828030157-fa5266d50650
 	github.com/oapi-codegen/runtime v1.7.0

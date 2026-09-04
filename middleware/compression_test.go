@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,19 +30,31 @@ func TestNegotiateEncoding(t *testing.T) {
 		{"no header", "", ""},
 		{"plain gzip", "gzip", "gzip"},
 		{"plain deflate", "deflate", "deflate"},
-		{"both, gzip preferred on tie", "gzip, deflate", "gzip"},
+		{"plain br", "br", "br"},
+		{"plain zstd", "zstd", "zstd"},
+		{"both, gzip preferred over deflate on tie", "gzip, deflate", "gzip"},
 		{"both, explicit equal q", "gzip;q=0.8, deflate;q=0.8", "gzip"},
-		{"deflate preferred with higher q", "gzip;q=0.5, deflate;q=0.9", "deflate"},
+		{"deflate preferred over gzip with higher q", "gzip;q=0.5, deflate;q=0.9", "deflate"},
 		{"gzip excluded with q=0", "gzip;q=0, deflate", "deflate"},
-		{"only unsupported coding", "br", ""},
-		{"wildcard accepts gzip", "*", "gzip"},
+		{"only unsupported coding", "compress", ""},
+		{"wildcard accepts the most preferred coding (br)", "*", "br"},
 		{"wildcard excluded, no explicit gzip", "*;q=0, gzip;q=0.5", "gzip"},
 		{"wildcard excludes everything", "*;q=0", ""},
 		// deflate has no explicit q, so it defaults to 1.0 and outranks
 		// gzip's explicit 0.9 — this case is really about tolerating the
 		// stray whitespace around the ';' and ',' separators, not about q.
 		{"extra whitespace", "  gzip ; q=0.9 , deflate", "deflate"},
-		{"unsupported plus gzip", "br, gzip", "gzip"},
+		{"unsupported plus gzip", "compress, gzip", "gzip"},
+		// All four supported, all with an equal, explicit q: br wins by
+		// priority order (see supportedEncodings), not by being listed
+		// first or last in the header.
+		{"all four, br wins priority order regardless of header order", "deflate;q=0.9, gzip;q=0.9, zstd;q=0.9, br;q=0.9", "br"},
+		{"br explicitly excluded, zstd wins next", "br;q=0, zstd, gzip, deflate", "zstd"},
+		{"br and zstd both excluded, gzip wins", "br;q=0, zstd;q=0, gzip, deflate", "gzip"},
+		{"zstd preferred over gzip/deflate with a higher q", "gzip;q=0.9, deflate;q=0.9, zstd;q=1.0", "zstd"},
+		// A typical real browser Accept-Encoding header (Chrome-style):
+		// listed in support order, not preference order — br still wins.
+		{"realistic browser header", "gzip, deflate, br, zstd", "br"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -97,6 +111,17 @@ func decompress(t *testing.T, encoding string, data []byte) []byte {
 		out, err := io.ReadAll(r)
 		require.NoError(t, err)
 		return out
+	case "br":
+		out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(data)))
+		require.NoError(t, err)
+		return out
+	case "zstd":
+		r, err := zstd.NewReader(bytes.NewReader(data))
+		require.NoError(t, err)
+		defer r.Close()
+		out, err := io.ReadAll(r)
+		require.NoError(t, err)
+		return out
 	default:
 		t.Fatalf("unknown encoding %q", encoding)
 		return nil
@@ -129,6 +154,52 @@ func TestCompressionMiddleware_CompressesWithDeflate(t *testing.T) {
 	assert.Equal(t, "deflate", rw.Header().Get("Content-Encoding"))
 	assert.Less(t, rw.Body.Len(), len(bigBody))
 	assert.Equal(t, bigBody, string(decompress(t, "deflate", rw.Body.Bytes())))
+}
+
+func TestCompressionMiddleware_CompressesWithBrotli(t *testing.T) {
+	handler := CompressionMiddleware(handlerWritingBody(bigBody, "text/plain", true))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "br")
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	assert.Equal(t, "br", rw.Header().Get("Content-Encoding"))
+	assert.Contains(t, rw.Header().Values("Vary"), "Accept-Encoding")
+	assert.Empty(t, rw.Header().Get("Content-Length"), "the declared length no longer matches the compressed body")
+	assert.Less(t, rw.Body.Len(), len(bigBody), "a repetitive body must actually shrink")
+	assert.Equal(t, bigBody, string(decompress(t, "br", rw.Body.Bytes())))
+}
+
+func TestCompressionMiddleware_CompressesWithZstd(t *testing.T) {
+	handler := CompressionMiddleware(handlerWritingBody(bigBody, "text/plain", true))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "zstd")
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	assert.Equal(t, "zstd", rw.Header().Get("Content-Encoding"))
+	assert.Contains(t, rw.Header().Values("Vary"), "Accept-Encoding")
+	assert.Empty(t, rw.Header().Get("Content-Length"), "the declared length no longer matches the compressed body")
+	assert.Less(t, rw.Body.Len(), len(bigBody), "a repetitive body must actually shrink")
+	assert.Equal(t, bigBody, string(decompress(t, "zstd", rw.Body.Bytes())))
+}
+
+func TestCompressionMiddleware_PrefersBrotliWhenClientAcceptsAll(t *testing.T) {
+	// End-to-end version of the "realistic browser header" case in
+	// TestNegotiateEncoding: a client that accepts everything gets the
+	// best available encoding, not just whichever gzip/deflate used to
+	// default to.
+	handler := CompressionMiddleware(handlerWritingBody(bigBody, "text/plain", true))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	assert.Equal(t, "br", rw.Header().Get("Content-Encoding"))
+	assert.Equal(t, bigBody, string(decompress(t, "br", rw.Body.Bytes())))
 }
 
 func TestCompressionMiddleware_NoAcceptEncodingIsPassthrough(t *testing.T) {

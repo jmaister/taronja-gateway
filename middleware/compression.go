@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // compressionMinBytes is the smallest declared response size worth
-// compressing. Below it, gzip/deflate's own framing overhead can eat the
+// compressing. Below it, a compressor's own framing overhead can eat the
 // savings, and it's not worth the CPU. This only applies when the handler
 // declares Content-Length up front (e.g. a static file or a small JSON
 // response) — a response with no declared length (streaming/chunked) is
@@ -19,7 +22,7 @@ const compressionMinBytes = 1024
 
 // incompressibleContentTypePrefixes are response Content-Type prefixes for
 // formats that are already compressed (or otherwise gain nothing from
-// gzip/deflate): re-compressing them wastes CPU for no size benefit. This is
+// re-compression): re-compressing them wastes CPU for no size benefit. This is
 // a fixed, internal list, not a configuration surface — see
 // CompressionMiddleware's doc comment for why this middleware has no options.
 var incompressibleContentTypePrefixes = []string{
@@ -42,16 +45,16 @@ var incompressibleContentTypes = map[string]bool{
 	"application/octet-stream":     true,
 }
 
-// CompressionMiddleware transparently compresses response bodies with gzip
-// or deflate — the two algorithms every HTTP client has understood for
-// decades — following standard content negotiation (RFC 9110 §12.5.3)
-// against the request's Accept-Encoding header.
+// CompressionMiddleware transparently compresses response bodies with
+// brotli, zstd, gzip, or deflate, following standard content negotiation
+// (RFC 9110 §12.5.3) against the request's Accept-Encoding header.
 //
 // It is deliberately built with no configuration at all: no algorithm
 // choice, no compression level, no size threshold, no per-route opt-out.
-// Every response is compressed whenever the client accepts gzip or deflate,
-// except for cases where compressing would be actively wrong or pointless —
-// a body under compressionMinBytes (when its size is known up front), a
+// Every response is compressed whenever the client accepts one of the four
+// supportedEncodings, except for cases where compressing would be actively
+// wrong or pointless — a body under compressionMinBytes (when its size is
+// known up front), a
 // Content-Type that's already compressed (incompressibleContentTypePrefixes/
 // incompressibleContentTypes), a response that already set its own
 // Content-Encoding, a byte-range request (compressing would change what
@@ -97,56 +100,59 @@ func isUpgradeRequest(r *http.Request) bool {
 	return false
 }
 
+// supportedEncodings lists every coding this middleware can produce, in
+// preference order used to break a tie between codings the client accepts
+// equally (an explicit q value shared with another coding, or neither
+// listed explicitly and both falling back to "*"'s q-value). brotli and
+// zstd generally compress typical HTTP payloads (HTML/CSS/JS/JSON) more
+// tightly than gzip/deflate for comparable CPU cost, so they're preferred
+// once a client has actually advertised support for one — universality
+// isn't a concern at that point, since the client already said it
+// understands it. gzip keeps its existing edge over the older, weaker
+// deflate for the same reason it always did: the more battle-tested
+// client/intermediary support of the two.
+var supportedEncodings = []string{"br", "zstd", "gzip", "deflate"}
+
 // negotiateEncoding parses an Accept-Encoding header (RFC 9110 §12.5.3) and
-// returns "gzip" or "deflate" if the client accepts one of them, or "" if it
-// accepts neither (no header, only unsupported codings, or every coding this
-// middleware supports is excluded with q=0). gzip is preferred when both are
-// equally acceptable — it has the more universally battle-tested client and
-// intermediary support of the two.
+// returns whichever of supportedEncodings the client accepts with the
+// highest q-value (ties broken by supportedEncodings' order), or "" if it
+// accepts none of them (no header, only unsupported codings, or every
+// coding this middleware supports is excluded with q=0).
 func negotiateEncoding(header string) string {
 	if header == "" {
 		return ""
 	}
 
 	const notListed = -1.0
-	gzipQ, deflateQ, starQ := notListed, notListed, notListed
+	qs := make(map[string]float64, len(supportedEncodings))
+	starQ := notListed
 
 	for _, part := range strings.Split(header, ",") {
 		name, q := parseCoding(part)
-		switch name {
-		case "gzip":
-			gzipQ = q
-		case "deflate":
-			deflateQ = q
-		case "*":
+		if name == "*" {
 			starQ = q
+			continue
+		}
+		for _, supported := range supportedEncodings {
+			if name == supported {
+				qs[supported] = q
+				break
+			}
 		}
 	}
 
-	// A coding not explicitly listed falls back to "*"'s q-value, if present.
-	if gzipQ == notListed {
-		gzipQ = starQ
-	}
-	if deflateQ == notListed {
-		deflateQ = starQ
-	}
-
-	gzipOK := gzipQ > 0
-	deflateOK := deflateQ > 0
-
-	switch {
-	case gzipOK && deflateOK:
-		if deflateQ > gzipQ {
-			return "deflate"
+	best, bestQ := "", 0.0
+	for _, name := range supportedEncodings {
+		q, explicit := qs[name]
+		if !explicit {
+			// Not explicitly listed — falls back to "*"'s q-value, if present.
+			q = starQ
 		}
-		return "gzip"
-	case gzipOK:
-		return "gzip"
-	case deflateOK:
-		return "deflate"
-	default:
-		return ""
+		if q > 0 && q > bestQ {
+			best, bestQ = name, q
+		}
 	}
+	return best
 }
 
 // parseCoding parses one comma-separated Accept-Encoding entry (e.g.
@@ -174,7 +180,7 @@ func parseCoding(part string) (name string, q float64) {
 
 // isIncompressibleContentType reports whether ct (a Content-Type header
 // value, possibly with a ";charset=..." suffix) names a format that gains
-// nothing from gzip/deflate.
+// nothing from compression.
 func isIncompressibleContentType(ct string) bool {
 	if ct == "" {
 		return false
@@ -201,7 +207,7 @@ func isIncompressibleContentType(ct string) bool {
 // Content-Encoding, all of which the decision depends on.
 type compressingResponseWriter struct {
 	http.ResponseWriter
-	encoding   string // "gzip" or "deflate", never "" — CompressionMiddleware only constructs this after negotiating one
+	encoding   string // one of supportedEncodings, never "" — CompressionMiddleware only constructs this after negotiating one
 	status     int
 	decided    bool
 	compress   bool
@@ -260,30 +266,52 @@ func (cw *compressingResponseWriter) decide() {
 		}
 	}
 
-	h.Del("Content-Length") // the compressed length isn't known up front; let chunked transfer encoding take over
-	h.Set("Content-Encoding", cw.encoding)
-	h.Add("Vary", "Accept-Encoding")
-
+	// Built before any header is touched, and only committed to below if
+	// this succeeds: gzip.NewWriter/brotli.NewWriter can't fail, but
+	// flate.NewWriter and zstd.NewWriter both return an error, and setting
+	// Content-Encoding first would leave the response lying about its own
+	// encoding if the writer then failed to construct and this fell back
+	// to writing the body uncompressed.
+	var compressor io.WriteCloser
 	switch cw.encoding {
+	case "br":
+		compressor = brotli.NewWriter(cw.ResponseWriter)
+	case "zstd":
+		// WithEncoderConcurrency(1): zstd's default concurrency is
+		// GOMAXPROCS, spinning up that many background goroutines per
+		// Writer — fine for compressing one large file, wasteful per HTTP
+		// response on a busy gateway creating one of these per request.
+		// A single response body rarely dwarfs the coordination overhead
+		// concurrent encoding would need to pay for anyway.
+		zw, err := zstd.NewWriter(cw.ResponseWriter, zstd.WithEncoderConcurrency(1))
+		if err != nil {
+			return // extremely unlikely; fall back to uncompressed
+		}
+		compressor = zw
 	case "gzip":
-		cw.compressor = gzip.NewWriter(cw.ResponseWriter)
+		compressor = gzip.NewWriter(cw.ResponseWriter)
 	case "deflate":
 		fw, err := flate.NewWriter(cw.ResponseWriter, flate.DefaultCompression)
 		if err != nil {
 			return // extremely unlikely (only invalid levels error); fall back to uncompressed
 		}
-		cw.compressor = fw
+		compressor = fw
 	default:
 		return
 	}
+
+	h.Del("Content-Length") // the compressed length isn't known up front; let chunked transfer encoding take over
+	h.Set("Content-Encoding", cw.encoding)
+	h.Add("Vary", "Accept-Encoding")
+	cw.compressor = compressor
 	cw.compress = true
 }
 
 // Close flushes and closes the compressor, if one was created. It's a no-op
 // if the response was never written to (decide never ran) or wasn't
-// compressed. Must be called after the wrapped handler returns — a
-// gzip/flate Writer buffers internally and won't emit its final bytes
-// (including the gzip trailer/checksum) until Close.
+// compressed. Must be called after the wrapped handler returns — every
+// compressor this middleware uses buffers internally and won't emit its
+// final bytes (including gzip's trailer/checksum) until Close.
 func (cw *compressingResponseWriter) Close() error {
 	if cw.compressor == nil {
 		return nil

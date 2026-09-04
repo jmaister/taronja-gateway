@@ -72,16 +72,16 @@ func (f *CORSFactory) GetDefaultConfig() interface{} {
 
 // --- CompressionFactory -----------------------------------------------------
 
-// CompressionFactory creates the gzip/deflate response compression
-// middleware. Has no runtime dependencies and no configuration of its own —
-// see CompressionMiddleware's doc comment for why.
+// CompressionFactory creates the brotli/zstd/gzip/deflate response
+// compression middleware. Has no runtime dependencies and no configuration
+// of its own — see CompressionMiddleware's doc comment for why.
 type CompressionFactory struct{ ConcreteFactory }
 
 func NewCompressionFactory() *CompressionFactory {
 	return &CompressionFactory{
 		ConcreteFactory: ConcreteFactory{
 			name:        config.MiddlewareNameCompression,
-			description: "Compresses response bodies with gzip or deflate when the client accepts it",
+			description: "Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it",
 		},
 	}
 }
