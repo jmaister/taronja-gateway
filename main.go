@@ -243,6 +243,14 @@ func runGateway(configFilePath string, watchConfig bool) {
 
 	session.SetGeolocationConfig(&config.Geolocation)
 
+	// Called via the package name, not the "gateway" identifier that
+	// shadows it just below (gateway, err := gateway.NewGatewayWithDependencies(...)) —
+	// this has to happen first, while "gateway" still refers to the package.
+	shutdownTracing, err := gateway.InitTracing(context.Background(), config.Tracing, config.Name)
+	if err != nil {
+		log.Fatalf("FATAL: failed to initialize tracing: %v", err)
+	}
+
 	// Initialize dependencies for production
 	gatewayDeps := deps.NewProduction()
 
@@ -377,6 +385,17 @@ runLoop:
 	// point, so it's safe to flush and stop its batching goroutine (see
 	// Dependencies.Close and PERFORMANCE_ANALYSIS.md).
 	gateway.Dependencies.Close()
+
+	// A fresh, short-lived context: the one from the stop/reload select
+	// cases above is out of scope here, and a span for the very last
+	// requests this process handled would otherwise sit lost in the batch
+	// exporter's internal queue when the process exits, never reaching the
+	// collector. No-op when tracing was never enabled (see InitTracing).
+	tracingShutdownCtx, tracingShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer tracingShutdownCancel()
+	if err := shutdownTracing(tracingShutdownCtx); err != nil {
+		log.Printf("Warning: failed to flush tracing exporter cleanly: %v", err)
+	}
 
 	log.Println("API Gateway shut down gracefully.")
 }

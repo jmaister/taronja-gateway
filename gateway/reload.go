@@ -280,6 +280,17 @@ func warnIfImmutableFieldsChanged(oldCfg, newCfg *config.GatewayConfig) {
 		!reflect.DeepEqual(oldCfg.Server.TLS.ACME, newCfg.Server.TLS.ACME) {
 		log.Printf("Warning: config reload changed server.tls settings, but TLS can't be enabled/disabled or have its certificate source (cert/key paths, acme settings) or redirect port changed without a full restart (only the *contents* of an already-configured static cert/key file hot-reload automatically). The new value is stored but has no effect until then.")
 	}
+
+	// The OTLP exporter (gateway.InitTracing) is constructed once at
+	// startup, against whatever endpoint/settings were configured then —
+	// there's no in-place way to swap its destination or tear it down
+	// without leaking the old exporter's background goroutines, the same
+	// class of problem TLS's own listener has.
+	if oldCfg.Tracing.Enabled != newCfg.Tracing.Enabled ||
+		oldCfg.Tracing.Endpoint != newCfg.Tracing.Endpoint ||
+		oldCfg.Tracing.Insecure != newCfg.Tracing.Insecure {
+		log.Printf("Warning: config reload changed tracing settings, but the OpenTelemetry exporter is already initialized against the previous configuration and can't be reconfigured without a full restart. The new value is stored but has no effect until then.")
+	}
 }
 
 // currentConfig returns the gateway's currently-active config. Reads go

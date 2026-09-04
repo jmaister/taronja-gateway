@@ -1,7 +1,7 @@
 # Global Middleware Reference
 
 One page per built-in global middleware — what it does, how to enable and
-configure it, and what it depends on. These are the seven middlewares
+configure it, and what it depends on. These are the eight middlewares
 `middleware.NewGlobalMiddlewareRegistry` registers; see [Middleware
 Architecture](../../README.md#middleware-architecture) in the main README
 for the factory/registry system they're built on, how to inspect a running
@@ -12,6 +12,7 @@ Listed in the order they run by default:
 
 | Middleware | Enabled by default | Depends on | Summary |
 |---|---|---|---|
+| [`tracing`](tracing.md) | No | — | Creates an OpenTelemetry span per request and propagates trace context to proxied backends. |
 | [`compression`](compression.md) | No | — | Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it. |
 | [`cors`](cors.md) | No | — | Adds CORS response headers for cross-origin requests to the management API. |
 | [`rate_limiter`](rate-limiter.md) | No | — | Limits request rate per client IP and detects vulnerability scans. |
@@ -25,12 +26,16 @@ flag in the common case (no explicit `middleware:` section) — see each
 page's "Enabling it" section for both the legacy-flag and explicit-config
 forms.
 
-Every middleware here has no config beyond enable/disable **except**
-`rate_limiter` (requests-per-minute, error, and vulnerability-scan limits),
-`cors` (allowed origins/methods/headers), and `traffic_metrics`
-(`excludeStaticAssets`) — see their individual pages for the full option
-tables. `compression` in particular is deliberately option-free by design,
-not just undocumented — see its page for why.
+Every middleware here has no per-entry config beyond enable/disable
+**except** `rate_limiter` (requests-per-minute, error, and
+vulnerability-scan limits), `cors` (allowed origins/methods/headers), and
+`traffic_metrics` (`excludeStaticAssets`) — see their individual pages for
+the full option tables. `compression` in particular is deliberately
+option-free by design, not just undocumented — see its page for why.
+`tracing` sits in between: it does have configuration (`endpoint`,
+`insecure`), but it's top-level (`tracing:`, not
+`middleware.global[].tracing`) and applies once, globally, at startup —
+see its page for why a per-entry override wouldn't make sense for it.
 
 Route-level middleware (authentication, cache-control headers) isn't part
 of this global chain and isn't covered here — see the main README's

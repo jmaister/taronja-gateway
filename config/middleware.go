@@ -13,6 +13,7 @@ const (
 	MiddlewareNameSessionExtraction = "session_extraction"
 	MiddlewareNameTrafficMetrics    = "traffic_metrics"
 	MiddlewareNameLogging           = "logging"
+	MiddlewareNameTracing           = "tracing"
 )
 
 // KnownMiddlewareNames lists every global middleware name the gateway
@@ -26,6 +27,7 @@ var KnownMiddlewareNames = []string{
 	MiddlewareNameSessionExtraction,
 	MiddlewareNameTrafficMetrics,
 	MiddlewareNameLogging,
+	MiddlewareNameTracing,
 }
 
 // IsMiddlewareNameKnown reports whether name is a recognized global middleware.

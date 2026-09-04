@@ -62,7 +62,7 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	items, ok := resp.(api.GetMiddlewareStatus200JSONResponse)
 	require.True(t, ok)
-	require.Len(t, items, 7, "expected all 7 built-in global middleware factories")
+	require.Len(t, items, 8, "expected all 8 built-in global middleware factories")
 
 	byName := make(map[string]api.MiddlewareStatusItem, len(items))
 	for _, item := range items {
@@ -89,6 +89,11 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, compression.Enabled, "compression was not enabled in the test config")
 	assert.Equal(t, api.Available, compression.Status)
+
+	tracing, ok := byName[config.MiddlewareNameTracing]
+	require.True(t, ok)
+	assert.False(t, tracing.Enabled, "tracing was not enabled in the test config")
+	assert.Equal(t, api.Available, tracing.Status)
 }
 
 func TestGetMiddlewareMetrics_Unauthorized(t *testing.T) {

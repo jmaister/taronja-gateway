@@ -189,6 +189,7 @@ func (r *MiddlewareRegistryV2) ValidateSpecs(specs []MiddlewareSpec) error {
 // validation, only GetName()/GetDependencies().
 func referenceGlobalFactories() []MiddlewareFactory {
 	return []MiddlewareFactory{
+		NewTracingFactory(),
 		NewCompressionFactory(),
 		NewCORSFactory(),
 		NewRateLimiterFactory(nil),
@@ -324,11 +325,21 @@ func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]Middlewa
 
 // legacySpecsFromConfig derives specs from the pre-Phase-2 configuration
 // flags: management.compression, management.cors, management.rateLimiter,
-// management.analytics, management.logging.
+// management.analytics, management.logging, and the top-level tracing
+// section.
 func legacySpecsFromConfig(gatewayConfig *config.GatewayConfig) []MiddlewareSpec {
 	specs := []MiddlewareSpec{}
 
-	// Compression runs first (outermost): it wraps the ResponseWriter that
+	// Tracing runs before even compression: it needs to see the request
+	// before anything else touches it, to extract an incoming W3C
+	// "traceparent" header (continuing a caller's trace) as early as
+	// possible, and its span should cover the full request lifecycle —
+	// compression time included — to report an accurate total duration.
+	if gatewayConfig.Tracing.Enabled {
+		specs = append(specs, MiddlewareSpec{Name: config.MiddlewareNameTracing})
+	}
+
+	// Compression runs next (outermost of what's left): it wraps the ResponseWriter that
 	// every other middleware and the final route handler write through, so
 	// it must sit at the very edge of the chain to compress the bytes that
 	// actually reach the socket. Middlewares added after it (traffic_metrics,

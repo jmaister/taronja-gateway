@@ -36,12 +36,16 @@ type roundRobinTransport struct {
 }
 
 // newRoundRobinTransport builds a roundRobinTransport for targets, using
-// http.DefaultTransport to actually perform each attempt. targets must be
+// base to actually perform each attempt — http.DefaultTransport for a
+// plain proxy route, or an otelhttp.NewTransport-wrapped one (see
+// createProxyHandlerFunc) when tracing is enabled, so every proxied
+// backend call gets its own child span and carries the trace context
+// forward via the standard "traceparent" header. targets must be
 // non-empty.
-func newRoundRobinTransport(targets []*url.URL, routeName string) *roundRobinTransport {
+func newRoundRobinTransport(targets []*url.URL, routeName string, base http.RoundTripper) *roundRobinTransport {
 	return &roundRobinTransport{
 		targets:   targets,
-		base:      http.DefaultTransport,
+		base:      base,
 		routeName: routeName,
 	}
 }

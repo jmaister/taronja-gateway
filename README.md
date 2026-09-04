@@ -46,6 +46,7 @@ Features table, shows what is implemented and what is planned.
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
 | Response Compression (brotli/zstd/gzip/deflate) | ✅ | v1.0.0 |
+| Distributed Tracing (OpenTelemetry) | ✅ | v1.0.0 |
 | Rate Limiter                  | ✅       | v0.0.22 |
 | - Requess per minute per IP   | ✅       | v0.0.22 |
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
@@ -379,6 +380,38 @@ It's exposed the same way as every other fingerprint signal — via the single `
 #### Restarting vs. reloading
 
 Enabling or disabling TLS itself, switching between the two certificate sources above, or changing either one's settings (cert/key paths, ACME domains, `redirectPort`) **does** require a full restart — like `server.host`/`port`, that means rebinding the listening socket, which a config reload can't do. Editing these and reloading (`SIGHUP` or `--watch`) anyway isn't silently ignored: the gateway logs a warning and keeps serving on whatever TLS configuration it started with.
+
+### Tracing
+
+The gateway can create an [OpenTelemetry](https://opentelemetry.io/) span per
+request and export it over OTLP/HTTP to any collector that speaks the
+protocol — an OpenTelemetry Collector, Jaeger, Tempo, Honeycomb, Grafana
+Cloud, etc. Disabled by default, and configured at the top level of the
+config file (not under `management:`, since it's not a dashboard/API
+concern):
+
+```yaml
+tracing:
+  enabled: true
+  endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
+  insecure: true             # plain HTTP to endpoint, not HTTPS
+```
+
+- `enabled`: Turn on tracing. Requires `endpoint`. Default: `false`.
+- `endpoint`: The OTLP/HTTP collector's `host:port` — no scheme, no path.
+- `insecure`: Send spans over plain HTTP instead of HTTPS. Most self-hosted
+  local collectors don't terminate TLS at all, so this commonly needs
+  setting to `true` for those; a managed backend reachable over the public
+  internet almost always wants it left `false` (the default).
+
+An incoming request's trace context (the W3C `traceparent` header) is
+continued rather than replaced, and it's propagated forward to whatever
+backend a proxy route sends the request to — so a trace can span the whole
+journey through this gateway and beyond, not just the hop the gateway
+itself handles. Like TLS, this is fixed at startup: changing it on a config
+reload logs a warning rather than taking effect until a restart. See
+[`tracing`](doc/middleware/tracing.md) for the full reference, including
+how this is tested without needing a real collector.
 
 ### Management
 

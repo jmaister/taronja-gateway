@@ -2,7 +2,7 @@
 
 # TODO tasks for the project
 
-# Request identifier and tracing
+# Request identifier and tracing — RESOLVED
 
 OpenTelemetry + Open Telemetry server: https://opentelemetry.io/
 
@@ -10,6 +10,23 @@ Should we add X-Request-ID to all requests and responses for tracing?
 Are there any other ways to trace requests?
 Are there libraries that already handle tracing?
 Do libraries stick to an specific tracing product or standard?
+
+**Answered/done:** went with real distributed tracing via OpenTelemetry
+(the standard, not a homegrown `X-Request-ID`) — `middleware/tracing.go`,
+`gateway/tracing.go` (`InitTracing`, the OTLP/HTTP exporter setup), the
+top-level `tracing.enabled`/`tracing.endpoint`/`tracing.insecure` config
+(not under `management`), and the `tracing` middleware name. Uses
+`go.opentelemetry.io/contrib`'s `otelhttp` for both the server-side span
+(per request) and the reverse-proxy transport (per backend call) instead
+of hand-rolled instrumentation — genuinely distributed, not just one
+isolated span per hop: an incoming W3C `traceparent` continues the
+caller's trace, and it's propagated forward to whatever backend a proxy
+route sends the request to. See `doc/middleware/tracing.md` for the full
+reference, including exactly how this is tested (an in-memory exporter for
+unit tests, no real collector needed; a plain `httptest.Server` standing
+in for one to verify the actual OTLP export and cross-hop propagation) —
+confirmed for real too, against a live `tg` binary and a throwaway fake
+collector process, not just the test suite.
 
 ## Logs
 
@@ -242,8 +259,11 @@ we're working through these one at a time — see status notes.
       X-Content-Type-Options, CSP) — same shape as `cors.go`.
 - [ ] **Request body size limits** — no `MaxBytesReader`/content-length cap
       anywhere, including on the load balancer's body-buffering retry path.
-- [ ] **Structured/JSON logging + Prometheus metrics export + OpenTelemetry
-      tracing.** Our metrics/logging are custom and in-memory only today.
+- [x] **OpenTelemetry tracing** — done: see the resolved "Request identifier
+      and tracing" section near the top of this file and
+      `doc/middleware/tracing.md`.
+- [ ] **Structured/JSON logging + Prometheus metrics export.** Our
+      metrics/logging are custom and in-memory only today.
 - [ ] **Header/URL transformation rules** — add/strip arbitrary
       request/response headers per route, regex path rewriting beyond
       `removeFromPath`.

@@ -1,9 +1,10 @@
 # Compression
 
 **Middleware name:** `compression`
-**Global chain position:** first — outermost in the chain, so it wraps the
-response writer that every other middleware and the final route handler
-write through, letting it compress whatever actually reaches the socket.
+**Global chain position:** second — right after [`tracing`](tracing.md),
+outermost of everything else in the chain, so it wraps the response writer
+that every other middleware and the final route handler write through,
+letting it compress whatever actually reaches the socket.
 **Depends on:** nothing.
 **Enabled by default:** no.
 

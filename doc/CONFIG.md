@@ -45,6 +45,7 @@ import "github.com/jmaister/taronja-gateway/config"
   - [func \(s \*SessionConfig\) GetDuration\(\) time.Duration](<#SessionConfig.GetDuration>)
 - [type TLSConfig](<#TLSConfig>)
   - [func \(t TLSConfig\) EffectiveRedirectPort\(\) int](<#TLSConfig.EffectiveRedirectPort>)
+- [type TracingConfig](<#TracingConfig>)
 - [type TrafficMetricsConfig](<#TrafficMetricsConfig>)
 - [type VulnerabilityScanConfig](<#VulnerabilityScanConfig>)
 
@@ -62,6 +63,7 @@ const (
     MiddlewareNameSessionExtraction = "session_extraction"
     MiddlewareNameTrafficMetrics    = "traffic_metrics"
     MiddlewareNameLogging           = "logging"
+    MiddlewareNameTracing           = "tracing"
 )
 ```
 
@@ -86,11 +88,12 @@ var KnownMiddlewareNames = []string{
     MiddlewareNameSessionExtraction,
     MiddlewareNameTrafficMetrics,
     MiddlewareNameLogging,
+    MiddlewareNameTracing,
 }
 ```
 
 <a name="IsMiddlewareNameKnown"></a>
-## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L32>)
+## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L34>)
 
 ```go
 func IsMiddlewareNameKnown(name string) bool
@@ -280,7 +283,7 @@ func (c CORSConfig) IsEnabled() bool
 IsEnabled reports whether CORS handling should run at all: only when at least one allowed origin is configured.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L225-L236>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L225-L237>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -296,11 +299,12 @@ type GatewayConfig struct {
     Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
     Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
     Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
+    Tracing                 TracingConfig           `yaml:"tracing,omitempty"`       // Distributed tracing via OpenTelemetry. Optional; disabled by default.
 }
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L239>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L240>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -309,7 +313,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L448>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L457>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -348,7 +352,7 @@ type ManagementConfig struct {
 ```
 
 <a name="MiddlewareEntryConfig"></a>
-## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L58-L64>)
+## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L60-L66>)
 
 MiddlewareEntryConfig declares one middleware in the \`middleware.global\` list, in the order it should run.
 
@@ -365,7 +369,7 @@ type MiddlewareEntryConfig struct {
 ```
 
 <a name="MiddlewareEntryConfig.IsEnabled"></a>
-### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L68>)
+### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L70>)
 
 ```go
 func (e MiddlewareEntryConfig) IsEnabled() bool
@@ -374,7 +378,7 @@ func (e MiddlewareEntryConfig) IsEnabled() bool
 IsEnabled reports whether this entry is enabled. An absent Enabled field defaults to true: appearing in the list is enough to opt in.
 
 <a name="MiddlewareSection"></a>
-## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L84-L86>)
+## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L86-L88>)
 
 MiddlewareSection declares the global middleware chain explicitly, in execution order. When Global is nil — i.e. there's no \`middleware:\` section at all, the common case for existing config files — the gateway falls back to the legacy management.analytics / management.logging / management.rateLimiter flags. See middleware.ResolveGlobalChainSpecs.
 
@@ -452,7 +456,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L507>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L516>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -461,7 +465,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L515>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L524>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -578,8 +582,33 @@ func (t TLSConfig) EffectiveRedirectPort() int
 
 EffectiveRedirectPort returns the plain\-HTTP redirect port that should actually be used: RedirectPort if set \(including an explicit 0, meaning "no redirect listener"\), otherwise defaultTLSRedirectPort \(80\).
 
+<a name="TracingConfig"></a>
+## type [TracingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/tracing.go#L7-L23>)
+
+TracingConfig configures distributed tracing via OpenTelemetry, exported over OTLP/HTTP to a collector \(an OpenTelemetry Collector, Jaeger, Tempo, Honeycomb, Grafana Cloud, or anything else that speaks OTLP\). Disabled by default. See doc/middleware/tracing.md and gateway.InitTracing.
+
+```go
+type TracingConfig struct {
+    // Enabled turns on tracing. Requires Endpoint. Default: false.
+    Enabled bool `yaml:"enabled"`
+    // Endpoint is the OTLP/HTTP collector's host:port — no scheme, no
+    // path (e.g. "localhost:4318", matching otlptracehttp.WithEndpoint's
+    // own convention; the exporter appends the standard "/v1/traces" path
+    // itself). Required when Enabled.
+    Endpoint string `yaml:"endpoint,omitempty"`
+    // Insecure sends spans to Endpoint over plain HTTP instead of HTTPS.
+    // Default: false (HTTPS) — matching this project's secure-by-default
+    // posture elsewhere. Most self-hosted local collectors (a Jaeger or
+    // OTel Collector container on the same host or network) don't
+    // terminate TLS at all, so this commonly needs setting to true for
+    // those; a managed backend reachable over the public internet
+    // (Honeycomb, Grafana Cloud, ...) almost always wants it left false.
+    Insecure bool `yaml:"insecure,omitempty"`
+}
+```
+
 <a name="TrafficMetricsConfig"></a>
-## type [TrafficMetricsConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L43-L45>)
+## type [TrafficMetricsConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L45-L47>)
 
 TrafficMetricsConfig holds the options for the "traffic\_metrics" global middleware.
 

@@ -233,6 +233,7 @@ type GatewayConfig struct {
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
 	Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
+	Tracing                 TracingConfig           `yaml:"tracing,omitempty"`       // Distributed tracing via OpenTelemetry. Optional; disabled by default.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -385,6 +386,14 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		default:
 			return nil, fmt.Errorf("server.tls.enabled is true but neither certFile/keyFile nor acme is set")
 		}
+	}
+
+	// Validate tracing config. Nothing more to check than the config's own
+	// shape here — like ACME, actually reaching the collector is a network
+	// operation that can only happen at real gateway startup (see
+	// gateway.InitTracing), not something "tg validate" can confirm.
+	if config.Tracing.Enabled && config.Tracing.Endpoint == "" {
+		return nil, fmt.Errorf("tracing.enabled is true but tracing.endpoint is not set")
 	}
 
 	for i := range config.Routes {

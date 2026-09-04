@@ -111,7 +111,7 @@ func Chain(handler http.Handler, middlewares ...Middleware) http.Handler {
 // NewGlobalMiddlewareRegistry builds a MiddlewareRegistryV2 with a factory
 // registered for every built-in global middleware (compression, cors,
 // rate_limiter, ja4_fingerprint, session_extraction, traffic_metrics,
-// logging), wired to
+// logging, tracing), wired to
 // the given dependencies. It's exposed separately from BuildGlobalChainV2 so
 // callers that need to introspect the registry after building the chain —
 // e.g. a middleware status/health/metrics API endpoint (doc/refactor01.md
@@ -144,6 +144,9 @@ func NewGlobalMiddlewareRegistry(
 		return nil, err
 	}
 	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewTracingFactory()); err != nil {
 		return nil, err
 	}
 

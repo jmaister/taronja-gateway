@@ -27,6 +27,7 @@ import (
 	"github.com/jmaister/taronja-gateway/providers"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -564,7 +565,20 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 
 	// Create the proxy once when the handler is created
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name)
+	// otelhttp.NewTransport, not a bare http.DefaultTransport, when tracing
+	// is enabled: it starts a child span per backend call and injects the
+	// current trace context into the outbound request's "traceparent"
+	// header, which is what actually makes this a *distributed* trace
+	// instead of one isolated span per hop. Read once here, at route
+	// registration time, matching every other config value this function
+	// closes over — tracing is fixed-at-startup, the same as TLS (see
+	// warnIfImmutableFieldsChanged), so this doesn't need to react to a
+	// later config reload.
+	var transport http.RoundTripper = http.DefaultTransport
+	if g.currentConfig().Tracing.Enabled {
+		transport = otelhttp.NewTransport(transport)
+	}
+	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name, transport)
 
 	// Store the original director
 	originalDirector := proxy.Director

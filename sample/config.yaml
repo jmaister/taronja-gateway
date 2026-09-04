@@ -34,6 +34,14 @@ server:
   #   # omitted; set to 0 to disable the redirect listener (e.g. if
   #   # something else already owns port 80).
   #   # redirectPort: 80
+# tracing:
+#   # Disabled by default. Creates an OpenTelemetry span per request,
+#   # exported over OTLP/HTTP to a collector (an OpenTelemetry Collector,
+#   # Jaeger, Tempo, Honeycomb, ...). Top-level, not under management: —
+#   # see README.md's "Tracing" section and doc/middleware/tracing.md.
+#   enabled: true
+#   endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
+#   insecure: true             # plain HTTP to endpoint; most local/self-hosted collectors need this
 management:
   prefix: _
   logging: true
@@ -70,9 +78,13 @@ management:
 # flags), instead of the management.compression/cors/analytics/logging/
 # rateLimiter flags above. When this section is present it fully replaces
 # those flags. See doc/refactor01.md, AGENTS.md, and doc/middleware/ for
-# details on each middleware.
+# details on each middleware. Note: listing "tracing" here only controls
+# its *position* in the chain — actually exporting anything still needs
+# the top-level tracing.enabled/endpoint above, since that's what starts
+# the real OTLP exporter this middleware dispatches through.
 # middleware:
 #   global:
+#     - name: tracing
 #     - name: compression
 #     - name: cors
 #       cors:
