@@ -34,6 +34,14 @@ server:
   #   # omitted; set to 0 to disable the redirect listener (e.g. if
   #   # something else already owns port 80).
   #   # redirectPort: 80
+  # trustedProxies:
+  #   # CIDR ranges or bare IPs allowed to supply the real client IP via
+  #   # X-Forwarded-For/X-Real-IP/X-Client-IP. Default: empty — those
+  #   # headers are never honored, and every request's IP is simply its
+  #   # real TCP peer address. Only add a reverse proxy/load balancer you
+  #   # actually control and that sits directly in front of this gateway;
+  #   # anything else lets a client spoof its own IP.
+  #   - 10.0.0.0/8
 management:
   prefix: _
   logging: true

@@ -57,8 +57,33 @@ func TestDetermineDeviceType(t *testing.T) {
 	}
 }
 
+// resetTrustedProxies clears session's trusted-proxy list after the
+// calling test, so package-level state (session.SetTrustedProxies) set up
+// for one test's scenario can't leak into whichever test happens to run
+// next in this binary.
+func resetTrustedProxies(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() { session.SetTrustedProxies(nil) })
+}
+
 func TestGetClientIP(t *testing.T) {
-	t.Run("extracts IP from X-Forwarded-For header", func(t *testing.T) {
+	t.Run("ignores X-Forwarded-For from an untrusted peer", func(t *testing.T) {
+		// The security-relevant case: no trusted proxy configured (the
+		// default), so a direct client can't spoof its own IP just by
+		// setting this header itself.
+		resetTrustedProxies(t)
+		session.SetTrustedProxies(nil)
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.Header.Set("X-Forwarded-For", "203.0.113.1, 192.168.1.1")
+		req.RemoteAddr = "10.0.0.1:12345"
+
+		ip := session.GetClientIP(req)
+		assert.Equal(t, "10.0.0.1", ip, "an unlisted peer's own X-Forwarded-For must be ignored")
+	})
+
+	t.Run("extracts IP from X-Forwarded-For header when the peer is a trusted proxy", func(t *testing.T) {
+		resetTrustedProxies(t)
+		session.SetTrustedProxies([]string{"10.0.0.0/8"})
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("X-Forwarded-For", "203.0.113.1, 192.168.1.1")
 		req.RemoteAddr = "10.0.0.1:12345"
@@ -67,7 +92,9 @@ func TestGetClientIP(t *testing.T) {
 		assert.Equal(t, "203.0.113.1", ip)
 	})
 
-	t.Run("extracts IP from X-Real-IP header", func(t *testing.T) {
+	t.Run("extracts IP from X-Real-IP header when the peer is a trusted proxy", func(t *testing.T) {
+		resetTrustedProxies(t)
+		session.SetTrustedProxies([]string{"10.0.0.1"})
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("X-Real-IP", "203.0.113.2")
 		req.RemoteAddr = "10.0.0.1:12345"
@@ -76,7 +103,9 @@ func TestGetClientIP(t *testing.T) {
 		assert.Equal(t, "203.0.113.2", ip)
 	})
 
-	t.Run("falls back to RemoteAddr", func(t *testing.T) {
+	t.Run("falls back to RemoteAddr with no header at all", func(t *testing.T) {
+		resetTrustedProxies(t)
+		session.SetTrustedProxies(nil)
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 

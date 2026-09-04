@@ -173,6 +173,7 @@ taronja-gateway/
 **`clientinfo.go`:**
 - Parses User-Agent via `github.com/ua-parser/uap-go` to extract browser, OS, device type
 - JA4H fingerprinting support (via `middleware/ja4.go`)
+- `GetClientIP` only honors `X-Forwarded-For`/`X-Real-IP`/`X-Client-IP` when the request's actual TCP peer (`r.RemoteAddr`) is in the trusted-proxy list `SetTrustedProxies` was given (`server.trustedProxies`, plain CIDR ranges/bare IPs, default empty — set from `main.go` and `gateway/reload.go`, mirroring `SetGeolocationConfig`'s package-level-setter pattern). This used to trust those headers from any client unconditionally, which is a real, previously-shipped bug: it let any direct client spoof its own IP for geolocation, logging, and `middleware/ratelimiter.go`'s IP-based rate limiting, all at once — see `doc/TODO.md`'s "Fix GEO IP" section for the incident that traced back to this. Default-empty (nothing trusted until explicitly configured) is deliberate: a wrong guess at "which private ranges to trust by default" is exactly the kind of assumption that reintroduces the same spoofing hole.
 
 **`ipgeo.go`:**
 - IP geolocation via `iplocate.io` or fallback `freeipapi.com`

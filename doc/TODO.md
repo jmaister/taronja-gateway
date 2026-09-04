@@ -111,7 +111,7 @@ Health check configuration for the routes configured in the gateway:
 * Integrate with cloud storage providers (e.g., AWS S3, Google Cloud Storage)
 
 
-# Fix GEO IP
+# Fix GEO IP — RESOLVED
 
 These logs show on megabox-qa:
 
@@ -123,6 +123,27 @@ These logs show on megabox-qa:
 ```
 
 Why IP is not being parsed correctly? Is it because of the attack vector in the URL?
+
+**Root cause, found while doing an unrelated recap of the project (2026-09-04):
+not the URL at all.** `session.GetClientIP` trusted the
+`X-Forwarded-For`/`X-Real-IP`/`X-Client-IP` headers unconditionally, from
+*any* client, with no concept of "is this request even coming through a
+proxy I control." The JNDI probe's request presumably also carried a
+crafted `X-Forwarded-For` value (not shown in the truncated log excerpt
+above) that GetClientIP took at face value and handed straight to the
+geo-lookup API and the log line — this was never about parsing the URL,
+it was about trusting a header that any direct client can set to
+literally anything.
+
+**Fixed**: `server.trustedProxies` (a list of CIDR ranges or bare IPs,
+`config.ServerConfig.TrustedProxies`) now gates whether those headers are
+honored at all. Default is empty — nothing trusted, so by default every
+request's IP is simply its real TCP peer address, and this class of
+spoofing (which also affected IP-based rate limiting and analytics, not
+just this log line) is no longer possible unless an operator explicitly
+lists a reverse proxy/load balancer they control. See
+`session.GetClientIP`'s doc comment (`session/clientinfo.go`) and
+`session.SetTrustedProxies`.
 
 # Rate limiter
 

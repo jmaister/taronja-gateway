@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,24 @@ type ServerConfig struct {
 	Port int       `yaml:"port"`          // Server port number (e.g., 8080). Required. The HTTPS port when tls.enabled is true.
 	URL  string    `yaml:"url"`           // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
 	TLS  TLSConfig `yaml:"tls,omitempty"` // HTTPS termination. Optional; disabled by default (plain HTTP).
+	// TrustedProxies lists CIDR ranges (or bare IPs, treated as a /32 or
+	// /128) allowed to supply the real client IP via the
+	// X-Forwarded-For/X-Real-IP/X-Client-IP headers — e.g.
+	// ["10.0.0.0/8", "127.0.0.1/32"] for a reverse proxy or load balancer
+	// running in a private network directly in front of this gateway.
+	// Default: empty, meaning those headers are never honored and every
+	// request's client IP is simply whatever the TCP connection's own
+	// peer address is — secure by default. Honoring them unconditionally
+	// (as this project used to) lets any client set its own "IP" to
+	// anything at all, including something that isn't an IP: an
+	// attacker's crafted X-Forwarded-For value flows straight into
+	// geo-lookup logging and IP-based rate limiting, both spoofable and,
+	// for the former, a log/API-injection vector — see
+	// session.GetClientIP's doc comment. Only add an entry for a proxy
+	// you actually control and that sits directly in front of this
+	// gateway; anything else defeats the point of restricting this at
+	// all.
+	TrustedProxies []string `yaml:"trustedProxies,omitempty"`
 }
 
 // AuthenticationConfig controls whether authentication is required for a specific route.
@@ -280,6 +299,17 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	if config.Server.URL == "" {
 		log.Printf("Warning: server.url is not set in config. OAuth redirects might not work correctly.")
 	}
+	// Caught here, not left to fail silently at request time: session.
+	// SetTrustedProxies (called from the real gateway startup, not
+	// LoadConfig) would otherwise just log and drop a malformed entry —
+	// fine as defense in depth, but a typo'd CIDR should stop "tg
+	// validate"/startup outright, the same way every other config mistake
+	// on this list does, not silently disable itself.
+	for _, cidr := range config.Server.TrustedProxies {
+		if !isValidIPOrCIDR(cidr) {
+			return nil, fmt.Errorf("server.trustedProxies: %q is not a valid IP address or CIDR range", cidr)
+		}
+	}
 
 	// Validate management config
 	if config.Management.Prefix == "" {
@@ -440,6 +470,23 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	}
 
 	return config, nil
+}
+
+// isValidIPOrCIDR reports whether s parses as either a bare IP address
+// (e.g. "127.0.0.1") or a CIDR range (e.g. "10.0.0.0/8") — the two forms
+// ServerConfig.TrustedProxies accepts. Deliberately not shared with
+// session.SetTrustedProxies's own parsing (which needs the parsed
+// net.IPNet, not just a yes/no): config doesn't import session (session
+// already imports config, and this project keeps that edge one-way), and
+// the actual logic here — try net.ParseIP, else try net.ParseCIDR — is
+// small enough that duplicating it is cheaper than restructuring package
+// boundaries to share it.
+func isValidIPOrCIDR(s string) bool {
+	if net.ParseIP(s) != nil {
+		return true
+	}
+	_, _, err := net.ParseCIDR(s)
+	return err == nil
 }
 
 // --- Helper Functions ---

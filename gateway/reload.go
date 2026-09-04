@@ -159,6 +159,7 @@ func (g *Gateway) applyConfig(cfg *config.GatewayConfig) error {
 	}
 
 	session.SetGeolocationConfig(&cfg.Geolocation)
+	session.SetTrustedProxies(cfg.Server.TrustedProxies)
 
 	// TLS JA4 capture (see gateway/ja4tls.go) wraps outside rt.handler
 	// entirely, rather than going through the MiddlewareRegistryV2 like the

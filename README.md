@@ -257,6 +257,7 @@ Defines the gateway server settings.
 - `port`: The port number to listen on (default: 8080). The HTTPS port when `tls.enabled` is true.
 - `url`: The full URL where the gateway is accessible
 - `tls`: HTTPS termination settings — see [TLS / HTTPS](#tls--https) below
+- `trustedProxies`: CIDR ranges or bare IPs (e.g. `["10.0.0.0/8", "127.0.0.1"]`) allowed to supply the real client IP via `X-Forwarded-For`/`X-Real-IP`/`X-Client-IP`. **Default: empty** — those headers are never honored, and every request's IP is simply its real TCP peer address. Only add an entry for a reverse proxy or load balancer you actually control and that sits directly in front of this gateway: honoring these headers from an untrusted source lets any client set its own "IP" to anything it wants, defeating IP-based rate limiting, analytics, and geolocation.
 
 ### TLS / HTTPS
 
