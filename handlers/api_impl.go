@@ -18,6 +18,7 @@ type StrictApiServer struct {
 	trafficMetricRepo db.TrafficMetricRepository
 	tokenRepo         db.TokenRepository
 	countersRepo      db.CountersRepository
+	blockedClientRepo db.BlockedClientRepository
 	tokenService      *auth.TokenService
 	startTime         time.Time
 	// rate limiter instance for stats/config endpoints
@@ -28,13 +29,14 @@ type StrictApiServer struct {
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *middleware.RateLimiter, middlewareRegistry *middleware.MiddlewareRegistryV2) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, blockedClientRepo db.BlockedClientRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *middleware.RateLimiter, middlewareRegistry *middleware.MiddlewareRegistryV2) *StrictApiServer {
 	return &StrictApiServer{
 		sessionStore:       sessionStore,
 		userRepo:           userRepo,
 		trafficMetricRepo:  trafficMetricRepo,
 		tokenRepo:          tokenRepo,
 		countersRepo:       countersRepo,
+		blockedClientRepo:  blockedClientRepo,
 		tokenService:       tokenService,
 		startTime:          startTime,
 		rateLimiter:        rateLimiter,

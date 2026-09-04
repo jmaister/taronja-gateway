@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -21,6 +23,13 @@ type RateLimiter struct {
 	// scanPatterns is cfg.VulnerabilityScan.URLs, preprocessed once here
 	// instead of on every 404 — see scanPattern's doc comment.
 	scanPatterns []scanPattern
+	// blockedClientRepo persists every block event (see recordBlock) so
+	// it survives past cleanupLoop discarding the in-memory entry once
+	// the block expires — nil when no repository was supplied (e.g.
+	// RateLimiterMiddleware's standalone constructor, used where there's
+	// no database to write to), in which case blocks are still enforced
+	// exactly as before, just never recorded to the persistent registry.
+	blockedClientRepo db.BlockedClientRepository
 }
 
 // scanPattern holds the precomputed forms of one
@@ -91,13 +100,21 @@ type rateEntry struct {
 // RateLimiterMiddleware creates a middleware function configured with the
 // supplied settings. If both RequestsPerMinute and MaxErrors are zero the
 // returned middleware is a no-op and simply invokes the next handler.
+//
+// Built with no BlockedClientRepository — this standalone constructor has
+// no database connection to hand it one, so block events it enforces are
+// never persisted to the registry (see RateLimiter.blockedClientRepo).
+// The real gateway runtime always goes through NewRateLimiter directly
+// instead (see gateway/reload.go's buildRuntime), supplying one.
 func RateLimiterMiddleware(cfg config.RateLimiterConfig) func(http.Handler) http.Handler {
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 	return rl.Handler
 }
 
 // NewRateLimiter constructs a RateLimiter and starts the cleanup goroutine.
-func NewRateLimiter(cfg config.RateLimiterConfig) *RateLimiter {
+// blockedClientRepo may be nil (see RateLimiter.blockedClientRepo's doc
+// comment for what that means).
+func NewRateLimiter(cfg config.RateLimiterConfig, blockedClientRepo db.BlockedClientRepository) *RateLimiter {
 	// determine cleanup interval: use block minutes or default one minute
 	interval := time.Minute
 	if cfg.BlockMinutes > 0 {
@@ -109,9 +126,10 @@ func NewRateLimiter(cfg config.RateLimiterConfig) *RateLimiter {
 	}
 
 	rl := &RateLimiter{
-		cfg:             cfg,
-		cleanupInterval: interval,
-		scanPatterns:    scanPatterns,
+		cfg:               cfg,
+		cleanupInterval:   interval,
+		scanPatterns:      scanPatterns,
+		blockedClientRepo: blockedClientRepo,
 	}
 	go rl.cleanupLoop()
 	return rl
@@ -149,12 +167,19 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 		if rl.cfg.RequestsPerMinute > 0 && len(entry.requests) > rl.cfg.RequestsPerMinute {
 			// block the IP
 			entry.blockedUntil = now.Add(time.Duration(rl.cfg.BlockMinutes) * time.Minute)
+			blockedUntil := entry.blockedUntil
+			triggerCount := len(entry.requests)
 			retry := int(entry.blockedUntil.Sub(now).Seconds())
 			entry.mu.Unlock()
 			header := w.Header()
 			header.Set("Retry-After", fmt.Sprintf("%d", retry))
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte("Rate limit exceeded"))
+			// After the response, not before: recordBlock builds a
+			// ClientInfo (User-Agent parse, geolocation lookup) that has
+			// no business adding latency to a response that's already
+			// been written.
+			rl.recordBlock(r, db.BlockReasonRateLimit, "", triggerCount, now, blockedUntil)
 			return
 		}
 		entry.mu.Unlock()
@@ -170,10 +195,17 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 			entry.mu.Lock()
 			entry.errors = append(entry.errors, now)
 			entry.trim(now, rl.cfg)
+			var justBlocked bool
+			var blockedUntil time.Time
+			var triggerCount int
 			if rl.cfg.MaxErrors > 0 && len(entry.errors) > rl.cfg.MaxErrors {
 				entry.blockedUntil = now.Add(time.Duration(rl.cfg.BlockMinutes) * time.Minute)
+				justBlocked, blockedUntil, triggerCount = true, entry.blockedUntil, len(entry.errors)
 			}
 			entry.mu.Unlock()
+			if justBlocked {
+				rl.recordBlock(r, db.BlockReasonMaxErrors, "", triggerCount, now, blockedUntil)
+			}
 		}
 
 		// vulnerability scan paths: count only 404s on configured urls.
@@ -189,15 +221,53 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 					entry.mu.Lock()
 					entry.scan404 = append(entry.scan404, now)
 					entry.trim(now, rl.cfg)
+					var justBlocked bool
+					var blockedUntil time.Time
+					var triggerCount int
 					if rl.cfg.VulnerabilityScan.Max404 > 0 && len(entry.scan404) > rl.cfg.VulnerabilityScan.Max404 {
 						entry.blockedUntil = now.Add(time.Duration(rl.cfg.VulnerabilityScan.BlockMinutes) * time.Minute)
+						justBlocked, blockedUntil, triggerCount = true, entry.blockedUntil, len(entry.scan404)
 					}
 					entry.mu.Unlock()
+					if justBlocked {
+						rl.recordBlock(r, db.BlockReasonVulnerabilityScan, r.URL.Path, triggerCount, now, blockedUntil)
+					}
 					break
 				}
 			}
 		}
 	})
+}
+
+// recordBlock persists one block event to the registry (blockedClientRepo)
+// — a no-op if none was supplied (see that field's doc comment). Building
+// the db.BlockedClient (including session.NewClientInfo's User-Agent
+// parse and geolocation lookup) happens synchronously, on the same
+// goroutine handling this request — mirroring exactly how
+// middleware/trafficmetric.go's TrafficMetricMiddleware already builds
+// its own per-request record for every single request, not just blocked
+// ones, deferring only the database write itself to a goroutine. Every
+// call site above only calls this after the response has already been
+// written, so none of this synchronous work adds latency to what the
+// client actually experiences.
+func (rl *RateLimiter) recordBlock(r *http.Request, reason, path string, triggerCount int, blockedAt, blockedUntil time.Time) {
+	if rl.blockedClientRepo == nil {
+		return
+	}
+	clientInfo := session.NewClientInfo(r)
+	bc := &db.BlockedClient{
+		Reason:       reason,
+		Path:         path,
+		TriggerCount: triggerCount,
+		BlockedAt:    blockedAt,
+		BlockedUntil: blockedUntil,
+		ClientInfo:   *clientInfo,
+	}
+	go func() {
+		if err := rl.blockedClientRepo.Create(bc); err != nil {
+			log.Printf("rate limiter: failed to record blocked client %s: %v", bc.IPAddress, err)
+		}
+	}()
 }
 
 // matchesVulnerabilityScanPath reports whether requestPath matches pattern,

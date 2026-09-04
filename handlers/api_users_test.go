@@ -28,6 +28,7 @@ func setupTestServer() *StrictApiServer {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil, // no rate limiter for tests

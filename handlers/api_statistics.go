@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -358,6 +359,78 @@ func (s *StrictApiServer) GetRateLimiterStats(ctx context.Context, req api.GetRa
 		})
 	}
 	return api.GetRateLimiterStats200JSONResponse(apiStats), nil
+}
+
+// GetBlockedClients implements GET /_/api/rate-limiter/blocked
+func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBlockedClientsRequestObject) (api.GetBlockedClientsResponseObject, error) {
+	// admin check
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+		return api.GetBlockedClients401JSONResponse{}, nil
+	}
+	if s.blockedClientRepo == nil {
+		return api.GetBlockedClients200JSONResponse{Items: []api.BlockedClient{}}, nil
+	}
+
+	ip := ""
+	if req.Params.Ip != nil {
+		ip = *req.Params.Ip
+	}
+	limit := 50 // default, matching GetUserCounterHistory's convention
+	if req.Params.Limit != nil {
+		limit = *req.Params.Limit
+	}
+	offset := 0
+	if req.Params.Offset != nil {
+		offset = *req.Params.Offset
+	}
+
+	items, total, err := s.blockedClientRepo.List(ip, limit, offset)
+	if err != nil {
+		log.Printf("GetBlockedClients: failed to list blocked clients: %v", err)
+		return api.GetBlockedClients500JSONResponse{}, nil
+	}
+
+	apiItems := make([]api.BlockedClient, 0, len(items))
+	for _, bc := range items {
+		item := api.BlockedClient{
+			Id:           strconv.FormatUint(uint64(bc.ID), 10),
+			IpAddress:    bc.IPAddress,
+			Reason:       api.BlockedClientReason(bc.Reason),
+			TriggerCount: bc.TriggerCount,
+			BlockedAt:    bc.BlockedAt,
+			BlockedUntil: bc.BlockedUntil,
+		}
+		if bc.Path != "" {
+			item.Path = &bc.Path
+		}
+		if bc.UserAgent != "" {
+			item.UserAgent = &bc.UserAgent
+		}
+		if bc.Country != "" {
+			item.Country = &bc.Country
+		}
+		if bc.CountryCode != "" {
+			item.CountryCode = &bc.CountryCode
+		}
+		if bc.City != "" {
+			item.City = &bc.City
+		}
+		if bc.Fingerprint != "" {
+			item.Fingerprint = &bc.Fingerprint
+		}
+		if bc.FingerprintType != "" {
+			item.FingerprintType = &bc.FingerprintType
+		}
+		apiItems = append(apiItems, item)
+	}
+
+	return api.GetBlockedClients200JSONResponse{
+		Items:      apiItems,
+		TotalCount: int(total),
+		Limit:      limit,
+		Offset:     offset,
+	}, nil
 }
 
 // GetRateLimiterConfig implements GET /_/api/config/rate-limiter

@@ -167,10 +167,26 @@ operator to list anything. See `session.GetClientIP`'s doc comment
 
 # Rate limiter
 
-- Store persistent info about attackers (IP, user agent, etc.)
-    - Show blocked IPs (with start and end date of the block)
-    - Info about blocked IPs (number of requests, user agent, etc.), geo info, etc.
-    - Show a map of attackers by country
+- [x] Store persistent info about attackers (IP, user agent, etc.) — done:
+      every time the rate limiter blocks an IP (request-rate limit, too many
+      errors, or a vulnerability-scan hit), it now writes a `db.BlockedClient`
+      row (reason, path, trigger count, block start/end, plus the same
+      user-agent/geo/fingerprint fields already collected for traffic
+      metrics). This is a durable history distinct from the live in-memory
+      stats: `middleware/ratelimiter.go`'s `cleanupLoop` still discards an
+      IP's tracked state once its block expires and it goes quiet, but the
+      DB row survives that. Exposed via `GET /_/api/rate-limiter/blocked`
+      (`ip`/`limit`/`offset` filters) and the "Blocked Clients History"
+      table on the Rate Limiter Stats admin page. See
+      `db/blockedclientrepository.go` and `doc/middleware/rate-limiter.md`.
+    - [x] Show blocked IPs (with start and end date of the block) — done,
+          same feature as above (`blockedAt`/`blockedUntil`).
+    - [x] Info about blocked IPs (number of requests, user agent, etc.), geo
+          info, etc. — done: `triggerCount`, user agent, and geo/fingerprint
+          fields are all recorded per block (same feature as above).
+    - [ ] Show a map of attackers by country — still open; the geo fields
+          needed for it are already recorded, but nothing renders them on a
+          map yet.
 - Request Details
     - Show IP address
     - Filter by IP address

@@ -5,6 +5,7 @@ import {
   getAvailableCounters,
   getRateLimiterStats,
   getRateLimiterConfig,
+  getBlockedClients,
   getMiddlewareStatus,
   getAllMiddlewareMetrics,
 } from '@/apiclient/sdk.gen';
@@ -15,6 +16,7 @@ import type {
   AvailableCountersResponse,
   RateLimiterStats,
   RateLimiterConfigResponse,
+  BlockedClientsResponse,
   MiddlewareStatusList,
   MiddlewareMetricsList,
 } from '@/apiclient/types.gen';
@@ -88,6 +90,8 @@ export const queryKeys = {
   token: (tokenId: string) => ['tokens', tokenId] as const,
   rateLimiterStats: () => ['rateLimiterStats'] as const,
   rateLimiterConfig: () => ['rateLimiterConfig'] as const,
+  blockedClients: (ip: string | undefined, limit: number, offset: number) =>
+    ['blockedClients', { ip, limit, offset }] as const,
   middlewareStatus: () => ['middlewareStatus'] as const,
   middlewareMetrics: () => ['middlewareMetrics'] as const,
 } as const;
@@ -329,6 +333,25 @@ export function useRateLimiterConfig() {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+  });
+}
+
+// Persistent history of rate-limiter block events (db.BlockedClient) — see
+// doc/middleware/rate-limiter.md. Distinct from useRateLimiterStats, which
+// only reflects whatever the in-memory limiter still happens to be
+// tracking right now; this survives past that cleanup.
+export function useBlockedClients(ip?: string, limit = 50, offset = 0) {
+  return useQuery<BlockedClientsResponse, Error>({
+    queryKey: queryKeys.blockedClients(ip, limit, offset),
+    queryFn: async () => {
+      const response = await getBlockedClients({
+        query: { ip, limit, offset },
+        client: customApiClient,
+      });
+      return handleResponse<BlockedClientsResponse>(response);
+    },
+    staleTime: 10_000,
+    gcTime: 60_000,
   });
 }
 

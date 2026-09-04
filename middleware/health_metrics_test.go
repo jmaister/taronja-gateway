@@ -40,7 +40,7 @@ func TestRateLimiterFactory_HealthCheck_NoInstance(t *testing.T) {
 }
 
 func TestRateLimiterFactory_HealthCheck_WithInstance(t *testing.T) {
-	rl := NewRateLimiter(config.RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 5, BlockMinutes: 5})
+	rl := NewRateLimiter(config.RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 5, BlockMinutes: 5}, nil)
 	f := NewRateLimiterFactory(rl)
 	health := f.HealthCheck()
 	if health.Status != "healthy" {

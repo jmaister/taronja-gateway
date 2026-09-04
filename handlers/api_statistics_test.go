@@ -30,6 +30,7 @@ func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil, // no rate limiter for basic stats tests
@@ -232,6 +233,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil,
@@ -438,9 +440,9 @@ func TestGetRequestDetails_IsStaticFilter(t *testing.T) {
 func TestRateLimiterEndpoints(t *testing.T) {
 	// create server with a limiter
 	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
-	rl := middleware.NewRateLimiter(*cfg)
+	rl := middleware.NewRateLimiter(*cfg, nil)
 	dependencies := deps.NewTest()
-	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.TokenService, dependencies.StartTime, rl, nil)
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, rl, nil)
 	// admin session
 	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
 	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
@@ -457,6 +459,70 @@ func TestRateLimiterEndpoints(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotNil(t, conf.RequestsPerMinute)
 	assert.Equal(t, cfg.RequestsPerMinute, *conf.RequestsPerMinute)
+}
+
+func TestGetBlockedClients_Unauthorized(t *testing.T) {
+	dependencies := deps.NewTest()
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil)
+
+	resp, err := s.GetBlockedClients(context.Background(), api.GetBlockedClientsRequestObject{})
+	require.NoError(t, err)
+	_, ok := resp.(api.GetBlockedClients401JSONResponse)
+	assert.True(t, ok)
+}
+
+func TestGetBlockedClients_ListsAndFilters(t *testing.T) {
+	dependencies := deps.NewTest()
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil)
+	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
+	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
+
+	now := time.Now()
+	require.NoError(t, dependencies.BlockedClientRepo.Create(&db.BlockedClient{
+		Reason: db.BlockReasonRateLimit, TriggerCount: 105,
+		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
+		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.9", UserAgent: "curl/8.0"},
+	}))
+	require.NoError(t, dependencies.BlockedClientRepo.Create(&db.BlockedClient{
+		Reason: db.BlockReasonVulnerabilityScan, Path: "/admin.php", TriggerCount: 4,
+		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
+		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.10"},
+	}))
+
+	t.Run("lists everything with no filter", func(t *testing.T) {
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		assert.Equal(t, 2, body.TotalCount)
+		require.Len(t, body.Items, 2)
+	})
+
+	t.Run("filters by ip", func(t *testing.T) {
+		ip := "203.0.113.9"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, body.Items, 1)
+		assert.Equal(t, "203.0.113.9", body.Items[0].IpAddress)
+		assert.Equal(t, api.BlockedClientReason(db.BlockReasonRateLimit), body.Items[0].Reason)
+		assert.Equal(t, 105, body.Items[0].TriggerCount)
+		require.NotNil(t, body.Items[0].UserAgent)
+		assert.Equal(t, "curl/8.0", *body.Items[0].UserAgent)
+		assert.Nil(t, body.Items[0].Path, "rate_limit doesn't set a path")
+	})
+
+	t.Run("scan block includes the path", func(t *testing.T) {
+		ip := "203.0.113.10"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, body.Items, 1)
+		require.NotNil(t, body.Items[0].Path)
+		assert.Equal(t, "/admin.php", *body.Items[0].Path)
+	})
 }
 
 func TestGetRequestTimeSeries_Unauthorized(t *testing.T) {

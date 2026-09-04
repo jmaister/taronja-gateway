@@ -20,6 +20,7 @@ type Dependencies struct {
 	TrafficMetricRepo db.TrafficMetricRepository
 	TokenRepo         db.TokenRepository
 	CountersRepo      db.CountersRepository
+	BlockedClientRepo db.BlockedClientRepository
 
 	// Services
 	SessionStore session.SessionStore
@@ -74,6 +75,7 @@ func NewProduction() *Dependencies {
 	)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
+	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -88,6 +90,7 @@ func NewProduction() *Dependencies {
 		TrafficMetricRepo: trafficMetricRepo,
 		TokenRepo:         tokenRepo,
 		CountersRepo:      countersRepo,
+		BlockedClientRepo: blockedClientRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		StartTime:         time.Now(),
@@ -111,6 +114,7 @@ func NewTestWithName(testName string) *Dependencies {
 	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
+	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)
@@ -125,6 +129,7 @@ func NewTestWithName(testName string) *Dependencies {
 		TrafficMetricRepo: trafficMetricRepo,
 		TokenRepo:         tokenRepo,
 		CountersRepo:      countersRepo,
+		BlockedClientRepo: blockedClientRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		StartTime:         time.Now(),

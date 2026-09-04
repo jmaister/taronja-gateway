@@ -68,7 +68,7 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 	// Built from the *effective* config (a per-entry middleware.global
 	// rate_limiter override if present, otherwise management.rateLimiter) —
 	// see the equivalent comment this replaces in the old createHTTPServer.
-	rl := middleware.NewRateLimiter(middleware.EffectiveRateLimiterConfig(cfg))
+	rl := middleware.NewRateLimiter(middleware.EffectiveRateLimiterConfig(cfg), d.BlockedClientRepo)
 
 	registry, err := middleware.NewGlobalMiddlewareRegistry(d.SessionStore, d.TokenService, d.TrafficMetricRepo, rl)
 	if err != nil {

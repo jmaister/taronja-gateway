@@ -43,6 +43,7 @@ func TestGetCurrentUser(t *testing.T) {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil,

@@ -612,6 +612,63 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/rate-limiter/blocked:
+    get:
+      summary: >-
+        Get the history of rate-limiter block events — a persistent
+        registry that survives past the in-memory rate limiter's own
+        cleanup, which discards an IP's live state (including its block)
+        once the block expires and the IP goes quiet again.
+      operationId: getBlockedClients
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: ip
+          schema:
+            type: string
+          required: false
+          description: Optional filter to only blocks recorded for this IP address
+          example: "203.0.113.9"
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          required: false
+          description: Maximum number of block events to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: false
+          description: Number of block events to skip
+      responses:
+        '200':
+          description: Blocked-client history, most recently blocked first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockedClientsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/config/rate-limiter:
     get:
       summary: Get current rate limiter configuration
@@ -1134,6 +1191,89 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/RateLimiterStat'
+    BlockedClient:
+      type: object
+      required:
+        - id
+        - ipAddress
+        - reason
+        - triggerCount
+        - blockedAt
+        - blockedUntil
+      properties:
+        id:
+          type: string
+          example: "1"
+        ipAddress:
+          type: string
+          example: "203.0.113.9"
+        reason:
+          type: string
+          enum: [rate_limit, max_errors, vulnerability_scan]
+          description: >-
+            Which configured threshold tripped the block: rate_limit
+            (requests per minute), max_errors (401/404 responses), or
+            vulnerability_scan (404s on a configured watched path).
+          example: rate_limit
+        path:
+          type: string
+          description: >-
+            The request path that triggered the block. Only ever set for
+            reason=vulnerability_scan; rate_limit and max_errors trip on
+            an aggregate count across many requests/paths, not one
+            specific path.
+          example: "/admin.php"
+        triggerCount:
+          type: integer
+          description: The relevant counter's value at the moment it crossed the configured threshold.
+          example: 105
+        blockedAt:
+          type: string
+          format: date-time
+          example: "2026-03-05T18:29:00Z"
+        blockedUntil:
+          type: string
+          format: date-time
+          example: "2026-03-05T18:44:00Z"
+        userAgent:
+          type: string
+          example: "curl/8.0"
+        country:
+          type: string
+          example: "United States"
+        countryCode:
+          type: string
+          example: "US"
+        city:
+          type: string
+          example: "Ashburn"
+        fingerprint:
+          type: string
+          description: See doc/middleware/ja4-fingerprint.md for what this is and its reliability caveats.
+        fingerprintType:
+          type: string
+    BlockedClientsResponse:
+      type: object
+      required:
+        - items
+        - totalCount
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlockedClient'
+        totalCount:
+          type: integer
+          description: Total block events matching the filter, ignoring limit/offset — for pagination.
+          example: 37
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
     RateLimiterConfigResponse:
       type: object
       properties:

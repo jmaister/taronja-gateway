@@ -342,6 +342,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.Dependencies.TrafficMetricRepo,
 		g.Dependencies.TokenRepo,
 		g.Dependencies.CountersRepo,
+		g.Dependencies.BlockedClientRepo,
 		g.Dependencies.TokenService,
 		g.StartTime,
 		g.RateLimiter,

@@ -24,6 +24,7 @@ func TestHealthCheck(t *testing.T) {
 		testDeps.TrafficMetricRepo,
 		testDeps.TokenRepo,
 		testDeps.CountersRepo,
+		testDeps.BlockedClientRepo,
 		testDeps.TokenService,
 		testDeps.StartTime,
 		nil,

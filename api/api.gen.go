@@ -19,6 +19,27 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for BlockedClientReason.
+const (
+	MaxErrors         BlockedClientReason = "max_errors"
+	RateLimit         BlockedClientReason = "rate_limit"
+	VulnerabilityScan BlockedClientReason = "vulnerability_scan"
+)
+
+// Valid indicates whether the value is a known member of the BlockedClientReason enum.
+func (e BlockedClientReason) Valid() bool {
+	switch e {
+	case MaxErrors:
+		return true
+	case RateLimit:
+		return true
+	case VulnerabilityScan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MiddlewareHealthStatus.
 const (
 	Degraded  MiddlewareHealthStatus = "degraded"
@@ -144,6 +165,73 @@ type AvailableCountersResponse struct {
 	//
 	// Example: ["credits","coins","points","tokens"]
 	Counters []string `json:"counters"`
+}
+
+// BlockedClient defines model for BlockedClient.
+type BlockedClient struct {
+	// BlockedAt Example: 2026-03-05T18:29:00Z
+	BlockedAt time.Time `json:"blockedAt"`
+
+	// BlockedUntil Example: 2026-03-05T18:44:00Z
+	BlockedUntil time.Time `json:"blockedUntil"`
+
+	// City Example: Ashburn
+	City *string `json:"city,omitempty"`
+
+	// Country Example: United States
+	Country *string `json:"country,omitempty"`
+
+	// CountryCode Example: US
+	CountryCode *string `json:"countryCode,omitempty"`
+
+	// Fingerprint See doc/middleware/ja4-fingerprint.md for what this is and its reliability caveats.
+	Fingerprint     *string `json:"fingerprint,omitempty"`
+	FingerprintType *string `json:"fingerprintType,omitempty"`
+
+	// Id Example: 1
+	Id string `json:"id"`
+
+	// IpAddress Example: 203.0.113.9
+	IpAddress string `json:"ipAddress"`
+
+	// Path The request path that triggered the block. Only ever set for reason=vulnerability_scan; rate_limit and max_errors trip on an aggregate count across many requests/paths, not one specific path.
+	//
+	// Example: /admin.php
+	Path *string `json:"path,omitempty"`
+
+	// Reason Which configured threshold tripped the block: rate_limit (requests per minute), max_errors (401/404 responses), or vulnerability_scan (404s on a configured watched path).
+	//
+	// Example: rate_limit
+	Reason BlockedClientReason `json:"reason"`
+
+	// TriggerCount The relevant counter's value at the moment it crossed the configured threshold.
+	//
+	// Example: 105
+	TriggerCount int `json:"triggerCount"`
+
+	// UserAgent Example: curl/8.0
+	UserAgent *string `json:"userAgent,omitempty"`
+}
+
+// BlockedClientReason Which configured threshold tripped the block: rate_limit (requests per minute), max_errors (401/404 responses), or vulnerability_scan (404s on a configured watched path).
+//
+// Example: rate_limit
+type BlockedClientReason string
+
+// BlockedClientsResponse defines model for BlockedClientsResponse.
+type BlockedClientsResponse struct {
+	Items []BlockedClient `json:"items"`
+
+	// Limit Example: 50
+	Limit int `json:"limit"`
+
+	// Offset Example: 0
+	Offset int `json:"offset"`
+
+	// TotalCount Total block events matching the filter, ignoring limit/offset — for pagination.
+	//
+	// Example: 37
+	TotalCount int `json:"totalCount"`
 }
 
 // CounterAdjustmentRequest defines model for CounterAdjustmentRequest.
@@ -661,6 +749,18 @@ type GetUserCounterHistoryParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetBlockedClientsParams defines parameters for GetBlockedClients.
+type GetBlockedClientsParams struct {
+	// Ip Optional filter to only blocks recorded for this IP address
+	Ip *string `form:"ip,omitempty" json:"ip,omitempty"`
+
+	// Limit Maximum number of block events to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of block events to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetRequestStatisticsParams defines parameters for GetRequestStatistics.
 type GetRequestStatisticsParams struct {
 	// StartDate Start date for filtering results (ISO 8601 format)
@@ -741,6 +841,9 @@ type ServerInterface interface {
 	// GetMiddlewareMetrics Get request metrics for a single global middleware
 	// (GET /api/middleware/{name}/metrics)
 	GetMiddlewareMetrics(w http.ResponseWriter, r *http.Request, name string)
+	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
+	// (GET /api/rate-limiter/blocked)
+	GetBlockedClients(w http.ResponseWriter, r *http.Request, params GetBlockedClientsParams)
 	// GetRateLimiterStats Get current rate limiter statistics
 	// (GET /api/statistics/rate-limiter)
 	GetRateLimiterStats(w http.ResponseWriter, r *http.Request)
@@ -1059,6 +1162,65 @@ func (siw *ServerInterfaceWrapper) GetMiddlewareMetrics(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMiddlewareMetrics(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBlockedClients operation middleware
+func (siw *ServerInterfaceWrapper) GetBlockedClients(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetBlockedClientsParams
+
+	// ------------- Optional query parameter "ip" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "ip", r.URL.Query(), &params.Ip, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ip"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ip", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBlockedClients(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1629,6 +1791,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/timeseries", wrapper.GetRequestTimeSeries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/rate-limiter", wrapper.GetRateLimiterStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/rate-limiter/blocked", wrapper.GetBlockedClients)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/config/rate-limiter", wrapper.GetRateLimiterConfig)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/middleware", wrapper.GetMiddlewareStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/middleware/metrics", wrapper.GetAllMiddlewareMetrics)
@@ -2202,6 +2365,56 @@ func (response GetMiddlewareMetrics404JSONResponse) VisitGetMiddlewareMetricsRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBlockedClientsRequestObject struct {
+	Params GetBlockedClientsParams
+}
+
+type GetBlockedClientsResponseObject interface {
+	VisitGetBlockedClientsResponse(w http.ResponseWriter) error
+}
+
+type GetBlockedClients200JSONResponse BlockedClientsResponse
+
+func (response GetBlockedClients200JSONResponse) VisitGetBlockedClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBlockedClients401JSONResponse Error
+
+func (response GetBlockedClients401JSONResponse) VisitGetBlockedClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBlockedClients500JSONResponse Error
+
+func (response GetBlockedClients500JSONResponse) VisitGetBlockedClientsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3035,6 +3248,9 @@ type StrictServerInterface interface {
 	// GetMiddlewareMetrics Get request metrics for a single global middleware
 	// (GET /api/middleware/{name}/metrics)
 	GetMiddlewareMetrics(ctx context.Context, request GetMiddlewareMetricsRequestObject) (GetMiddlewareMetricsResponseObject, error)
+	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
+	// (GET /api/rate-limiter/blocked)
+	GetBlockedClients(ctx context.Context, request GetBlockedClientsRequestObject) (GetBlockedClientsResponseObject, error)
 	// GetRateLimiterStats Get current rate limiter statistics
 	// (GET /api/statistics/rate-limiter)
 	GetRateLimiterStats(ctx context.Context, request GetRateLimiterStatsRequestObject) (GetRateLimiterStatsResponseObject, error)
@@ -3352,6 +3568,32 @@ func (sh *strictHandler) GetMiddlewareMetrics(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMiddlewareMetricsResponseObject); ok {
 		if err := validResponse.VisitGetMiddlewareMetricsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBlockedClients operation middleware
+func (sh *strictHandler) GetBlockedClients(w http.ResponseWriter, r *http.Request, params GetBlockedClientsParams) {
+	var request GetBlockedClientsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBlockedClients(ctx, request.(GetBlockedClientsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBlockedClients")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBlockedClientsResponseObject); ok {
+		if err := validResponse.VisitGetBlockedClientsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

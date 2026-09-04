@@ -105,8 +105,23 @@ your application's real routes.
 
 - **`GET <prefix>/api/statistics/rate-limiter`** (admin-only) — every
   tracked IP's current request/error/scan-404 counts and block-until time.
-  Rendered as the **Rate Limiter** page in the admin dashboard
-  (`webapp/src/pages/RateLimiterStatsPage.tsx`).
+  This is a live snapshot only: once a block expires and the IP goes quiet,
+  the background cleanup goroutine (see "What it does" above) deletes its
+  entry entirely, so a since-expired block has no trace here.
+- **`GET <prefix>/api/rate-limiter/blocked`** (admin-only) — the persistent
+  history of block events, unaffected by that cleanup. Optional `ip` filter,
+  `limit`/`offset` pagination (default `limit=50`, max `200`). Each entry
+  records which of the three checks tripped (`reason`:
+  `rate_limit`/`max_errors`/`vulnerability_scan`), the matched path for
+  scan blocks, how many times the threshold was hit, the block's start/end
+  time, and the same user-agent/geo/fingerprint fields already collected
+  for traffic metrics. A block is written here at the moment it's imposed —
+  independently of whether the in-memory entry above later gets cleaned up —
+  so it's the answer to "was this IP blocked last week, and why."
+  Both of the above are rendered together on the **Rate Limiter** admin
+  dashboard page (`webapp/src/pages/RateLimiterStatsPage.tsx`): live stats
+  in the "IP Statistics" table, history in "Blocked Clients History" below
+  it.
 - **`GET <prefix>/api/config/rate-limiter`** (admin-only) — the effective
   configuration currently in force.
 - **Health check** (`GET <prefix>/api/middleware`, `tg middleware list`):
@@ -121,5 +136,5 @@ your application's real routes.
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/cors.md](cors.md) — runs immediately before this one in
   the default chain.
-- `doc/TODO.md`'s "Rate limiter" section for planned future work (persistent
-  attacker tracking, geo info on blocked IPs, JA4-based filtering).
+- `doc/TODO.md`'s "Rate limiter" section for remaining planned work (a map
+  of attackers by country; the persistent-registry item itself is done).

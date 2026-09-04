@@ -28,7 +28,7 @@ func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
 
 	startTime := time.Now()
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, countersRepo, tokenService, startTime, nil, nil), sessionRepo
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, countersRepo, nil, tokenService, startTime, nil, nil), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {

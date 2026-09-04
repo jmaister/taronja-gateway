@@ -14,9 +14,12 @@ const AdminProvider = "tg_admin_provider"
 
 // ClientInfo contains common client and geographical information
 type ClientInfo struct {
-	IPAddress string `gorm:"type:varchar(45)" json:"ipAddress"` // IP address of the client
-	UserAgent string `gorm:"type:text" json:"userAgent"`        // User agent string
-	Referrer  string `gorm:"type:varchar(500)" json:"referrer"` // HTTP referrer
+	// Indexed: BlockedClient's registry is routinely queried/filtered by
+	// IP (db.BlockedClientRepositoryDB.List), and this is the field that
+	// query filters on across every table ClientInfo is embedded in.
+	IPAddress string `gorm:"type:varchar(45);index" json:"ipAddress"` // IP address of the client
+	UserAgent string `gorm:"type:text" json:"userAgent"`              // User agent string
+	Referrer  string `gorm:"type:varchar(500)" json:"referrer"`       // HTTP referrer
 
 	// Device (UserAgent) information
 	BrowserFamily  string `gorm:"type:varchar(100)" json:"browserFamily"`  // Browser family (Chrome, Firefox, etc.)
@@ -287,6 +290,67 @@ func (t *Token) BeforeSave(tx *gorm.DB) error {
 		utcRevokedAt := t.RevokedAt.UTC()
 		t.RevokedAt = &utcRevokedAt
 	}
+	return nil
+}
+
+// Block reason constants — the value BlockedClient.Reason takes,
+// matching exactly which counter middleware/ratelimiter.go's Handler
+// found tripped a configured threshold.
+const (
+	BlockReasonRateLimit         = "rate_limit"
+	BlockReasonMaxErrors         = "max_errors"
+	BlockReasonVulnerabilityScan = "vulnerability_scan"
+)
+
+// BlockedClient records one rate-limiter block event: an IP was blocked,
+// for how long, and what triggered it. This is a persistent history —
+// the in-memory RateLimiter itself keeps no such record past the block's
+// own expiry: middleware/ratelimiter.go's cleanupLoop deletes an IP's
+// entire tracked state (including its block) the moment the block window
+// ends and the IP has gone quiet, so without this, "was this IP blocked
+// last week, and why" had no answer once that happened — only
+// RateLimiter.Stats()'s live snapshot of whatever's still tracked right
+// now. See doc/TODO.md's "Rate limiter" section, which asked for exactly
+// this ("store persistent info about attackers... show blocked IPs with
+// start and end date of the block").
+type BlockedClient struct {
+	gorm.Model
+	// Reason names which counter tripped the block — one of the
+	// BlockReason* constants above.
+	Reason string `gorm:"type:varchar(30);not null;index" json:"reason"`
+	// Path is the request path that triggered the block. Only ever set
+	// for BlockReasonVulnerabilityScan (the specific configured URL
+	// pattern that matched) — BlockReasonRateLimit and
+	// BlockReasonMaxErrors trip on an aggregate count accumulated across
+	// many requests/paths, not any one specific path, so there's no
+	// single "the" path to record for those.
+	Path string `gorm:"type:varchar(500)" json:"path"`
+	// TriggerCount is the relevant counter's value at the moment it
+	// crossed the configured threshold — requests-in-the-last-minute for
+	// BlockReasonRateLimit, errors-in-the-block-window for
+	// BlockReasonMaxErrors, or scan-404s-in-the-block-window for
+	// BlockReasonVulnerabilityScan.
+	TriggerCount int `gorm:"not null" json:"triggerCount"`
+	// BlockedAt and BlockedUntil bound the block window. Always UTC —
+	// see BeforeCreate below, and TrafficMetric.BeforeCreate's comment
+	// for the same reasoning applied here.
+	BlockedAt    time.Time `gorm:"not null;index" json:"blockedAt"`
+	BlockedUntil time.Time `gorm:"not null" json:"blockedUntil"`
+	// Embed common client and geographical information — the same
+	// IP/User-Agent/geolocation/fingerprint fields every other traffic
+	// record carries, captured once at block time via
+	// session.NewClientInfo, the same helper TrafficMetric/Session use.
+	ClientInfo
+}
+
+// BeforeCreate normalizes BlockedAt/BlockedUntil to UTC before they're
+// persisted — see TrafficMetric.BeforeCreate's comment for why this
+// happens defensively here rather than trusting every call site
+// (middleware/ratelimiter.go builds both from a plain time.Now(), which
+// carries the server's local zone) to remember .UTC() itself.
+func (b *BlockedClient) BeforeCreate(tx *gorm.DB) error {
+	b.BlockedAt = b.BlockedAt.UTC()
+	b.BlockedUntil = b.BlockedUntil.UTC()
 	return nil
 }
 
