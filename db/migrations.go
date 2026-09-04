@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
+	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"gorm.io/gorm"
 )
 
@@ -44,6 +46,7 @@ type dbMigration struct {
 // time it's opened.
 var dbMigrations = []dbMigration{
 	{1, "normalize existing timestamps to UTC", migrateTimestampsToUTC},
+	{2, "backfill Fingerprint/FingerprintType from the old three-column scheme", migrateLegacyFingerprintColumns},
 }
 
 // applyDBMigrations runs every dbMigrations entry newer than the database's
@@ -207,6 +210,104 @@ func backfillColumnToUTC(gdb *gorm.DB, col utcTimestampColumn) error {
 		if err := gdb.Exec(updateSQL, parsed.UTC(), row.PK).Error; err != nil {
 			return fmt.Errorf("rewriting %s.%s to UTC for %s=%s: %w", col.table, col.column, col.pk, row.PK, err)
 		}
+	}
+	return nil
+}
+
+// legacyFingerprintSource names one of the three fingerprint columns that
+// existed before commit a559a93 consolidated them into a single
+// Fingerprint + FingerprintType pair, and the FingerprintType value that
+// column corresponds to. Order matters: it matches
+// fingerprint.SelectFingerprint's own priority (most reliable signal
+// wins) — see that function's doc comment — so a row that happened to
+// have more than one of the old columns populated backfills to the same
+// choice the application would have made had it processed that request
+// after the consolidation.
+type legacyFingerprintSource struct {
+	column string
+	typ    string
+}
+
+var legacyFingerprintSources = []legacyFingerprintSource{
+	{"ja4_tls_fingerprint", fingerprint.TypeJA4TLS},
+	{"stable_fingerprint", fingerprint.TypeStable},
+	{"ja4_fingerprint", fingerprint.TypeJA4H},
+}
+
+// legacyFingerprintTables lists every table ClientInfo has ever been
+// embedded in that could plausibly carry data in the old columns: Session
+// and TrafficMetric since JA4Fingerprint was first introduced, and Token
+// too — it started embedding ClientInfo (see auth.TokenService.
+// GenerateToken's clientInfo parameter) before the a559a93 consolidation.
+var legacyFingerprintTables = []string{"sessions", "traffic_metrics", "tokens"}
+
+// migrateLegacyFingerprintColumns backfills Fingerprint/FingerprintType
+// from whichever of the pre-a559a93 columns (ja4_fingerprint,
+// ja4_tls_fingerprint, stable_fingerprint) a table still has, for rows
+// where Fingerprint is still empty. AutoMigrate added the new columns for
+// every pre-existing row for free, but it only ever adds columns — it
+// never carries a value between them — so a row from before the
+// consolidation keeps its historical fingerprint sitting in a column the
+// application stopped reading entirely: invisible to fingerprint-based
+// grouping stats and the new-vs-returning-visitor calculation, even
+// though the data is still physically there. Confirmed against a real
+// database built and run from before the consolidation ever existed.
+//
+// One UPDATE per table, not a row-by-row Go loop like
+// migrateTimestampsToUTC: this is purely picking among already-stored
+// strings by priority, none of the timezone-parsing concerns that
+// migration has to deal with, so SQL can express the whole thing itself
+// via CASE expressions built from whichever old columns are actually
+// present.
+//
+// Guarded per table and per column with Migrator().HasColumn: a table
+// created after a559a93 never had any of the three old columns at all —
+// AutoMigrate only ever adds columns a struct currently declares, never
+// resurrects one it stopped declaring — and referencing a nonexistent
+// column in the generated SQL would error, not silently skip, without
+// this check.
+func migrateLegacyFingerprintColumns(gdb *gorm.DB) error {
+	for _, table := range legacyFingerprintTables {
+		if err := backfillLegacyFingerprintColumn(gdb, table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backfillLegacyFingerprintColumn handles one table for
+// migrateLegacyFingerprintColumns — see that function's comment.
+func backfillLegacyFingerprintColumn(gdb *gorm.DB, table string) error {
+	var present []legacyFingerprintSource
+	for _, src := range legacyFingerprintSources {
+		if gdb.Migrator().HasColumn(table, src.column) {
+			present = append(present, src)
+		}
+	}
+	if len(present) == 0 {
+		return nil // this table never had the old columns — nothing to backfill
+	}
+
+	var fingerprintCases, typeCases, anyPresentConds strings.Builder
+	for _, src := range present {
+		cond := fmt.Sprintf("%s IS NOT NULL AND %s != ''", src.column, src.column)
+		fmt.Fprintf(&fingerprintCases, "WHEN %s THEN %s ", cond, src.column)
+		fmt.Fprintf(&typeCases, "WHEN %s THEN '%s' ", cond, src.typ)
+		if anyPresentConds.Len() > 0 {
+			anyPresentConds.WriteString(" OR ")
+		}
+		fmt.Fprintf(&anyPresentConds, "(%s)", cond)
+	}
+
+	updateSQL := fmt.Sprintf(
+		`UPDATE %s SET
+			fingerprint = CASE %s ELSE fingerprint END,
+			fingerprint_type = CASE %s ELSE fingerprint_type END
+		WHERE (fingerprint IS NULL OR fingerprint = '') AND (%s)`,
+		table, fingerprintCases.String(), typeCases.String(), anyPresentConds.String(),
+	)
+	if err := gdb.Exec(updateSQL).Error; err != nil {
+		return fmt.Errorf("backfilling fingerprint/fingerprint_type on %s from legacy columns: %w", table, err)
 	}
 	return nil
 }

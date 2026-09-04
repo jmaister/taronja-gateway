@@ -33,21 +33,26 @@ var storedTimestampLayouts = []string{
 }
 
 // storedTimestampOffsetPrefix matches the "date time[.fraction] ±HHMM"
-// prefix of Go's time.Time.String() format — deliberately not the trailing
-// zone-abbreviation text that follows it, which storedTimestampLayouts'
-// "MST"-style verb only matches when that text is a plain alphabetic name
-// (a real zone abbreviation like "BST"). When a time.Time carries a
-// FixedZone with no name at all — exactly what Go constructs for a
-// JSON/RFC3339 timestamp with a bare numeric offset and no named zone
-// (confirmed against a real migrated database: Token.ExpiresAt, which is
-// API-caller-supplied, stored as "2026-12-25 10:00:00 +0500 +0500" — the
-// offset field repeated verbatim as the "zone name" too) — none of
-// storedTimestampLayouts' entries match, since none expect a second numeric
-// token where a name would normally be. The trailing text never changes
-// the actual instant, which the numeric offset alone already fully
-// determines, so parseStoredTimestamp's fallback below matches only this
-// prefix and discards whatever follows, rather than trying to enumerate
-// every shape that trailing text might take.
+// prefix of Go's time.Time.String() format — deliberately not whatever
+// trailing text follows it, which storedTimestampLayouts' "MST"-style verb
+// only matches when that text is exactly one plain alphabetic zone name and
+// nothing else. Two real, unrelated shapes break that assumption, both
+// found against real pre-upgrade databases rather than reasoned out in
+// advance: a time.Time with a FixedZone that has no name at all — what Go
+// constructs for a JSON/RFC3339 timestamp with a bare numeric offset
+// (Token.ExpiresAt, API-caller-supplied, stored as
+// "2026-12-25 10:00:00 +0500 +0500" — the offset repeated verbatim as the
+// "zone name" too) — and a time.Time that still carries its monotonic
+// clock reading, appended after the zone name as " m=±<seconds>" (any
+// value built from a bare time.Now() and never subjected to an operation
+// that strips it — e.g. a genuinely old Session.CreatedAt from before this
+// project normalized these — stored as
+// "2026-09-03 22:30:04.74361174 +0100 BST m=+13.399250358"). The trailing
+// text never changes the actual instant, which the numeric offset alone
+// already fully determines, so parseStoredTimestamp's fallback below
+// matches only the offset prefix and discards everything after it —
+// zone name, monotonic reading, both, or neither — rather than trying to
+// enumerate every shape that trailing text might take.
 var storedTimestampOffsetPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)? [+-]\d{4}`)
 
 // parseStoredTimestamp parses a timestamp column's text value using

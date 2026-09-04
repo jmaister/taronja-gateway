@@ -189,7 +189,21 @@ type TrafficMetric struct {
 	Error          string    `gorm:"type:text"`                  // Any error message if the request failed
 	UserID         string    `gorm:"type:varchar(255)"`          // ID of the user making the request, if authenticated
 	SessionID      string    `gorm:"type:varchar(255)"`          // ID of the session, if applicable
-	IsStaticAsset  bool      `gorm:"not null;index"`             // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
+	// default:false, not just not null: this column was added after
+	// TrafficMetric already existed in the wild (see AGENTS.md's "Data
+	// migrations" section), and AutoMigrate's ALTER TABLE ADD COLUMN for a
+	// NOT NULL column with no default fails outright on SQLite the moment
+	// the table already has one row — not a soft failure, a startup panic
+	// (confirmed against a real database from before this column existed:
+	// "SQL logic error: Cannot add a NOT NULL column with default value
+	// NULL"). false is the correct backfill value regardless: every
+	// pre-existing row predates this column's introduction, at which point
+	// every request was recorded, static or not (excludeStaticAssets
+	// skipping most static-asset rows came later still), so an old row
+	// having no way to say "this one was static" defaulting to "not
+	// static" undercounts static traffic for that old data, never fabricates
+	// it.
+	IsStaticAsset bool `gorm:"not null;default:false;index"` // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
 	// Embed common client and geographical information
 	ClientInfo
 }

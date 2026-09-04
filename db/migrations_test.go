@@ -1,10 +1,12 @@
 package db
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,6 +97,85 @@ func TestMigrateTimestampsToUTC_BackfillsLegacyRows(t *testing.T) {
 		assert.Equal(t, 0, offset, "%s.%s should be UTC after migration, got %v", tc.table, tc.column, got)
 		assert.True(t, tc.want.Equal(got), "%s.%s should still represent the same instant, want %v got %v", tc.table, tc.column, tc.want, got)
 	}
+}
+
+// addLegacyFingerprintColumns adds the three pre-a559a93 fingerprint
+// columns to an already-current-schema table via raw ALTER TABLE, then
+// seeds one row's values for them via raw UPDATE — simulating "this row's
+// data has been sitting in these columns since before the consolidation,
+// and the columns themselves have survived every AutoMigrate since (which
+// only ever adds columns, never drops one a struct stopped declaring)"
+// without needing to actually replay that whole history through
+// AutoMigrate itself twice, which is its own source of migrator quirks
+// unrelated to what this test is checking.
+func addLegacyFingerprintColumns(t *testing.T, table string) {
+	t.Helper()
+	for _, col := range []string{"ja4_fingerprint", "ja4_tls_fingerprint", "stable_fingerprint"} {
+		require.NoError(t, GetConnection().Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s TEXT", table, col)).Error)
+	}
+}
+
+func seedLegacyFingerprintColumns(t *testing.T, table, pkColumn, pkValue, ja4, ja4tls, stable string) {
+	t.Helper()
+	require.NoError(t, GetConnection().Exec(
+		fmt.Sprintf("UPDATE %s SET ja4_fingerprint = ?, ja4_tls_fingerprint = ?, stable_fingerprint = ? WHERE %s = ?", table, pkColumn),
+		ja4, ja4tls, stable, pkValue,
+	).Error)
+}
+
+// TestMigrateLegacyFingerprintColumns_BackfillsByPriority covers
+// migrateLegacyFingerprintColumns against a "sessions" table with the old
+// fingerprint columns added back on top of the current schema, with rows
+// exercising every priority case — ja4_tls_fingerprint winning over the
+// other two when several are present, stable_fingerprint next, and
+// ja4_fingerprint (JA4H) only when it's the sole one present — plus a row
+// that already has Fingerprint set (should be left alone, not overwritten
+// from a stale old column, even a decoy one).
+func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
+	SetupTestDB(t.Name())
+	gdb := GetConnection()
+	addLegacyFingerprintColumns(t, "sessions")
+
+	repo := NewSessionRepositoryDB(gdb)
+	for _, token := range []string{"all-three-present", "stable-and-ja4h", "ja4h-only", "none-present"} {
+		require.NoError(t, repo.CreateSession(token, &Session{UserID: "test-user", ValidUntil: time.Now().Add(time.Hour)}))
+	}
+
+	seedLegacyFingerprintColumns(t, "sessions", "token", "all-three-present", "ja4h-value", "ja4tls-value", "stable-value")
+	seedLegacyFingerprintColumns(t, "sessions", "token", "stable-and-ja4h", "ja4h-value-2", "", "stable-value-2")
+	seedLegacyFingerprintColumns(t, "sessions", "token", "ja4h-only", "ja4h-value-3", "", "")
+	seedLegacyFingerprintColumns(t, "sessions", "token", "none-present", "should-not-win", "", "")
+	require.NoError(t, gdb.Exec(
+		`UPDATE sessions SET fingerprint = ?, fingerprint_type = ? WHERE token = ?`,
+		"already-set-value", "ja4h", "none-present",
+	).Error)
+
+	require.NoError(t, migrateLegacyFingerprintColumns(gdb))
+
+	type result struct {
+		Fingerprint     string
+		FingerprintType string
+	}
+	get := func(token string) result {
+		var r result
+		require.NoError(t, gdb.Raw("SELECT fingerprint, fingerprint_type FROM sessions WHERE token = ?", token).Row().Scan(&r.Fingerprint, &r.FingerprintType))
+		return r
+	}
+
+	assert.Equal(t, result{"ja4tls-value", fingerprint.TypeJA4TLS}, get("all-three-present"), "ja4_tls_fingerprint should win when all three are present")
+	assert.Equal(t, result{"stable-value-2", fingerprint.TypeStable}, get("stable-and-ja4h"), "stable_fingerprint should win over ja4_fingerprint")
+	assert.Equal(t, result{"ja4h-value-3", fingerprint.TypeJA4H}, get("ja4h-only"), "ja4_fingerprint (JA4H) used only when it's the sole source")
+	assert.Equal(t, result{"already-set-value", "ja4h"}, get("none-present"), "a row that already has Fingerprint set must not be overwritten from an old column, even a decoy one (\"should-not-win\")")
+}
+
+// TestMigrateLegacyFingerprintColumns_NoOpWhenColumnsNeverExisted covers a
+// table created entirely after the a559a93 consolidation — the normal case
+// for db/db.go's real Init/SetupTestDB tables, which never declare the old
+// columns at all. migrateLegacyFingerprintColumns must not error trying to
+// reference a column that was never there.
+func TestMigrateLegacyFingerprintColumns_NoOpWhenColumnsNeverExisted(t *testing.T) {
+	SetupTestDB(t.Name())
+	require.NoError(t, migrateLegacyFingerprintColumns(GetConnection()))
 }
 
 // TestApplyDBMigrations_IsIdempotent covers the PRAGMA user_version

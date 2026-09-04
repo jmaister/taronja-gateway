@@ -47,6 +47,18 @@ func TestParseStoredTimestamp(t *testing.T) {
 			value: "2026-12-25 10:00:00 +0500 +0500",
 			want:  time.Date(2026, 12, 25, 10, 0, 0, 0, time.FixedZone("", 5*60*60)),
 		},
+		{
+			// Also confirmed against a real pre-upgrade database: a
+			// time.Time that still carries its monotonic clock reading
+			// (never subjected to an operation that strips it) renders
+			// that reading as a trailing " m=±<seconds>" suffix after the
+			// zone name — this genuinely occurred for Session.CreatedAt
+			// and TrafficMetric.Timestamp values written by a build from
+			// before this project's UTC normalization existed.
+			name:  "Go .String() format with a trailing monotonic clock reading",
+			value: "2026-09-03 22:30:04.74361174 +0100 BST m=+13.399250358",
+			want:  time.Date(2026, 9, 3, 22, 30, 4, 743611740, time.FixedZone("BST", 3600)),
+		},
 	}
 
 	for _, tc := range testCases {
