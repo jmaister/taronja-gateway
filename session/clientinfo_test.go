@@ -7,7 +7,6 @@ import (
 
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewClientInfo_Fingerprint(t *testing.T) {
@@ -99,48 +98,36 @@ func TestNewClientInfo_Fingerprint(t *testing.T) {
 
 // --- Trusted-proxy client IP resolution ------------------------------------
 
-// resetTrustedProxiesAfterTest clears the package-level trusted-proxy list
-// once the calling test finishes, so one test's SetTrustedProxies call
-// can't leak into whichever test runs next in this package.
-func resetTrustedProxiesAfterTest(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() { SetTrustedProxies(nil) })
-}
-
-func TestParseIPOrCIDR(t *testing.T) {
+func TestIsTrustedProxy(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		wantErr    bool
-		wantOnesIn int // ones,bits from ipNet.Mask.Size(), checked when wantErr is false
-		wantBits   int
+		name string
+		ip   string
+		want bool
 	}{
-		{name: "bare IPv4 widens to /32", input: "203.0.113.5", wantOnesIn: 32, wantBits: 32},
-		{name: "bare IPv6 widens to /128", input: "::1", wantOnesIn: 128, wantBits: 128},
-		{name: "IPv4 CIDR passes through", input: "10.0.0.0/8", wantOnesIn: 8, wantBits: 32},
-		{name: "IPv6 CIDR passes through", input: "fd00::/8", wantOnesIn: 8, wantBits: 128},
-		{name: "garbage is an error", input: "not-an-ip", wantErr: true},
-		{name: "empty string is an error", input: "", wantErr: true},
+		{"IPv4 loopback", "127.0.0.1", true},
+		{"IPv6 loopback", "::1", true},
+		{"RFC 1918 10/8", "10.1.2.3", true},
+		{"RFC 1918 172.16/12", "172.20.5.6", true},
+		{"RFC 1918 192.168/16", "192.168.1.1", true},
+		{"RFC 4193 IPv6 ULA", "fd00::1", true},
+		{"public IPv4", "203.0.113.9", false},
+		{"public IPv6", "2001:db8::1", false},
+		{"garbage is not trusted", "not-an-ip", false},
+		{"empty is not trusted", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, ipNet, err := parseIPOrCIDR(tt.input)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			ones, bits := ipNet.Mask.Size()
-			assert.Equal(t, tt.wantOnesIn, ones)
-			assert.Equal(t, tt.wantBits, bits)
+			assert.Equal(t, tt.want, isTrustedProxy(tt.ip))
 		})
 	}
 }
 
 func TestGetClientIP_TrustedProxyBehavior(t *testing.T) {
-	t.Run("untrusted peer's forwarded headers are ignored entirely", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies(nil)
+	t.Run("public peer's forwarded headers are ignored entirely", func(t *testing.T) {
+		// The security-relevant case: a direct external client can't
+		// present a private-range address as its own real TCP peer
+		// address (not routable from the public internet), so nothing
+		// needs configuring for this to be safe by default.
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "203.0.113.9:12345"
 		req.Header.Set("X-Forwarded-For", "1.2.3.4")
@@ -150,19 +137,15 @@ func TestGetClientIP_TrustedProxyBehavior(t *testing.T) {
 		assert.Equal(t, "203.0.113.9", GetClientIP(req), "none of the spoofed headers should be trusted")
 	})
 
-	t.Run("trusted CIDR range honors X-Forwarded-For, first entry wins", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies([]string{"10.0.0.0/8"})
+	t.Run("loopback peer honors X-Forwarded-For, first entry wins", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = "10.1.2.3:12345"
+		req.RemoteAddr = "127.0.0.1:12345"
 		req.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.1")
 
 		assert.Equal(t, "203.0.113.1", GetClientIP(req))
 	})
 
-	t.Run("trusted bare-IP entry matches exactly", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies([]string{"10.1.2.3"})
+	t.Run("private-range peer honors X-Real-IP", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "10.1.2.3:12345"
 		req.Header.Set("X-Real-IP", "203.0.113.2")
@@ -171,8 +154,6 @@ func TestGetClientIP_TrustedProxyBehavior(t *testing.T) {
 	})
 
 	t.Run("X-Forwarded-For takes precedence over X-Real-IP and X-Client-IP", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies([]string{"10.0.0.0/8"})
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "10.1.2.3:12345"
 		req.Header.Set("X-Forwarded-For", "203.0.113.1")
@@ -182,29 +163,7 @@ func TestGetClientIP_TrustedProxyBehavior(t *testing.T) {
 		assert.Equal(t, "203.0.113.1", GetClientIP(req))
 	})
 
-	t.Run("a peer just outside the trusted range is not trusted", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies([]string{"10.0.0.0/24"}) // only 10.0.0.0-10.0.0.255
-		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = "10.0.1.1:12345" // outside the /24
-		req.Header.Set("X-Forwarded-For", "203.0.113.1")
-
-		assert.Equal(t, "10.0.1.1", GetClientIP(req), "a peer outside the configured range must not be trusted")
-	})
-
-	t.Run("an invalid configured entry is skipped, valid ones still apply", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies([]string{"not-a-valid-entry", "10.0.0.0/8"})
-		req := httptest.NewRequest("GET", "/", nil)
-		req.RemoteAddr = "10.1.2.3:12345"
-		req.Header.Set("X-Forwarded-For", "203.0.113.1")
-
-		assert.Equal(t, "203.0.113.1", GetClientIP(req), "a malformed entry must not prevent the valid ones from working")
-	})
-
-	t.Run("IPv6 peer and IPv6 trusted range", func(t *testing.T) {
-		resetTrustedProxiesAfterTest(t)
-		SetTrustedProxies([]string{"fd00::/8"})
+	t.Run("IPv6 loopback/ULA peer honors X-Real-IP", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "[fd00::1]:12345"
 		req.Header.Set("X-Real-IP", "2001:db8::1")

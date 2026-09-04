@@ -135,15 +135,18 @@ geo-lookup API and the log line — this was never about parsing the URL,
 it was about trusting a header that any direct client can set to
 literally anything.
 
-**Fixed**: `server.trustedProxies` (a list of CIDR ranges or bare IPs,
-`config.ServerConfig.TrustedProxies`) now gates whether those headers are
-honored at all. Default is empty — nothing trusted, so by default every
-request's IP is simply its real TCP peer address, and this class of
-spoofing (which also affected IP-based rate limiting and analytics, not
-just this log line) is no longer possible unless an operator explicitly
-lists a reverse proxy/load balancer they control. See
-`session.GetClientIP`'s doc comment (`session/clientinfo.go`) and
-`session.SetTrustedProxies`.
+**Fixed**: those headers are now only honored when the request's real TCP
+peer is loopback or an RFC 1918/RFC 4193 private-range address
+(`session.isTrustedProxy`, via stdlib `net.IP.IsLoopback()`/`IsPrivate()`
+— the same default Rails' `ActionDispatch::RemoteIp` uses). No
+configuration needed or added: a direct external client can never present
+a private-range address as its own real peer address in the first place
+(not routable from the public internet), so this closes the spoofing hole
+(which also affected IP-based rate limiting and analytics, not just this
+log line) for the common case — a reverse proxy on the same host or in
+the same private network/Docker/Kubernetes cluster — without asking an
+operator to list anything. See `session.GetClientIP`'s doc comment
+(`session/clientinfo.go`).
 
 # Rate limiter
 

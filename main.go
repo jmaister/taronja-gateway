@@ -242,7 +242,6 @@ func runGateway(configFilePath string, watchConfig bool) {
 	log.Printf("Configuration loaded successfully: %s", config.Name)
 
 	session.SetGeolocationConfig(&config.Geolocation)
-	session.SetTrustedProxies(config.Server.TrustedProxies)
 
 	// Initialize dependencies for production
 	gatewayDeps := deps.NewProduction()
