@@ -184,9 +184,15 @@ operator to list anything. See `session.GetClientIP`'s doc comment
     - [x] Info about blocked IPs (number of requests, user agent, etc.), geo
           info, etc. — done: `triggerCount`, user agent, and geo/fingerprint
           fields are all recorded per block (same feature as above).
-    - [ ] Show a map of attackers by country — still open; the geo fields
-          needed for it are already recorded, but nothing renders them on a
-          map yet.
+    - [x] Show a map of attackers by country — done: `GET
+          /api/rate-limiter/blocked` now also returns `latitude`/`longitude`
+          per block (same nullable-`*float32`, non-zero-only pattern as
+          `RequestDetail`), and the Rate Limiter Stats page renders them on
+          a clustered world map (`BlockedClientsWorldMap.tsx`, lazy-loaded
+          like the existing traffic-requests map) with a "Top Attacker
+          Countries" breakdown below it — same coordinate fallback as the
+          traffic map (recorded GPS coordinates when available, else a
+          country-centroid lookup).
 - Request Details
     - Show IP address
     - Filter by IP address

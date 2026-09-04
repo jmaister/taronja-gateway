@@ -194,6 +194,12 @@ type BlockedClient struct {
 	// IpAddress Example: 203.0.113.9
 	IpAddress string `json:"ipAddress"`
 
+	// Latitude GPS latitude coordinate
+	Latitude *float32 `json:"latitude,omitempty"`
+
+	// Longitude GPS longitude coordinate
+	Longitude *float32 `json:"longitude,omitempty"`
+
 	// Path The request path that triggered the block. Only ever set for reason=vulnerability_scan; rate_limit and max_errors trip on an aggregate count across many requests/paths, not one specific path.
 	//
 	// Example: /admin.php

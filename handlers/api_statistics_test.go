@@ -488,14 +488,34 @@ func TestGetBlockedClients_ListsAndFilters(t *testing.T) {
 		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
 		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.10"},
 	}))
+	require.NoError(t, dependencies.BlockedClientRepo.Create(&db.BlockedClient{
+		Reason: db.BlockReasonMaxErrors, TriggerCount: 21,
+		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
+		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.11", Country: "United States", Latitude: 39.0438, Longitude: -77.4874},
+	}))
 
 	t.Run("lists everything with no filter", func(t *testing.T) {
 		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{})
 		require.NoError(t, err)
 		body, ok := resp.(api.GetBlockedClients200JSONResponse)
 		require.True(t, ok)
-		assert.Equal(t, 2, body.TotalCount)
-		require.Len(t, body.Items, 2)
+		assert.Equal(t, 3, body.TotalCount)
+		require.Len(t, body.Items, 3)
+	})
+
+	t.Run("includes geo coordinates when recorded, for the attacker map", func(t *testing.T) {
+		ip := "203.0.113.11"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, body.Items, 1)
+		require.NotNil(t, body.Items[0].Latitude)
+		require.NotNil(t, body.Items[0].Longitude)
+		assert.InDelta(t, 39.0438, *body.Items[0].Latitude, 0.001)
+		assert.InDelta(t, -77.4874, *body.Items[0].Longitude, 0.001)
+		require.NotNil(t, body.Items[0].Country)
+		assert.Equal(t, "United States", *body.Items[0].Country)
 	})
 
 	t.Run("filters by ip", func(t *testing.T) {

@@ -114,14 +114,18 @@ your application's real routes.
   records which of the three checks tripped (`reason`:
   `rate_limit`/`max_errors`/`vulnerability_scan`), the matched path for
   scan blocks, how many times the threshold was hit, the block's start/end
-  time, and the same user-agent/geo/fingerprint fields already collected
-  for traffic metrics. A block is written here at the moment it's imposed —
-  independently of whether the in-memory entry above later gets cleaned up —
-  so it's the answer to "was this IP blocked last week, and why."
-  Both of the above are rendered together on the **Rate Limiter** admin
-  dashboard page (`webapp/src/pages/RateLimiterStatsPage.tsx`): live stats
-  in the "IP Statistics" table, history in "Blocked Clients History" below
-  it.
+  time, and the same user-agent/geo/fingerprint/lat-long fields already
+  collected for traffic metrics. A block is written here at the moment
+  it's imposed — independently of whether the in-memory entry above later
+  gets cleaned up — so it's the answer to "was this IP blocked last week,
+  and why."
+  All three of the above are rendered together on the **Rate Limiter**
+  admin dashboard page (`webapp/src/pages/RateLimiterStatsPage.tsx`): live
+  stats in the "IP Statistics" table, an "Attacker Map" (clustered world
+  map, `BlockedClientsWorldMap.tsx`, lazy-loaded the same way as the
+  traffic-requests map on the Request Details page) with a "Top Attacker
+  Countries" breakdown, and full history in "Blocked Clients History"
+  below that.
 - **`GET <prefix>/api/config/rate-limiter`** (admin-only) — the effective
   configuration currently in force.
 - **Health check** (`GET <prefix>/api/middleware`, `tg middleware list`):

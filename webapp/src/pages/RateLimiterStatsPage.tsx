@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useRateLimiterStats, useBlockedClients } from '../services/services';
 import type { RateLimiterStat, BlockedClient } from '../apiclient/types.gen';
+import { LazyBlockedClientsWorldMap } from '../components/LazyBlockedClientsWorldMap';
 
 function formatBlockedUntil(ts: string): { label: string; isBlocked: boolean } {
     const d = new Date(ts);
@@ -69,7 +70,10 @@ export function RateLimiterStatsPage() {
         data: blockedClients,
         isLoading: blockedClientsLoading,
         error: blockedClientsError,
-    } = useBlockedClients();
+        // 200 is the API's max limit — the map benefits from as many points
+        // as it can get, and the history table below reads from the same
+        // response.
+    } = useBlockedClients(undefined, 200);
 
     // Auto-refresh: re-fetch every 10 seconds when enabled
     useState(() => {
@@ -185,6 +189,11 @@ export function RateLimiterStatsPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Attacker Map */}
+            {!blockedClientsLoading && !blockedClientsError && blockedClients && blockedClients.items.length > 0 && (
+                <LazyBlockedClientsWorldMap blockedClients={blockedClients.items} />
+            )}
 
             {/* Blocked Clients History */}
             <Card>

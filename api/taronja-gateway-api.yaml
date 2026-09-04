@@ -1247,6 +1247,14 @@ components:
         city:
           type: string
           example: "Ashburn"
+        latitude:
+          type: number
+          nullable: true
+          description: GPS latitude coordinate
+        longitude:
+          type: number
+          nullable: true
+          description: GPS longitude coordinate
         fingerprint:
           type: string
           description: See doc/middleware/ja4-fingerprint.md for what this is and its reliability caveats.

@@ -416,6 +416,14 @@ func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBloc
 		if bc.City != "" {
 			item.City = &bc.City
 		}
+		if bc.Latitude != 0 {
+			lat := float32(bc.Latitude)
+			item.Latitude = &lat
+		}
+		if bc.Longitude != 0 {
+			lon := float32(bc.Longitude)
+			item.Longitude = &lon
+		}
 		if bc.Fingerprint != "" {
 			item.Fingerprint = &bc.Fingerprint
 		}
