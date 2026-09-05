@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { CounterAdjustmentRequest, UserCountersResponse } from '@/apiclient/types.gen';
-import { useAdjustCounters, useAllUserCounters, useAvailableCounters, useCounterHistory } from '@/services/services';
+import { useAdjustCounters, useAllUserCounters, useAvailableCounters, useCounterHistory } from '@/services/counters';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';

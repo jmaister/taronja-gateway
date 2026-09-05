@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'; 
 import { UserTokensSection } from '../components/UserTokensSection'; 
-import { useUser } from '@/services/services';
+import { useUser } from '@/services/users';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 
 export function UserInfoPage() {

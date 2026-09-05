@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { useMiddlewareStatus, useMiddlewareMetrics } from '../services/services';
+import { useMiddlewareStatus, useMiddlewareMetrics } from '../services/middleware';
 import type { MiddlewareStatusItem, MiddlewareMetrics } from '@/apiclient/types.gen';
 
 function healthBadgeVariant(status?: string): 'success' | 'warning' | 'danger' | 'default' {

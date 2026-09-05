@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { subDays, subHours, subMonths } from 'date-fns';
 import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
-import { useRequestStatistics, useRequestTimeSeries } from '../services/services';
+import { useRequestStatistics, useRequestTimeSeries } from '../services/statistics';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { useRateLimiterStats, useBlockedClients } from '../services/services';
+import { useRateLimiterStats, useBlockedClients } from '../services/rateLimiter';
 import type { RateLimiterStat, BlockedClient } from '../apiclient/types.gen';
 import { LazyBlockedClientsWorldMap } from '../components/LazyBlockedClientsWorldMap';
 

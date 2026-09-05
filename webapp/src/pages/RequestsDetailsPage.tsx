@@ -3,7 +3,7 @@ import { RequestsDetailsTable } from "../components/RequestsDetailsTable";
 import { StatisticsDateRange, timePeriods, DateRange } from "../components/StatisticsDateRange";
 import { RequestTypeFilter, RequestTypeFilterValue, requestTypeFilterToIsStatic } from "../components/RequestTypeFilter";
 import { LazyRequestsWorldMap } from "../components/LazyRequestsWorldMap";
-import { useRequestDetails } from "../services/services";
+import { useRequestDetails } from "../services/statistics";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent } from "../components/ui/Card";
 import { PageHeader } from "../components/ui/PageHeader";

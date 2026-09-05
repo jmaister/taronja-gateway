@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useUserTokens, useCreateToken, useRevokeToken } from '../services/services';
+import { useUserTokens, useCreateToken, useRevokeToken } from '../services/tokens';
 import { TokenCreateRequest, TokenCreateResponse, TokenResponse } from '@/apiclient';
 import { Button } from './ui/Button';
 import { Card, CardContent, CardHeader } from './ui/Card';

@@ -6,7 +6,7 @@ import { TaronjaAuthProvider } from 'taronja-gateway-react-sdk';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { queryClient } from './services/services';
+import { queryClient } from './services/client';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 
