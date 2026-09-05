@@ -1,6 +1,6 @@
 # Refactoring 01: Middleware Architecture - Declarative & Pluggable Design
 
-**Status**: Planning  
+**Status**: Complete — all 4 phases implemented (see per-phase status below and [`doc/refactor01-release-notes.md`](./refactor01-release-notes.md) for a summary)
 **Priority**: Medium  
 **Effort**: 4 weeks (phased)  
 **Owner**: TBD  
@@ -213,31 +213,30 @@ GET /management/metrics/middleware/ja4_fingerprint
 
 ## Implementation Roadmap
 
-### Phase 1: Foundation (Week 1) ✍️ CURRENT FOCUS
+### Phase 1: Foundation (Week 1) ✅ DONE
 **Goal**: Create factory and registry system, fully backward compatible
 
 **Tasks**:
-- [ ] Create `middleware/factory.go` with MiddlewareFactory interface
-- [ ] Implement factories for all existing middleware:
-  - [ ] RateLimiterFactory
-  - [ ] JA4Factory
-  - [ ] SessionExtractionFactory
-  - [ ] TrafficMetricsFactory
-  - [ ] LoggingFactory
-- [ ] Create `middleware/registry_v2.go` with MiddlewareRegistryV2
-  - [ ] RegisterFactory(factory MiddlewareFactory) error
-  - [ ] BuildFromSpec(spec MiddlewareSpec) (Middleware, error)
-  - [ ] BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error)
-  - [ ] GetStatus() map[string]MiddlewareStatus
-- [ ] Add BuildGlobalChainV2() to `middleware/chain.go`
-- [ ] Create `middleware/registry_v2_test.go` with comprehensive tests
-  - [ ] Test factory creation
-  - [ ] Test dependency validation
-  - [ ] Test chain building
-  - [ ] Test status reporting
-- [ ] Update `gateway/gateway.go` createHTTPServer() to call BuildGlobalChainV2()
-- [ ] Verify all existing tests still pass
-- [ ] Document new patterns in CLAUDE.md
+- [x] Create `middleware/factory.go` with MiddlewareFactory interface
+- [x] Implement factories for all existing middleware:
+  - [x] RateLimiterFactory (reuses the gateway's existing `*RateLimiter` instance when supplied, so stats/config stay consistent with the management API)
+  - [x] JA4Factory
+  - [x] SessionExtractionFactory
+  - [x] TrafficMetricsFactory
+  - [x] LoggingFactory
+- [x] Create `middleware/registry_v2.go` with MiddlewareRegistryV2
+  - [x] RegisterFactory(factory MiddlewareFactory) error
+  - [x] BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) (also creates middleware from specs internally, so a separate BuildFromSpec wasn't needed)
+  - [x] GetStatus() map[string]MiddlewareStatus
+- [x] Add BuildGlobalChainV2() to `middleware/chain.go`
+- [x] Create `middleware/registry_v2_test.go` with comprehensive tests
+  - [x] Test factory creation
+  - [x] Test dependency validation
+  - [x] Test chain building
+  - [x] Test status reporting
+- [x] Update `gateway/gateway.go` createHTTPServer() to call BuildGlobalChainV2()
+- [x] Verify all existing tests still pass
+- [x] Document new patterns in AGENTS.md (CLAUDE.md just points to AGENTS.md for project context)
 
 **Success Criteria**:
 - ✅ All existing middleware work via factories
@@ -251,61 +250,71 @@ GET /management/metrics/middleware/ja4_fingerprint
 
 ---
 
-### Phase 2: Config Integration (Week 2)
+### Phase 2: Config Integration (Week 2) ✅ DONE
 **Goal**: Parse middleware from config file instead of hardcoded
 
 **Tasks**:
-- [ ] Create typed config structs for each middleware
-- [ ] Update config loader to parse `middleware:` YAML section
-- [ ] Migrate logic from BuildGlobalChain() to use registry
-- [ ] Make BuildGlobalChain() delegate to BuildGlobalChainV2()
-- [ ] Update validation system to use dependency graph
-- [ ] Add integration tests
+- [x] Create typed config structs for each middleware (`config/middleware.go`: `MiddlewareEntryConfig`, `MiddlewareSection`, shared name constants — only `rate_limiter` gets real per-entry options today, since it's the only middleware with tunable runtime config; see Key Design Decisions below)
+- [x] Update config loader to parse `middleware:` YAML section (`config.LoadConfig` in `config.go`, with fail-fast validation of unknown/missing/duplicate names)
+- [x] Migrate logic from BuildGlobalChain() to use registry (`ResolveGlobalChainSpecs` in `registry_v2.go`: explicit `middleware.global` section when present, else the legacy flags translated exactly as before)
+- [x] Make BuildGlobalChain() delegate to BuildGlobalChainV2() (`chain.go`; since `BuildGlobalChain` has no error return, a build failure is logged and falls back to an empty chain rather than panicking)
+- [x] Update validation system to use dependency graph (`middleware.ValidateMiddlewareChainConfig`, wired into `ValidateAllMiddleware`, validates names + `GetDependencies()` via `MiddlewareRegistryV2.ValidateSpecs` before real dependencies exist)
+- [x] Add integration tests (`config/middleware_test.go` for YAML parsing/validation, `middleware/registry_v2_config_test.go` for spec resolution, dependency validation, and end-to-end chain building)
 
 **Success Criteria**:
 - ✅ Middleware config read from YAML file
-- ✅ Same behavior as Phase 1
+- ✅ Same behavior as Phase 1 (legacy flags still produce identical specs when no `middleware:` section is present — covered by `TestResolveGlobalChainSpecs_LegacyFlagsWhenNoMiddlewareSection`)
 - ✅ Developers can now modify middleware without code changes
 
 **Estimated Effort**: 2-3 days development + 1 day testing
 
+**Note on scope**: the doc's original example showed per-middleware `logging:` options (level, format, includeBody, includeHeaders). Those aren't implemented — `LoggingMiddleware` itself has no such knobs today, and adding them would be a behavior change, not just a wiring change. Only `rate_limiter` (which already had a typed, wired-up `config.RateLimiterConfig`) gets per-entry YAML config in Phase 2. Extending other middlewares similarly is future work once they actually support the options.
+
+**Bug found and fixed after initial implementation**: the per-entry `rateLimiter:` override was resolved correctly by `ResolveGlobalChainSpecs` and covered by a unit test at that layer, but never actually took effect when running the real gateway — `createHTTPServer` built the shared `*RateLimiter` instance from `management.rateLimiter` *before* the registry existed, and `RateLimiterFactory.Create` always prefers that shared instance over the `cfg` it's given whenever one is supplied. `middleware.EffectiveRateLimiterConfig` now resolves the same override *before* that instance is constructed, and `gateway/middleware_wiring_test.go` covers the previously-broken end-to-end path (spec resolution alone wasn't enough to catch this — the gap was in what the resolved config was actually used *for*). Also fixed in the same pass: `MiddlewareRegistryV2.BuildChain` was accumulating `built`/`metrics` state across repeated calls on the same registry instead of resetting it, so `GetStatus`/`GetMetrics` could report stale "active" middleware from an earlier call — not reachable from any current caller (registries are only ever built once), but corrected to match the documented "most recent build" contract; and an explicit `middleware.global: []` was indistinguishable from no `middleware:` section at all and silently fell back to the legacy flags — `ResolveGlobalChainSpecs` now checks `Global != nil` rather than `len(Global) > 0`, since YAML preserves that distinction.
+
 ---
 
-### Phase 3: Monitoring & Observability (Week 3)
+### Phase 3: Monitoring & Observability (Week 3) ✅ DONE
 **Goal**: Add runtime inspection and health checks
 
 **Tasks**:
-- [ ] Add health check interface to middleware
-- [ ] Implement health checks in existing middleware
-- [ ] Create middleware status API endpoint
-- [ ] Create middleware metrics API endpoint
-- [ ] Add middleware status dashboard (if applicable)
-- [ ] Document health check patterns
+- [x] Add health check interface to middleware (`middleware/health.go`: `HealthChecker`/`MiddlewareHealth`, optionally implemented by a `MiddlewareFactory`)
+- [x] Implement health checks in existing middleware (`RateLimiterFactory.HealthCheck()` reports tracked/blocked IP counts from `RateLimiter.Stats()`; the other four factories don't implement it — see Note below — so `GetHealth`/`GetStatus` report `"unknown"` for them rather than a fabricated `"healthy"`)
+- [x] Create middleware status API endpoint (`GET <prefix>/api/middleware`, admin-only — `handlers/api_middleware.go` + `api/taronja-gateway-api.yaml`)
+- [x] Create middleware metrics API endpoint (`GET <prefix>/api/middleware/{name}/metrics`, admin-only, 404 for an unknown name)
+- [ ] Add middleware status dashboard — skipped; "(if applicable)" in the original plan, and no webapp page consumes these endpoints yet. The API is usable directly; a dashboard page is future work if/when needed.
+- [x] Document health check patterns (`AGENTS.md`, this file)
+
+**Tasks not in the original list, added during implementation**:
+- [x] Per-middleware request metrics (`middleware/metrics.go`): `BuildChain` wraps every middleware with `instrumentMiddleware`, recording request count, error count (status ≥ 500), and elapsed time in-memory. This was necessary to have real data for the metrics endpoint — without it, "performance data" would have to be fabricated.
+- [x] `NewGlobalMiddlewareRegistry` split out of `BuildGlobalChainV2` (`middleware/chain.go`) so `gateway.go` can keep the built `*MiddlewareRegistryV2` (on `Gateway.MiddlewareRegistry`) instead of it being discarded once the chain is built — needed for the status/metrics endpoints to have anything to query at request time.
 
 **Success Criteria**:
-- ✅ `GET /management/middleware` returns status of all middleware
-- ✅ `GET /management/metrics/middleware/:name` returns performance data
+- ✅ `GET /management/middleware` returns status of all middleware — implemented as `GET <prefix>/api/middleware` (e.g. `/_/api/middleware`), matching this codebase's existing endpoint convention (`/api/statistics/rate-limiter`, `/api/config/rate-limiter`, etc.) rather than a literal `/management/` path.
+- ✅ `GET /management/metrics/middleware/:name` returns performance data — implemented as `GET <prefix>/api/middleware/{name}/metrics`, same convention.
 - ✅ Can monitor middleware health in production
 
 **Estimated Effort**: 2-3 days development + 1 day testing
 
+**Note on scope**: only `rate_limiter` implements `HealthChecker`, since it's the only built-in middleware with real runtime state to report (tracked/blocked IPs). `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, and `logging` are stateless per request — there's nothing genuine to check — so they report health `"unknown"` rather than a hardcoded `"healthy"` that would just be decoration. A middleware's `averageDurationMs` metric is cumulative from entering that middleware to the response being written (middlewares nest, so this includes every downstream middleware and the final handler), not an isolated per-middleware cost; this is documented on the type and in the OpenAPI schema.
+
 ---
 
-### Phase 4: Documentation & Tooling (Week 4)
+### Phase 4: Documentation & Tooling (Week 4) ✅ DONE
 **Goal**: Make it easy for developers to add custom middleware
 
 **Tasks**:
-- [ ] Create middleware development guide (`doc/middleware_development.md`)
-- [ ] Create middleware plugin template
-- [ ] Create CLI tool for middleware introspection
-- [ ] Update CLAUDE.md with new patterns
-- [ ] Update repository README with architecture overview
-- [ ] Create release notes
+- [x] Create middleware development guide (`doc/middleware_development.md`)
+- [x] Create middleware plugin template — this codebase has no dynamic-loading Go `plugin` mechanism (middleware is always compiled in and registered via `RegisterFactory`), so "plugin template" means a real, compiling, tested example of that registration pattern rather than a `.so`: [`examples/middleware-plugin/`](../examples/middleware-plugin/) (an `X-Request-Id` tracing middleware, `request_id`)
+- [x] Create CLI tool for middleware introspection (`tg middleware list --config <path>`, in `main.go`)
+- [x] Update CLAUDE.md with new patterns — CLAUDE.md is intentionally a one-line pointer to `AGENTS.md` (per this repo's convention, established before this refactor); all patterns are documented there instead, kept current every phase
+- [x] Update repository README with architecture overview (`README.md`: new "Middleware Architecture" section + `middleware:` config subsection + `tg middleware list` in Commands)
+- [x] Create release notes (`doc/refactor01-release-notes.md` — GoReleaser generates its own changelog from commit messages at actual release time; this is a human-readable summary of the whole refactor for a PR description or manual release notes)
 
 **Success Criteria**:
 - ✅ New developers can add custom middleware
 - ✅ Clear documentation of patterns
-- ✅ Example of 3rd-party middleware
+- ✅ Example of 3rd-party middleware — compiled and tested, not just prose: `go test ./examples/middleware-plugin/...`
 
 **Estimated Effort**: 1-2 days
 
@@ -716,50 +725,50 @@ func TestRegistryReportsStatus(t *testing.T) {
 ## Implementation Checklist
 
 ### Phase 1 Tasks
-- [ ] Create `middleware/factory.go`
-  - [ ] MiddlewareFactory interface
-  - [ ] RateLimiterFactory
-  - [ ] JA4Factory
-  - [ ] SessionExtractionFactory
-  - [ ] TrafficMetricsFactory
-  - [ ] LoggingFactory
-  - [ ] Registry functions (RegisterFactory, GetFactory, ListFactories)
+- [x] Create `middleware/factory.go`
+  - [x] MiddlewareFactory interface
+  - [x] RateLimiterFactory
+  - [x] JA4Factory
+  - [x] SessionExtractionFactory
+  - [x] TrafficMetricsFactory
+  - [x] LoggingFactory
+  - [x] Registry functions (RegisterFactory, GetFactory, ListFactories)
 
-- [ ] Create `middleware/registry_v2.go`
-  - [ ] MiddlewareRegistryV2 struct and methods
-  - [ ] MiddlewareSpec struct
-  - [ ] BuildChain() with dependency validation
-  - [ ] GetStatus() for introspection
-  - [ ] BuildGlobalChainFromConfigV2() helper
+- [x] Create `middleware/registry_v2.go`
+  - [x] MiddlewareRegistryV2 struct and methods
+  - [x] MiddlewareSpec struct
+  - [x] BuildChain() with dependency validation
+  - [x] GetStatus() for introspection
+  - [x] BuildGlobalChainFromConfigV2() helper
 
-- [ ] Update `middleware/chain.go`
-  - [ ] Add BuildGlobalChainV2() function
+- [x] Update `middleware/chain.go`
+  - [x] Add BuildGlobalChainV2() function
 
-- [ ] Update `gateway/gateway.go`
-  - [ ] Change createHTTPServer() to call BuildGlobalChainV2()
-  - [ ] Add error handling for chain building
+- [x] Update `gateway/gateway.go`
+  - [x] Change createHTTPServer() to call BuildGlobalChainV2()
+  - [x] Add error handling for chain building
 
-- [ ] Create `middleware/registry_v2_test.go`
-  - [ ] Unit tests for all scenarios
-  - [ ] Tests for error conditions
-  - [ ] Tests for dependency validation
+- [x] Create `middleware/registry_v2_test.go`
+  - [x] Unit tests for all scenarios
+  - [x] Tests for error conditions
+  - [x] Tests for dependency validation
 
-- [ ] Verify all existing tests pass
-  - [ ] Run full test suite
-  - [ ] Check for any regressions
+- [x] Verify all existing tests pass
+  - [x] Run full test suite
+  - [x] Check for any regressions
 
-- [ ] Update `CLAUDE.md`
-  - [ ] Document new factory pattern
-  - [ ] Document registry usage
-  - [ ] Update architecture section
+- [x] Update `AGENTS.md` (CLAUDE.md defers to it for project context)
+  - [x] Document new factory pattern
+  - [x] Document registry usage
+  - [x] Update architecture section
 
 ### Acceptance Criteria
-- [ ] All unit tests passing
-- [ ] All integration tests passing
-- [ ] All existing tests still passing
-- [ ] Zero behavior change from before
+- [x] All unit tests passing
+- [x] All integration tests passing (existing gateway/middleware suites)
+- [x] All existing tests still passing
+- [x] Zero behavior change from before
 - [ ] Code review approved
-- [ ] Documentation updated
+- [x] Documentation updated
 
 ---
 
@@ -898,10 +907,69 @@ A: MiddlewareRegistryV2_test.go has comprehensive tests. Can also build test cha
 
 ---
 
+## Phase 5: Follow-ups from Self-Review ✅ DONE
+
+Phases 1–4 were reviewed after being marked complete (in response to "is
+anything missing?"), which surfaced four gaps. Two were real bugs — already
+found, fixed, and covered by regression tests in a dedicated commit (see
+their own phase sections above: `EffectiveRateLimiterConfig`, `BuildChain`'s
+`r.built`/`r.metrics` reset, `Global != nil` vs `len(Global) > 0`, and the
+`traffic_metrics` → `ja4_fingerprint` dependency correction). The remaining
+two are genuine gaps in what phases 3–4 delivered, not bugs — this phase
+tracks them explicitly instead of leaving them as an informal "possible
+future work" list.
+
+**Goal**: close the gaps that are well-scoped and valuable now; document why
+the other two remain deliberately deferred rather than silently dropping
+them.
+
+**Tasks**:
+- [x] Bulk middleware metrics endpoint — `MiddlewareRegistryV2.GetAllMetrics()`
+  had existed since Phase 3 but nothing called it; a dashboard wanting every
+  middleware's metrics needed N+1 requests (one
+  `GET .../api/middleware/{name}/metrics` per middleware from the status
+  list). Added `GET <prefix>/api/middleware/metrics` (`getAllMiddlewareMetrics`
+  in `api/taronja-gateway-api.yaml`, `StrictApiServer.GetAllMiddlewareMetrics`
+  in `handlers/api_middleware.go`) returning all of them in one call.
+- [x] Middleware status/metrics page in the admin dashboard — Phase 3 marked
+  this "(if applicable)" and skipped it since nothing consumed the API yet.
+  Added `webapp/src/pages/MiddlewarePage.tsx` (route `/middleware`, nav entry
+  in `Sidebar.tsx`), modeled on the existing `RateLimiterStatsPage`, showing
+  every global middleware's status, health, dependencies, and live metrics
+  (merging the status and bulk-metrics responses client-side by name).
+
+**Deliberately still deferred (not implemented in this phase)**:
+- **Per-middleware YAML config beyond `rate_limiter`** — e.g. the `logging:`
+  level/format/includeBody options sketched in Improvement 4. Implementing
+  this means inventing real behavior for `LoggingMiddleware` (log levels,
+  structured vs. text output, header allow-listing) that doesn't exist today
+  — it's new middleware functionality, not wiring up something already
+  built, so it doesn't belong in a "close the gaps" pass. Revisit if/when
+  `LoggingMiddleware` itself grows those options.
+- **A real dependency graph structure** (`middleware/dependency_graph.go`,
+  Improvement 3) — `MiddlewareRegistryV2`'s existing check ("every direct
+  dependency is satisfied by an earlier spec") already catches every
+  incorrect ordering that's actually possible with today's five built-in
+  middlewares, including transitively (verified during the self-review: the
+  `ja4_fingerprint` → `session_extraction` → `traffic_metrics` chain
+  correctly enforces `ja4_fingerprint` before `traffic_metrics` even before
+  `traffic_metrics` declared that dependency directly). Building a dedicated
+  graph data structure now, with no concrete case the current check gets
+  wrong, would be speculative complexity with no test that could prove it
+  necessary. Revisit if a middleware ever needs something the direct-only
+  check can't express (e.g. "at least one of X or Y", or a cycle-detection
+  requirement once there are enough middlewares for cycles to be a realistic
+  mistake).
+
+**Success Criteria**:
+- ✅ `GET <prefix>/api/middleware/metrics` returns every middleware's metrics in one call
+- ✅ The admin dashboard has a page showing middleware status/health/metrics
+- ✅ The two deferred items have a documented reason, not just silence
+
+---
+
 ## Next Steps
 
-1. **Review this document** - Ensure approach is acceptable
-2. **Discuss with team** - Get feedback on design choices
-3. **Start Phase 1 implementation** - If approved
-4. **Weekly check-ins** - Monitor progress, adapt as needed
+All five phases above are implemented. No further work is currently planned
+or scheduled beyond the two items Phase 5 deliberately deferred.
 

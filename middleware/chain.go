@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/jmaister/taronja-gateway/auth"
@@ -39,7 +40,18 @@ func (c *ChainBuilder) Build(handler http.Handler) http.Handler {
 	return handler
 }
 
-// BuildGlobalChain builds the global middleware chain based on gateway configuration
+// BuildGlobalChain builds the global middleware chain based on gateway
+// configuration. It delegates to BuildGlobalChainV2 (the factory/registry
+// system — see doc/refactor01.md Phase 2), so it now understands both the
+// legacy management.analytics/logging/rateLimiter flags and an explicit
+// `middleware:` config section, exactly like BuildGlobalChainV2.
+//
+// This function has no error return, for backward compatibility with any
+// existing callers, so a build failure (e.g. an invalid explicit middleware
+// section) is logged and results in an empty chain rather than a panic.
+// Prefer calling BuildGlobalChainV2 directly where an error return is
+// acceptable, since it surfaces misconfiguration instead of silently
+// dropping the chain.
 func BuildGlobalChain(
 	gatewayConfig *config.GatewayConfig,
 	sessionStore session.SessionStore,
@@ -47,33 +59,11 @@ func BuildGlobalChain(
 	trafficMetricRepo db.TrafficMetricRepository,
 	rateLimiter *RateLimiter,
 ) *ChainBuilder {
-	chain := NewChainBuilder()
-
-	// rate limiter should run first, even before analytics
-	if rateLimiter != nil {
-		chain.Add(rateLimiter.Handler)
-	} else if gatewayConfig.Management.RateLimiter.IsEnabled() {
-		chain.Add(RateLimiterMiddleware(gatewayConfig.Management.RateLimiter))
+	chain, err := BuildGlobalChainV2(gatewayConfig, sessionStore, tokenService, trafficMetricRepo, rateLimiter)
+	if err != nil {
+		log.Printf("BuildGlobalChain: failed to build middleware chain via registry: %v; falling back to an empty chain", err)
+		return NewChainBuilder()
 	}
-
-	// Add middlewares conditionally based on configuration
-	if gatewayConfig.Management.Analytics {
-		// JA4H fingerprinting middleware (first so fingerprint is available for other middlewares)
-		// chain.Add(JA4Middleware)
-		chain.Add(OptimizedJA4Middleware(true))
-
-		// Session extraction middleware (before traffic metrics to capture user info)
-		chain.Add(SessionExtractionMiddleware(sessionStore, tokenService))
-
-		// Traffic metrics middleware
-		chain.Add(TrafficMetricMiddleware(trafficMetricRepo))
-	}
-
-	// Logging middleware (if enabled)
-	if gatewayConfig.Management.Logging {
-		chain.Add(LoggingMiddleware)
-	}
-
 	return chain
 }
 
@@ -116,4 +106,75 @@ func Chain(handler http.Handler, middlewares ...Middleware) http.Handler {
 		handler = middlewares[i](handler)
 	}
 	return handler
+}
+
+// NewGlobalMiddlewareRegistry builds a MiddlewareRegistryV2 with a factory
+// registered for every built-in global middleware (compression, cors,
+// rate_limiter, ja4_fingerprint, session_extraction, traffic_metrics,
+// logging, tracing), wired to
+// the given dependencies. It's exposed separately from BuildGlobalChainV2 so
+// callers that need to introspect the registry after building the chain —
+// e.g. a middleware status/health/metrics API endpoint (doc/refactor01.md
+// Phase 3) — can keep a reference to it instead of it being discarded once
+// the chain is built.
+func NewGlobalMiddlewareRegistry(
+	sessionStore session.SessionStore,
+	tokenService *auth.TokenService,
+	trafficMetricRepo db.TrafficMetricRepository,
+	rateLimiter *RateLimiter,
+) (*MiddlewareRegistryV2, error) {
+	registry := NewMiddlewareRegistryV2()
+
+	if err := registry.RegisterFactory(NewCompressionFactory()); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewCORSFactory()); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewRateLimiterFactory(rateLimiter)); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewJA4Factory()); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewSessionExtractionFactory(sessionStore, tokenService)); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewTrafficMetricsFactory(trafficMetricRepo)); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+		return nil, err
+	}
+	if err := registry.RegisterFactory(NewTracingFactory()); err != nil {
+		return nil, err
+	}
+
+	return registry, nil
+}
+
+// BuildGlobalChainV2 builds the global middleware chain using the factory +
+// registry system (MiddlewareRegistryV2) instead of the hardcoded conditionals
+// in BuildGlobalChain. It registers a factory for every middleware currently
+// wired into BuildGlobalChain (via NewGlobalMiddlewareRegistry) and builds
+// the chain from gatewayConfig via BuildGlobalChainFromConfigV2, so the
+// resulting chain is behaviorally identical to BuildGlobalChain.
+//
+// This is an additive, backward-compatible entry point (see doc/refactor01.md
+// Phase 1): BuildGlobalChain keeps working unchanged, and callers can opt into
+// the registry-based path by calling this function instead. Callers that need
+// the registry itself (not just the chain) should call
+// NewGlobalMiddlewareRegistry and BuildGlobalChainFromConfigV2 directly.
+func BuildGlobalChainV2(
+	gatewayConfig *config.GatewayConfig,
+	sessionStore session.SessionStore,
+	tokenService *auth.TokenService,
+	trafficMetricRepo db.TrafficMetricRepository,
+	rateLimiter *RateLimiter,
+) (*ChainBuilder, error) {
+	registry, err := NewGlobalMiddlewareRegistry(sessionStore, tokenService, trafficMetricRepo, rateLimiter)
+	if err != nil {
+		return nil, err
+	}
+	return BuildGlobalChainFromConfigV2(registry, gatewayConfig)
 }

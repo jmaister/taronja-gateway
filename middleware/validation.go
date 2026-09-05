@@ -171,6 +171,52 @@ func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.Gatew
 	return nil
 }
 
+// ValidateCORSMiddleware validates the CORS configuration.
+func ValidateCORSMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	cors := config.Management.CORS
+	if !cors.IsEnabled() {
+		return nil
+	}
+
+	// The CORS spec forbids a wildcard origin on a credentialed request —
+	// browsers reject "Access-Control-Allow-Origin: *" outright when
+	// Access-Control-Allow-Credentials is also true. Reject this combination
+	// at config load time instead of shipping a CORS setup that silently
+	// doesn't work in any browser.
+	if cors.AllowCredentials && cors.AllowsAnyOrigin() {
+		return &ValidationError{
+			Middleware: "cors",
+			Message:    "allowedOrigins cannot include \"*\" when allowCredentials is true (browsers reject that combination) — list the specific origins that need credentials instead",
+		}
+	}
+
+	if cors.MaxAgeSeconds < 0 {
+		return &ValidationError{Middleware: "cors", Message: "maxAgeSeconds cannot be negative"}
+	}
+
+	return nil
+}
+
+// ValidateMiddlewareChainConfig validates the global middleware chain
+// configuration — the explicit `middleware:` section if present, otherwise
+// the legacy management.analytics/logging/rateLimiter flags — by resolving it
+// to the same ordered MiddlewareSpec list BuildGlobalChainV2 will use
+// (ResolveGlobalChainSpecs) and checking every spec's name and dependency
+// graph (ValidateGlobalChainSpecs). This runs before real dependencies
+// (session store, DB repositories, rate limiter instance) exist, so it
+// catches mistakes like enabling session_extraction without ja4_fingerprint,
+// or a typo'd middleware name, at startup instead of at request time.
+func ValidateMiddlewareChainConfig(config *config.GatewayConfig) error {
+	specs, err := ResolveGlobalChainSpecs(config)
+	if err != nil {
+		return &ValidationError{Middleware: "global", Message: err.Error()}
+	}
+	if err := ValidateGlobalChainSpecs(specs); err != nil {
+		return &ValidationError{Middleware: "global", Message: err.Error()}
+	}
+	return nil
+}
+
 // ValidateAdminAccess validates admin access configuration
 func ValidateAdminAccess(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	if !config.Management.Admin.Enabled {
@@ -215,7 +261,7 @@ func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayC
 	for _, route := range config.Routes {
 		// Validate static routes
 		if route.Static {
-			if route.ToFile == "" && route.To == "" && route.ToFolder == "" {
+			if route.ToFile == "" && len(route.To) == 0 && route.ToFolder == "" {
 				return &ValidationError{
 					Middleware: "static",
 					Message:    fmt.Sprintf("static route '%s' must have either ToFile, ToFolder, or To configured", route.Name),
@@ -223,7 +269,7 @@ func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayC
 			}
 		} else {
 			// Validate proxy routes
-			if route.To == "" {
+			if len(route.To) == 0 {
 				return &ValidationError{
 					Middleware: "proxy",
 					Message:    fmt.Sprintf("proxy route '%s' must have To URL configured", route.Name),
@@ -280,7 +326,48 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 		return err
 	}
 
+	// Validate CORS settings
+	if err := ValidateCORSMiddleware(deps, config); err != nil {
+		return err
+	}
+
+	// Validate the global middleware chain's names and dependency graph
+	if err := ValidateMiddlewareChainConfig(config); err != nil {
+		return err
+	}
+
 	log.Printf("All middleware validation completed successfully")
+	return nil
+}
+
+// ValidateConfigOnly runs every ValidateAllMiddleware check that validates
+// the config file itself and never dereferences deps (ValidateRouteConfiguration,
+// ValidateAdminAccess, ValidateRateLimiterMiddleware, ValidateCORSMiddleware,
+// ValidateMiddlewareChainConfig) — deliberately skipping
+// ValidateAnalyticsMiddleware/ValidateAuthenticationMiddleware/ValidateDependencies,
+// which check that dependency injection wired real objects (a session store,
+// a DB-backed user repository, ...), not a property of the config file.
+//
+// This is what `tg validate` calls: it needs to check the config is well
+// formed without opening a database connection or constructing a real
+// deps.Dependencies, the same way `tg middleware list` and `tg migrate`
+// don't either.
+func ValidateConfigOnly(config *config.GatewayConfig) error {
+	if err := ValidateRouteConfiguration(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateAdminAccess(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateRateLimiterMiddleware(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateCORSMiddleware(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateMiddlewareChainConfig(config); err != nil {
+		return err
+	}
 	return nil
 }
 

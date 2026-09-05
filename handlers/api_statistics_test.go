@@ -11,8 +11,10 @@ import (
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
@@ -28,9 +30,11 @@ func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil, // no rate limiter for basic stats tests
+		nil, // no middleware registry for basic stats tests
 	)
 	return server, dependencies.TrafficMetricRepo
 }
@@ -102,11 +106,11 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 			ResponseSize:   1024,       // 1KB
 			Timestamp:      now.Add(-time.Hour),
 			ClientInfo: db.ClientInfo{
-				Country:        "US",
-				DeviceFamily:   "desktop",
-				OSFamily:       "Windows",
-				BrowserFamily:  "Chrome",
-				JA4Fingerprint: "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac",
+				Country:       "US",
+				DeviceFamily:  "desktop",
+				OSFamily:      "Windows",
+				BrowserFamily: "Chrome",
+				Fingerprint:   "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", FingerprintType: fingerprint.TypeJA4H,
 			},
 		},
 		{
@@ -117,11 +121,11 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 			ResponseSize:   2048,       // 2KB
 			Timestamp:      now.Add(-30 * time.Minute),
 			ClientInfo: db.ClientInfo{
-				Country:        "ES",
-				DeviceFamily:   "mobile",
-				OSFamily:       "Android",
-				BrowserFamily:  "Firefox",
-				JA4Fingerprint: "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1",
+				Country:       "ES",
+				DeviceFamily:  "mobile",
+				OSFamily:      "Android",
+				BrowserFamily: "Firefox",
+				Fingerprint:   "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1", FingerprintType: fingerprint.TypeJA4H,
 			},
 		},
 		{
@@ -132,11 +136,11 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 			ResponseSize:   512,       // 0.5KB
 			Timestamp:      now.Add(-15 * time.Minute),
 			ClientInfo: db.ClientInfo{
-				Country:        "US",
-				DeviceFamily:   "tablet",
-				OSFamily:       "iOS",
-				BrowserFamily:  "Safari",
-				JA4Fingerprint: "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", // Same as first request
+				Country:       "US",
+				DeviceFamily:  "tablet",
+				OSFamily:      "iOS",
+				BrowserFamily: "Safari",
+				Fingerprint:   "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", FingerprintType: fingerprint.TypeJA4H, // Same as first request
 			},
 		},
 	}
@@ -205,11 +209,14 @@ func TestGetRequestStatistics_Success(t *testing.T) {
 	assert.Contains(t, stats.RequestsByBrowser, "Firefox")
 	assert.Contains(t, stats.RequestsByBrowser, "Safari")
 
-	// Verify JA4 fingerprint data
-	assert.Contains(t, stats.RequestsByJA4Fingerprint, "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac")
-	assert.Contains(t, stats.RequestsByJA4Fingerprint, "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1")
-	assert.Equal(t, 2, stats.RequestsByJA4Fingerprint["ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac"]) // First and third request
-	assert.Equal(t, 1, stats.RequestsByJA4Fingerprint["ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1"]) // Second request
+	// Verify fingerprint data
+	assert.Contains(t, stats.RequestsByFingerprint, "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac")
+	assert.Contains(t, stats.RequestsByFingerprint, "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1")
+	assert.Equal(t, 2, stats.RequestsByFingerprint["ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac"]) // First and third request
+	assert.Equal(t, 1, stats.RequestsByFingerprint["ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1"]) // Second request
+
+	// All three seeded rows used fingerprint.TypeJA4H
+	assert.Equal(t, 3, stats.RequestsByFingerprintType[fingerprint.TypeJA4H])
 }
 
 func TestStatisticsShowUsernames(t *testing.T) {
@@ -226,8 +233,10 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
+		nil,
 		nil,
 	)
 
@@ -352,12 +361,88 @@ func TestStatisticsShowUsernames(t *testing.T) {
 	})
 }
 
+func TestGetRequestDetails_IsStaticFilter(t *testing.T) {
+	server, trafficMetricRepo := setupStatsTestServer()
+
+	adminSession := &db.Session{
+		Token:           "admin-session",
+		UserID:          "admin-1",
+		Username:        "admin",
+		IsAuthenticated: true,
+		IsAdmin:         true,
+		Provider:        "test",
+	}
+
+	now := time.Now()
+
+	staticMetric := &db.TrafficMetric{
+		HttpMethod:     "GET",
+		Path:           "/_/static/app.js",
+		HttpStatus:     200,
+		ResponseTimeNs: 100000,
+		Timestamp:      now,
+		IsStaticAsset:  true,
+	}
+	apiMetric := &db.TrafficMetric{
+		HttpMethod:     "GET",
+		Path:           "/api/widgets",
+		HttpStatus:     200,
+		ResponseTimeNs: 200000,
+		Timestamp:      now,
+		IsStaticAsset:  false,
+	}
+	assert.NoError(t, trafficMetricRepo.Create(staticMetric))
+	assert.NoError(t, trafficMetricRepo.Create(apiMetric))
+
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+	startDate := now.Add(-1 * time.Hour)
+	endDate := now.Add(1 * time.Hour)
+
+	getDetails := func(isStatic *bool) []api.RequestDetail {
+		request := api.GetRequestDetailsRequestObject{
+			Params: api.GetRequestDetailsParams{
+				StartDate: &startDate,
+				EndDate:   &endDate,
+				IsStatic:  isStatic,
+			},
+		}
+		response, err := server.GetRequestDetails(ctx, request)
+		assert.NoError(t, err)
+		success, ok := response.(api.GetRequestDetails200JSONResponse)
+		assert.True(t, ok)
+		return success.Requests
+	}
+
+	t.Run("no filter returns both", func(t *testing.T) {
+		requests := getDetails(nil)
+		assert.Len(t, requests, 2)
+	})
+
+	t.Run("is_static=true returns only the static asset request", func(t *testing.T) {
+		yes := true
+		requests := getDetails(&yes)
+		if assert.Len(t, requests, 1) {
+			assert.Equal(t, "/_/static/app.js", requests[0].Path)
+			assert.True(t, requests[0].IsStatic)
+		}
+	})
+
+	t.Run("is_static=false returns only the non-static request", func(t *testing.T) {
+		no := false
+		requests := getDetails(&no)
+		if assert.Len(t, requests, 1) {
+			assert.Equal(t, "/api/widgets", requests[0].Path)
+			assert.False(t, requests[0].IsStatic)
+		}
+	})
+}
+
 func TestRateLimiterEndpoints(t *testing.T) {
 	// create server with a limiter
 	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
-	rl := middleware.NewRateLimiter(*cfg)
+	rl := middleware.NewRateLimiter(*cfg, nil)
 	dependencies := deps.NewTest()
-	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.TokenService, dependencies.StartTime, rl)
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, rl, nil)
 	// admin session
 	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
 	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
@@ -374,4 +459,181 @@ func TestRateLimiterEndpoints(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotNil(t, conf.RequestsPerMinute)
 	assert.Equal(t, cfg.RequestsPerMinute, *conf.RequestsPerMinute)
+}
+
+func TestGetBlockedClients_Unauthorized(t *testing.T) {
+	dependencies := deps.NewTest()
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil)
+
+	resp, err := s.GetBlockedClients(context.Background(), api.GetBlockedClientsRequestObject{})
+	require.NoError(t, err)
+	_, ok := resp.(api.GetBlockedClients401JSONResponse)
+	assert.True(t, ok)
+}
+
+func TestGetBlockedClients_ListsAndFilters(t *testing.T) {
+	dependencies := deps.NewTest()
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil)
+	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
+	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
+
+	now := time.Now()
+	require.NoError(t, dependencies.BlockedClientRepo.Create(&db.BlockedClient{
+		Reason: db.BlockReasonRateLimit, TriggerCount: 105,
+		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
+		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.9", UserAgent: "curl/8.0"},
+	}))
+	require.NoError(t, dependencies.BlockedClientRepo.Create(&db.BlockedClient{
+		Reason: db.BlockReasonVulnerabilityScan, Path: "/admin.php", TriggerCount: 4,
+		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
+		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.10"},
+	}))
+	require.NoError(t, dependencies.BlockedClientRepo.Create(&db.BlockedClient{
+		Reason: db.BlockReasonMaxErrors, TriggerCount: 21,
+		BlockedAt: now, BlockedUntil: now.Add(time.Hour),
+		ClientInfo: db.ClientInfo{IPAddress: "203.0.113.11", Country: "United States", Latitude: 39.0438, Longitude: -77.4874},
+	}))
+
+	t.Run("lists everything with no filter", func(t *testing.T) {
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		assert.Equal(t, 3, body.TotalCount)
+		require.Len(t, body.Items, 3)
+	})
+
+	t.Run("includes geo coordinates when recorded, for the attacker map", func(t *testing.T) {
+		ip := "203.0.113.11"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, body.Items, 1)
+		require.NotNil(t, body.Items[0].Latitude)
+		require.NotNil(t, body.Items[0].Longitude)
+		assert.InDelta(t, 39.0438, *body.Items[0].Latitude, 0.001)
+		assert.InDelta(t, -77.4874, *body.Items[0].Longitude, 0.001)
+		require.NotNil(t, body.Items[0].Country)
+		assert.Equal(t, "United States", *body.Items[0].Country)
+	})
+
+	t.Run("filters by ip", func(t *testing.T) {
+		ip := "203.0.113.9"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, body.Items, 1)
+		assert.Equal(t, "203.0.113.9", body.Items[0].IpAddress)
+		assert.Equal(t, api.BlockedClientReason(db.BlockReasonRateLimit), body.Items[0].Reason)
+		assert.Equal(t, 105, body.Items[0].TriggerCount)
+		require.NotNil(t, body.Items[0].UserAgent)
+		assert.Equal(t, "curl/8.0", *body.Items[0].UserAgent)
+		assert.Nil(t, body.Items[0].Path, "rate_limit doesn't set a path")
+	})
+
+	t.Run("scan block includes the path", func(t *testing.T) {
+		ip := "203.0.113.10"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, body.Items, 1)
+		require.NotNil(t, body.Items[0].Path)
+		assert.Equal(t, "/admin.php", *body.Items[0].Path)
+	})
+}
+
+func TestGetRequestTimeSeries_Unauthorized(t *testing.T) {
+	defer db.ResetConnection()
+	server, _ := setupStatsTestServer()
+
+	response, err := server.GetRequestTimeSeries(context.Background(), api.GetRequestTimeSeriesRequestObject{})
+	assert.NoError(t, err)
+	_, ok := response.(api.GetRequestTimeSeries401JSONResponse)
+	assert.True(t, ok, "expected 401 for an unauthenticated request")
+}
+
+func TestGetRequestTimeSeries_InvalidGranularity(t *testing.T) {
+	server, _ := setupStatsTestServer()
+	adminSession := &db.Session{Token: "admin", IsAuthenticated: true, IsAdmin: true}
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+	badGranularity := api.TimeSeriesGranularity("fortnight")
+	response, err := server.GetRequestTimeSeries(ctx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{Granularity: &badGranularity},
+	})
+	assert.NoError(t, err)
+	_, ok := response.(api.GetRequestTimeSeries400JSONResponse)
+	assert.True(t, ok, "expected 400 for an unrecognized granularity")
+}
+
+func TestGetRequestTimeSeries_SpanExceedsGranularityCap(t *testing.T) {
+	server, _ := setupStatsTestServer()
+	adminSession := &db.Session{Token: "admin", IsAuthenticated: true, IsAdmin: true}
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+	minuteGranularity := api.Minute
+	start := time.Now().Add(-48 * time.Hour) // exceeds minute's 24h cap
+	end := time.Now()
+	response, err := server.GetRequestTimeSeries(ctx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{
+			Granularity: &minuteGranularity,
+			StartDate:   &start,
+			EndDate:     &end,
+		},
+	})
+	assert.NoError(t, err)
+	_, ok := response.(api.GetRequestTimeSeries400JSONResponse)
+	assert.True(t, ok, "expected 400 when the span exceeds minute granularity's cap")
+}
+
+func TestGetRequestTimeSeries_Success(t *testing.T) {
+	server, trafficMetricRepo := setupStatsTestServer()
+	adminSession := &db.Session{Token: "admin", IsAuthenticated: true, IsAdmin: true}
+	ctx := context.WithValue(context.Background(), session.SessionKey, adminSession)
+
+	day := time.Now().Truncate(24 * time.Hour) // today at 00:00 local, well within range either way
+	require.NoError(t, trafficMetricRepo.Create(&db.TrafficMetric{
+		HttpMethod: "GET", Path: "/x", HttpStatus: 200, ResponseTimeNs: 1_000_000,
+		Timestamp:  day.Add(2 * time.Hour),
+		ClientInfo: db.ClientInfo{Fingerprint: "fp-a"},
+	}))
+	require.NoError(t, trafficMetricRepo.Create(&db.TrafficMetric{
+		HttpMethod: "GET", Path: "/x", HttpStatus: 500, ResponseTimeNs: 3_000_000,
+		Timestamp:  day.Add(2*time.Hour + 10*time.Minute),
+		ClientInfo: db.ClientInfo{Fingerprint: "fp-b"},
+	}))
+
+	hourGranularity := api.Hour
+	start := day
+	end := day.Add(23 * time.Hour)
+	response, err := server.GetRequestTimeSeries(ctx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{
+			Granularity: &hourGranularity,
+			StartDate:   &start,
+			EndDate:     &end,
+		},
+	})
+	require.NoError(t, err)
+	success, ok := response.(api.GetRequestTimeSeries200JSONResponse)
+	require.True(t, ok, "expected 200")
+	assert.Equal(t, api.Hour, success.Granularity)
+	assert.Len(t, success.Points, 24, "one point per hour from 00:00 to 23:00 inclusive")
+
+	var hour2 *api.TimeSeriesPoint
+	for i := range success.Points {
+		if success.Points[i].Timestamp.Hour() == 2 {
+			hour2 = &success.Points[i]
+			break
+		}
+	}
+	require.NotNil(t, hour2, "the 02:00 bucket must be present")
+	assert.Equal(t, 2, hour2.RequestCount)
+	assert.Equal(t, 2, hour2.UniqueFingerprints)
+	assert.Equal(t, 2, hour2.NewVisitors, "both fingerprints have no prior history at all")
+	assert.Equal(t, 0, hour2.ReturningVisitors)
+	assert.Equal(t, 1, hour2.ErrorCount)
+	assert.InDelta(t, 2.0, hour2.AverageResponseTime, 0.01, "average of 1ms and 3ms")
 }

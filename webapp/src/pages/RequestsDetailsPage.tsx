@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { RequestsDetailsTable } from "../components/RequestsDetailsTable";
 import { StatisticsDateRange, timePeriods, DateRange } from "../components/StatisticsDateRange";
+import { RequestTypeFilter, RequestTypeFilterValue, requestTypeFilterToIsStatic } from "../components/RequestTypeFilter";
 import { LazyRequestsWorldMap } from "../components/LazyRequestsWorldMap";
 import { useRequestDetails } from "../services/services";
 import { Button } from "../components/ui/Button";
@@ -10,16 +11,17 @@ import { PageHeader } from "../components/ui/PageHeader";
 export function RequestsDetailsPage() {
     const [selectedPeriod, setSelectedPeriod] = useState<string>("today");
     const [dateRange, setDateRange] = useState<DateRange>(() => timePeriods[0].getDateRange());
+    const [requestType, setRequestType] = useState<RequestTypeFilterValue>("all");
 
     const startDateStr = `${dateRange.startDate}T00:00:00Z`;
     const endDateStr = `${dateRange.endDate}T23:59:59Z`;
 
-    const { 
-        data, 
-        isLoading, 
-        error, 
-        refetch 
-    } = useRequestDetails(startDateStr, endDateStr);
+    const {
+        data,
+        isLoading,
+        error,
+        refetch
+    } = useRequestDetails(startDateStr, endDateStr, requestTypeFilterToIsStatic(requestType));
 
     // Ensure we always have an array, even if the API returns unexpected data
     const requests = data?.requests || [];
@@ -43,12 +45,13 @@ export function RequestsDetailsPage() {
                             selectedPeriod={selectedPeriod}
                             setSelectedPeriod={setSelectedPeriod}
                         />
+                        <RequestTypeFilter value={requestType} onChange={setRequestType} />
                     </>
                 }
             />
             
             {error && (
-                <Card className="border-danger/30 bg-danger/5">
+                <Card className="border-danger/30 bg-danger/5" role="alert">
                     <CardContent className="py-4">
                         <div className="flex items-center">
                             <div className="mr-3 text-xl text-danger">⚠️</div>

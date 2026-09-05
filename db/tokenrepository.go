@@ -64,17 +64,22 @@ func (r *TokenRepositoryDB) ExpireToken(tokenID string) error {
 	return r.db.Model(&Token{}).Where("id = ?", tokenID).Update("is_active", false).Error
 }
 
-// IncrementUsageCount increments the usage count and updates last used time
+// IncrementUsageCount increments the usage count and updates last used time.
+// .UTC(): this is a raw map-based Updates against an empty &Token{} model,
+// so Token.BeforeSave never sees this value — normalize the caller-supplied
+// lastUsedAt here instead, to match this schema's UTC convention.
 func (r *TokenRepositoryDB) IncrementUsageCount(tokenID string, lastUsedAt time.Time) error {
 	return r.db.Model(&Token{}).Where("id = ?", tokenID).Updates(map[string]interface{}{
 		"usage_count":  gorm.Expr("usage_count + 1"),
-		"last_used_at": lastUsedAt,
+		"last_used_at": lastUsedAt.UTC(),
 	}).Error
 }
 
 // RevokeToken marks a token as revoked
 func (r *TokenRepositoryDB) RevokeToken(tokenID string, revokedBy string) error {
-	now := time.Now()
+	// .UTC(): same reasoning as IncrementUsageCount above — a raw map-based
+	// Updates that Token.BeforeSave never gets a chance to normalize.
+	now := time.Now().UTC()
 	return r.db.Model(&Token{}).Where("id = ?", tokenID).Updates(map[string]interface{}{
 		"is_active":  false,
 		"revoked_at": now,

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { useRateLimiterStats } from '../services/services';
-import type { RateLimiterStat } from '../apiclient/types.gen';
+import { useRateLimiterStats, useBlockedClients } from '../services/services';
+import type { RateLimiterStat, BlockedClient } from '../apiclient/types.gen';
+import { LazyBlockedClientsWorldMap } from '../components/LazyBlockedClientsWorldMap';
 
 function formatBlockedUntil(ts: string): { label: string; isBlocked: boolean } {
     const d = new Date(ts);
@@ -34,9 +35,45 @@ function StatRow({ stat }: { stat: RateLimiterStat }) {
     );
 }
 
+function reasonLabel(reason: BlockedClient['reason']): string {
+    switch (reason) {
+        case 'rate_limit':
+            return 'Rate limit';
+        case 'max_errors':
+            return 'Too many errors';
+        case 'vulnerability_scan':
+            return 'Vulnerability scan';
+        default:
+            return reason;
+    }
+}
+
+function BlockedClientRow({ item }: { item: BlockedClient }) {
+    return (
+        <tr className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+            <td className="px-4 py-3 font-mono text-sm">{item.ipAddress}</td>
+            <td className="px-4 py-3 text-center">
+                <Badge variant="danger">{reasonLabel(item.reason)}</Badge>
+            </td>
+            <td className="px-4 py-3 text-sm text-muted-fg">{item.path ?? '—'}</td>
+            <td className="px-4 py-3 text-center text-sm">{item.triggerCount}</td>
+            <td className="px-4 py-3 text-sm">{new Date(item.blockedAt).toLocaleString()}</td>
+            <td className="px-4 py-3 text-sm">{new Date(item.blockedUntil).toLocaleString()}</td>
+        </tr>
+    );
+}
+
 export function RateLimiterStatsPage() {
     const [autoRefresh, setAutoRefresh] = useState(true);
     const { data: stats, isLoading, error, refetch, dataUpdatedAt } = useRateLimiterStats();
+    const {
+        data: blockedClients,
+        isLoading: blockedClientsLoading,
+        error: blockedClientsError,
+        // 200 is the API's max limit — the map benefits from as many points
+        // as it can get, and the history table below reads from the same
+        // response.
+    } = useBlockedClients(undefined, 200);
 
     // Auto-refresh: re-fetch every 10 seconds when enabled
     useState(() => {
@@ -114,7 +151,7 @@ export function RateLimiterStatsPage() {
                             ))}
                         </div>
                     ) : error ? (
-                        <div className="p-6 text-sm text-danger">
+                        <div className="p-6 text-sm text-danger" role="alert">
                             Failed to load rate limiter stats. Make sure the rate limiter is enabled.
                         </div>
                     ) : !stats || stats.length === 0 ? (
@@ -146,6 +183,59 @@ export function RateLimiterStatsPage() {
                                             <StatRow key={stat.ip} stat={stat} />
                                         ))
                                     }
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Attacker Map */}
+            {!blockedClientsLoading && !blockedClientsError && blockedClients && blockedClients.items.length > 0 && (
+                <LazyBlockedClientsWorldMap blockedClients={blockedClients.items} />
+            )}
+
+            {/* Blocked Clients History */}
+            <Card>
+                <CardHeader>
+                    <h3 className="text-base font-semibold">Blocked Clients History</h3>
+                    <p className="text-sm text-muted-fg mt-1">
+                        Persistent record of past block events. Unlike the live stats above, entries here
+                        remain after the rate limiter forgets an IP.
+                    </p>
+                </CardHeader>
+                <CardContent className="p-0">
+                    {blockedClientsLoading ? (
+                        <div className="p-6 space-y-3">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="animate-pulse h-8 rounded bg-muted"></div>
+                            ))}
+                        </div>
+                    ) : blockedClientsError ? (
+                        <div className="p-6 text-sm text-danger" role="alert">
+                            Failed to load blocked clients history.
+                        </div>
+                    ) : !blockedClients || blockedClients.items.length === 0 ? (
+                        <div className="p-6 text-sm text-muted-fg">
+                            No blocked clients recorded yet.
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-border bg-muted/40">
+                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">IP Address</th>
+                                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-fg">Reason</th>
+                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Path</th>
+                                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-fg">Triggers</th>
+                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Blocked At</th>
+                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Blocked Until</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {blockedClients.items.map(item => (
+                                        <BlockedClientRow key={item.id} item={item} />
+                                    ))}
                                 </tbody>
                             </table>
                         </div>

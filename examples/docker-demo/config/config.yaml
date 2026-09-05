@@ -1,0 +1,87 @@
+# Config for the docker-demo (see ./README.md). Paths under /srv/... are
+# where docker-compose.yml bind-mounts this directory's static-site folders
+# inside the gateway container (kept separate from /data, which is a named
+# volume for the sqlite DB file so it survives `docker compose down`/`up`);
+# ports/hostnames like "web-service:80" are Docker Compose service names,
+# resolved by Docker's internal DNS.
+version: 1
+name: Taronja Gateway - Docker Demo
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  url: http://localhost:8080
+
+management:
+  prefix: /_
+  session:
+    secondsDuration: 86400 # 24 hours
+  admin:
+    enabled: true
+    username: admin
+    password: admin123 # hashed automatically on first run — change this for anything but local demo use
+
+# Declarative middleware chain (see README.md "Middleware Architecture" and
+# AGENTS.md's `middleware/` section) instead of the legacy
+# management.analytics/logging/rateLimiter/cors boolean flags — this demo
+# uses it deliberately so it also shows off the config-driven middleware
+# system, not just routing/auth.
+middleware:
+  global:
+    - name: cors
+      cors:
+        allowedOrigins:
+          - "*" # fine for a local demo; a real deployment should list actual origins
+        allowCredentials: false # required when allowedOrigins is "*" — see README "Try CORS"
+    - name: rate_limiter
+      rateLimiter:
+        # Deliberately low so it's easy to trigger by hand — see README "Try
+        # the rate limiter". A real deployment would set this much higher.
+        requestsPerMinute: 60
+        maxErrors: 20
+        blockMinutes: 1
+    - name: ja4_fingerprint
+    - name: session_extraction
+    - name: traffic_metrics
+    - name: logging
+
+# Google/GitHub are only registered if their client ID+secret are both
+# non-empty (providers/providers.go) — leaving GOOGLE_CLIENT_ID unset in
+# .env just means the login page won't offer a Google button, not an error.
+# See README.md "Configure Google authentication".
+authenticationProviders:
+  basic:
+    enabled: true
+  google:
+    clientId: ${GOOGLE_CLIENT_ID}
+    clientSecret: ${GOOGLE_CLIENT_SECRET}
+  github:
+    clientId: ${GITHUB_CLIENT_ID}
+    clientSecret: ${GITHUB_CLIENT_SECRET}
+
+routes:
+  # --- Static route ---------------------------------------------------
+  - name: Static site
+    from: /
+    toFolder: /srv/static-site
+    static: true
+    options:
+      cacheControlSeconds: 3600 # look at the Cache-Control response header on this route
+
+  # A second static route, same shape, just with authentication required —
+  # demonstrates Sessions/Authentication on a static route, not just proxies.
+  - name: Static site (authenticated)
+    from: /secret
+    toFolder: /srv/static-site-secret
+    static: true
+    authentication:
+      enabled: true
+
+  # --- Web/proxy route --------------------------------------------------
+  # "web-service" is another container in docker-compose.yml (traefik/whoami
+  # — a tiny server that just echoes the request it received back as text),
+  # resolved via Docker's internal DNS, not localhost.
+  - name: Web service (proxy)
+    from: /web/*
+    removeFromPath: /web/
+    to: http://web-service:80

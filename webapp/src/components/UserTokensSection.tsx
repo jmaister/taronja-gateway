@@ -5,6 +5,7 @@ import { Button } from './ui/Button';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { FormField } from './ui/FormField';
 import { Input } from './ui/Input';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { StatusPill } from './ui/StatusPill';
 
 interface UserTokensSectionProps {
@@ -15,6 +16,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newToken, setNewToken] = useState<TokenCreateResponse | null>(null);
     const [copied, setCopied] = useState(false);
+    const [tokenPendingRevoke, setTokenPendingRevoke] = useState<{ id: string; name: string } | null>(null);
 
     // Form state for creating new token
     const [tokenName, setTokenName] = useState('');
@@ -53,14 +55,18 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
         }
     };
 
-    const handleRevokeToken = async (tokenId: string, tokenName: string) => {
-        if (!confirm(`Are you sure you want to revoke the token "${tokenName}"? This action cannot be undone.`)) {
-            return;
-        }
+    const handleRevokeToken = (tokenId: string, tokenName: string) => {
+        setTokenPendingRevoke({ id: tokenId, name: tokenName });
+    };
 
+    const confirmRevokeToken = async () => {
+        if (!tokenPendingRevoke) return;
         try {
-            await revokeTokenMutation.mutateAsync(tokenId);
+            await revokeTokenMutation.mutateAsync(tokenPendingRevoke.id);
+            setTokenPendingRevoke(null);
         } catch (err) {
+            // Leave the dialog open and let the error banner (wired to
+            // revokeTokenMutation.error below) explain what happened.
             console.error('Failed to revoke token:', err);
         }
     };
@@ -88,7 +94,8 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     };
 
     // Show error message from mutations or queries
-    const errorMessage = error || createTokenMutation.error || revokeTokenMutation.error;
+    const activeError = error || createTokenMutation.error || revokeTokenMutation.error;
+    const errorMessage = activeError instanceof Error ? activeError.message : activeError ? String(activeError) : null;
 
     return (
         <div className="mt-8">
@@ -105,8 +112,8 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
 
             {/* Error Message */}
             {errorMessage && (
-                <div className="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-danger">
-                    {String(errorMessage)}
+                <div className="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-danger" role="alert">
+                    {errorMessage}
                 </div>
             )}
 
@@ -304,6 +311,21 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                     </Card>
                 </div>
             )}
+
+            <ConfirmDialog
+                open={tokenPendingRevoke !== null}
+                title="Revoke this token?"
+                description={
+                    tokenPendingRevoke
+                        ? `Are you sure you want to revoke the token "${tokenPendingRevoke.name}"? This action cannot be undone.`
+                        : ''
+                }
+                confirmLabel={revokeTokenMutation.isPending ? 'Revoking…' : 'Revoke'}
+                variant="danger"
+                isLoading={revokeTokenMutation.isPending}
+                onCancel={() => setTokenPendingRevoke(null)}
+                onConfirm={confirmRevokeToken}
+            />
         </div>
     );
 };

@@ -29,8 +29,9 @@ const Sidebar = ({
       ]
     },
     { name: 'Counters', icon: '💰', path: '/counters' },
-    { 
-      name: 'Statistics', 
+    { name: 'Middleware', icon: '🧩', path: '/middleware' },
+    {
+      name: 'Statistics',
       icon: '📊', 
       submenu: [
         { name: 'Summary', path: '/statistics/request-summary' },

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -18,6 +20,72 @@ type RateLimiter struct {
 	cfg             config.RateLimiterConfig
 	entries         sync.Map // map[string]*rateEntry
 	cleanupInterval time.Duration
+	// scanPatterns is cfg.VulnerabilityScan.URLs, preprocessed once here
+	// instead of on every 404 — see scanPattern's doc comment.
+	scanPatterns []scanPattern
+	// blockedClientRepo persists every block event (see recordBlock) so
+	// it survives past cleanupLoop discarding the in-memory entry once
+	// the block expires — nil when no repository was supplied (e.g.
+	// RateLimiterMiddleware's standalone constructor, used where there's
+	// no database to write to), in which case blocks are still enforced
+	// exactly as before, just never recorded to the persistent registry.
+	blockedClientRepo db.BlockedClientRepository
+}
+
+// scanPattern holds the precomputed forms of one
+// config.VulnerabilityScanConfig.URLs entry that matches actually needs:
+// the backslash-normalized pattern, and — only when applicable — the
+// "expanded" form that also matches the bare pattern at any nesting depth
+// (see matches' doc comment). Both depend only on the pattern string, never
+// on the request, so computing them here, once per pattern when the
+// RateLimiter is built, replaces work matchesVulnerabilityScanPath used to
+// redo on every single matching attempt: normalizing the pattern's
+// backslashes, checking it for "**", and building the expanded string via
+// strings.ReplaceAll, all from scratch, for every configured pattern, on
+// every 404 response. That's exactly the traffic this feature exists to
+// handle efficiently — a scanner generating many rapid 404s — so redoing
+// static, pattern-only work on that hot path was self-defeating.
+type scanPattern struct {
+	normalized string
+	expanded   string // "" if this pattern has no bare "*" to expand (see newScanPattern)
+}
+
+// normalizeScanPath normalizes a request path's separators the same way
+// newScanPattern normalizes a pattern's, so the two are comparable
+// regardless of platform.
+func normalizeScanPath(requestPath string) string {
+	return strings.ReplaceAll(requestPath, "\\", "/")
+}
+
+// newScanPattern precomputes the forms of pattern that matches(requestPath)
+// needs. Mirrors matchesVulnerabilityScanPath's normalization/expansion
+// rules exactly — that function is now a thin per-call wrapper around this
+// same logic, kept for its existing direct unit test coverage.
+func newScanPattern(pattern string) scanPattern {
+	normalized := strings.ReplaceAll(pattern, "\\", "/")
+	sp := scanPattern{normalized: normalized}
+	// Expand a pattern with a bare "*" (but no "**") so it also matches the
+	// pattern nested at any depth, e.g. "/*.php" -> "/**/*.php" matches
+	// "/dir/admin.php" too, not just a top-level "/admin.php".
+	if !strings.Contains(normalized, "**") && strings.Contains(normalized, "*") {
+		sp.expanded = strings.ReplaceAll(normalized, "*", "**/*")
+	}
+	return sp
+}
+
+// matches reports whether normalizedRequestPath (already backslash-
+// normalized by the caller — see the Handler's vulnerability-scan block)
+// matches this pattern, trying the expanded form (if any) as a fallback.
+func (sp scanPattern) matches(normalizedRequestPath string) bool {
+	if matched, _ := doublestar.Match(sp.normalized, normalizedRequestPath); matched {
+		return true
+	}
+	if sp.expanded != "" {
+		if matched, _ := doublestar.Match(sp.expanded, normalizedRequestPath); matched {
+			return true
+		}
+	}
+	return false
 }
 
 // rateEntry stores the state for a single IP address.
@@ -32,21 +100,36 @@ type rateEntry struct {
 // RateLimiterMiddleware creates a middleware function configured with the
 // supplied settings. If both RequestsPerMinute and MaxErrors are zero the
 // returned middleware is a no-op and simply invokes the next handler.
+//
+// Built with no BlockedClientRepository — this standalone constructor has
+// no database connection to hand it one, so block events it enforces are
+// never persisted to the registry (see RateLimiter.blockedClientRepo).
+// The real gateway runtime always goes through NewRateLimiter directly
+// instead (see gateway/reload.go's buildRuntime), supplying one.
 func RateLimiterMiddleware(cfg config.RateLimiterConfig) func(http.Handler) http.Handler {
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 	return rl.Handler
 }
 
 // NewRateLimiter constructs a RateLimiter and starts the cleanup goroutine.
-func NewRateLimiter(cfg config.RateLimiterConfig) *RateLimiter {
+// blockedClientRepo may be nil (see RateLimiter.blockedClientRepo's doc
+// comment for what that means).
+func NewRateLimiter(cfg config.RateLimiterConfig, blockedClientRepo db.BlockedClientRepository) *RateLimiter {
 	// determine cleanup interval: use block minutes or default one minute
 	interval := time.Minute
 	if cfg.BlockMinutes > 0 {
 		interval = time.Duration(cfg.BlockMinutes) * time.Minute
 	}
+	scanPatterns := make([]scanPattern, len(cfg.VulnerabilityScan.URLs))
+	for i, url := range cfg.VulnerabilityScan.URLs {
+		scanPatterns[i] = newScanPattern(url)
+	}
+
 	rl := &RateLimiter{
-		cfg:             cfg,
-		cleanupInterval: interval,
+		cfg:               cfg,
+		cleanupInterval:   interval,
+		scanPatterns:      scanPatterns,
+		blockedClientRepo: blockedClientRepo,
 	}
 	go rl.cleanupLoop()
 	return rl
@@ -84,12 +167,19 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 		if rl.cfg.RequestsPerMinute > 0 && len(entry.requests) > rl.cfg.RequestsPerMinute {
 			// block the IP
 			entry.blockedUntil = now.Add(time.Duration(rl.cfg.BlockMinutes) * time.Minute)
+			blockedUntil := entry.blockedUntil
+			triggerCount := len(entry.requests)
 			retry := int(entry.blockedUntil.Sub(now).Seconds())
 			entry.mu.Unlock()
 			header := w.Header()
 			header.Set("Retry-After", fmt.Sprintf("%d", retry))
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte("Rate limit exceeded"))
+			// After the response, not before: recordBlock builds a
+			// ClientInfo (User-Agent parse, geolocation lookup) that has
+			// no business adding latency to a response that's already
+			// been written.
+			rl.recordBlock(r, db.BlockReasonRateLimit, "", triggerCount, now, blockedUntil)
 			return
 		}
 		entry.mu.Unlock()
@@ -105,26 +195,43 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 			entry.mu.Lock()
 			entry.errors = append(entry.errors, now)
 			entry.trim(now, rl.cfg)
+			var justBlocked bool
+			var blockedUntil time.Time
+			var triggerCount int
 			if rl.cfg.MaxErrors > 0 && len(entry.errors) > rl.cfg.MaxErrors {
 				entry.blockedUntil = now.Add(time.Duration(rl.cfg.BlockMinutes) * time.Minute)
+				justBlocked, blockedUntil, triggerCount = true, entry.blockedUntil, len(entry.errors)
 			}
 			entry.mu.Unlock()
+			if justBlocked {
+				rl.recordBlock(r, db.BlockReasonMaxErrors, "", triggerCount, now, blockedUntil)
+			}
 		}
 
-		// vulnerability scan paths: count only 404s on configured urls
-		if rw.status == http.StatusNotFound && len(rl.cfg.VulnerabilityScan.URLs) > 0 {
-			for _, pattern := range rl.cfg.VulnerabilityScan.URLs {
-				matched := matchesVulnerabilityScanPath(pattern, r.URL.Path)
-				if matched {
+		// vulnerability scan paths: count only 404s on configured urls.
+		// The request path is normalized once here, not once per pattern
+		// inside the loop — see scanPattern's doc comment for why that
+		// matters specifically on this path.
+		if rw.status == http.StatusNotFound && len(rl.scanPatterns) > 0 {
+			normalizedPath := normalizeScanPath(r.URL.Path)
+			for _, sp := range rl.scanPatterns {
+				if sp.matches(normalizedPath) {
 					entry := rl.getEntry(ip)
 					now := time.Now()
 					entry.mu.Lock()
 					entry.scan404 = append(entry.scan404, now)
 					entry.trim(now, rl.cfg)
+					var justBlocked bool
+					var blockedUntil time.Time
+					var triggerCount int
 					if rl.cfg.VulnerabilityScan.Max404 > 0 && len(entry.scan404) > rl.cfg.VulnerabilityScan.Max404 {
 						entry.blockedUntil = now.Add(time.Duration(rl.cfg.VulnerabilityScan.BlockMinutes) * time.Minute)
+						justBlocked, blockedUntil, triggerCount = true, entry.blockedUntil, len(entry.scan404)
 					}
 					entry.mu.Unlock()
+					if justBlocked {
+						rl.recordBlock(r, db.BlockReasonVulnerabilityScan, r.URL.Path, triggerCount, now, blockedUntil)
+					}
 					break
 				}
 			}
@@ -132,32 +239,46 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	})
 }
 
-func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
-	// Normalize separators so matching works consistently on all platforms.
-	pattern = strings.ReplaceAll(pattern, "\\", "/")
-	requestPath = strings.ReplaceAll(requestPath, "\\", "/")
-
-	// Use doublestar.Match (always uses '/' as separator) instead of PathMatch
-	// so behaviour is identical on Windows and Linux.
-
-	// First, try the user-specified pattern as-is.
-	if matched, _ := doublestar.Match(pattern, requestPath); matched {
-		return true
+// recordBlock persists one block event to the registry (blockedClientRepo)
+// — a no-op if none was supplied (see that field's doc comment). Building
+// the db.BlockedClient (including session.NewClientInfo's User-Agent
+// parse and geolocation lookup) happens synchronously, on the same
+// goroutine handling this request — mirroring exactly how
+// middleware/trafficmetric.go's TrafficMetricMiddleware already builds
+// its own per-request record for every single request, not just blocked
+// ones, deferring only the database write itself to a goroutine. Every
+// call site above only calls this after the response has already been
+// written, so none of this synchronous work adds latency to what the
+// client actually experiences.
+func (rl *RateLimiter) recordBlock(r *http.Request, reason, path string, triggerCount int, blockedAt, blockedUntil time.Time) {
+	if rl.blockedClientRepo == nil {
+		return
 	}
-
-	// Expand patterns without ** to also match nested paths at any depth.
-	// Examples:
-	//   "/*.php"          -> "/**/*.php"   matches /dir/admin.php
-	//   "/foo/*"          -> "/foo/**/*"   matches /foo/bar/baz
-	//   "/download/*/*.zip" -> "/download/**/*.zip" matches /download/a/b/archive.zip
-	if !strings.Contains(pattern, "**") && strings.Contains(pattern, "*") {
-		expandedPattern := strings.ReplaceAll(pattern, "*", "**/*")
-		if matched, _ := doublestar.Match(expandedPattern, requestPath); matched {
-			return true
+	clientInfo := session.NewClientInfo(r)
+	bc := &db.BlockedClient{
+		Reason:       reason,
+		Path:         path,
+		TriggerCount: triggerCount,
+		BlockedAt:    blockedAt,
+		BlockedUntil: blockedUntil,
+		ClientInfo:   *clientInfo,
+	}
+	go func() {
+		if err := rl.blockedClientRepo.Create(bc); err != nil {
+			log.Printf("rate limiter: failed to record blocked client %s: %v", bc.IPAddress, err)
 		}
-	}
+	}()
+}
 
-	return false
+// matchesVulnerabilityScanPath reports whether requestPath matches pattern,
+// applying the same backslash-normalization and nested-path expansion
+// rules as scanPattern.matches. Kept as a per-call convenience (and its
+// existing exhaustive test coverage) for callers matching a one-off
+// pattern; RateLimiter.Handler's hot path uses precomputed scanPatterns
+// instead — see scanPattern's doc comment for why that distinction matters
+// here specifically.
+func matchesVulnerabilityScanPath(pattern string, requestPath string) bool {
+	return newScanPattern(pattern).matches(normalizeScanPath(requestPath))
 }
 
 // statusRecorder is a minimal response writer that remembers the status code.

@@ -494,6 +494,17 @@ paths:
           required: false
           description: Optional end date for filtering results (ISO 8601 format)
           example: "2025-12-31T23:59:59Z"
+        - in: query
+          name: is_static
+          schema:
+            type: boolean
+          required: false
+          description: >-
+            Optional filter on whether the request was for a static asset
+            (see management.excludeStaticAssets). true returns only static
+            asset requests, false returns only non-static requests, and
+            omitting it returns both.
+          example: false
       responses:
         '200':
           description: List of requests with detailed information
@@ -503,6 +514,71 @@ paths:
                 $ref: '#/components/schemas/RequestDetailsResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/statistics/timeseries:
+    get:
+      summary: >-
+        Get request/visitor counts bucketed over time (per minute, hour,
+        day, week, or month) — powers "traffic over time" style graphs.
+      operationId: getRequestTimeSeries
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: false
+          description: Start date for the series (ISO 8601 format). Defaults to 24 hours before end_date.
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-01T00:00:00Z"
+        - name: end_date
+          in: query
+          required: false
+          description: End date for the series (ISO 8601 format). Defaults to now.
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-02T00:00:00Z"
+        - name: granularity
+          in: query
+          required: false
+          description: >-
+            Bucket size. Defaults to "day". Each is capped to a maximum
+            start_date/end_date span, to keep the number of returned
+            points bounded: minute (24 hours), hour (31 days), day (366
+            days), week (2 years), month (5 years).
+          schema:
+            $ref: '#/components/schemas/TimeSeriesGranularity'
+      responses:
+        '200':
+          description: Time-bucketed request/visitor counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesResponse'
+        '400':
+          description: >-
+            Bad Request (unknown granularity, or start_date/end_date span
+            exceeds that granularity's cap)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
           content:
             application/json:
               schema:
@@ -523,6 +599,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RateLimiterStats'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/rate-limiter/blocked:
+    get:
+      summary: >-
+        Get the history of rate-limiter block events — a persistent
+        registry that survives past the in-memory rate limiter's own
+        cleanup, which discards an IP's live state (including its block)
+        once the block expires and the IP goes quiet again.
+      operationId: getBlockedClients
+      tags:
+        - Statistics
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: ip
+          schema:
+            type: string
+          required: false
+          description: Optional filter to only blocks recorded for this IP address
+          example: "203.0.113.9"
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          required: false
+          description: Maximum number of block events to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: false
+          description: Number of block events to skip
+      responses:
+        '200':
+          description: Blocked-client history, most recently blocked first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockedClientsResponse'
         '401':
           description: Unauthorized
           content:
@@ -559,6 +692,86 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/middleware:
+    get:
+      summary: Get status (and health, where available) of every global middleware
+      operationId: getMiddlewareStatus
+      tags:
+        - Middleware
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Status of all global middleware
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareStatusList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/middleware/metrics:
+    get:
+      summary: Get request metrics for every global middleware in one call
+      operationId: getAllMiddlewareMetrics
+      tags:
+        - Middleware
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Request metrics for every middleware that has been built into the running chain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareMetricsList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/middleware/{name}/metrics:
+    get:
+      summary: Get request metrics for a single global middleware
+      operationId: getMiddlewareMetrics
+      tags:
+        - Middleware
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Middleware identifier, e.g. "rate_limiter" or "logging" (see getMiddlewareStatus)
+          schema:
+            type: string
+          example: "rate_limiter"
+      responses:
+        '200':
+          description: Request metrics for the named middleware
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareMetrics'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Unknown middleware name
           content:
             application/json:
               schema:
@@ -941,6 +1154,14 @@ components:
         provider:
           type: string
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          description: When the user account was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the user account was last updated.
     RateLimiterStat:
       type: object
       required:
@@ -970,6 +1191,97 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/RateLimiterStat'
+    BlockedClient:
+      type: object
+      required:
+        - id
+        - ipAddress
+        - reason
+        - triggerCount
+        - blockedAt
+        - blockedUntil
+      properties:
+        id:
+          type: string
+          example: "1"
+        ipAddress:
+          type: string
+          example: "203.0.113.9"
+        reason:
+          type: string
+          enum: [rate_limit, max_errors, vulnerability_scan]
+          description: >-
+            Which configured threshold tripped the block: rate_limit
+            (requests per minute), max_errors (401/404 responses), or
+            vulnerability_scan (404s on a configured watched path).
+          example: rate_limit
+        path:
+          type: string
+          description: >-
+            The request path that triggered the block. Only ever set for
+            reason=vulnerability_scan; rate_limit and max_errors trip on
+            an aggregate count across many requests/paths, not one
+            specific path.
+          example: "/admin.php"
+        triggerCount:
+          type: integer
+          description: The relevant counter's value at the moment it crossed the configured threshold.
+          example: 105
+        blockedAt:
+          type: string
+          format: date-time
+          example: "2026-03-05T18:29:00Z"
+        blockedUntil:
+          type: string
+          format: date-time
+          example: "2026-03-05T18:44:00Z"
+        userAgent:
+          type: string
+          example: "curl/8.0"
+        country:
+          type: string
+          example: "United States"
+        countryCode:
+          type: string
+          example: "US"
+        city:
+          type: string
+          example: "Ashburn"
+        latitude:
+          type: number
+          nullable: true
+          description: GPS latitude coordinate
+        longitude:
+          type: number
+          nullable: true
+          description: GPS longitude coordinate
+        fingerprint:
+          type: string
+          description: See doc/middleware/ja4-fingerprint.md for what this is and its reliability caveats.
+        fingerprintType:
+          type: string
+    BlockedClientsResponse:
+      type: object
+      required:
+        - items
+        - totalCount
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlockedClient'
+        totalCount:
+          type: integer
+          description: Total block events matching the filter, ignoring limit/offset — for pagination.
+          example: 37
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
     RateLimiterConfigResponse:
       type: object
       properties:
@@ -997,6 +1309,94 @@ components:
             - urls
             - max404
             - blockMinutes
+    MiddlewareHealth:
+      type: object
+      description: >-
+        The result of a middleware's health check. Most built-in global
+        middlewares are stateless per request and have nothing meaningful to
+        check; status is "unknown" for those rather than a fabricated
+        "healthy".
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy, unknown]
+          example: "healthy"
+        message:
+          type: string
+          example: "tracking 3 client IP(s), 0 currently blocked"
+    MiddlewareStatusItem:
+      type: object
+      required:
+        - name
+        - description
+        - status
+        - enabled
+        - dependencies
+      properties:
+        name:
+          type: string
+          example: "rate_limiter"
+        description:
+          type: string
+          example: "Limits request rate per client IP and detects vulnerability scans"
+        status:
+          type: string
+          enum: [active, available]
+          description: '"active" if currently included in the running global chain, "available" if registered but not.'
+          example: "active"
+        enabled:
+          type: boolean
+        dependencies:
+          type: array
+          items:
+            type: string
+          description: Names of other middleware that must run earlier in the chain for this one to work.
+        health:
+          $ref: '#/components/schemas/MiddlewareHealth'
+    MiddlewareStatusList:
+      type: array
+      items:
+        $ref: '#/components/schemas/MiddlewareStatusItem'
+    MiddlewareMetrics:
+      type: object
+      description: >-
+        In-memory request metrics for one middleware, tracked since the
+        process started (reset on restart). averageDurationMs is cumulative
+        from entering this middleware to the response being written, so it
+        includes every downstream middleware and the final handler — not this
+        middleware's isolated cost.
+      required:
+        - name
+        - requestCount
+        - errorCount
+        - averageDurationMs
+      properties:
+        name:
+          type: string
+          example: "logging"
+        requestCount:
+          type: integer
+          format: int64
+          example: 1024
+        errorCount:
+          type: integer
+          format: int64
+          description: Requests where the eventual response status was >= 500.
+          example: 2
+        averageDurationMs:
+          type: number
+          format: double
+          example: 1.42
+        lastInvokedAt:
+          type: string
+          format: date-time
+          nullable: true
+    MiddlewareMetricsList:
+      type: array
+      items:
+        $ref: '#/components/schemas/MiddlewareMetrics'
     RequestStatistics:
       type: object
       properties:
@@ -1075,15 +1475,35 @@ components:
             bob: 900
             guest: 300
           description: Number of requests grouped by user (username or user ID)
-        requestsByJA4Fingerprint:
+        requestsByFingerprint:
           type: object
           additionalProperties:
             type: integer
           example:
             "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac": 1500
-            "ge11nn05_7f3e9c2a1f8b_a9e7b3d4c2f1": 800
-            "ge11nn05_1a2b3c4d5e6f_f1e2d3c4b5a6": 500
-          description: Number of requests grouped by JA4 HTTP fingerprint
+            "t13i1311h2_f57a46bbacb6_e5728521abd4": 800
+            "8eeef6e7162cf91b": 500
+          description: >-
+            Number of requests grouped by client fingerprint
+            (ClientInfo.Fingerprint) — the single consolidated value chosen
+            per request among the three fingerprinting algorithms (see
+            requestsByFingerprintType for the algorithm breakdown, and
+            doc/middleware/ja4-fingerprint.md for what each algorithm is).
+        requestsByFingerprintType:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            ja4_tls: 1200
+            stable: 600
+            ja4h: 200
+          description: >-
+            Number of requests grouped by which fingerprinting algorithm
+            actually produced the value in requestsByFingerprint for that
+            request: "ja4_tls" (TLS-level JA4, only possible when the
+            gateway terminates TLS itself), "stable" (reduced-entropy
+            header-based fingerprint), or "ja4h" (the noisiest, HTTP-header
+            JA4H fingerprint).
       required:
         - totalRequests
         - requestsByStatus
@@ -1094,7 +1514,8 @@ components:
         - requestsByPlatform
         - requestsByBrowser
         - requestsByUser
-        - requestsByJA4Fingerprint
+        - requestsByFingerprint
+        - requestsByFingerprintType
     RequestDetail:
       type: object
       properties:
@@ -1144,6 +1565,25 @@ components:
         browser_version:
           type: string
           description: Version of the browser
+        is_static:
+          type: boolean
+          description: Whether the request path looked like a static asset (see management.excludeStaticAssets)
+        fingerprint:
+          type: string
+          description: >-
+            The single consolidated client fingerprint value for this
+            request (ClientInfo.Fingerprint) — see fingerprint_type for
+            which algorithm produced it. Empty if none was available.
+        fingerprint_type:
+          type: string
+          enum: ["ja4_tls", "stable", "ja4h", ""]
+          description: >-
+            Which fingerprinting algorithm produced the value in
+            fingerprint: "ja4_tls" (TLS-level JA4, only possible when the
+            gateway terminates TLS itself), "stable" (reduced-entropy
+            header-based fingerprint), "ja4h" (HTTP-header JA4H
+            fingerprint — the noisiest of the three), or "" if fingerprint
+            is empty too.
       required:
         - id
         - timestamp
@@ -1159,6 +1599,9 @@ components:
         - platform_version
         - browser
         - browser_version
+        - is_static
+        - fingerprint
+        - fingerprint_type
     RequestDetailsResponse:
       type: object
       properties:
@@ -1168,7 +1611,79 @@ components:
             $ref: '#/components/schemas/RequestDetail'
       required:
         - requests
-    
+
+    TimeSeriesGranularity:
+      type: string
+      enum: ["minute", "hour", "day", "week", "month"]
+
+    TimeSeriesPoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Start of this bucket, in UTC.
+        requestCount:
+          type: integer
+          description: Total requests recorded in this bucket.
+        uniqueFingerprints:
+          type: integer
+          description: >-
+            Distinct client fingerprints (ClientInfo.Fingerprint) seen in
+            this bucket — a proxy for unique visitors/devices, including
+            anonymous ones. See doc/middleware/ja4-fingerprint.md for what
+            "fingerprint" means here and its reliability caveats. Equal to
+            newVisitors + returningVisitors.
+        newVisitors:
+          type: integer
+          description: >-
+            Of uniqueFingerprints, how many had their first-ever
+            appearance (across this gateway's whole recorded history, not
+            just the requested range) fall within this bucket.
+        returningVisitors:
+          type: integer
+          description: >-
+            Of uniqueFingerprints, how many were already known from an
+            earlier bucket — possibly long before the requested range even
+            started. uniqueFingerprints - newVisitors.
+        uniqueUsers:
+          type: integer
+          description: Distinct authenticated user IDs seen in this bucket. Excludes anonymous traffic.
+        errorCount:
+          type: integer
+          description: Requests with an HTTP status of 400 or higher in this bucket.
+        averageResponseTime:
+          type: number
+          format: float
+          description: Average response time in milliseconds for requests in this bucket. 0 if the bucket has no requests.
+      required:
+        - timestamp
+        - requestCount
+        - uniqueFingerprints
+        - newVisitors
+        - returningVisitors
+        - uniqueUsers
+        - errorCount
+        - averageResponseTime
+
+    TimeSeriesResponse:
+      type: object
+      properties:
+        granularity:
+          $ref: '#/components/schemas/TimeSeriesGranularity'
+        points:
+          type: array
+          description: >-
+            One point per bucket across the full requested range, in order,
+            including zero-valued buckets for time windows with no
+            recorded requests at all (a continuous series is easier to
+            chart correctly than one with gaps).
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+      required:
+        - granularity
+        - points
+
     TokenResponse:
       type: object
       properties:

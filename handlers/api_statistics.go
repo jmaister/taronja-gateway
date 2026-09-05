@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -100,10 +102,16 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
 
-	// Get requests by JA4 fingerprint
-	requestsByJA4Fingerprint, err := s.trafficMetricRepo.GetRequestCountByJA4Fingerprint(startDate, endDate)
+	// Get requests by consolidated fingerprint, and by which algorithm
+	// produced it — see fingerprint.SelectFingerprint.
+	requestsByFingerprint, err := s.trafficMetricRepo.GetRequestCountByFingerprint(startDate, endDate)
 	if err != nil {
-		log.Printf("Error getting requests by JA4 fingerprint: %v", err)
+		log.Printf("Error getting requests by fingerprint: %v", err)
+		return api.GetRequestStatistics500JSONResponse{}, nil
+	}
+	requestsByFingerprintType, err := s.trafficMetricRepo.GetRequestCountByFingerprintType(startDate, endDate)
+	if err != nil {
+		log.Printf("Error getting requests by fingerprint type: %v", err)
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
 
@@ -148,25 +156,33 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		}
 	}
 
-	ja4FingerprintMap := make(map[string]int)
-	for ja4Fingerprint, count := range requestsByJA4Fingerprint {
-		if ja4Fingerprint != "" {
-			ja4FingerprintMap[ja4Fingerprint] = count
+	fingerprintMap := make(map[string]int)
+	for fp, count := range requestsByFingerprint {
+		if fp != "" {
+			fingerprintMap[fp] = count
+		}
+	}
+
+	fingerprintTypeMap := make(map[string]int)
+	for fpType, count := range requestsByFingerprintType {
+		if fpType != "" {
+			fingerprintTypeMap[fpType] = count
 		}
 	}
 
 	// Create the response
 	response := api.RequestStatistics{
-		TotalRequests:            int(totalRequests),
-		RequestsByStatus:         statusMap,
-		AverageResponseTime:      float32(avgResponseTimeMs),
-		AverageResponseSize:      float32(avgResponseSize),
-		RequestsByCountry:        countryMap,
-		RequestsByDeviceType:     deviceMap,
-		RequestsByPlatform:       platformMap,
-		RequestsByBrowser:        browserMap,
-		RequestsByUser:           userMap,
-		RequestsByJA4Fingerprint: ja4FingerprintMap,
+		TotalRequests:             int(totalRequests),
+		RequestsByStatus:          statusMap,
+		AverageResponseTime:       float32(avgResponseTimeMs),
+		AverageResponseSize:       float32(avgResponseSize),
+		RequestsByCountry:         countryMap,
+		RequestsByDeviceType:      deviceMap,
+		RequestsByPlatform:        platformMap,
+		RequestsByBrowser:         browserMap,
+		RequestsByUser:            userMap,
+		RequestsByFingerprint:     fingerprintMap,
+		RequestsByFingerprintType: fingerprintTypeMap,
 	}
 
 	return api.GetRequestStatistics200JSONResponse(response), nil
@@ -189,7 +205,7 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 	if req.Params.EndDate != nil {
 		end = req.Params.EndDate
 	}
-	metrics, err := s.trafficMetricRepo.ListRequestDetails(start, end)
+	metrics, err := s.trafficMetricRepo.ListRequestDetails(start, end, req.Params.IsStatic)
 	if err != nil {
 		return nil, err
 	}
@@ -233,9 +249,91 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 			PlatformVersion: m.TrafficMetric.OSVersion,
 			Browser:         m.TrafficMetric.BrowserFamily,
 			BrowserVersion:  m.TrafficMetric.BrowserVersion,
+			IsStatic:        m.TrafficMetric.IsStaticAsset,
+			Fingerprint:     m.TrafficMetric.Fingerprint,
+			FingerprintType: api.RequestDetailFingerprintType(m.TrafficMetric.FingerprintType),
 		})
 	}
 	return api.GetRequestDetails200JSONResponse{Requests: details}, nil
+}
+
+// defaultTimeSeriesGranularity is used whenever the request omits
+// granularity entirely — "day" is a reasonable default for the also-optional
+// start_date/end_date defaults below (a rolling 24-hour window), and for
+// any other range a caller might pass without specifying one.
+const defaultTimeSeriesGranularity = api.Day
+
+// GetRequestTimeSeries implements GET /_/api/statistics/timeseries —
+// request/visitor counts bucketed over time, for "traffic over time" style
+// graphs. See db/timeseries.go for the bucketing and range-validation logic
+// this delegates to.
+func (s *StrictApiServer) GetRequestTimeSeries(ctx context.Context, request api.GetRequestTimeSeriesRequestObject) (api.GetRequestTimeSeriesResponseObject, error) {
+	sessionData, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sessionData == nil || !sessionData.IsAuthenticated {
+		return api.GetRequestTimeSeries401JSONResponse{}, nil
+	}
+	if !sessionData.IsAdmin {
+		return api.GetRequestTimeSeries401JSONResponse{}, nil
+	}
+
+	granularity := defaultTimeSeriesGranularity
+	if request.Params.Granularity != nil {
+		granularity = *request.Params.Granularity
+	}
+
+	endDate := time.Now()
+	if request.Params.EndDate != nil {
+		endDate = *request.Params.EndDate
+	}
+	// Default span depends on granularity, not a fixed "last 30 days" like
+	// GetRequestStatistics: 24 hours suits "day" (and finer) granularities,
+	// but would be a near-empty single-point series for "month". Anything
+	// finer than a day defaults to a day; day/week/month each default to a
+	// span proportional to their own bucket size.
+	startDate := endDate.Add(-24 * time.Hour)
+	if request.Params.StartDate != nil {
+		startDate = *request.Params.StartDate
+	} else {
+		switch granularity {
+		case api.Week:
+			startDate = endDate.AddDate(0, 0, -7*12) // ~12 weeks
+		case api.Month:
+			startDate = endDate.AddDate(-1, 0, 0) // 12 months
+		}
+	}
+
+	dbGranularity := db.TimeSeriesGranularity(granularity)
+	if err := db.ValidateTimeSeriesRange(startDate, endDate, dbGranularity); err != nil {
+		return api.GetRequestTimeSeries400JSONResponse{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		}, nil
+	}
+
+	dbPoints, err := s.trafficMetricRepo.GetTimeSeries(startDate, endDate, dbGranularity)
+	if err != nil {
+		log.Printf("Error getting request time series: %v", err)
+		return api.GetRequestTimeSeries500JSONResponse{}, nil
+	}
+
+	points := make([]api.TimeSeriesPoint, 0, len(dbPoints))
+	for _, p := range dbPoints {
+		points = append(points, api.TimeSeriesPoint{
+			Timestamp:           p.Timestamp,
+			RequestCount:        p.RequestCount,
+			UniqueFingerprints:  p.UniqueFingerprints,
+			NewVisitors:         p.NewVisitors,
+			ReturningVisitors:   p.ReturningVisitors,
+			UniqueUsers:         p.UniqueUsers,
+			ErrorCount:          p.ErrorCount,
+			AverageResponseTime: float32(p.AverageResponseTimeMs),
+		})
+	}
+
+	return api.GetRequestTimeSeries200JSONResponse{
+		Granularity: granularity,
+		Points:      points,
+	}, nil
 }
 
 // GetRateLimiterStats implements GET /_/api/statistics/rate-limiter
@@ -261,6 +359,86 @@ func (s *StrictApiServer) GetRateLimiterStats(ctx context.Context, req api.GetRa
 		})
 	}
 	return api.GetRateLimiterStats200JSONResponse(apiStats), nil
+}
+
+// GetBlockedClients implements GET /_/api/rate-limiter/blocked
+func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBlockedClientsRequestObject) (api.GetBlockedClientsResponseObject, error) {
+	// admin check
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+		return api.GetBlockedClients401JSONResponse{}, nil
+	}
+	if s.blockedClientRepo == nil {
+		return api.GetBlockedClients200JSONResponse{Items: []api.BlockedClient{}}, nil
+	}
+
+	ip := ""
+	if req.Params.Ip != nil {
+		ip = *req.Params.Ip
+	}
+	limit := 50 // default, matching GetUserCounterHistory's convention
+	if req.Params.Limit != nil {
+		limit = *req.Params.Limit
+	}
+	offset := 0
+	if req.Params.Offset != nil {
+		offset = *req.Params.Offset
+	}
+
+	items, total, err := s.blockedClientRepo.List(ip, limit, offset)
+	if err != nil {
+		log.Printf("GetBlockedClients: failed to list blocked clients: %v", err)
+		return api.GetBlockedClients500JSONResponse{}, nil
+	}
+
+	apiItems := make([]api.BlockedClient, 0, len(items))
+	for _, bc := range items {
+		item := api.BlockedClient{
+			Id:           strconv.FormatUint(uint64(bc.ID), 10),
+			IpAddress:    bc.IPAddress,
+			Reason:       api.BlockedClientReason(bc.Reason),
+			TriggerCount: bc.TriggerCount,
+			BlockedAt:    bc.BlockedAt,
+			BlockedUntil: bc.BlockedUntil,
+		}
+		if bc.Path != "" {
+			item.Path = &bc.Path
+		}
+		if bc.UserAgent != "" {
+			item.UserAgent = &bc.UserAgent
+		}
+		if bc.Country != "" {
+			item.Country = &bc.Country
+		}
+		if bc.CountryCode != "" {
+			item.CountryCode = &bc.CountryCode
+		}
+		if bc.City != "" {
+			item.City = &bc.City
+		}
+		if bc.Latitude != 0 {
+			lat := float32(bc.Latitude)
+			item.Latitude = &lat
+		}
+		if bc.Longitude != 0 {
+			lon := float32(bc.Longitude)
+			item.Longitude = &lon
+		}
+		if bc.Fingerprint != "" {
+			item.Fingerprint = &bc.Fingerprint
+		}
+		if bc.FingerprintType != "" {
+			item.FingerprintType = &bc.FingerprintType
+		}
+		apiItems = append(apiItems, item)
+	}
+
+	return api.GetBlockedClients200JSONResponse{
+		Items:      apiItems,
+		TotalCount: int(total),
+		Limit:      limit,
+		Offset:     offset,
+	}, nil
 }
 
 // GetRateLimiterConfig implements GET /_/api/config/rate-limiter

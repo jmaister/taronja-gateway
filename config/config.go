@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -18,9 +19,10 @@ import (
 // ServerConfig defines the gateway server's network configuration.
 // All fields are required.
 type ServerConfig struct {
-	Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
-	Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
-	URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	Host string    `yaml:"host"`          // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
+	Port int       `yaml:"port"`          // Server port number (e.g., 8080). Required. The HTTPS port when tls.enabled is true.
+	URL  string    `yaml:"url"`           // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	TLS  TLSConfig `yaml:"tls,omitempty"` // HTTPS termination. Optional; disabled by default (plain HTTP).
 }
 
 // AuthenticationConfig controls whether authentication is required for a specific route.
@@ -33,12 +35,57 @@ type RouteOptions struct {
 	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N"
 }
 
+// RouteTargets is one or more backend URLs a proxy route sends requests to.
+// A `to:` field accepts either a single scalar string (the original,
+// still-most-common form: one backend, no load balancing) or a YAML list
+// (multiple backends: the gateway round-robins across them per request and
+// fails over to the next one if a backend's connection attempt fails — see
+// gateway.newRoundRobinTransport). Both forms unmarshal into this same
+// []string-backed type, so every existing single-backend config keeps
+// working unchanged.
+//
+// Multiple targets are assumed to be interchangeable replicas of the same
+// backend (same path structure, differing only in scheme/host) — this is
+// what "load balancing" means here, not a way to route different paths to
+// different places. Use separate route entries (with different `from:`
+// patterns) for that instead.
+type RouteTargets []string
+
+// UnmarshalYAML implements custom decoding so `to:` accepts a bare string
+// or a list interchangeably. yaml.v3 calls this with the value node for the
+// `to:` key itself (not the whole route mapping), so Kind is always either
+// ScalarNode (a string) or SequenceNode (a list) for valid input.
+func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var single string
+		if err := value.Decode(&single); err != nil {
+			return err
+		}
+		if single == "" {
+			*t = nil
+			return nil
+		}
+		*t = RouteTargets{single}
+		return nil
+	case yaml.SequenceNode:
+		var list []string
+		if err := value.Decode(&list); err != nil {
+			return err
+		}
+		*t = RouteTargets(list)
+		return nil
+	default:
+		return fmt.Errorf("line %d: 'to' must be a string or a list of strings", value.Line)
+	}
+}
+
 // RouteConfig defines a single routing rule for the gateway.
 // Routes can proxy to remote servers or serve static files.
 type RouteConfig struct {
 	Name           string               `yaml:"name"`              // Human-readable route name for logging. Required.
 	From           string               `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
-	To             string               `yaml:"to"`                // Target URL for proxying (e.g., "https://api.example.com"). Required for proxy routes.
+	To             RouteTargets         `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
 	ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
 	ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
 	Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false
@@ -123,12 +170,15 @@ func (s *SessionConfig) GetDuration() time.Duration {
 // ManagementConfig defines the management API and dashboard settings.
 // The management API provides endpoints for metrics, user management, and admin dashboard.
 type ManagementConfig struct {
-	Prefix      string            `yaml:"prefix"`      // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
-	Logging     bool              `yaml:"logging"`     // Enable request/response logging. Default: false. Logs all HTTP requests.
-	Analytics   bool              `yaml:"analytics"`   // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
-	Admin       AdminConfig       `yaml:"admin"`       // Admin dashboard access configuration
-	Session     SessionConfig     `yaml:"session"`     // Session lifetime configuration for authenticated users
-	RateLimiter RateLimiterConfig `yaml:"rateLimiter"` // Rate limiter settings. Optional; zero values disable.
+	Prefix              string            `yaml:"prefix"`              // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
+	Logging             bool              `yaml:"logging"`             // Enable request/response logging. Default: false. Logs all HTTP requests.
+	Compression         bool              `yaml:"compression"`         // Enable brotli/zstd/gzip/deflate response compression, negotiated per-request via the client's Accept-Encoding header. Default: false. Has no other options — see middleware.CompressionMiddleware.
+	Analytics           bool              `yaml:"analytics"`           // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
+	ExcludeStaticAssets bool              `yaml:"excludeStaticAssets"` // Skip traffic-metrics collection for requests to static assets (by extension/path, see middleware.IsStaticAssetPath). Default: false, so existing configs keep recording everything Analytics already did. Has no effect when Analytics is false. Reduces per-request overhead and stats-table volume on asset-heavy sites; rows already recorded before this is enabled are unaffected and stay filterable by "is it a static asset" in the request-details report.
+	Admin               AdminConfig       `yaml:"admin"`               // Admin dashboard access configuration
+	Session             SessionConfig     `yaml:"session"`             // Session lifetime configuration for authenticated users
+	RateLimiter         RateLimiterConfig `yaml:"rateLimiter"`         // Rate limiter settings. Optional; zero values disable.
+	CORS                CORSConfig        `yaml:"cors"`                // Cross-origin request settings. Optional; empty allowedOrigins disables CORS entirely (no headers added — the pre-CORS-support behavior).
 }
 
 // RateLimiterConfig contains simple in-memory rate limiting settings.
@@ -173,6 +223,7 @@ type GeolocationConfig struct {
 // It contains all settings needed to run the gateway including server, routing, authentication, and management.
 // Configuration is loaded from a YAML file and supports environment variable expansion (${VAR_NAME}).
 type GatewayConfig struct {
+	Version                 *int                    `yaml:"version,omitempty"`       // Config schema version. Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1" explicitly, not the same thing spelled two ways. See CurrentConfigVersion and LoadConfig's version-check behavior in version.go.
 	Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
 	Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
 	Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
@@ -181,6 +232,8 @@ type GatewayConfig struct {
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
+	Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
+	Tracing                 TracingConfig           `yaml:"tracing,omitempty"`       // Distributed tracing via OpenTelemetry. Optional; disabled by default.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -212,6 +265,12 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	err = yaml.Unmarshal([]byte(expandedData), config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
+	}
+
+	// Refuse to run against a config file older than CurrentConfigVersion —
+	// see version.go. Run `tg migrate --config <path>` to upgrade it first.
+	if err := checkConfigVersion(configAbsPath, config); err != nil {
+		return nil, err
 	}
 
 	// --- Post-Unmarshal Validation and Path Resolution ---
@@ -252,6 +311,21 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		log.Printf("Admin access is disabled")
 	}
 
+	// Validate explicit middleware section, if present
+	seenMiddleware := make(map[string]bool, len(config.Middleware.Global))
+	for _, entry := range config.Middleware.Global {
+		if entry.Name == "" {
+			return nil, fmt.Errorf("middleware.global: entry is missing 'name'")
+		}
+		if !IsMiddlewareNameKnown(entry.Name) {
+			return nil, fmt.Errorf("middleware.global: unknown middleware '%s' (known: %v)", entry.Name, KnownMiddlewareNames)
+		}
+		if seenMiddleware[entry.Name] {
+			return nil, fmt.Errorf("middleware.global: middleware '%s' is listed more than once", entry.Name)
+		}
+		seenMiddleware[entry.Name] = true
+	}
+
 	// Validate authentication providers
 	if !config.HasAnyAuthentication() {
 		log.Printf("WARNING: No authentication providers are configured. Consider enabling at least one authentication method:")
@@ -263,6 +337,64 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	log.Printf("Current working directory: %s", currentDir)
+
+	// Validate TLS config. Resolving paths and confirming a static cert/key
+	// pair actually parses here (not just deferring to the gateway's own
+	// startup) means "tg validate" catches a bad cert/key pair before
+	// deploy, the same way it already catches a bad admin/CORS/route
+	// config — this is a pure local file read, no network call, so it's
+	// safe for validate's no-side-effects contract. The gateway loads the
+	// pair again for real at startup (config doesn't hold a
+	// *tls.Certificate itself); the point here is catching the error early
+	// with a clear message, not caching it. ACME's equivalent — actually
+	// obtaining a certificate — is inherently a network operation and can
+	// only happen at real gateway startup (see gateway/tls.go), so there's
+	// nothing more to check here than the config's own shape.
+	if config.Server.TLS.Enabled {
+		usingFiles := config.Server.TLS.CertFile != "" || config.Server.TLS.KeyFile != ""
+		usingACME := config.Server.TLS.ACME != nil
+
+		switch {
+		case usingFiles && usingACME:
+			return nil, fmt.Errorf("server.tls: certFile/keyFile and acme are mutually exclusive — configure one certificate source, not both")
+
+		case usingACME:
+			if len(config.Server.TLS.ACME.Domains) == 0 {
+				return nil, fmt.Errorf("server.tls.acme.domains must list at least one domain")
+			}
+			if config.Server.TLS.ACME.CacheDir == "" {
+				config.Server.TLS.ACME.CacheDir = defaultACMECacheDir
+			}
+			if !filepath.IsAbs(config.Server.TLS.ACME.CacheDir) {
+				config.Server.TLS.ACME.CacheDir = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.ACME.CacheDir))
+			}
+
+		case usingFiles:
+			if config.Server.TLS.CertFile == "" || config.Server.TLS.KeyFile == "" {
+				return nil, fmt.Errorf("server.tls.enabled is true but certFile and/or keyFile is not set")
+			}
+			if !filepath.IsAbs(config.Server.TLS.CertFile) {
+				config.Server.TLS.CertFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.CertFile))
+			}
+			if !filepath.IsAbs(config.Server.TLS.KeyFile) {
+				config.Server.TLS.KeyFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.KeyFile))
+			}
+			if _, err := tls.LoadX509KeyPair(config.Server.TLS.CertFile, config.Server.TLS.KeyFile); err != nil {
+				return nil, fmt.Errorf("server.tls: failed to load certificate/key pair (certFile=%q, keyFile=%q): %w", config.Server.TLS.CertFile, config.Server.TLS.KeyFile, err)
+			}
+
+		default:
+			return nil, fmt.Errorf("server.tls.enabled is true but neither certFile/keyFile nor acme is set")
+		}
+	}
+
+	// Validate tracing config. Nothing more to check than the config's own
+	// shape here — like ACME, actually reaching the collector is a network
+	// operation that can only happen at real gateway startup (see
+	// gateway.InitTracing), not something "tg validate" can confirm.
+	if config.Tracing.Enabled && config.Tracing.Endpoint == "" {
+		return nil, fmt.Errorf("tracing.enabled is true but tracing.endpoint is not set")
+	}
 
 	for i := range config.Routes {
 		route := &config.Routes[i]

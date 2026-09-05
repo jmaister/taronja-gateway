@@ -57,8 +57,25 @@ func TestDetermineDeviceType(t *testing.T) {
 	}
 }
 
+// TestGetClientIP is a smoke test exercising session.GetClientIP through
+// this package's own import of it — the exhaustive behavior coverage
+// (which peers are trusted, header precedence, IPv6, ...) lives in
+// session/clientinfo_test.go, next to the function itself.
 func TestGetClientIP(t *testing.T) {
-	t.Run("extracts IP from X-Forwarded-For header", func(t *testing.T) {
+	t.Run("ignores X-Forwarded-For from a public (untrusted) peer", func(t *testing.T) {
+		// The security-relevant case: a direct external client can't
+		// spoof its own IP just by setting this header itself — trust is
+		// a fixed, zero-configuration function of the real peer address,
+		// not something that has to be turned on.
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.Header.Set("X-Forwarded-For", "203.0.113.1, 192.168.1.1")
+		req.RemoteAddr = "198.51.100.1:12345"
+
+		ip := session.GetClientIP(req)
+		assert.Equal(t, "198.51.100.1", ip, "a public peer's own X-Forwarded-For must be ignored")
+	})
+
+	t.Run("extracts IP from X-Forwarded-For header when the peer is loopback/private", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("X-Forwarded-For", "203.0.113.1, 192.168.1.1")
 		req.RemoteAddr = "10.0.0.1:12345"
@@ -67,16 +84,7 @@ func TestGetClientIP(t *testing.T) {
 		assert.Equal(t, "203.0.113.1", ip)
 	})
 
-	t.Run("extracts IP from X-Real-IP header", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.Header.Set("X-Real-IP", "203.0.113.2")
-		req.RemoteAddr = "10.0.0.1:12345"
-
-		ip := session.GetClientIP(req)
-		assert.Equal(t, "203.0.113.2", ip)
-	})
-
-	t.Run("falls back to RemoteAddr", func(t *testing.T) {
+	t.Run("falls back to RemoteAddr with no header at all", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 
@@ -85,23 +93,23 @@ func TestGetClientIP(t *testing.T) {
 	})
 }
 
-func TestConditionalStatisticsMiddleware(t *testing.T) {
+func TestTrafficMetricMiddleware_ExcludeStaticAssets(t *testing.T) {
 	// Initialize test database
-	db.SetupTestDB("TestConditionalStatisticsMiddleware")
+	db.SetupTestDB("TestTrafficMetricMiddleware_ExcludeStaticAssets")
 	gormDB := db.GetConnection()
 
 	statsRepo := db.NewTrafficMetricRepository(gormDB)
-	middleware := ConditionalStatisticsMiddleware(statsRepo)
+	excludingMiddleware := TrafficMetricMiddleware(statsRepo, true)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	t.Run("excludes health check endpoint", func(t *testing.T) {
-		wrappedHandler := middleware(handler)
+	t.Run("excludeStaticAssets=true skips a static asset path", func(t *testing.T) {
+		wrappedHandler := excludingMiddleware(handler)
 
-		req := httptest.NewRequest("GET", "/health", nil)
+		req := httptest.NewRequest("GET", "/_/static/style.css", nil)
 		w := httptest.NewRecorder()
 
 		wrappedHandler.ServeHTTP(w, req)
@@ -110,13 +118,13 @@ func TestConditionalStatisticsMiddleware(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Verify no statistics were recorded
-		stats, err := statsRepo.FindByPath("/health", 10)
+		stats, err := statsRepo.FindByPath("/_/static/style.css", 10)
 		require.NoError(t, err)
 		assert.Len(t, stats, 0)
 	})
 
-	t.Run("includes regular endpoints", func(t *testing.T) {
-		wrappedHandler := middleware(handler)
+	t.Run("excludeStaticAssets=true still records a non-static path", func(t *testing.T) {
+		wrappedHandler := excludingMiddleware(handler)
 
 		req := httptest.NewRequest("GET", "/api/users", nil)
 		w := httptest.NewRecorder()
@@ -131,30 +139,23 @@ func TestConditionalStatisticsMiddleware(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, stats, 1)
 	})
-}
 
-func TestShouldExcludeFromStats(t *testing.T) {
-	testCases := []struct {
-		path     string
-		excluded bool
-	}{
-		{"/health", true},
-		{"/favicon.ico", true},
-		{"/robots.txt", true},
-		{"/sitemap.xml", true},
-		{"/_/static/style.css", true},
-		{"/_/static/js/app.js", true},
-		{"/api/users", false},
-		{"/login", false},
-		{"/", false},
-	}
+	t.Run("excludeStaticAssets=false records a static asset path too", func(t *testing.T) {
+		includingMiddleware := TrafficMetricMiddleware(statsRepo, false)
+		wrappedHandler := includingMiddleware(handler)
 
-	for _, tc := range testCases {
-		t.Run(tc.path, func(t *testing.T) {
-			result := shouldExcludeFromStats(tc.path)
-			assert.Equal(t, tc.excluded, result)
-		})
-	}
+		req := httptest.NewRequest("GET", "/_/static/app.js", nil)
+		w := httptest.NewRecorder()
+
+		wrappedHandler.ServeHTTP(w, req)
+
+		time.Sleep(10 * time.Millisecond)
+
+		stats, err := statsRepo.FindByPath("/_/static/app.js", 10)
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.True(t, stats[0].IsStaticAsset)
+	})
 }
 
 func TestResponseWriterWithStats(t *testing.T) {

@@ -19,6 +19,11 @@ coverage.html
 *.db-shm
 *.db-wal
 
+# ...except committed test fixtures — real, historical database files kept
+# to validate migrations against genuine old data instead of just a
+# synthetic reproduction. See db/testdata/README.md.
+!db/testdata/*.db
+
 # Node.js dependencies
 webapp/node_modules/
 sdk/node_modules/

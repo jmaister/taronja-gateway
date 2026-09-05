@@ -17,6 +17,7 @@ const getPageTitleFromPath = (path: string): string => {
   if (path.startsWith('/statistics/requests-details')) return 'Request Details';
   if (path.startsWith('/statistics/rate-limiter')) return 'Rate Limiter Stats';
   if (path.startsWith('/statistics')) return 'Statistics';
+  if (path.startsWith('/middleware')) return 'Middleware';
   if (path.startsWith('/profile')) return 'Profile Settings';
   if (path.startsWith('/home')) return 'Home';
   // Add more specific titles as needed

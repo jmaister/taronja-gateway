@@ -28,9 +28,11 @@ func setupTestServer() *StrictApiServer {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil, // no rate limiter for tests
+		nil, // no middleware registry for tests
 	)
 }
 
@@ -242,6 +244,15 @@ func TestGetUserById(t *testing.T) {
 		assert.Equal(t, "getmeuser", getResp.Username)
 		require.NotNil(t, getResp.Email)
 		assert.Equal(t, openapi_types.Email("getme@example.com"), *getResp.Email)
+
+		// Regression test: CreatedAt/UpdatedAt were documented as populated
+		// (dbUserToAPIUserResponse's own comment claimed it) but the struct
+		// literal never actually set them, so api.UserResponse never carried
+		// them even though db.User (via gorm.Model) always has real values.
+		require.NotNil(t, getResp.CreatedAt, "expected CreatedAt to be populated from db.User")
+		require.NotNil(t, getResp.UpdatedAt, "expected UpdatedAt to be populated from db.User")
+		assert.WithinDuration(t, time.Now(), *getResp.CreatedAt, time.Minute)
+		assert.WithinDuration(t, time.Now(), *getResp.UpdatedAt, time.Minute)
 	})
 
 	t.Run("NotFound", func(t *testing.T) {

@@ -38,6 +38,46 @@ bench:
 	@echo "Running benchmarks..."
 	go test -v ./gateway -bench=. -benchtime=2s
 
+# fullbuild mirrors ci.yml's build job end to end: regenerate the OpenAPI
+# Go server + TypeScript client and the config docs, then format/vet/build/
+# test Go, and build/lint/typecheck the webapp and SDK. Run this — not just
+# `make build`/`make test` — before committing anything that touches
+# api/taronja-gateway-api.yaml or a config/ doc comment: api/api.gen.go and
+# doc/CONFIG.md are committed, generated files, and CI's own "Check
+# generated files are up to date" step exists specifically because this is
+# easy to forget locally and only fails once it's already in CI.
+fullbuild: gen config-docs
+	@echo "Checking regenerated files are byte-identical to what's committed..."
+	@if ! git diff --quiet -- api/api.gen.go doc/CONFIG.md; then \
+		echo "api/api.gen.go and/or doc/CONFIG.md changed after regenerating."; \
+		echo "If you edited api/taronja-gateway-api.yaml or a config/ doc comment,"; \
+		echo "this is expected — 'git add' the diff below and commit it."; \
+		echo "If you didn't, generation just produced different output than last"; \
+		echo "time for no source reason (this happened once already — see"; \
+		echo "config-docs's comment above) and needs investigating, not committing."; \
+		git diff --stat -- api/api.gen.go doc/CONFIG.md; \
+		exit 1; \
+	fi
+	@echo "Formatting and vetting Go code..."
+	@UNFORMATTED=$$(gofmt -l $$(git ls-files '*.go')); \
+	if [ -n "$$UNFORMATTED" ]; then \
+		echo "The following files are not gofmt-formatted:"; \
+		echo "$$UNFORMATTED"; \
+		exit 1; \
+	fi
+	go vet ./...
+	@echo "Building Go..."
+	go build -v ./...
+	@echo "Building SDK..."
+	cd sdk && npm install && npm run build
+	@echo "Building webapp..."
+	cd webapp && npm run build
+	@echo "Linting and type-checking webapp..."
+	cd webapp && npm run lint && npx tsc --noEmit
+	@echo "Running Go tests..."
+	go test -cover ./...
+	@echo "fullbuild complete."
+
 # Generate coverage and treemap SVG
 cover:
 	@echo "Generating coverage report..."
@@ -85,12 +125,31 @@ gen:
 	@echo "Generating OpenAPI code..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
 	@echo "Generating TypeScript SDK..."
-	npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
+	@cd webapp && npm install --no-audit --no-fund >/dev/null && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
 
-# Generate configuration documentation from Go structs
+# Generate configuration documentation from Go structs.
+#
+# --repository.url/--repository.default-branch pin the GitHub source links
+# gomarkdoc embeds in doc/CONFIG.md instead of letting it auto-detect them
+# from the local git checkout's state. Auto-detection produces different
+# output depending on whether HEAD is attached to a branch (a normal local
+# checkout, any branch — gomarkdoc resolves the *default* branch either
+# way, not the checked-out one) or detached at a specific commit, which is
+# exactly how actions/checkout leaves the repository in CI: with no branch
+# to detect, every generated link silently loses its "[Name](url)" markdown
+# and falls back to a bare name instead. That made CI's "Check generated
+# files are up to date" step fail on every single run regardless of
+# whether config/ had actually changed — not a flaky check, a
+# structurally-impossible-to-pass one, since a locally (branch-checkout)
+# regenerated file could never match what CI's own (detached-HEAD)
+# regeneration produced. These two flags make the output identical in both
+# cases.
 config-docs:
 	@echo "Generating configuration documentation..."
-	@gomarkdoc --output doc/CONFIG.md ./config
+	@go run github.com/princjef/gomarkdoc/cmd/gomarkdoc \
+		--repository.url "https://github.com/jmaister/taronja-gateway" \
+		--repository.default-branch "main" \
+		--output doc/CONFIG.md ./config
 	@echo "Configuration documentation generated at doc/CONFIG.md"
 
 install: build
@@ -101,5 +160,5 @@ else
 endif
 
 # Default target
-.PHONY: all build build-windows run dev test bench cover clean fmt tidy
+.PHONY: all build build-windows run dev test bench fullbuild cover clean fmt tidy
 all: build
