@@ -74,6 +74,8 @@ fullbuild: gen config-docs
 	cd webapp && npm run build
 	@echo "Linting and type-checking webapp..."
 	cd webapp && npm run lint && npx tsc --noEmit
+	@echo "Running webapp tests..."
+	cd webapp && npx vitest run
 	@echo "Running Go tests..."
 	go test -cover ./...
 	@echo "fullbuild complete."

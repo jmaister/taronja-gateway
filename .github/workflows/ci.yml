@@ -88,6 +88,11 @@ jobs:
         npm run lint
         npx tsc --noEmit
 
+    - name: Run webapp tests
+      run: |
+        cd webapp
+        npx vitest run
+
     - name: Format and vet Go code
       run: |
         UNFORMATTED=$(gofmt -l $(git ls-files '*.go'))
