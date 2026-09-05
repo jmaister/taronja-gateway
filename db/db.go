@@ -11,6 +11,21 @@ import (
 
 var conn *gorm.DB
 
+// autoMigrateModels lists every model Init and SetupTestDB pass to
+// AutoMigrate — a single source of truth so both stay in sync, and so a
+// test that needs to AutoMigrate a database outside of either of them
+// (db/migration_v0_fixture_test.go, opening a real historical fixture) uses
+// the exact same model list rather than a third hand-copied one that could
+// silently drift from the real two.
+var autoMigrateModels = []interface{}{
+	&User{},
+	&Session{},
+	&TrafficMetric{},
+	&Token{},
+	&Counter{},
+	&BlockedClient{},
+}
+
 // utcNowFunc replaces GORM's default clock (a bare time.Now(), which carries
 // the server process's local zone) so every timestamp GORM sets on our
 // behalf — gorm.Model's CreatedAt/UpdatedAt/DeletedAt on every model that
@@ -63,7 +78,7 @@ func Init() {
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
 	// Migrate the schema
-	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{}, &Counter{}, &BlockedClient{})
+	err2 := db.AutoMigrate(autoMigrateModels...)
 	if err2 != nil {
 		panic("Failed to migration DB: " + err2.Error())
 	}
@@ -123,14 +138,7 @@ func SetupTestDB(testName string) {
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
 	// Migrate all schemas
-	err = db.AutoMigrate(
-		&User{},
-		&Session{},
-		&TrafficMetric{},
-		&Token{},
-		&Counter{},
-		&BlockedClient{},
-	)
+	err = db.AutoMigrate(autoMigrateModels...)
 	if err != nil {
 		panic("Failed to migrate test database: " + err.Error())
 	}
