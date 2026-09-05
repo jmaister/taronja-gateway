@@ -357,7 +357,7 @@ export function CountersManagementPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {counterHistory.transactions.map((transaction: any) => (
+                                        {counterHistory.transactions.map((transaction) => (
                                             <tr key={transaction.id} className="hover:bg-muted/40">
                                                 <td className="border-b border-border px-3 py-3">
                                                     {new Date(transaction.created_at).toLocaleString()}

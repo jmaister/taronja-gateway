@@ -3,11 +3,7 @@ import { UserTokensSection } from '../components/UserTokensSection';
 import { useUser } from '@/services/services';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 
-interface UserInfoPageProps {
-  // Props are empty for now
-}
-
-export function UserInfoPage({}: UserInfoPageProps) {
+export function UserInfoPage() {
   const { userId } = useParams<{ userId: string }>(); 
   
   const {data:user, isLoading, isError, error} = useUser(userId || '');

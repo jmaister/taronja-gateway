@@ -1,6 +1,7 @@
 import { useRef, useMemo } from "react";
 import { Map, Source, Layer } from "react-map-gl/maplibre";
 import { getCountryCoordinates } from "../utils/countryCoordinates";
+import { Card } from "./ui/Card";
 import maplibreStyleJson from "../assets/maplibre-style.json";
 
 import type { MapRef, MapMouseEvent } from "react-map-gl/maplibre";
@@ -172,21 +173,21 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
 
     if (requests.length === 0) {
         return (
-            <div className="w-full bg-white border border-gray-200 rounded-lg p-4">
+            <Card className="w-full p-4">
                 <h3 className="text-lg font-semibold mb-4">Request Clusters</h3>
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-fg">
                     No request data available for the selected period
                 </div>
-            </div>
+            </Card>
         );
     }
 
     return (
-        <div className="w-full bg-white border border-gray-200 rounded-lg p-4">
+        <Card className="w-full p-4">
             <h3 className="text-lg font-semibold mb-4">Request Clusters</h3>
-            
+
             {/* Legend */}
-            <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-gray-600">
+            <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-muted-fg">
                 <span>Cluster Size:</span>
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-[#86efac] rounded-full"></div>
@@ -252,21 +253,21 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
                             .sort(([, a], [, b]) => b - a)
                             .slice(0, 8)
                             .map(([country, count]) => (
-                                <div key={country} className="flex justify-between bg-gray-50 px-2 py-1 rounded">
+                                <div key={country} className="flex justify-between bg-muted px-2 py-1 rounded">
                                     <span className="truncate">{country}</span>
                                     <span className="font-medium">{count}</span>
                                 </div>
                             ))
                         }
                     </div>
-                    
+
                     {/* Coordinate accuracy note */}
-                    <div className="mt-3 text-xs text-gray-500">
+                    <div className="mt-3 text-xs text-muted-fg">
                         {(() => {
-                            const actualCoords = requests.filter(r => r.latitude != null && r.longitude != null && 
+                            const actualCoords = requests.filter(r => r.latitude != null && r.longitude != null &&
                                                                    r.latitude !== 0 && r.longitude !== 0).length;
                             const fallbackCoords = requests.length - actualCoords;
-                            
+
                             if (actualCoords > 0 && fallbackCoords > 0) {
                                 return `📍 ${actualCoords} precise locations, ${fallbackCoords} country-based approximations`;
                             } else if (actualCoords > 0) {
@@ -278,6 +279,6 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
                     </div>
                 </div>
             )}
-        </div>
+        </Card>
     );
 }

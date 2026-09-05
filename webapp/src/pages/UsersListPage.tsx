@@ -3,12 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';
 
-// Props for UsersListPage
-interface UsersListPageProps {
-  // Props are empty for now
-}
-
-export function UsersListPage({}: UsersListPageProps) {
+export function UsersListPage() {
     const { data: users, isLoading, isError } = useUsers();
 
     if (!users || isLoading) {

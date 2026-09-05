@@ -1,6 +1,7 @@
 import { useRef, useMemo } from "react";
 import { Map, Source, Layer } from "react-map-gl/maplibre";
 import { getCountryCoordinates } from "../utils/countryCoordinates";
+import { Card } from "./ui/Card";
 import maplibreStyleJson from "../assets/maplibre-style.json";
 
 import type { MapRef, MapMouseEvent } from "react-map-gl/maplibre";
@@ -148,21 +149,21 @@ export function BlockedClientsWorldMap({ blockedClients }: BlockedClientsWorldMa
 
     if (blockedClients.length === 0) {
         return (
-            <div className="w-full bg-white border border-gray-200 rounded-lg p-4">
+            <Card className="w-full p-4">
                 <h3 className="text-lg font-semibold mb-4">Attacker Map</h3>
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-fg">
                     No blocked clients recorded yet.
                 </div>
-            </div>
+            </Card>
         );
     }
 
     return (
-        <div className="w-full bg-white border border-gray-200 rounded-lg p-4">
+        <Card className="w-full p-4">
             <h3 className="text-lg font-semibold mb-4">Attacker Map</h3>
 
             {/* Legend */}
-            <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-gray-600">
+            <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-muted-fg">
                 <span>Block Count:</span>
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-[#fca5a5] rounded-full"></div>
@@ -227,7 +228,7 @@ export function BlockedClientsWorldMap({ blockedClients }: BlockedClientsWorldMa
                             .sort(([, a], [, b]) => b - a)
                             .slice(0, 8)
                             .map(([country, count]) => (
-                                <div key={country} className="flex justify-between bg-gray-50 px-2 py-1 rounded">
+                                <div key={country} className="flex justify-between bg-muted px-2 py-1 rounded">
                                     <span className="truncate">{country}</span>
                                     <span className="font-medium">{count}</span>
                                 </div>
@@ -236,6 +237,6 @@ export function BlockedClientsWorldMap({ blockedClients }: BlockedClientsWorldMa
                     </div>
                 </div>
             )}
-        </div>
+        </Card>
     );
 }

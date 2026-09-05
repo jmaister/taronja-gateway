@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 // App-level styles live in index.css
 
@@ -18,6 +19,31 @@ import { MiddlewarePage } from './pages/MiddlewarePage';
 // Authentication components
 import { useTaronjaAuth } from 'taronja-gateway-react-sdk';
 
+// Navigates to the login page and shows a fallback message/link while that
+// navigation is in flight. The navigation itself runs in an effect, not
+// directly in the render body of AdminLayoutRoutes below — a real
+// DOM/browser mutation like window.location.href is a side effect, and
+// running it during render (rather than after commit) is unsafe under
+// React's rules (Strict Mode's double-invoked render in dev, or a
+// concurrent render started and then discarded) even though a full-page
+// navigation mostly hides the consequences in practice.
+const RedirectToLogin = () => {
+    useEffect(() => {
+        window.location.href = '/_/login';
+    }, []);
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-bg">
+            <div className="text-center">
+                <p className="text-muted-fg mb-4">Redirecting to login...</p>
+                <a href="/login" className="text-primary hover:text-primary/80">
+                    Click here if not redirected automatically
+                </a>
+            </div>
+        </div>
+    );
+};
+
 // A component to group routes under MainLayout with admin protection
 const AdminLayoutRoutes = () => {
     const { isAuthenticated, currentUser, isLoading } = useTaronjaAuth();
@@ -25,50 +51,40 @@ const AdminLayoutRoutes = () => {
     // Show loading state while checking authentication
     if (isLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+            <div className="min-h-screen flex items-center justify-center bg-bg">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading...</p>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-fg">Loading...</p>
                 </div>
             </div>
         );
     }
 
-    // Redirect to login if not authenticated
+    // Redirect to login if not authenticated.
     if (!isAuthenticated) {
-        window.location.href = '/_/login';
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
-                <div className="text-center">
-                    <p className="text-gray-600 mb-4">Redirecting to login...</p>
-                    <a href="/login" className="text-blue-500 hover:text-blue-700">
-                        Click here if not redirected automatically
-                    </a>
-                </div>
-            </div>
-        );
+        return <RedirectToLogin />;
     }
 
     // Check for admin privileges
     if (!currentUser?.isAdmin) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center p-4">
-                <h1 className="text-4xl font-bold text-red-600 mb-4">Access Denied</h1>
-                <p className="text-lg text-gray-600 mb-8">
+            <div className="min-h-screen flex flex-col items-center justify-center bg-bg text-center p-4">
+                <h1 className="text-4xl font-bold text-danger mb-4">Access Denied</h1>
+                <p className="text-lg text-muted-fg mb-8">
                     You need administrator privileges to access this admin panel.
                 </p>
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-fg">
                         Current user: {currentUser?.username} ({currentUser?.email})
                     </p>
                     <a
                         href="/_/admin"
-                        className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                        className="inline-block px-6 py-3 text-sm font-medium text-primary-fg bg-primary rounded-lg hover:bg-primary/90 transition-colors"
                     >
                         Go to Main Site
                     </a>
                 </div>
-                <footer className="absolute bottom-4 text-center p-4 text-gray-500 text-xs">
+                <footer className="absolute bottom-4 text-center p-4 text-muted-fg text-xs">
                     <p>Taronja Gateway Admin</p>
                 </footer>
             </div>

@@ -28,7 +28,6 @@ import {
   UserResponse,
   listUsers,
   getUserById,
-  getCurrentUser,
   createUser as apiCreateUser,
   getRequestStatistics,
   getRequestDetails,
@@ -47,8 +46,6 @@ import {
 import { createClient } from '@/apiclient/client';
 import { QueryClient, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-export interface CurrentUser extends UserResponse {}
-
 export const customApiClient = createClient({
     baseUrl: "/_",
 })
@@ -63,9 +60,18 @@ export const queryClient = new QueryClient({
   },
 });
 
-// Helper function to handle responses
+// The shape every generated sdk.gen.ts call resolves to, loosely — a real
+// call's response/error types are a much more specific discriminated union
+// (see apiclient/client/types.gen.ts's RequestResult), but every one of
+// them structurally satisfies this, and this is all handleResponse actually
+// touches.
+interface ApiResult<T> {
+  data?: T;
+  error?: { message?: string };
+}
+
 // Helper to handle API responses: throws on error, returns data
-function handleResponse<T = any>(response: any): T {
+function handleResponse<T>(response: ApiResult<T>): T {
   if (response && response.error) {
     // Throw a real Error (not the raw { code, message } API error object)
     // so `error instanceof Error` checks and String(error) work consistently
@@ -80,7 +86,6 @@ function handleResponse<T = any>(response: any): T {
 export const queryKeys = {
   users: () => ['users'] as const,
   user: (id: string) => ['users', id] as const,
-  currentUser: () => ['currentUser'] as const,
   statistics: (startDate?: string, endDate?: string) => ['statistics', { startDate, endDate }] as const,
   requestDetails: (startDate: string, endDate: string, isStatic?: boolean) =>
     ['requestDetails', { startDate, endDate, isStatic }] as const,
@@ -115,16 +120,6 @@ export function useUser(userId: string) {
       return handleResponse<UserResponse>(response);
     },
     enabled: !!userId,
-  });
-}
-
-export function useCurrentUser() {
-  return useQuery({
-    queryKey: queryKeys.currentUser(),
-    queryFn: async () => {
-      const response = await getCurrentUser({ client: customApiClient });
-      return handleResponse<CurrentUser>(response);
-    },
   });
 }
 

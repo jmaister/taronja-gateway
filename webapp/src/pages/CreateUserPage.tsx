@@ -44,7 +44,7 @@ export function CreateUserPage() {
                     }, 1500);
                 }
             },
-            onError: (err: any) => {
+            onError: (err: Error) => {
                 setMessage(err.message || 'An unexpected error occurred. Please try again.');
                 setMessageType('error');
             },
