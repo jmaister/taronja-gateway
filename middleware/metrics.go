@@ -87,24 +87,6 @@ func (m *metricsResponseRecorder) WriteHeader(code int) {
 	m.ResponseWriter.WriteHeader(code)
 }
 
-// Unwrap gives net/http's http.ResponseController (and anything else using
-// the standard unwrap convention) access to the underlying ResponseWriter,
-// so capabilities this wrapper doesn't itself implement (e.g. http.Hijacker,
-// used by WebSocket upgrades and by httputil.ReverseProxy) still work
-// through it. instrumentMiddleware wraps every built-in global middleware
-// in one of these, so without this, this one wrapper alone broke WebSocket
-// upgrades through the *entire* global middleware chain regardless of which
-// middlewares were enabled — http.ResponseController.Hijack() stops
-// following a wrapper chain the moment it hits one with no Unwrap, and this
-// sits between every middleware's own response-writer wrapper (see
-// middleware/logging.go and middleware/trafficmetric.go's identical fixes,
-// which needed this one too, not instead of it). Confirmed against a real
-// WebSocket client dialing through a real gateway instance — see
-// gateway/websocket_test.go.
-func (m *metricsResponseRecorder) Unwrap() http.ResponseWriter {
-	return m.ResponseWriter
-}
-
 // instrumentMiddleware wraps mw so every request through it updates counter:
 // request count, error count (status >= 500), and elapsed wall-clock time.
 func instrumentMiddleware(mw Middleware, counter *middlewareMetricsCounter) Middleware {

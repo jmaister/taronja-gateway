@@ -61,19 +61,6 @@ func (rw *responseWriterWithStats) Body() string {
 	return rw.body.String()
 }
 
-// Unwrap gives net/http's http.ResponseController (and anything else using
-// the standard unwrap convention) access to the underlying ResponseWriter,
-// so capabilities this wrapper doesn't itself implement (e.g. http.Hijacker,
-// used by WebSocket upgrades and by httputil.ReverseProxy) still work
-// through it — see middleware/logging.go's identical fix and its doc
-// comment for the real, confirmed bug this addresses:
-// TrafficMetricMiddleware (enabled by every sample config's
-// management.analytics: true) broke every WebSocket upgrade proxied
-// through it the same way.
-func (rw *responseWriterWithStats) Unwrap() http.ResponseWriter {
-	return rw.ResponseWriter
-}
-
 // TrafficMetricMiddleware creates middleware for collecting request
 // statistics. When excludeStaticAssets is true, requests whose path looks
 // like a static asset (session.IsStaticAssetPath — CSS, JS, images, fonts,
