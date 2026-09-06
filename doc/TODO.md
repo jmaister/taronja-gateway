@@ -289,12 +289,27 @@ we're working through these one at a time — see status notes.
 - [ ] **Header/URL transformation rules** — add/strip arbitrary
       request/response headers per route, regex path rewriting beyond
       `removeFromPath`.
-- [ ] **WebSocket support: confirm and document, add test coverage.** Likely
-      already works for single-target routes (the round-robin transport's
-      fast path delegates straight to `http.DefaultTransport`, and
-      `compressingResponseWriter` explicitly bypasses `Connection: Upgrade`
-      requests untouched — see `middleware/compression.go`), but untested for
-      the multi-target case and not documented anywhere.
+- [x] **WebSocket support: confirm and document, add test coverage.** Done —
+      and confirming it turned up a real bug, not just a documentation gap.
+      `gateway/websocket_test.go` dials a real WebSocket client through a
+      real gateway instance (the actual wrapped handler a running gateway
+      serves through, `gw.handler` — not the unwrapped `gw.Mux` most other
+      gateway tests deliberately use to isolate routing from the global
+      middleware chain), which caught: `httputil.ReverseProxy`'s upgrade
+      handling needs `http.ResponseController.Hijack()` to reach the real
+      connection, which only follows a response-writer wrapper's chain via
+      `Unwrap() http.ResponseWriter` — and four of the five such wrappers in
+      this codebase (`logging.go`, `trafficmetric.go`, `metrics.go`'s
+      per-middleware instrumentation wrapper, `ratelimiter.go`) didn't
+      implement it, only `compression.go`'s did. So a WebSocket upgrade
+      proxied through logging, traffic metrics, or the rate limiter —
+      enabled by every sample config — failed outright with "can't switch
+      protocols using non-Hijacker ResponseWriter type ...". Fixed by
+      adding `Unwrap()` to all four, covered by both single-target and
+      load-balanced (multi-target) tests, and confirmed for real against a
+      live `tg` binary, a real WebSocket backend, and a real client. See
+      the README's "WebSocket Support" section and AGENTS.md's note on the
+      `Unwrap()` convention for any future response-writer wrapper.
 - [ ] **Dynamic upstream discovery** (DNS SRV, Consul, Kubernetes
       Endpoints/EndpointSlice) instead of a static `to:` list.
 

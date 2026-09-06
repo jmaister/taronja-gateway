@@ -292,6 +292,19 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap gives net/http's http.ResponseController (and anything else using
+// the standard unwrap convention) access to the underlying ResponseWriter,
+// so capabilities this wrapper doesn't itself implement (e.g. http.Hijacker,
+// used by WebSocket upgrades and by httputil.ReverseProxy) still work
+// through it — same fix, same reason, as middleware/logging.go,
+// middleware/trafficmetric.go, and middleware/metrics.go: the rate limiter
+// wraps every request (to see the eventual status code for its
+// error/vulnerability-scan counters) whenever it's enabled, which broke
+// WebSocket upgrades through it exactly the same way.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // getEntry retrieves or creates the rateEntry for the given IP.
 func (rl *RateLimiter) getEntry(ip string) *rateEntry {
 	if v, ok := rl.entries.Load(ip); ok {

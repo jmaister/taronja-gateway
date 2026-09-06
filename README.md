@@ -58,6 +58,7 @@ Features table, shows what is implemented and what is planned.
 | Load Balancing                | ✅       | v1.0.0 |
 | - Round-robin across multiple `to` backends | ✅ | v1.0.0 |
 | - Automatic failover on connection failure | ✅ | v1.0.0 |
+| WebSocket Support              | ✅       | v1.0.0 |
 | TLS Termination (HTTPS)       | ✅       | v1.0.0 |
 | - Automatic HTTP → HTTPS redirect | ✅  | v1.0.0 |
 | - Zero-downtime certificate reload on renewal | ✅ | v1.0.0 |
@@ -601,6 +602,35 @@ different places; that's routing, not load balancing.
 
 A single URL (`to: http://backend:8080`) continues to work exactly as
 before — this is purely additive.
+
+### WebSocket Support
+
+Proxy routes support WebSocket upgrades transparently — no separate
+configuration needed. Point `to:` at a WebSocket backend the same way you
+would any other proxy route, including a load-balanced list:
+
+```yaml
+- name: Realtime API
+  from: /ws/*
+  removeFromPath: "/ws"
+  to: http://realtime-backend:8080
+```
+
+A client's `Connection: Upgrade` request is forwarded to the backend, and
+once the backend answers with its own `101 Switching Protocols`, the
+gateway hands the raw connection to the backend and both sides talk
+directly through it — the same standard-library mechanism
+(`httputil.ReverseProxy`'s upgrade handling) that makes this work for any
+Go reverse proxy, with no gateway-specific opt-in.
+
+This works with every one of the gateway's built-in middlewares enabled
+(logging, traffic metrics, rate limiting, ...) — each one's
+response-writer wrapper implements the standard `Unwrap() http.ResponseWriter`
+method so `net/http`'s own hijack mechanism can still reach the real
+connection underneath. Writing a new middleware that wraps
+`http.ResponseWriter`? Implement `Unwrap()` on it too, or you'll silently
+break every WebSocket route that passes through it — see
+`middleware/logging.go`'s `responseWriter.Unwrap` for the pattern to copy.
 
 ### Authentication Providers
 

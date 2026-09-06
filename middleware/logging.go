@@ -56,3 +56,20 @@ func (rw *responseWriter) WriteHeader(code int) {
 func (rw *responseWriter) Status() int {
 	return rw.statusCode
 }
+
+// Unwrap gives net/http's http.ResponseController (and anything else using
+// the standard unwrap convention) access to the underlying ResponseWriter,
+// so capabilities this wrapper doesn't itself implement (e.g. http.Hijacker,
+// used by WebSocket upgrades and by httputil.ReverseProxy) still work
+// through it — see middleware/compression.go's compressingResponseWriter
+// for the same fix, first applied there. Without this, LoggingMiddleware
+// (enabled by every sample config's management.logging: true) broke every
+// WebSocket upgrade proxied through it: http.ResponseController.Hijack()
+// only follows a wrapper's chain via Unwrap, so it returned
+// http.ErrNotSupported and httputil.ReverseProxy failed the upgrade with
+// "can't switch protocols using non-Hijacker ResponseWriter type
+// *middleware.responseWriter" — confirmed against a real WebSocket client
+// dialing through a real gateway instance, see gateway/websocket_test.go.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
