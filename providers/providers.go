@@ -77,6 +77,14 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	} else {
 		log.Printf("Microsoft Authentication provider not configured, skipping registration")
 	}
+
+	if gatewayConfig.AuthenticationProviders.Facebook.ClientId != "" &&
+		gatewayConfig.AuthenticationProviders.Facebook.ClientSecret != "" {
+		log.Printf("Registering Facebook Authentication provider")
+		RegisterFacebookAuth(mux, sessionStore, gatewayConfig, userRepo)
+	} else {
+		log.Printf("Facebook Authentication provider not configured, skipping registration")
+	}
 }
 
 type SimpleAuthProvider struct {

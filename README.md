@@ -42,6 +42,7 @@ Features table, shows what is implemented and what is planned.
 | - OAuth2: GitHub              | ✅       | v0.0.1 |
 | - OAuth2: Google              | ✅       | v0.0.1 |
 | - OAuth2: Microsoft (Entra ID / Azure AD) | ✅ | v1.0.0 |
+| - OAuth2: Facebook            | ✅       | v1.0.0 |
 | Authentication: Token         | ✅       | v0.0.9 |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
@@ -614,15 +615,53 @@ authenticationProviders:
     enabled: true
 ```
 
-**OAuth2 Providers:**
+**OAuth2 Providers:** each one below is independent and optional — enable
+as many side by side as you like (the login page shows a button for each
+configured one). The redirect/callback URL you register with the provider
+must match `<server.url><management.prefix>/auth/<provider>/callback`
+exactly (scheme, host, port, and path) — the samples below assume the
+defaults (`http://localhost:8080`, prefix `/_`).
+
+#### Google
+
+Get credentials: [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials) → **Create Credentials → OAuth client ID** (application type "Web application").
+
+- **Credentials needed:** Client ID, Client Secret
+- **Authorized JavaScript origin:** `http://localhost:8080`
+- **Authorized redirect URI:** `http://localhost:8080/_/auth/google/callback`
+
 ```yaml
 authenticationProviders:
   google:
     clientId: ${GOOGLE_CLIENT_ID}
     clientSecret: ${GOOGLE_CLIENT_SECRET}
+```
+
+#### GitHub
+
+Get credentials: [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers) → **New OAuth App**.
+
+- **Credentials needed:** Client ID, Client Secret
+- **Homepage URL:** `http://localhost:8080`
+- **Authorization callback URL:** `http://localhost:8080/_/auth/github/callback`
+
+```yaml
+authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
+```
+
+#### Microsoft (Entra ID / Azure AD)
+
+Get credentials: [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**, then **Certificates & secrets → New client secret**.
+
+- **Credentials needed:** Application (client) ID, a client secret **value** (not the secret ID shown next to it)
+- **Optional:** a tenant ID or verified domain, to restrict login to one organization instead of accepting any Microsoft account
+- **Redirect URI** (platform type "Web"): `http://localhost:8080/_/auth/microsoft/callback`
+
+```yaml
+authenticationProviders:
   microsoft:
     clientId: ${MICROSOFT_CLIENT_ID}
     clientSecret: ${MICROSOFT_CLIENT_SECRET}
@@ -632,24 +671,20 @@ authenticationProviders:
     tenant: contoso.onmicrosoft.com
 ```
 
-To obtain OAuth2 credentials:
-- **Google**: [Google Cloud Console](https://console.cloud.google.com/)
-- **GitHub**: [GitHub OAuth Apps](https://github.com/settings/developers)
-- **Microsoft**: [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) — create a client secret under "Certificates & secrets" after registering the app.
+#### Facebook
 
-#### Google OAuth2 sample
+Get credentials: [Meta for Developers → My Apps](https://developers.facebook.com/apps/) → **Create App** (type "Consumer" or "Business"), then add the **Facebook Login** product and open its Settings.
 
-Authorized origin: `http://localhost:8080`
-Authorized redirect URI: `http://localhost:8080/_/auth/google/callback`
+- **Credentials needed:** App ID, App Secret
+- **Valid OAuth Redirect URI:** `http://localhost:8080/_/auth/facebook/callback`
+- While the app is in development mode, only accounts added as test users/roles on the app can log in — switch the app to Live for everyone else, which requires Meta's app review for the `email`/`public_profile` permissions used here.
 
-#### GitHub OAuth2 sample
-
-Authorized origin: `http://localhost:8080`
-Authorized callback URL: `http://localhost:8080/_/auth/github/callback`
-
-#### Microsoft OAuth2 sample
-
-Redirect URI (type "Web"): `http://localhost:8080/_/auth/microsoft/callback`
+```yaml
+authenticationProviders:
+  facebook:
+    clientId: ${FACEBOOK_CLIENT_ID}
+    clientSecret: ${FACEBOOK_CLIENT_SECRET}
+```
 
 ### Branding
 

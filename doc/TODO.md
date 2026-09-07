@@ -230,6 +230,43 @@ operator to list anything. See `session.GetClientIP`'s doc comment
     - Filter by JA4 fingerprint separate parts? — still open, and now
       applies to three fields instead of one.
 
+# Authentication providers
+
+- [x] More OAuth2 login providers beyond Google/GitHub — done for
+      Microsoft (Entra ID / Azure AD, `providers/microsoft.go`) and
+      Facebook (`providers/facebook.go`), both following the exact same
+      shape as Google/GitHub since the generic `AuthenticationProvider`
+      (`providers/providers.go`) already owns the whole OAuth2 flow. See
+      README.md's "Authentication Providers" section (a subsection per
+      provider: where to get credentials, which credentials are needed,
+      and a config sample) and AGENTS.md's `providers/` section for how
+      to add another one.
+- [ ] **Apple ("Sign in with Apple") — deliberately not done, unlike the
+      others above.** It doesn't fit the same shape the other four share:
+      its "client secret" isn't a static string but a JWT you sign
+      yourself (needs a Team ID, a Key ID, and an EC private key from
+      Apple — config fields with no equivalent in the other providers,
+      regenerated periodically since Apple caps its validity at 6
+      months), its callback arrives as a POST form body instead of GET
+      query params (needs either a POST-aware version of
+      `AuthenticationProvider.Callback` or a dedicated Apple callback
+      handler), and there's no REST "get current user" endpoint — the
+      email comes from decoding the ID token returned during the token
+      exchange rather than from an authenticated API call the way
+      `UserDataFetcher.FetchUserData(accessToken)` currently assumes.
+      Cryptographically verifying that ID token against Apple's public
+      keys (JWKS) is real extra work on top of all of that, but is also
+      arguably not strictly necessary for this specific flow shape: the
+      ID token would arrive via our own direct server-to-server HTTPS
+      call to Apple's token endpoint (authenticated with our own client
+      secret), the same trust level Google/Microsoft/Facebook's plain
+      REST responses already have — not a client-supplied, unverified
+      token the way a JS-based Sign-In-With-Apple flow would hand us
+      one. Revisit if actually needed; a generic OIDC provider (see the
+      Tier 3 note below) might end up covering this more cleanly than a
+      bespoke one anyway, since Apple's is fundamentally an OIDC
+      provider under the hood.
+
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 
 Deep-dive comparison done 2026-08-28, checked against the actual code (not
@@ -305,9 +342,9 @@ GraphQL federation, gRPC/gRPC-Web transcoding, WAF-style request inspection
 deployments (natural extension of the load balancer — a `weight:` per
 target), a scripting/plugin execution model (Lua/WASM — we already have a
 compiled-Go extension point, see `doc/middleware_development.md`), generic
-SAML/OIDC beyond named, hardcoded providers (Google, GitHub, Microsoft —
-adding another named one is easy, see `AGENTS.md`'s `providers/` section;
-a generic config-driven OIDC provider covering arbitrary IdPs, including
-self-hosted ones like Keycloak/Authentik, is the bigger, not-yet-started
-piece this bullet is really about), a self-service developer
-portal. Not pursuing unless users specifically ask.
+SAML/OIDC beyond named, hardcoded providers (see the "Authentication
+providers" section above for the ones done and Apple's — deliberately
+not done yet; a generic config-driven OIDC provider covering arbitrary
+IdPs, including self-hosted ones like Keycloak/Authentik, is the bigger,
+not-yet-started piece this bullet is really about), a self-service
+developer portal. Not pursuing unless users specifically ask.

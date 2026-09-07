@@ -151,6 +151,11 @@
             color: #ffffff; /* White text */
             border: none;
         }
+        .oauth-facebook {
+            background-color: #1877F2; /* Facebook blue */
+            color: #ffffff; /* White text */
+            border: none;
+        }
         .oauth-other {
             background-color: #6c757d; /* Ensure this rule is not empty */
         }
@@ -223,10 +228,16 @@
                 Login with Microsoft
             </a>
             {{end}}
+            {{if .AuthenticationProviders.Facebook.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/facebook/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-facebook">
+                <img src="{{.ManagementPrefix}}/static/facebook_logo.svg" alt="Facebook logo">
+                Login with Facebook
+            </a>
+            {{end}}
         </div>
 
         {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.Microsoft.Enabled)}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.Microsoft.Enabled .AuthenticationProviders.Facebook.Enabled)}}
         <div class="separator">
             <span>or</span>
         </div>

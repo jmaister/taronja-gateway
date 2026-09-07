@@ -266,6 +266,7 @@ middleware:
 - `google.go` — Google OAuth2 (redirect to Google, callback at `/_/callback`, exchanges auth code for user info)
 - `github.go` — GitHub OAuth2 (similar flow)
 - `microsoft.go` — Microsoft/Entra ID OAuth2 (similar flow; uses `golang.org/x/oauth2/microsoft.AzureADEndpoint(tenant)` — empty tenant means the "common" endpoint, accepting both personal Microsoft accounts and any organizational one)
+- `facebook.go` — Facebook OAuth2 (similar flow; Graph API's `/me` only returns fields explicitly requested, and its `picture` field is a nested `{data: {url}}` object, not a plain string like every other provider here)
 
 **Adding another OAuth2 provider is a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`microsoft.go`:
 1. A `Name() string` type (e.g. `type XxxProvider struct{}`).

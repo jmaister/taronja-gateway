@@ -127,6 +127,7 @@ type AuthenticationProviders struct {
 	Google    AuthProviderCredentials          `yaml:"google"`    // Google OAuth2 authentication. Optional.
 	Github    AuthProviderCredentials          `yaml:"github"`    // GitHub OAuth2 authentication. Optional.
 	Microsoft MicrosoftAuthProviderCredentials `yaml:"microsoft"` // Microsoft (Entra ID / Azure AD) OAuth2 authentication. Optional.
+	Facebook  AuthProviderCredentials          `yaml:"facebook"`  // Facebook OAuth2 authentication. Optional.
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -145,6 +146,11 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		microsoftCallback := fmt.Sprintf("%s%s/auth/microsoft/callback", serverURL, managementPrefix)
 		fmt.Println("[OAUTH] Microsoft callback URL:")
 		fmt.Println("   ", microsoftCallback)
+	}
+	if a.Facebook.ClientId != "" && a.Facebook.ClientSecret != "" {
+		facebookCallback := fmt.Sprintf("%s%s/auth/facebook/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Facebook callback URL:")
+		fmt.Println("   ", facebookCallback)
 	}
 }
 
@@ -478,6 +484,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
 		c.AuthenticationProviders.Microsoft.ClientId != "" ||
+		c.AuthenticationProviders.Facebook.ClientId != "" ||
 		c.Management.Admin.Enabled
 }
 
@@ -496,6 +503,9 @@ type loginPageData struct {
 		Microsoft struct {
 			Enabled bool
 		}
+		Facebook struct {
+			Enabled bool
+		}
 	}
 	Branding         BrandingConfig
 	RedirectURL      string
@@ -512,6 +522,7 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
 	data.AuthenticationProviders.Microsoft.Enabled = gatewayConfig.AuthenticationProviders.Microsoft.ClientId != ""
+	data.AuthenticationProviders.Facebook.Enabled = gatewayConfig.AuthenticationProviders.Facebook.ClientId != ""
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }
