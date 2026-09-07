@@ -162,6 +162,13 @@ authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
+  microsoft:
+    clientId: ${MICROSOFT_CLIENT_ID}
+    clientSecret: ${MICROSOFT_CLIENT_SECRET}
+    # Restrict login to one Azure AD/Entra ID organization (tenant ID or
+    # verified domain). Omit to use the "common" endpoint, which accepts
+    # both personal Microsoft accounts and any organizational account.
+    # tenant: contoso.onmicrosoft.com
 
 branding:
   logoUrl: /static/logo.png

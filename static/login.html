@@ -146,6 +146,11 @@
         .oauth-github img {
             filter: brightness(0) invert(1); /* Make black SVG logo white */
         }
+        .oauth-microsoft {
+            background-color: #2f2f2f; /* Microsoft's own dark button background */
+            color: #ffffff; /* White text */
+            border: none;
+        }
         .oauth-other {
             background-color: #6c757d; /* Ensure this rule is not empty */
         }
@@ -212,10 +217,16 @@
                 Login with GitHub
             </a>
             {{end}}
+            {{if .AuthenticationProviders.Microsoft.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/microsoft/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-microsoft">
+                <img src="{{.ManagementPrefix}}/static/microsoft_logo.svg" alt="Microsoft logo">
+                Login with Microsoft
+            </a>
+            {{end}}
         </div>
 
         {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled)}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.Microsoft.Enabled)}}
         <div class="separator">
             <span>or</span>
         </div>

@@ -102,6 +102,19 @@ type AuthProviderCredentials struct {
 	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from provider. Can use environment variables (e.g., ${GOOGLE_CLIENT_SECRET})
 }
 
+// MicrosoftAuthProviderCredentials is AuthProviderCredentials plus the one
+// extra setting Microsoft's own OAuth2 endpoint needs: which Azure AD/Entra
+// ID tenant to authenticate against.
+type MicrosoftAuthProviderCredentials struct {
+	ClientId     string `yaml:"clientId"`     // OAuth2 client ID (Application ID) from the Azure/Entra app registration. Can use environment variables (e.g., ${MICROSOFT_CLIENT_ID})
+	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from the app registration. Can use environment variables (e.g., ${MICROSOFT_CLIENT_SECRET})
+	// Tenant restricts login to one Azure AD/Entra ID organization (its
+	// tenant ID or verified domain, e.g. "contoso.onmicrosoft.com").
+	// Empty (default) uses Microsoft's "common" endpoint, which accepts
+	// both personal Microsoft accounts and any organizational account.
+	Tenant string `yaml:"tenant,omitempty"`
+}
+
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
@@ -110,9 +123,10 @@ type BasicAuthenticationConfig struct {
 // AuthenticationProviders defines all available authentication methods.
 // At least one provider should be enabled if authentication is required on any route.
 type AuthenticationProviders struct {
-	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
-	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
-	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
+	Basic     BasicAuthenticationConfig        `yaml:"basic"`     // Basic username/password authentication
+	Google    AuthProviderCredentials          `yaml:"google"`    // Google OAuth2 authentication. Optional.
+	Github    AuthProviderCredentials          `yaml:"github"`    // GitHub OAuth2 authentication. Optional.
+	Microsoft MicrosoftAuthProviderCredentials `yaml:"microsoft"` // Microsoft (Entra ID / Azure AD) OAuth2 authentication. Optional.
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -126,6 +140,11 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		githubCallback := fmt.Sprintf("%s%s/auth/github/callback", serverURL, managementPrefix)
 		fmt.Println("[OAUTH] GitHub callback URL:")
 		fmt.Println("   ", githubCallback)
+	}
+	if a.Microsoft.ClientId != "" && a.Microsoft.ClientSecret != "" {
+		microsoftCallback := fmt.Sprintf("%s%s/auth/microsoft/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Microsoft callback URL:")
+		fmt.Println("   ", microsoftCallback)
 	}
 }
 
@@ -458,6 +477,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
+		c.AuthenticationProviders.Microsoft.ClientId != "" ||
 		c.Management.Admin.Enabled
 }
 
@@ -471,6 +491,9 @@ type loginPageData struct {
 			Enabled bool
 		}
 		Github struct {
+			Enabled bool
+		}
+		Microsoft struct {
 			Enabled bool
 		}
 	}
@@ -488,6 +511,7 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
+	data.AuthenticationProviders.Microsoft.Enabled = gatewayConfig.AuthenticationProviders.Microsoft.ClientId != ""
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }

@@ -305,5 +305,9 @@ GraphQL federation, gRPC/gRPC-Web transcoding, WAF-style request inspection
 deployments (natural extension of the load balancer — a `weight:` per
 target), a scripting/plugin execution model (Lua/WASM — we already have a
 compiled-Go extension point, see `doc/middleware_development.md`), generic
-SAML/OIDC beyond the two hardcoded providers, a self-service developer
+SAML/OIDC beyond named, hardcoded providers (Google, GitHub, Microsoft —
+adding another named one is easy, see `AGENTS.md`'s `providers/` section;
+a generic config-driven OIDC provider covering arbitrary IdPs, including
+self-hosted ones like Keycloak/Authentik, is the bigger, not-yet-started
+piece this bullet is really about), a self-service developer
 portal. Not pursuing unless users specifically ask.

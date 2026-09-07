@@ -265,6 +265,17 @@ middleware:
 - `basicAuthentication.go` — username/password against `User.PasswordHash`
 - `google.go` — Google OAuth2 (redirect to Google, callback at `/_/callback`, exchanges auth code for user info)
 - `github.go` — GitHub OAuth2 (similar flow)
+- `microsoft.go` — Microsoft/Entra ID OAuth2 (similar flow; uses `golang.org/x/oauth2/microsoft.AzureADEndpoint(tenant)` — empty tenant means the "common" endpoint, accepting both personal Microsoft accounts and any organizational one)
+
+**Adding another OAuth2 provider is a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`microsoft.go`:
+1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
+2. A `UserDataFetcher` implementation: one HTTP call to the provider's own "get current user" API, mapping its response into the shared `UserInfo` struct.
+3. `RegisterXxxAuth(mux, sessionStore, gatewayConfig, userRepo)`: builds the `oauth2.Config` (ClientID/Secret from a new `config.AuthenticationProviders` field, RedirectURL, Scopes, and an `oauth2.Endpoint`) and wires it through `NewAuthenticationProvider`/`RegisterEndpoints`. `golang.org/x/oauth2/endpoints` ships ready-made `AuthURL`/`TokenURL` pairs for 40+ services (Microsoft, GitLab, Discord, Slack, Facebook, LinkedIn, Spotify, ...), and several (Google, GitHub, Microsoft, Slack, GitLab, ...) get their own dedicated subpackage instead — check both before hand-writing an endpoint.
+4. Wire the new config field into `providers.RegisterProviders`, `config.GatewayConfig.HasAnyAuthentication`, `config.AuthenticationProviders.PrintOAuthCallbackURLs`, and `config.loginPageData`/`NewLoginPageData`.
+5. A login button in `static/login.html` (a `{{if .AuthenticationProviders.Xxx.Enabled}}` block, a brand SVG in `static/` — embedded automatically via `static.StaticAssetsFS`'s `//go:embed *`) and a `.oauth-xxx` CSS rule.
+6. Docs: README's "Authentication Providers" section and `sample/config.yaml`.
+
+None of this touches the OAuth2 flow itself — see `microsoft.go`/`config.go`'s Microsoft additions for a complete recent example of exactly this list.
 
 ### `handlers/` and `api/` — OpenAPI API Implementation
 

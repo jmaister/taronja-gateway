@@ -41,6 +41,7 @@ Features table, shows what is implemented and what is planned.
 | Authentication: OAuth2        | ✅       | v0.0.1 |
 | - OAuth2: GitHub              | ✅       | v0.0.1 |
 | - OAuth2: Google              | ✅       | v0.0.1 |
+| - OAuth2: Microsoft (Entra ID / Azure AD) | ✅ | v1.0.0 |
 | Authentication: Token         | ✅       | v0.0.9 |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
@@ -622,11 +623,19 @@ authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
+  microsoft:
+    clientId: ${MICROSOFT_CLIENT_ID}
+    clientSecret: ${MICROSOFT_CLIENT_SECRET}
+    # Optional: restrict login to one Azure AD/Entra ID organization (its
+    # tenant ID or a verified domain). Omit to accept both personal
+    # Microsoft accounts and any organizational account (the "common" endpoint).
+    tenant: contoso.onmicrosoft.com
 ```
 
 To obtain OAuth2 credentials:
 - **Google**: [Google Cloud Console](https://console.cloud.google.com/)
 - **GitHub**: [GitHub OAuth Apps](https://github.com/settings/developers)
+- **Microsoft**: [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) — create a client secret under "Certificates & secrets" after registering the app.
 
 #### Google OAuth2 sample
 
@@ -637,6 +646,10 @@ Authorized redirect URI: `http://localhost:8080/_/auth/google/callback`
 
 Authorized origin: `http://localhost:8080`
 Authorized callback URL: `http://localhost:8080/_/auth/github/callback`
+
+#### Microsoft OAuth2 sample
+
+Redirect URI (type "Web"): `http://localhost:8080/_/auth/microsoft/callback`
 
 ### Branding
 

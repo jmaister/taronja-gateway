@@ -69,6 +69,14 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	} else {
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
+
+	if gatewayConfig.AuthenticationProviders.Microsoft.ClientId != "" &&
+		gatewayConfig.AuthenticationProviders.Microsoft.ClientSecret != "" {
+		log.Printf("Registering Microsoft Authentication provider")
+		RegisterMicrosoftAuth(mux, sessionStore, gatewayConfig, userRepo)
+	} else {
+		log.Printf("Microsoft Authentication provider not configured, skipping registration")
+	}
 }
 
 type SimpleAuthProvider struct {
