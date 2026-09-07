@@ -72,6 +72,78 @@ for the general legacy-flag-vs-`middleware:`-section comparison, and the
 important gotcha: an explicit `middleware:` section replaces *every*
 legacy flag at once, not just this one.
 
+## Try it locally
+
+The quickest way to see real traces from a real gateway, with a UI, is
+[Jaeger](https://www.jaegertracing.io/)'s all-in-one image — one
+container gives you an OTLP/HTTP receiver and a web UI to browse traces
+in, no separate collector or database to set up. Verified end to end
+against this project's actual `tg` binary; any other OTLP-speaking
+backend (an OpenTelemetry Collector, Tempo, Honeycomb, Grafana Cloud, ...)
+works the same way, just pointed at a different `endpoint`.
+
+1. **Start Jaeger.** `4318` is the OTLP/HTTP port `tracing.endpoint`
+   needs; `16686` is the web UI.
+
+   ```sh
+   docker run -d --name jaeger \
+     -p 16686:16686 \
+     -p 4318:4318 \
+     jaegertracing/jaeger:latest
+   ```
+
+2. **Point a config at it and run the gateway.** `sample/config.yaml`
+   already has a commented-out `tracing:` block near the top — uncomment
+   it (or add the same three lines to any config with at least one proxy
+   route; tracing a route that never proxies anywhere only ever produces
+   the one inbound span, not the distributed pair described below):
+
+   ```yaml
+   tracing:
+     enabled: true
+     endpoint: localhost:4318
+     insecure: true
+   ```
+
+   ```sh
+   make build
+   ./tg run --config sample/config.yaml
+   ```
+
+3. **Send some traffic.** Any request through a route that proxies
+   somewhere works — e.g. with the sample config's `/api/v1/*` route:
+
+   ```sh
+   curl http://localhost:8080/api/v1/posts/1
+   ```
+
+4. **Open the Jaeger UI** at <http://localhost:16686>, pick the
+   gateway's `name` (from its config) in the **Service** dropdown, and
+   click **Find Traces**. Each request shows up as one trace with (at
+   least) two spans: a `SERVER` span for the inbound request and a
+   `CLIENT` span nested under it for the outbound call to the backend —
+   click into one to see the full waterfall, status code, and timing for
+   both hops. Traces land within a few seconds of the request, not
+   instantly — `sdktrace.WithBatcher` batches spans rather than exporting
+   each one immediately (see "Notes" below), so give it a moment before
+   assuming nothing arrived.
+
+   Prefer the raw data over a UI? Jaeger's query API works too:
+   `curl 'http://localhost:16686/api/traces?service=<your-gateway-name>'`.
+
+5. **Clean up:** `docker stop jaeger && docker rm jaeger`.
+
+Want this proven automatically instead of by hand? See
+`gateway/tracing_test.go`'s
+`TestGatewayTracing_DistributedSpanLinkageOverRealOTLP` — it does the
+same round trip (proxy a request, check the exported spans) against a
+throwaway fake collector, on every test run, with no Docker or manual
+steps involved:
+
+```sh
+go test ./gateway/... -run TestGatewayTracing_DistributedSpanLinkageOverRealOTLP -v
+```
+
 ## Config options
 
 | Field | Required | Default | Description |

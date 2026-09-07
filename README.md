@@ -414,7 +414,9 @@ journey through this gateway and beyond, not just the hop the gateway
 itself handles. Like TLS, this is fixed at startup: changing it on a config
 reload logs a warning rather than taking effect until a restart. See
 [`tracing`](doc/middleware/tracing.md) for the full reference, including
-how this is tested without needing a real collector.
+how this is tested without needing a real collector, and a "Try it
+locally" walkthrough for seeing real traces in a real UI (Jaeger's
+all-in-one Docker image) in a few minutes.
 
 ### Management
 
