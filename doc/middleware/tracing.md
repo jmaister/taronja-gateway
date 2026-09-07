@@ -99,11 +99,20 @@ happen at real gateway startup.
   (`middleware/tracing_test.go`) use the OpenTelemetry SDK's own
   in-memory exporter (`go.opentelemetry.io/otel/sdk/trace/tracetest`) to
   assert on span names, attributes, and parent/child relationships with
-  no network involved at all. `gateway/tracing_test.go` goes one step
-  further and verifies real OTLP/HTTP export and real backend
-  propagation against a plain `httptest.Server` standing in for a
-  collector — enough to catch a wiring mistake without needing Jaeger,
-  an OTel Collector, or Docker in CI.
+  no network involved at all. `gateway/tracing_test.go` goes further and
+  verifies real OTLP/HTTP export and real backend header propagation
+  against a plain `httptest.Server` standing in for a collector — enough
+  to catch a wiring mistake without needing Jaeger, an OTel Collector, or
+  Docker in CI. `TestGatewayTracing_DistributedSpanLinkageOverRealOTLP`
+  in that file goes one step further still: its fake collector actually
+  decodes the real OTLP protobuf export (`go.opentelemetry.io/proto/otlp`)
+  and asserts the inbound request's `SERVER` span and the outbound proxy
+  call's `CLIENT` span share one trace ID with a real parent/child link
+  between them — and that the exact `traceparent` header the backend
+  received names that specific child span, not just "some non-empty
+  header." Run it directly with
+  `go test ./gateway/... -run TestGatewayTracing_DistributedSpanLinkageOverRealOTLP -v`
+  to see the whole chain proven end to end on demand.
 - **Graceful shutdown flushes pending spans.** `gateway.InitTracing`
   returns a shutdown function `main.go` calls after the server stops
   accepting new requests — without it, a span for the very last requests
