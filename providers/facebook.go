@@ -24,11 +24,11 @@ type FacebookUserDataFetcher struct {
 	OAuthConfig *oauth2.Config
 }
 
-func (f *FacebookUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (f *FacebookUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	// The Graph API's /me only returns the fields explicitly requested.
 	// picture comes back as a nested {data: {url: ...}} object, not a plain
 	// string, unlike every other provider here.
-	reqURL := "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture&access_token=" + url.QueryEscape(accessToken)
+	reqURL := "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name,picture&access_token=" + url.QueryEscape(token.AccessToken)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		return nil, err

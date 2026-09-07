@@ -115,6 +115,39 @@ type MicrosoftAuthProviderCredentials struct {
 	Tenant string `yaml:"tenant,omitempty"`
 }
 
+// AppleAuthProviderCredentials configures "Sign in with Apple" — a
+// different credential shape than every other OAuth2 provider here. Apple
+// never issues a static client secret string; instead it's a JWT the
+// gateway signs itself (see providers/apple.go's buildAppleClientSecret),
+// using these four values, all from an Apple Developer account:
+// https://developer.apple.com/account/resources/authkeys/list.
+type AppleAuthProviderCredentials struct {
+	// ClientId is Apple's "Services ID" (e.g. "com.example.service") — the
+	// identifier registered for web authentication, not the app's Bundle
+	// ID. Can use environment variables (e.g. ${APPLE_CLIENT_ID}).
+	ClientId string `yaml:"clientId"`
+	// TeamId is the 10-character Apple Developer Team ID, shown on the
+	// "Membership" page of the developer account.
+	TeamId string `yaml:"teamId"`
+	// KeyId is the ID of the private key created for "Sign in with Apple"
+	// under Certificates, Identifiers & Profiles → Keys.
+	KeyId string `yaml:"keyId"`
+	// PrivateKey is the PEM-encoded EC private key content from the .p8
+	// file Apple generates when the key above is created (downloadable
+	// only once, at creation time). Can use environment variables (e.g.
+	// ${APPLE_PRIVATE_KEY}, if the environment supports a multi-line
+	// value) or a YAML literal block scalar (`privateKey: |` followed by
+	// the indented PEM content) for local/file-based configuration.
+	PrivateKey string `yaml:"privateKey"`
+}
+
+// IsConfigured reports whether every credential Apple requires is present —
+// unlike the other providers' plain ClientId/ClientSecret pair, this is
+// four fields, all required for RegisterAppleAuth to do anything.
+func (a AppleAuthProviderCredentials) IsConfigured() bool {
+	return a.ClientId != "" && a.TeamId != "" && a.KeyId != "" && a.PrivateKey != ""
+}
+
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
@@ -128,6 +161,7 @@ type AuthenticationProviders struct {
 	Github    AuthProviderCredentials          `yaml:"github"`    // GitHub OAuth2 authentication. Optional.
 	Microsoft MicrosoftAuthProviderCredentials `yaml:"microsoft"` // Microsoft (Entra ID / Azure AD) OAuth2 authentication. Optional.
 	Facebook  AuthProviderCredentials          `yaml:"facebook"`  // Facebook OAuth2 authentication. Optional.
+	Apple     AppleAuthProviderCredentials     `yaml:"apple"`     // "Sign in with Apple" authentication. Optional.
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -151,6 +185,11 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		facebookCallback := fmt.Sprintf("%s%s/auth/facebook/callback", serverURL, managementPrefix)
 		fmt.Println("[OAUTH] Facebook callback URL:")
 		fmt.Println("   ", facebookCallback)
+	}
+	if a.Apple.IsConfigured() {
+		appleCallback := fmt.Sprintf("%s%s/auth/apple/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Apple callback URL:")
+		fmt.Println("   ", appleCallback)
 	}
 }
 
@@ -485,6 +524,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 		c.AuthenticationProviders.Github.ClientId != "" ||
 		c.AuthenticationProviders.Microsoft.ClientId != "" ||
 		c.AuthenticationProviders.Facebook.ClientId != "" ||
+		c.AuthenticationProviders.Apple.IsConfigured() ||
 		c.Management.Admin.Enabled
 }
 
@@ -506,6 +546,9 @@ type loginPageData struct {
 		Facebook struct {
 			Enabled bool
 		}
+		Apple struct {
+			Enabled bool
+		}
 	}
 	Branding         BrandingConfig
 	RedirectURL      string
@@ -523,6 +566,7 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
 	data.AuthenticationProviders.Microsoft.Enabled = gatewayConfig.AuthenticationProviders.Microsoft.ClientId != ""
 	data.AuthenticationProviders.Facebook.Enabled = gatewayConfig.AuthenticationProviders.Facebook.ClientId != ""
+	data.AuthenticationProviders.Apple.Enabled = gatewayConfig.AuthenticationProviders.Apple.IsConfigured()
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }

@@ -309,7 +309,7 @@ type MockFacebookUserDataFetcher struct {
 	err      error
 }
 
-func (m *MockFacebookUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (m *MockFacebookUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

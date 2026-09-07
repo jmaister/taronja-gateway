@@ -343,7 +343,7 @@ type MockMicrosoftUserDataFetcher struct {
 	err      error
 }
 
-func (m *MockMicrosoftUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (m *MockMicrosoftUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

@@ -35,8 +35,16 @@ type UserInfo struct {
 	Provider      string `json:"provider"`
 }
 
+// UserDataFetcher turns a completed OAuth2 token exchange into UserInfo.
+// Every provider except Apple does this via one authenticated REST call
+// using the access token (r is unused, kept only so the interface has one
+// shape); Apple has no such REST endpoint at all — its user info comes from
+// decoding+verifying the ID token already present in token (see apple.go),
+// plus, on the user's very first authorization only, a one-time JSON
+// payload Apple includes in the callback request itself (why r is needed
+// here rather than just the token).
 type UserDataFetcher interface {
-	FetchUserData(accessToken string) (*UserInfo, error)
+	FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error)
 }
 
 // Define the AuthProvider interface
@@ -85,6 +93,13 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	} else {
 		log.Printf("Facebook Authentication provider not configured, skipping registration")
 	}
+
+	if gatewayConfig.AuthenticationProviders.Apple.IsConfigured() {
+		log.Printf("Registering Apple Authentication provider")
+		RegisterAppleAuth(mux, sessionStore, gatewayConfig, userRepo)
+	} else {
+		log.Printf("Apple Authentication provider not configured, skipping registration")
+	}
 }
 
 type SimpleAuthProvider struct {
@@ -109,6 +124,24 @@ type AuthenticationProvider struct {
 	UserRepo      db.UserRepository
 	SessionStore  session.SessionStore
 	GatewayConfig *config.GatewayConfig
+
+	// ClientSecretFunc, when set, is called to (re)generate
+	// OAuthConfig.ClientSecret immediately before every token exchange.
+	// Every provider but Apple leaves this nil and keeps a static
+	// ClientSecret set once at registration — Apple's "client secret" is
+	// instead a short-lived JWT it signs itself (see apple.go's
+	// buildAppleClientSecret), which would go stale if only ever built
+	// once at gateway startup.
+	ClientSecretFunc func() (string, error)
+
+	// ResponseMode, when set, is sent as the OAuth2 response_mode
+	// authorization parameter. Apple requires "form_post" whenever
+	// name/email scopes are requested — its callback then arrives as a
+	// POST form body instead of GET query params (Callback below reads
+	// state/code via r.FormValue, which transparently covers both).
+	// Every other provider here leaves this empty for the default,
+	// GET-based redirect.
+	ResponseMode string
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -147,7 +180,11 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	authCodeURL := ap.OAuthConfig.AuthCodeURL(state)
+	var opts []oauth2.AuthCodeOption
+	if ap.ResponseMode != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("response_mode", ap.ResponseMode))
+	}
+	authCodeURL := ap.OAuthConfig.AuthCodeURL(state, opts...)
 
 	// Get redirect URL from query parameters, default to "/"
 	originalURL := r.URL.Query().Get("redirect")
@@ -182,8 +219,17 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 // Callback handles the OAuth2 callback.
 // Uses db.SessionRepository methods.
 func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
-	code := r.URL.Query().Get("code")
+	// r.FormValue reads from the URL query for every provider's GET
+	// callback, and additionally from a POST body for Apple's
+	// response_mode=form_post callback — one code path covers both, no
+	// need to branch on r.Method.
+	if err := r.ParseForm(); err != nil {
+		log.Printf("Error parsing callback request: %v", err)
+		http.Error(w, "Invalid callback request", http.StatusBadRequest)
+		return
+	}
+	state := r.FormValue("state")
+	code := r.FormValue("code")
 
 	// Retrieve the state from cookie
 	stateCookie, err := r.Cookie(StateCookieName)
@@ -203,6 +249,16 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		MaxAge:   -1, // Delete immediately
 	})
 
+	if ap.ClientSecretFunc != nil {
+		secret, err := ap.ClientSecretFunc()
+		if err != nil {
+			log.Printf("Error generating client secret for %s: %v", ap.Provider.Name(), err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		ap.OAuthConfig.ClientSecret = secret
+	}
+
 	// Exchange code for token
 	token, err := ap.OAuthConfig.Exchange(r.Context(), code)
 	if err != nil {
@@ -212,7 +268,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Fetch user data using the token
-	userInfo, err := ap.Fetcher.FetchUserData(token.AccessToken)
+	userInfo, err := ap.Fetcher.FetchUserData(r, token)
 	if err != nil {
 		log.Printf("Error loading user data from provider %s: %v", ap.Provider.Name(), err)
 		http.Error(w, "Error loading user data from provider", http.StatusInternalServerError)

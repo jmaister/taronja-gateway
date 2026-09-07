@@ -172,6 +172,18 @@ authenticationProviders:
   facebook:
     clientId: ${FACEBOOK_CLIENT_ID}
     clientSecret: ${FACEBOOK_CLIENT_SECRET}
+  # "Sign in with Apple" — a different credential shape than every other
+  # provider above: Apple never issues a plain client secret string, so
+  # there's no clientSecret field here. See README.md's "Apple" subsection
+  # for where each of these four values comes from.
+  # apple:
+  #   clientId: com.example.service
+  #   teamId: ${APPLE_TEAM_ID}
+  #   keyId: ${APPLE_KEY_ID}
+  #   privateKey: |
+  #     -----BEGIN PRIVATE KEY-----
+  #     MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
+  #     -----END PRIVATE KEY-----
 
 branding:
   logoUrl: /static/logo.png

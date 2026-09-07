@@ -26,12 +26,12 @@ type MicrosoftUserDataFetcher struct {
 // FetchUserData reads the signed-in user's profile from Microsoft Graph
 // (https://graph.microsoft.com/v1.0/me), which needs the User.Read scope
 // (requested in RegisterMicrosoftAuth's Scopes).
-func (f *MicrosoftUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (f *MicrosoftUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	req, err := http.NewRequest("GET", "https://graph.microsoft.com/v1.0/me", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

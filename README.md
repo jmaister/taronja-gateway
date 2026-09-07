@@ -43,6 +43,7 @@ Features table, shows what is implemented and what is planned.
 | - OAuth2: Google              | ✅       | v0.0.1 |
 | - OAuth2: Microsoft (Entra ID / Azure AD) | ✅ | v1.0.0 |
 | - OAuth2: Facebook            | ✅       | v1.0.0 |
+| - OAuth2: Apple (Sign in with Apple) | ✅ | v1.0.0 |
 | Authentication: Token         | ✅       | v0.0.9 |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
@@ -684,6 +685,36 @@ authenticationProviders:
   facebook:
     clientId: ${FACEBOOK_CLIENT_ID}
     clientSecret: ${FACEBOOK_CLIENT_SECRET}
+```
+
+#### Apple ("Sign in with Apple")
+
+Different credential shape than every other provider above — Apple never
+issues a plain client secret string; the gateway signs one itself as a JWT,
+using a private key only Apple ever shows you once.
+
+Get credentials: [Apple Developer → Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/) — three separate things to create, all under the same Apple Developer account:
+1. **Identifiers → Services IDs**: register one (its identifier, e.g. `com.example.service`, is the `clientId` below) and enable "Sign in with Apple" on it, configuring this gateway's domain and the callback URL.
+2. **Keys**: create a new key with "Sign in with Apple" enabled, then download its `.p8` file **immediately** — Apple only lets you download it once, at creation time. The key's ID is `keyId` below.
+3. **Membership** (in your Apple Developer account settings): your 10-character **Team ID**, used as `teamId` below.
+
+- **Credentials needed:** Services ID (as `clientId`), Team ID, Key ID, and the `.p8` private key's contents
+- **Return URL** (under the Services ID's "Sign in with Apple" configuration): `http://localhost:8080/_/auth/apple/callback` — Apple requires this to be `https://` in production; `localhost` is the one exception it allows unencrypted for local development
+- Apple only ever sends the user's name on their **very first** authorization — every later login omits it, so re-authorizing (e.g. after revoking access in the user's Apple ID settings) will show a blank name for a user who already exists on file
+
+```yaml
+authenticationProviders:
+  apple:
+    clientId: com.example.service
+    teamId: ${APPLE_TEAM_ID}
+    keyId: ${APPLE_KEY_ID}
+    # The .p8 file's contents verbatim. A literal block scalar keeps the
+    # PEM's newlines intact — an env var works too, if your environment
+    # preserves literal newlines in its value.
+    privateKey: |
+      -----BEGIN PRIVATE KEY-----
+      MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
+      -----END PRIVATE KEY-----
 ```
 
 ### Branding
