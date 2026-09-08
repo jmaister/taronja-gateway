@@ -1,0 +1,230 @@
+package db
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNotificationRepository(t *testing.T) {
+	SetupTestDB(t.Name())
+	dbConn := GetConnection()
+	repo := NewNotificationRepositoryDB(dbConn)
+
+	user1 := User{Username: "notif-user1", Email: "user1@example.com"}
+	require.NoError(t, dbConn.Create(&user1).Error)
+	user2 := User{Username: "notif-user2", Email: "user2@example.com"}
+	require.NoError(t, dbConn.Create(&user2).Error)
+
+	t.Run("CreateNotification and GetNotification", func(t *testing.T) {
+		n := &Notification{UserID: user1.ID, Type: "track_added", Title: "New track", Body: "A new track was added"}
+		require.NoError(t, repo.CreateNotification(n))
+		assert.NotEmpty(t, n.ID)
+
+		fetched, err := repo.GetNotification(n.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "New track", fetched.Title)
+		assert.Nil(t, fetched.ReadAt)
+		assert.Nil(t, fetched.RespondedAt)
+	})
+
+	t.Run("ListNotifications ordering, unreadOnly, and cursor pagination", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "list-user", Email: "list@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+
+		var ids []string
+		for i := 0; i < 5; i++ {
+			n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+			require.NoError(t, repo.CreateNotification(n))
+			ids = append(ids, n.ID)
+			time.Sleep(2 * time.Millisecond) // ensure distinct CreatedAt ordering
+		}
+		// ids[4] is newest, ids[0] is oldest.
+
+		page1, err := repo.ListNotifications(u.ID, false, 2, nil)
+		require.NoError(t, err)
+		require.Len(t, page1, 2)
+		assert.Equal(t, ids[4], page1[0].ID)
+		assert.Equal(t, ids[3], page1[1].ID)
+
+		cursor := page1[1].ID
+		page2, err := repo.ListNotifications(u.ID, false, 2, &cursor)
+		require.NoError(t, err)
+		require.Len(t, page2, 2)
+		assert.Equal(t, ids[2], page2[0].ID)
+		assert.Equal(t, ids[1], page2[1].ID)
+
+		// Mark the newest one read, then unreadOnly should exclude it.
+		require.NoError(t, repo.MarkRead(ids[4], u.ID, time.Now()))
+		unread, err := repo.ListNotifications(u.ID, true, 10, nil)
+		require.NoError(t, err)
+		assert.Len(t, unread, 4)
+		for _, n := range unread {
+			assert.NotEqual(t, ids[4], n.ID)
+		}
+	})
+
+	t.Run("CountUnread, MarkRead, MarkAllRead", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "unread-user", Email: "unread@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+
+		var ids []string
+		for i := 0; i < 3; i++ {
+			n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+			require.NoError(t, repo.CreateNotification(n))
+			ids = append(ids, n.ID)
+		}
+
+		count, err := repo.CountUnread(u.ID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), count)
+
+		require.NoError(t, repo.MarkRead(ids[0], u.ID, time.Now()))
+		count, err = repo.CountUnread(u.ID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), count)
+
+		// MarkRead is idempotent and ownership-scoped: a wrong user is a no-op, not an error.
+		require.NoError(t, repo.MarkRead(ids[1], "someone-else", time.Now()))
+		count, err = repo.CountUnread(u.ID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), count)
+
+		require.NoError(t, repo.MarkAllRead(u.ID, time.Now()))
+		count, err = repo.CountUnread(u.ID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("RecordResponse succeeds once and rejects a second response", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "respond-user", Email: "respond@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+		n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n))
+
+		require.NoError(t, repo.RecordResponse(n.ID, "approve", NotificationChannelWeb, time.Now()))
+		fetched, err := repo.GetNotification(n.ID)
+		require.NoError(t, err)
+		require.NotNil(t, fetched.RespondedActionID)
+		assert.Equal(t, "approve", *fetched.RespondedActionID)
+		require.NotNil(t, fetched.RespondedVia)
+		assert.Equal(t, NotificationChannelWeb, *fetched.RespondedVia)
+		require.NotNil(t, fetched.RespondedAt)
+
+		err = repo.RecordResponse(n.ID, "deny", NotificationChannelEmail, time.Now())
+		assert.ErrorIs(t, err, ErrNotificationAlreadyResponded)
+
+		// The first response must be untouched by the rejected second attempt.
+		fetched, err = repo.GetNotification(n.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "approve", *fetched.RespondedActionID)
+	})
+
+	t.Run("SetRespondToken and FindNotificationByRespondTokenHash", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "token-user", Email: "token@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+		n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n))
+
+		require.NoError(t, repo.SetRespondToken(n.ID, "abc123hash", time.Now().Add(24*time.Hour)))
+
+		found, err := repo.FindNotificationByRespondTokenHash("abc123hash")
+		require.NoError(t, err)
+		assert.Equal(t, n.ID, found.ID)
+
+		_, err = repo.FindNotificationByRespondTokenHash("nonexistent")
+		assert.Error(t, err)
+
+		// Every notification starts with an empty hash; that empty string
+		// must never itself be a valid lookup key (or every un-tokened
+		// notification would collide on one lookup).
+		_, err = repo.FindNotificationByRespondTokenHash("")
+		assert.Error(t, err)
+	})
+
+	t.Run("CreateDelivery and FindLatestDelivery", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "delivery-user", Email: "delivery@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+		n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n))
+
+		require.NoError(t, repo.CreateDelivery(&NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelTelegram,
+			Status: NotificationDeliveryStatusSent, ExternalRef: "111:222",
+		}))
+		time.Sleep(2 * time.Millisecond)
+		require.NoError(t, repo.CreateDelivery(&NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelTelegram,
+			Status: NotificationDeliveryStatusSent, ExternalRef: "111:333",
+		}))
+
+		latest, err := repo.FindLatestDelivery(n.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.Equal(t, "111:333", latest.ExternalRef)
+
+		_, err = repo.FindLatestDelivery(n.ID, NotificationChannelEmail)
+		assert.Error(t, err)
+	})
+
+	t.Run("Channel link upsert and lookups", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "link-user", Email: "link@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+
+		require.NoError(t, repo.UpsertChannelLink(u.ID, NotificationChannelTelegram, "chat-1"))
+		link, err := repo.FindChannelLink(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.Equal(t, "chat-1", link.ExternalID)
+
+		byExternal, err := repo.FindChannelLinkByExternalID(NotificationChannelTelegram, "chat-1")
+		require.NoError(t, err)
+		assert.Equal(t, u.ID, byExternal.UserID)
+
+		// Re-linking (e.g. a fresh Telegram chat) overwrites, not duplicates.
+		require.NoError(t, repo.UpsertChannelLink(u.ID, NotificationChannelTelegram, "chat-2"))
+		link, err = repo.FindChannelLink(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.Equal(t, "chat-2", link.ExternalID)
+
+		_, err = repo.FindChannelLinkByExternalID(NotificationChannelTelegram, "chat-1")
+		assert.Error(t, err, "the old external ID must no longer resolve after re-linking")
+	})
+
+	t.Run("Link code is single-use and expiry is enforced", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "code-user", Email: "code@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+
+		require.NoError(t, repo.CreateLinkCode(&NotificationLinkCode{
+			Code: "good-code", UserID: u.ID, Channel: NotificationChannelTelegram,
+			ExpiresAt: time.Now().Add(10 * time.Minute),
+		}))
+
+		consumed, err := repo.ConsumeLinkCode("good-code", time.Now())
+		require.NoError(t, err)
+		assert.Equal(t, u.ID, consumed.UserID)
+
+		// Second consumption of the same code fails — it was deleted by the first.
+		_, err = repo.ConsumeLinkCode("good-code", time.Now())
+		assert.ErrorIs(t, err, ErrNotificationLinkCodeInvalid)
+
+		require.NoError(t, repo.CreateLinkCode(&NotificationLinkCode{
+			Code: "expired-code", UserID: u.ID, Channel: NotificationChannelTelegram,
+			ExpiresAt: time.Now().Add(-1 * time.Minute),
+		}))
+		_, err = repo.ConsumeLinkCode("expired-code", time.Now())
+		assert.ErrorIs(t, err, ErrNotificationLinkCodeInvalid)
+
+		// An expired code is deleted on the attempt above too — confirm it
+		// doesn't linger for a second, equally-failing attempt to find.
+		_, err = repo.ConsumeLinkCode("expired-code", time.Now())
+		assert.ErrorIs(t, err, ErrNotificationLinkCodeInvalid)
+	})
+}

@@ -425,6 +425,301 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/notifications:
+    get:
+      summary: List the current user's notifications, newest first
+      operationId: listNotifications
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          required: false
+          description: Max items to return. Defaults to 20, clamped to 100.
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          required: false
+          description: The `id` of the last item from a previous page, to fetch the next one. Omit for the first page.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A page of notifications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a notification for a user (server-to-server, admin only)
+      description: >
+        Called by the app the gateway sits in front of when something happens
+        that the affected user should be told about. The notification always
+        gets stored and is visible via GET /api/notifications regardless of
+        channels; each named (or, if omitted, every configured) external
+        channel is attempted independently and best-effort — see
+        NotificationDelivery in doc/notifications.md.
+      operationId: createNotification
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNotificationRequest'
+      responses:
+        '201':
+          description: Notification created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/unread-count:
+    get:
+      summary: Get the current user's unread notification count (for a bell-icon badge)
+      operationId: getUnreadNotificationCount
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                required:
+                  - count
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/read-all:
+    post:
+      summary: Mark every one of the current user's notifications as read
+      operationId: markAllNotificationsRead
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Marked read
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/{notificationId}/read:
+    post:
+      summary: Mark one notification as read
+      operationId: markNotificationRead
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Marked read
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/{notificationId}/respond:
+    post:
+      summary: Answer one of a notification's actions, from the in-app list
+      operationId: respondToNotification
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                actionId:
+                  type: string
+              required:
+                - actionId
+      responses:
+        '200':
+          description: Response recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: This notification belongs to a different user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: This notification already has a recorded response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: actionId doesn't name a real action on this notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/respond:
+    get:
+      summary: Answer one of a notification's actions, from an email link
+      description: >
+        Public and unauthenticated by design — an email's answer links have
+        no session cookie to authenticate with, so the opaque `token` query
+        parameter (present only in the email itself, never returned by any
+        API) is the credential. Returns a small self-contained HTML
+        confirmation page, not JSON, since this is meant to be opened
+        directly in a browser from an email client.
+      operationId: respondToNotificationByToken
+      tags:
+        - Notification
+      security:
+        - {}
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: An HTML confirmation (or error explanation) page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/notifications/telegram/link:
+    get:
+      summary: Get a Telegram deep link to connect the current user's account
+      description: >
+        Returns a fresh, short-lived "https://t.me/<bot>?start=<code>" link —
+        a frontend renders this as a button or QR code; opening it and
+        pressing Start in Telegram connects that chat to the current user, so
+        future notifications can be delivered there too.
+      operationId: getTelegramLinkCode
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: A Telegram deep link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deepLink:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                required:
+                  - deepLink
+                  - expiresAt
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Telegram delivery isn't configured on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/statistics/requests:
     get:
       summary: Get request statistics
@@ -1950,6 +2245,128 @@ components:
           example: ["credits", "coins", "points", "tokens"]
       required:
         - counters
+
+    NotificationAction:
+      type: object
+      description: One possible answer to a notification, rendered as a Telegram button and an email link.
+      properties:
+        id:
+          type: string
+          description: Echoed back verbatim in Notification.respondedActionId once chosen.
+          example: "approve"
+        label:
+          type: string
+          example: "Approve"
+        style:
+          type: string
+          description: Optional rendering hint, passed through as-is. Not a fixed enum.
+          example: "primary"
+      required:
+        - id
+        - label
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+          description: Caller-defined, opaque to the gateway.
+          example: "music_track_added"
+        title:
+          type: string
+        body:
+          type: string
+        url:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationAction'
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        respondedActionId:
+          type: string
+          nullable: true
+        respondedAt:
+          type: string
+          format: date-time
+          nullable: true
+        respondedVia:
+          type: string
+          nullable: true
+          description: One of "web", "email", "telegram".
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - body
+        - createdAt
+
+    NotificationListResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` to fetch the next page. Absent/null on the last page.
+      required:
+        - notifications
+
+    CreateNotificationRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+        type:
+          type: string
+          example: "music_track_added"
+        title:
+          type: string
+        body:
+          type: string
+        url:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationAction'
+        channels:
+          type: array
+          items:
+            type: string
+          description: >
+            External channels to attempt delivery on, e.g. ["email", "telegram"].
+            Omit to attempt every channel this gateway has configured. An
+            unconfigured or unknown channel is recorded as skipped, not an
+            error — see NotificationDelivery in doc/notifications.md.
+          example: ["email", "telegram"]
+      required:
+        - userId
+        - type
+        - title
+        - body
 
   securitySchemes:
     cookieAuth:

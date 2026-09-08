@@ -35,6 +35,7 @@ func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
 		dependencies.StartTime,
 		nil, // no rate limiter for basic stats tests
 		nil, // no middleware registry for basic stats tests
+		dependencies.NotificationService,
 	)
 	return server, dependencies.TrafficMetricRepo
 }
@@ -238,6 +239,7 @@ func TestStatisticsShowUsernames(t *testing.T) {
 		dependencies.StartTime,
 		nil,
 		nil,
+		dependencies.NotificationService,
 	)
 
 	// Create test users
@@ -442,7 +444,7 @@ func TestRateLimiterEndpoints(t *testing.T) {
 	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
 	rl := middleware.NewRateLimiter(*cfg, nil)
 	dependencies := deps.NewTest()
-	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, rl, nil)
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, rl, nil, dependencies.NotificationService)
 	// admin session
 	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
 	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
@@ -463,7 +465,7 @@ func TestRateLimiterEndpoints(t *testing.T) {
 
 func TestGetBlockedClients_Unauthorized(t *testing.T) {
 	dependencies := deps.NewTest()
-	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil)
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil, dependencies.NotificationService)
 
 	resp, err := s.GetBlockedClients(context.Background(), api.GetBlockedClientsRequestObject{})
 	require.NoError(t, err)
@@ -473,7 +475,7 @@ func TestGetBlockedClients_Unauthorized(t *testing.T) {
 
 func TestGetBlockedClients_ListsAndFilters(t *testing.T) {
 	dependencies := deps.NewTest()
-	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil)
+	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, nil, nil, dependencies.NotificationService)
 	sess := &db.Session{Token: "x", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour)}
 	ctx := context.WithValue(context.Background(), session.SessionKey, sess)
 

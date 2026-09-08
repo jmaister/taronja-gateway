@@ -29,6 +29,7 @@ func TestHealthCheck(t *testing.T) {
 		testDeps.StartTime,
 		nil,
 		nil,
+		testDeps.NotificationService,
 	)
 
 	t.Run("SuccessfulHealthCheck", func(t *testing.T) {

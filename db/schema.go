@@ -378,3 +378,183 @@ func (c *Counter) BeforeCreate(tx *gorm.DB) error {
 	c.ID = newId
 	return nil
 }
+
+// Notification channel names — the value NotificationDelivery.Channel and
+// Notification.RespondedVia take. Kept as plain strings rather than an enum
+// type so a future channel (WhatsApp, Slack, SMS, ...) is just a new
+// constant here plus a new notification.Provider implementation, never a
+// schema or migration change.
+const (
+	NotificationChannelWeb      = "web" // not an external delivery — used for RespondedVia when the user answered from the in-app list, not a link/button
+	NotificationChannelEmail    = "email"
+	NotificationChannelTelegram = "telegram"
+)
+
+// Notification delivery statuses — the value NotificationDelivery.Status
+// takes.
+const (
+	NotificationDeliveryStatusSent    = "sent"
+	NotificationDeliveryStatusFailed  = "failed"
+	NotificationDeliveryStatusSkipped = "skipped" // channel requested but the user has no recipient for it (no linked Telegram chat, provider disabled, ...)
+)
+
+// Notification is one in-app notification for one user. It always exists in
+// the database regardless of configuration — external delivery (email,
+// Telegram, ...) is an optional, best-effort addition on top, recorded per
+// attempt in NotificationDelivery rather than on this row, since one
+// notification can be delivered over several channels independently and
+// each can succeed or fail on its own.
+//
+// Metadata and Actions are both caller-opaque JSON: the gateway never
+// interprets Metadata at all (it's returned as-is to whatever frontend
+// reads the notification back), and only interprets Actions enough to
+// render buttons/links and to validate that a response names a real action
+// — see the notification package's Action type for the structure encoded
+// here, and notification.Service for the (un)marshaling.
+type Notification struct {
+	ID       string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID   string `gorm:"column:user_id;type:varchar(255);not null;index"`
+	Type     string `gorm:"type:varchar(255);not null"` // caller-defined, opaque to the gateway, e.g. "music_track_added"
+	Title    string `gorm:"type:text;not null"`
+	Body     string `gorm:"type:text;not null"`
+	URL      *string
+	Metadata string `gorm:"type:text"` // JSON object, caller-defined, opaque to the gateway. "" means none.
+	Actions  string `gorm:"type:text"` // JSON array of notification.Action. "" means none (a plain, unanswerable notification).
+
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	ReadAt    *time.Time
+
+	// Set once the user responds to one of Actions, from any channel —
+	// clicking an email link, tapping a Telegram button, or answering from
+	// the in-app list. A notification with no Actions can never have these
+	// set. Re-answering is rejected (first response wins) rather than
+	// silently overwritten, since a caller reacting to "the user chose X"
+	// needs that to be a one-time event, not a value that can change under
+	// it after the fact.
+	RespondedActionID *string
+	RespondedAt       *time.Time
+	RespondedVia      *string // one of the NotificationChannel* constants
+
+	// RespondTokenHash is the sha256 hex of a random, single-use, unguessable
+	// token embedded in the answer links sent by email (there's no session
+	// cookie to authenticate an email click with, so the token in the URL
+	// *is* the credential — see auth.TokenService.GenerateToken for the same
+	// random-bytes-then-hash pattern used for API tokens). Empty when no
+	// email with actions has been sent for this notification yet.
+	// RespondTokenExpiresAt bounds how long a stale, unopened notification
+	// email's links keep working.
+	RespondTokenHash      string
+	RespondTokenExpiresAt *time.Time
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (n *Notification) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	n.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes ReadAt, RespondedAt, and RespondTokenExpiresAt to
+// UTC before they're persisted — none of them are set via GORM's own
+// autoCreateTime/autoUpdateTime clock (NowFunc), so each is normalized here
+// instead, the same reasoning as Token.BeforeSave.
+func (n *Notification) BeforeSave(tx *gorm.DB) error {
+	if n.ReadAt != nil {
+		utcReadAt := n.ReadAt.UTC()
+		n.ReadAt = &utcReadAt
+	}
+	if n.RespondedAt != nil {
+		utcRespondedAt := n.RespondedAt.UTC()
+		n.RespondedAt = &utcRespondedAt
+	}
+	if n.RespondTokenExpiresAt != nil {
+		utcExpiresAt := n.RespondTokenExpiresAt.UTC()
+		n.RespondTokenExpiresAt = &utcExpiresAt
+	}
+	return nil
+}
+
+// NotificationDelivery records one attempt to deliver a Notification over
+// one external channel. A single Notification can have zero, one, or
+// several of these (one per channel the caller asked for) — this table,
+// not Notification itself, is what "was this actually emailed?" answers,
+// since a notification can be requested on channels the user has no
+// recipient for (see NotificationDeliveryStatusSkipped) or that fail.
+//
+// ExternalRef is an opaque, per-channel value a Provider may want
+// remembered for this exact delivery — e.g. Telegram's "chatID:messageID",
+// so a later button tap (which only carries a chat ID and callback data,
+// not which Notification row it came from beyond that) can be matched back
+// to the specific message its buttons were attached to, and that message
+// can be edited once answered. Empty for channels that don't need it
+// (email has nothing analogous to "edit the sent message").
+type NotificationDelivery struct {
+	ID             string    `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	NotificationID string    `gorm:"column:notification_id;type:varchar(255);not null;index"`
+	Channel        string    `gorm:"type:varchar(50);not null"`
+	Status         string    `gorm:"type:varchar(50);not null"`
+	Error          string    `gorm:"type:text"` // populated when Status is NotificationDeliveryStatusFailed
+	ExternalRef    string    `gorm:"type:text"`
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (d *NotificationDelivery) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	d.ID = newId
+	return nil
+}
+
+// NotificationChannelLink records that a gateway user has connected an
+// external channel identity to their account — today, only Telegram (a
+// chat ID), established via the /start deep-link flow in
+// GET /_/notifications/telegram/link. Email needs no equivalent row: the
+// gateway already knows every user's email address from User.Email.
+type NotificationChannelLink struct {
+	ID         string    `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID     string    `gorm:"column:user_id;type:varchar(255);not null;uniqueIndex:idx_notification_channel_link_user_channel"`
+	Channel    string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_notification_channel_link_user_channel"`
+	ExternalID string    `gorm:"type:varchar(255);not null;index"` // e.g. the Telegram chat ID, as a string
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (l *NotificationChannelLink) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	l.ID = newId
+	return nil
+}
+
+// NotificationLinkCode is a short-lived, single-use code that connects one
+// gateway user to one external channel identity — e.g. the code embedded in
+// a Telegram "https://t.me/<bot>?start=<code>" deep link. The Code itself
+// (not a hash of it) is the primary key: unlike an API token, this is
+// deliberately short-lived (minutes, see notification.linkCodeTTL) and
+// consumed the moment it's used (ConsumeLinkCode deletes the row), so the
+// exposure window a stored plaintext code represents is small enough not to
+// warrant hashing it the way a long-lived Token is.
+type NotificationLinkCode struct {
+	Code      string    `gorm:"primaryKey;column:code;type:varchar(255);not null"`
+	UserID    string    `gorm:"column:user_id;type:varchar(255);not null"`
+	Channel   string    `gorm:"type:varchar(50);not null"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	ExpiresAt time.Time
+}
+
+// BeforeSave normalizes ExpiresAt to UTC before it's persisted — it's set
+// via time.Now().Add(...) at the call site (notification.Service), not
+// GORM's own autoCreateTime/autoUpdateTime clock, the same reasoning as
+// Token.BeforeSave and Notification.BeforeSave.
+func (l *NotificationLinkCode) BeforeSave(tx *gorm.DB) error {
+	l.ExpiresAt = l.ExpiresAt.UTC()
+	return nil
+}

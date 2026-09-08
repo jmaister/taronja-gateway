@@ -23,6 +23,7 @@ taronja-gateway/
 ├── handlers/                   # OpenAPI handler implementations (one per resource)
 ├── middleware/                 # Chain builder, auth, cache, logging, rate limit, metrics, JA4H
 ├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
+├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -281,6 +282,58 @@ middleware:
 
 None of this touches the OAuth2 flow itself for a "normal-shaped" provider — see `microsoft.go`/`config.go`'s Microsoft additions for a complete example of exactly this list. `apple.go`/`config.go`'s Apple additions are the example for a provider that needs the extra hooks instead.
 
+### `notification/` — Generic Notification System
+
+Full reference: [doc/notifications.md](./doc/notifications.md). Same
+shared-interface-plus-registry shape as `providers/`: notification.Service
+owns storage/business logic, and a small `Provider` interface
+(`Channel() string`, `Send(ctx, req) (externalRef string, err error)`) is
+implemented once per external delivery channel — `email.go` (SMTP,
+`net/smtp`) and `telegram.go` (Telegram Bot API over plain HTTP, plus
+`TelegramPoller` long-polling `getUpdates` for account-linking `/start`
+messages and inline-keyboard button taps — no webhook, so no inbound
+network exposure is required).
+
+- `notification.go` — the `Action` type (one possible answer to a
+  notification) and JSON (un)marshaling helpers for the caller-opaque
+  `Metadata`/`Actions` fields `db.Notification` stores as raw strings.
+- `provider.go` — the `Provider` interface, `SendRequest`, and
+  `generateOpaqueToken`/`hashToken` (the same random-bytes-then-hash
+  pattern `auth.TokenService` uses for API tokens — used for the
+  Telegram-linking code and the email respond-link token, both of which
+  need to hand a raw secret to something outside the gateway's own auth
+  while only ever persisting its hash).
+- `service.go` — `Service.Create` stores a `db.Notification` unconditionally,
+  then attempts delivery on every requested (or, if none named, every
+  configured) channel independently via `deliver`; a channel that isn't
+  configured, or that the user has no recipient for, is recorded as
+  `db.NotificationDeliveryStatusSkipped` rather than failing `Create`.
+  `RespondViaWeb`/`RespondViaToken`/`RespondViaTelegram` are the three ways
+  a response gets recorded (in-app session, email link, Telegram button),
+  converging on the same `recordValidatedResponse` — first response wins,
+  `db.NotificationRepository.RecordResponse` rejects a second one.
+- `db/notificationrepository.go` — the repository interface/impl, plus
+  `NotificationChannelLink` (user ↔ external chat ID) and
+  `NotificationLinkCode` (the short-lived `/start <code>` linking code)
+  persistence.
+- `handlers/api_notifications.go` — the OpenAPI `StrictApiServer` methods.
+  `CreateNotification` (server-to-server) is admin-only, checked the same
+  way `CreateToken`/`ListTokens` are (`sessionObj.IsAdmin`), reusing the
+  existing admin-owned API token mechanism rather than a new auth concept.
+  `RespondToNotificationByToken` (the public email answer link) is listed
+  in `middleware.OperationWithNoSecurity` since it has no session to check —
+  the opaque `token` query parameter is the credential instead, verified
+  inside the handler.
+
+**Adding a new delivery channel** (WhatsApp, Slack, SMS, ...) means writing
+a new `Provider` implementation and registering it in
+`notification.NewService` — no change to `db.Notification`, the OpenAPI
+spec, or any other provider. If the channel needs its own account-linking
+step (most will, the way Telegram does — there's no notion of "this
+gateway user's WhatsApp number" otherwise), mirror
+`NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
+`telegram.go`.
+
 ### `handlers/` and `api/` — OpenAPI API Implementation
 
 **API Spec:** [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml) (OpenAPI 3.x)
@@ -515,6 +568,7 @@ For more detailed information on specific areas:
 | Add a database model | Add struct to [`db/schema.go`](./db/schema.go) + repository interface/impl in [`db/*repository.go`](./db/) |
 | Add a route (proxy/static) | Edit config YAML, see [`sample/config.yaml`](./sample/config.yaml) and [`config/config.go`](./config/config.go) for schema |
 | Configure auth provider | Edit config YAML `authenticationProviders` section; implementations in [`providers/*.go`](./providers/) |
+| Add a notification delivery channel | Implement `notification.Provider` in [`notification/*.go`](./notification/), register it in `notification.NewService`; see [doc/notifications.md](./doc/notifications.md) |
 | Build for release | `make release-local` (GoReleaser, cross-platform binaries); requires version tag |
 | Publish SDK to npm | `.github/workflows/sdk-release.yml` (automated on tag or manual dispatch); details in [`doc/SDK_RELEASE.md`](./doc/SDK_RELEASE.md) |
 | Add a UI component | Create in [`webapp/src/components/`](./webapp/src/components/), use in pages under [`webapp/src/pages/`](./webapp/src/pages/) |

@@ -33,6 +33,7 @@ func setupTestServer() *StrictApiServer {
 		dependencies.StartTime,
 		nil, // no rate limiter for tests
 		nil, // no middleware registry for tests
+		dependencies.NotificationService,
 	)
 }
 

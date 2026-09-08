@@ -24,6 +24,10 @@ var autoMigrateModels = []interface{}{
 	&Token{},
 	&Counter{},
 	&BlockedClient{},
+	&Notification{},
+	&NotificationDelivery{},
+	&NotificationChannelLink{},
+	&NotificationLinkCode{},
 }
 
 // utcNowFunc replaces GORM's default clock (a bare time.Now(), which carries

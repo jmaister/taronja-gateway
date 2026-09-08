@@ -4,7 +4,9 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/auth"
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
 )
@@ -21,10 +23,16 @@ type Dependencies struct {
 	TokenRepo         db.TokenRepository
 	CountersRepo      db.CountersRepository
 	BlockedClientRepo db.BlockedClientRepository
+	NotificationRepo  db.NotificationRepository
 
 	// Services
 	SessionStore session.SessionStore
 	TokenService *auth.TokenService
+	// NotificationService is nil until gateway.InitNotifications sets it —
+	// unlike the repositories above, it needs config.NotificationConfig
+	// (SMTP/Telegram credentials), which isn't available yet inside
+	// NewProduction/NewTest. See gateway/notifications.go.
+	NotificationService *notification.Service
 
 	// Application state
 	StartTime time.Time
@@ -76,6 +84,7 @@ func NewProduction() *Dependencies {
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
 	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
+	notificationRepo := db.NewNotificationRepositoryDB(gormDB)
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -91,9 +100,13 @@ func NewProduction() *Dependencies {
 		TokenRepo:         tokenRepo,
 		CountersRepo:      countersRepo,
 		BlockedClientRepo: blockedClientRepo,
+		NotificationRepo:  notificationRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
-		StartTime:         time.Now(),
+		// NotificationService is left nil here — gateway.InitNotifications
+		// sets it once config.NotificationConfig is available (see its own
+		// doc comment for why that can't happen inside NewProduction).
+		StartTime: time.Now(),
 	}
 }
 
@@ -115,6 +128,7 @@ func NewTestWithName(testName string) *Dependencies {
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
 	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
+	notificationRepo := db.NewNotificationRepositoryDB(gormDB)
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)
@@ -122,16 +136,25 @@ func NewTestWithName(testName string) *Dependencies {
 	// Create token service
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
+	// A real, working Service with no external channels configured — every
+	// test that exercises notification handlers gets in-app create/list/
+	// read/respond for free, without needing its own SMTP/Telegram setup
+	// (see notification.NewService's nil-provider-map-entry behavior for
+	// an unconfigured channel).
+	notificationService := notification.NewService(config.NotificationConfig{}, notificationRepo, userRepo, "")
+
 	return &Dependencies{
-		DB:                gormDB,
-		UserRepo:          userRepo,
-		SessionRepo:       sessionRepo,
-		TrafficMetricRepo: trafficMetricRepo,
-		TokenRepo:         tokenRepo,
-		CountersRepo:      countersRepo,
-		BlockedClientRepo: blockedClientRepo,
-		SessionStore:      sessionStore,
-		TokenService:      tokenService,
-		StartTime:         time.Now(),
+		DB:                  gormDB,
+		UserRepo:            userRepo,
+		SessionRepo:         sessionRepo,
+		TrafficMetricRepo:   trafficMetricRepo,
+		TokenRepo:           tokenRepo,
+		CountersRepo:        countersRepo,
+		BlockedClientRepo:   blockedClientRepo,
+		NotificationRepo:    notificationRepo,
+		SessionStore:        sessionStore,
+		TokenService:        tokenService,
+		NotificationService: notificationService,
+		StartTime:           time.Now(),
 	}
 }

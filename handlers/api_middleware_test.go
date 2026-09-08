@@ -37,7 +37,7 @@ func setupMiddlewareTestServer(t *testing.T) *StrictApiServer {
 	return NewStrictApiServer(
 		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService,
-		dependencies.StartTime, nil, registry,
+		dependencies.StartTime, nil, registry, dependencies.NotificationService,
 	)
 }
 
@@ -139,7 +139,7 @@ func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 	s := NewStrictApiServer(
 		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService,
-		dependencies.StartTime, nil, registry,
+		dependencies.StartTime, nil, registry, dependencies.NotificationService,
 	)
 
 	resp, err := s.GetMiddlewareMetrics(adminContext(), api.GetMiddlewareMetricsRequestObject{Name: config.MiddlewareNameLogging})
@@ -189,7 +189,7 @@ func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
 	s := NewStrictApiServer(
 		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService,
-		dependencies.StartTime, nil, registry,
+		dependencies.StartTime, nil, registry, dependencies.NotificationService,
 	)
 
 	resp, err := s.GetAllMiddlewareMetrics(adminContext(), api.GetAllMiddlewareMetricsRequestObject{})

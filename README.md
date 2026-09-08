@@ -50,6 +50,7 @@ Features table, shows what is implemented and what is planned.
 | HTTP Cache Control            | ✅       | v0.0.12 |
 | Response Compression (brotli/zstd/gzip/deflate) | ✅ | v1.0.0 |
 | Distributed Tracing (OpenTelemetry) | ✅ | v1.0.0 |
+| Notifications (in-app, email, Telegram) | ✅ | v1.0.0 |
 | Rate Limiter                  | ✅       | v0.0.22 |
 | - Requess per minute per IP   | ✅       | v0.0.22 |
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
@@ -742,19 +743,27 @@ geolocation:
 
 ### Notifications
 
-Configure email notifications for user actions.
+The gateway can store and deliver notifications on behalf of the app(s) it
+sits in front of — in-app always, plus email and/or Telegram if
+configured — so each app doesn't need to build its own notification list,
+SMTP integration, or Telegram bot. See [doc/notifications.md](doc/notifications.md)
+for the full data model, API reference, and how the email answer-link and
+Telegram account-linking flows work.
 
 ```yaml
 notification:
   email:
     enabled: true
-    smtp:
-      host: smtp.example.com
-      port: 587
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      from: noreply@example.com
-      fromName: Taronja Gateway
+    host: smtp.example.com
+    port: 587
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: noreply@example.com
+    fromName: Taronja Gateway
+
+  telegram:
+    enabled: true
+    botToken: ${TELEGRAM_BOT_TOKEN}   # from @BotFather
 ```
 
 ## Environment Variables

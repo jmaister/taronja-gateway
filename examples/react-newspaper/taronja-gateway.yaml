@@ -41,10 +41,9 @@ authenticationProviders:
 notification:
   email:
     enabled: true
-    smtp:
-      host: 127.0.0.1
-      port: 1025
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      from: ${SMTP_FROM}
-      fromName: ${SMTP_FROM_NAME}
+    host: 127.0.0.1
+    port: 1025
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: ${SMTP_FROM}
+    fromName: ${SMTP_FROM_NAME}

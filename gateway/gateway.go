@@ -347,6 +347,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.StartTime,
 		g.RateLimiter,
 		g.MiddlewareRegistry,
+		g.Dependencies.NotificationService,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 

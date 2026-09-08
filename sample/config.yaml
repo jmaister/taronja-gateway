@@ -194,10 +194,16 @@ geolocation:
 notification:
   email:
     enabled: true
-    smtp:
-      host: 127.0.0.1
-      port: 1025
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      from: ${SMTP_FROM}
-      fromName: ${SMTP_FROM_NAME}
+    host: 127.0.0.1
+    port: 1025
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: ${SMTP_FROM}
+    fromName: ${SMTP_FROM_NAME}
+  # Telegram delivery: uncomment and set a bot token from @BotFather to let
+  # users link their gateway account to a Telegram chat (GET
+  # /_/notifications/telegram/link) and receive notifications there too,
+  # including tappable action buttons. See doc/notifications.md.
+  # telegram:
+  #   enabled: true
+  #   botToken: ${TELEGRAM_BOT_TOKEN}

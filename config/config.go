@@ -198,19 +198,59 @@ type BrandingConfig struct {
 	LogoUrl string `yaml:"logoUrl,omitempty"` // URL or path to custom logo image for login page. Optional.
 }
 
-// NotificationConfig defines notification system settings.
+// NotificationConfig defines notification system settings: the gateway
+// stores every notification regardless of configuration (that part needs no
+// setup), and additionally delivers it over zero or more external channels.
+// Each channel is its own independent, optional block — a deployment can
+// enable email, Telegram, both, or neither. See notification.Provider for
+// the interface every channel implements, kept deliberately generic so a
+// future channel (WhatsApp, Slack, SMS, ...) only needs a new block here and
+// a new Provider, not a change to the notification data model or API.
 type NotificationConfig struct {
-	Email struct {
-		Enabled bool `yaml:"enabled"` // Enable email notifications. Default: false
-		SMTP    struct {
-			Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com")
-			Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for TLS, 465 for SSL)
-			Username string `yaml:"username"` // SMTP authentication username. Can use environment variables.
-			Password string `yaml:"password"` // SMTP authentication password. Can use environment variables.
-			From     string `yaml:"from"`     // From email address. Can use environment variables.
-			FromName string `yaml:"fromName"` // From display name. Can use environment variables.
-		} `yaml:"smtp"`
-	} `yaml:"email"`
+	Email    EmailNotificationConfig    `yaml:"email"`    // Email delivery via SMTP. Optional; disabled by default.
+	Telegram TelegramNotificationConfig `yaml:"telegram"` // Telegram delivery via a bot. Optional; disabled by default.
+}
+
+// EmailNotificationConfig configures the SMTP relay notifications with
+// sendEmail: true are delivered through. This is a plain synchronous SMTP
+// send per notification (net/smtp) — no queue, no retry — appropriate for
+// the low volume a per-user notification system produces; a high-volume
+// deployment should put a relay with its own queuing in front of this
+// instead of expecting the gateway to grow one.
+type EmailNotificationConfig struct {
+	Enabled  bool   `yaml:"enabled"`  // Enable email delivery. Default: false. Requires smtp.host and from at minimum.
+	Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com"). Required when enabled.
+	Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for STARTTLS, 465 for implicit TLS). Required when enabled.
+	Username string `yaml:"username"` // SMTP authentication username. Can use environment variables. Optional — some relays allow unauthenticated local delivery.
+	Password string `yaml:"password"` // SMTP authentication password. Can use environment variables.
+	From     string `yaml:"from"`     // From email address. Can use environment variables. Required when enabled.
+	FromName string `yaml:"fromName"` // From display name. Optional.
+}
+
+// IsConfigured reports whether email delivery has the minimum settings
+// (host and from address) to actually attempt a send.
+func (e EmailNotificationConfig) IsConfigured() bool {
+	return e.Enabled && e.Host != "" && e.From != ""
+}
+
+// TelegramNotificationConfig configures notification delivery via a
+// Telegram bot. Unlike email, there's no per-recipient address the gateway
+// already knows — a user links their gateway account to a Telegram chat
+// once, via GET /_/notifications/telegram/link's deep link (see
+// doc/notifications.md), and delivery only happens for users who've done
+// that. The bot receives updates by long-polling Telegram's API rather
+// than a webhook, deliberately: it means zero inbound network exposure is
+// required, so this works the same whether the gateway is reachable from
+// the internet or only from a private network.
+type TelegramNotificationConfig struct {
+	Enabled  bool   `yaml:"enabled"`  // Enable Telegram delivery. Default: false. Requires botToken.
+	BotToken string `yaml:"botToken"` // Bot token from @BotFather (e.g., "123456:ABC-DEF..."). Can use environment variables. Required when enabled.
+}
+
+// IsConfigured reports whether Telegram delivery has a bot token to
+// actually poll for updates and send messages with.
+func (t TelegramNotificationConfig) IsConfigured() bool {
+	return t.Enabled && t.BotToken != ""
 }
 
 // AdminConfig configures administrative access to the management dashboard.

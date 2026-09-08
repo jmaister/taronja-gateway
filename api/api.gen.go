@@ -332,6 +332,25 @@ type CounterTransactionResponse struct {
 	UserId string `json:"user_id"`
 }
 
+// CreateNotificationRequest defines model for CreateNotificationRequest.
+type CreateNotificationRequest struct {
+	Actions *[]NotificationAction `json:"actions,omitempty"`
+	Body    string                `json:"body"`
+
+	// Channels External channels to attempt delivery on, e.g. ["email", "telegram"]. Omit to attempt every channel this gateway has configured. An unconfigured or unknown channel is recorded as skipped, not an error — see NotificationDelivery in doc/notifications.md.
+	//
+	//
+	// Example: ["email","telegram"]
+	Channels *[]string               `json:"channels,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Title    string                  `json:"title"`
+
+	// Type Example: music_track_added
+	Type   string  `json:"type"`
+	Url    *string `json:"url,omitempty"`
+	UserId string  `json:"userId"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	// Code Example: 401
@@ -426,6 +445,52 @@ type MiddlewareStatusItemStatus string
 
 // MiddlewareStatusList defines model for MiddlewareStatusList.
 type MiddlewareStatusList = []MiddlewareStatusItem
+
+// Notification defines model for Notification.
+type Notification struct {
+	Actions           *[]NotificationAction   `json:"actions,omitempty"`
+	Body              string                  `json:"body"`
+	CreatedAt         time.Time               `json:"createdAt"`
+	Id                string                  `json:"id"`
+	Metadata          *map[string]interface{} `json:"metadata,omitempty"`
+	ReadAt            *time.Time              `json:"readAt,omitempty"`
+	RespondedActionId *string                 `json:"respondedActionId,omitempty"`
+	RespondedAt       *time.Time              `json:"respondedAt,omitempty"`
+
+	// RespondedVia One of "web", "email", "telegram".
+	RespondedVia *string `json:"respondedVia,omitempty"`
+	Title        string  `json:"title"`
+
+	// Type Caller-defined, opaque to the gateway.
+	//
+	// Example: music_track_added
+	Type   string  `json:"type"`
+	Url    *string `json:"url,omitempty"`
+	UserId string  `json:"userId"`
+}
+
+// NotificationAction One possible answer to a notification, rendered as a Telegram button and an email link.
+type NotificationAction struct {
+	// Id Echoed back verbatim in Notification.respondedActionId once chosen.
+	//
+	// Example: approve
+	Id string `json:"id"`
+
+	// Label Example: Approve
+	Label string `json:"label"`
+
+	// Style Optional rendering hint, passed through as-is. Not a fixed enum.
+	//
+	// Example: primary
+	Style *string `json:"style,omitempty"`
+}
+
+// NotificationListResponse defines model for NotificationListResponse.
+type NotificationListResponse struct {
+	// NextCursor Pass as `cursor` to fetch the next page. Absent/null on the last page.
+	NextCursor    *string        `json:"nextCursor,omitempty"`
+	Notifications []Notification `json:"notifications"`
+}
 
 // RateLimiterConfigResponse defines model for RateLimiterConfigResponse.
 type RateLimiterConfigResponse struct {
@@ -755,6 +820,28 @@ type GetUserCounterHistoryParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListNotificationsParams defines parameters for ListNotifications.
+type ListNotificationsParams struct {
+	UnreadOnly *bool `form:"unreadOnly,omitempty" json:"unreadOnly,omitempty"`
+
+	// Limit Max items to return. Defaults to 20, clamped to 100.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `id` of the last item from a previous page, to fetch the next one. Omit for the first page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// RespondToNotificationByTokenParams defines parameters for RespondToNotificationByToken.
+type RespondToNotificationByTokenParams struct {
+	Token  string `form:"token" json:"token"`
+	Action string `form:"action" json:"action"`
+}
+
+// RespondToNotificationJSONBody defines parameters for RespondToNotification.
+type RespondToNotificationJSONBody struct {
+	ActionId string `json:"actionId"`
+}
+
 // GetBlockedClientsParams defines parameters for GetBlockedClients.
 type GetBlockedClientsParams struct {
 	// Ip Optional filter to only blocks recorded for this IP address
@@ -812,6 +899,12 @@ type LogoutUserParams struct {
 // AdjustUserCountersJSONRequestBody defines body for AdjustUserCounters for application/json ContentType.
 type AdjustUserCountersJSONRequestBody = CounterAdjustmentRequest
 
+// CreateNotificationJSONRequestBody defines body for CreateNotification for application/json ContentType.
+type CreateNotificationJSONRequestBody = CreateNotificationRequest
+
+// RespondToNotificationJSONRequestBody defines body for RespondToNotification for application/json ContentType.
+type RespondToNotificationJSONRequestBody RespondToNotificationJSONBody
+
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
 
@@ -847,6 +940,30 @@ type ServerInterface interface {
 	// GetMiddlewareMetrics Get request metrics for a single global middleware
 	// (GET /api/middleware/{name}/metrics)
 	GetMiddlewareMetrics(w http.ResponseWriter, r *http.Request, name string)
+	// ListNotifications List the current user's notifications, newest first
+	// (GET /api/notifications)
+	ListNotifications(w http.ResponseWriter, r *http.Request, params ListNotificationsParams)
+	// CreateNotification Create a notification for a user (server-to-server, admin only)
+	// (POST /api/notifications)
+	CreateNotification(w http.ResponseWriter, r *http.Request)
+	// MarkAllNotificationsRead Mark every one of the current user's notifications as read
+	// (POST /api/notifications/read-all)
+	MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request)
+	// RespondToNotificationByToken Answer one of a notification's actions, from an email link
+	// (GET /api/notifications/respond)
+	RespondToNotificationByToken(w http.ResponseWriter, r *http.Request, params RespondToNotificationByTokenParams)
+	// GetTelegramLinkCode Get a Telegram deep link to connect the current user's account
+	// (GET /api/notifications/telegram/link)
+	GetTelegramLinkCode(w http.ResponseWriter, r *http.Request)
+	// GetUnreadNotificationCount Get the current user's unread notification count (for a bell-icon badge)
+	// (GET /api/notifications/unread-count)
+	GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request)
+	// MarkNotificationRead Mark one notification as read
+	// (POST /api/notifications/{notificationId}/read)
+	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId string)
+	// RespondToNotification Answer one of a notification's actions, from the in-app list
+	// (POST /api/notifications/{notificationId}/respond)
+	RespondToNotification(w http.ResponseWriter, r *http.Request, notificationId string)
 	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
 	// (GET /api/rate-limiter/blocked)
 	GetBlockedClients(w http.ResponseWriter, r *http.Request, params GetBlockedClientsParams)
@@ -1168,6 +1285,219 @@ func (siw *ServerInterfaceWrapper) GetMiddlewareMetrics(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMiddlewareMetrics(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotifications operation middleware
+func (siw *ServerInterfaceWrapper) ListNotifications(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNotificationsParams
+
+	// ------------- Optional query parameter "unreadOnly" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unreadOnly", r.URL.Query(), &params.UnreadOnly, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unreadOnly"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unreadOnly", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotifications(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateNotification operation middleware
+func (siw *ServerInterfaceWrapper) CreateNotification(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateNotification(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkAllNotificationsRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkAllNotificationsRead(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RespondToNotificationByToken operation middleware
+func (siw *ServerInterfaceWrapper) RespondToNotificationByToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RespondToNotificationByTokenParams
+
+	// ------------- Required query parameter "token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "token", r.URL.Query(), &params.Token, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "action" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "action", r.URL.Query(), &params.Action, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "action"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "action", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RespondToNotificationByToken(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTelegramLinkCode operation middleware
+func (siw *ServerInterfaceWrapper) GetTelegramLinkCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTelegramLinkCode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUnreadNotificationCount operation middleware
+func (siw *ServerInterfaceWrapper) GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUnreadNotificationCount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkNotificationRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notificationId" -------------
+	var notificationId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notificationId", r.PathValue("notificationId"), &notificationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notificationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkNotificationRead(w, r, notificationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RespondToNotification operation middleware
+func (siw *ServerInterfaceWrapper) RespondToNotification(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notificationId" -------------
+	var notificationId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notificationId", r.PathValue("notificationId"), &notificationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notificationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RespondToNotification(w, r, notificationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1793,6 +2123,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.CreateToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.GetToken)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications", wrapper.ListNotifications)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications", wrapper.CreateNotification)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/unread-count", wrapper.GetUnreadNotificationCount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/read-all", wrapper.MarkAllNotificationsRead)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/{notificationId}/read", wrapper.MarkNotificationRead)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/{notificationId}/respond", wrapper.RespondToNotification)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/respond", wrapper.RespondToNotificationByToken)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.GetTelegramLinkCode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/timeseries", wrapper.GetRequestTimeSeries)
@@ -2371,6 +2709,361 @@ func (response GetMiddlewareMetrics404JSONResponse) VisitGetMiddlewareMetricsRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationsRequestObject struct {
+	Params ListNotificationsParams
+}
+
+type ListNotificationsResponseObject interface {
+	VisitListNotificationsResponse(w http.ResponseWriter) error
+}
+
+type ListNotifications200JSONResponse NotificationListResponse
+
+func (response ListNotifications200JSONResponse) VisitListNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotifications401JSONResponse Error
+
+func (response ListNotifications401JSONResponse) VisitListNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateNotificationRequestObject struct {
+	Body *CreateNotificationJSONRequestBody
+}
+
+type CreateNotificationResponseObject interface {
+	VisitCreateNotificationResponse(w http.ResponseWriter) error
+}
+
+type CreateNotification201JSONResponse Notification
+
+func (response CreateNotification201JSONResponse) VisitCreateNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateNotification400JSONResponse Error
+
+func (response CreateNotification400JSONResponse) VisitCreateNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateNotification401JSONResponse Error
+
+func (response CreateNotification401JSONResponse) VisitCreateNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkAllNotificationsReadRequestObject struct {
+}
+
+type MarkAllNotificationsReadResponseObject interface {
+	VisitMarkAllNotificationsReadResponse(w http.ResponseWriter) error
+}
+
+type MarkAllNotificationsRead204Response struct {
+}
+
+func (response MarkAllNotificationsRead204Response) VisitMarkAllNotificationsReadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type MarkAllNotificationsRead401JSONResponse Error
+
+func (response MarkAllNotificationsRead401JSONResponse) VisitMarkAllNotificationsReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotificationByTokenRequestObject struct {
+	Params RespondToNotificationByTokenParams
+}
+
+type RespondToNotificationByTokenResponseObject interface {
+	VisitRespondToNotificationByTokenResponse(w http.ResponseWriter) error
+}
+
+type RespondToNotificationByToken200TexthtmlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response RespondToNotificationByToken200TexthtmlResponse) VisitRespondToNotificationByTokenResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/html")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetTelegramLinkCodeRequestObject struct {
+}
+
+type GetTelegramLinkCodeResponseObject interface {
+	VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error
+}
+
+type GetTelegramLinkCode200JSONResponse struct {
+	DeepLink  string    `json:"deepLink"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+func (response GetTelegramLinkCode200JSONResponse) VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramLinkCode401JSONResponse Error
+
+func (response GetTelegramLinkCode401JSONResponse) VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramLinkCode503JSONResponse Error
+
+func (response GetTelegramLinkCode503JSONResponse) VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUnreadNotificationCountRequestObject struct {
+}
+
+type GetUnreadNotificationCountResponseObject interface {
+	VisitGetUnreadNotificationCountResponse(w http.ResponseWriter) error
+}
+
+type GetUnreadNotificationCount200JSONResponse struct {
+	Count int `json:"count"`
+}
+
+func (response GetUnreadNotificationCount200JSONResponse) VisitGetUnreadNotificationCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUnreadNotificationCount401JSONResponse Error
+
+func (response GetUnreadNotificationCount401JSONResponse) VisitGetUnreadNotificationCountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkNotificationReadRequestObject struct {
+	NotificationId string `json:"notificationId"`
+}
+
+type MarkNotificationReadResponseObject interface {
+	VisitMarkNotificationReadResponse(w http.ResponseWriter) error
+}
+
+type MarkNotificationRead204Response struct {
+}
+
+func (response MarkNotificationRead204Response) VisitMarkNotificationReadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type MarkNotificationRead401JSONResponse Error
+
+func (response MarkNotificationRead401JSONResponse) VisitMarkNotificationReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotificationRequestObject struct {
+	NotificationId string `json:"notificationId"`
+	Body           *RespondToNotificationJSONRequestBody
+}
+
+type RespondToNotificationResponseObject interface {
+	VisitRespondToNotificationResponse(w http.ResponseWriter) error
+}
+
+type RespondToNotification200JSONResponse Notification
+
+func (response RespondToNotification200JSONResponse) VisitRespondToNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotification401JSONResponse Error
+
+func (response RespondToNotification401JSONResponse) VisitRespondToNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotification403JSONResponse Error
+
+func (response RespondToNotification403JSONResponse) VisitRespondToNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotification404JSONResponse Error
+
+func (response RespondToNotification404JSONResponse) VisitRespondToNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotification409JSONResponse Error
+
+func (response RespondToNotification409JSONResponse) VisitRespondToNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RespondToNotification422JSONResponse Error
+
+func (response RespondToNotification422JSONResponse) VisitRespondToNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3254,6 +3947,30 @@ type StrictServerInterface interface {
 	// GetMiddlewareMetrics Get request metrics for a single global middleware
 	// (GET /api/middleware/{name}/metrics)
 	GetMiddlewareMetrics(ctx context.Context, request GetMiddlewareMetricsRequestObject) (GetMiddlewareMetricsResponseObject, error)
+	// ListNotifications List the current user's notifications, newest first
+	// (GET /api/notifications)
+	ListNotifications(ctx context.Context, request ListNotificationsRequestObject) (ListNotificationsResponseObject, error)
+	// CreateNotification Create a notification for a user (server-to-server, admin only)
+	// (POST /api/notifications)
+	CreateNotification(ctx context.Context, request CreateNotificationRequestObject) (CreateNotificationResponseObject, error)
+	// MarkAllNotificationsRead Mark every one of the current user's notifications as read
+	// (POST /api/notifications/read-all)
+	MarkAllNotificationsRead(ctx context.Context, request MarkAllNotificationsReadRequestObject) (MarkAllNotificationsReadResponseObject, error)
+	// RespondToNotificationByToken Answer one of a notification's actions, from an email link
+	// (GET /api/notifications/respond)
+	RespondToNotificationByToken(ctx context.Context, request RespondToNotificationByTokenRequestObject) (RespondToNotificationByTokenResponseObject, error)
+	// GetTelegramLinkCode Get a Telegram deep link to connect the current user's account
+	// (GET /api/notifications/telegram/link)
+	GetTelegramLinkCode(ctx context.Context, request GetTelegramLinkCodeRequestObject) (GetTelegramLinkCodeResponseObject, error)
+	// GetUnreadNotificationCount Get the current user's unread notification count (for a bell-icon badge)
+	// (GET /api/notifications/unread-count)
+	GetUnreadNotificationCount(ctx context.Context, request GetUnreadNotificationCountRequestObject) (GetUnreadNotificationCountResponseObject, error)
+	// MarkNotificationRead Mark one notification as read
+	// (POST /api/notifications/{notificationId}/read)
+	MarkNotificationRead(ctx context.Context, request MarkNotificationReadRequestObject) (MarkNotificationReadResponseObject, error)
+	// RespondToNotification Answer one of a notification's actions, from the in-app list
+	// (POST /api/notifications/{notificationId}/respond)
+	RespondToNotification(ctx context.Context, request RespondToNotificationRequestObject) (RespondToNotificationResponseObject, error)
 	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
 	// (GET /api/rate-limiter/blocked)
 	GetBlockedClients(ctx context.Context, request GetBlockedClientsRequestObject) (GetBlockedClientsResponseObject, error)
@@ -3574,6 +4291,220 @@ func (sh *strictHandler) GetMiddlewareMetrics(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMiddlewareMetricsResponseObject); ok {
 		if err := validResponse.VisitGetMiddlewareMetricsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotifications operation middleware
+func (sh *strictHandler) ListNotifications(w http.ResponseWriter, r *http.Request, params ListNotificationsParams) {
+	var request ListNotificationsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotifications(ctx, request.(ListNotificationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotifications")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNotificationsResponseObject); ok {
+		if err := validResponse.VisitListNotificationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateNotification operation middleware
+func (sh *strictHandler) CreateNotification(w http.ResponseWriter, r *http.Request) {
+	var request CreateNotificationRequestObject
+
+	var body CreateNotificationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateNotification(ctx, request.(CreateNotificationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateNotification")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateNotificationResponseObject); ok {
+		if err := validResponse.VisitCreateNotificationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkAllNotificationsRead operation middleware
+func (sh *strictHandler) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
+	var request MarkAllNotificationsReadRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkAllNotificationsRead(ctx, request.(MarkAllNotificationsReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkAllNotificationsRead")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkAllNotificationsReadResponseObject); ok {
+		if err := validResponse.VisitMarkAllNotificationsReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RespondToNotificationByToken operation middleware
+func (sh *strictHandler) RespondToNotificationByToken(w http.ResponseWriter, r *http.Request, params RespondToNotificationByTokenParams) {
+	var request RespondToNotificationByTokenRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RespondToNotificationByToken(ctx, request.(RespondToNotificationByTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RespondToNotificationByToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RespondToNotificationByTokenResponseObject); ok {
+		if err := validResponse.VisitRespondToNotificationByTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTelegramLinkCode operation middleware
+func (sh *strictHandler) GetTelegramLinkCode(w http.ResponseWriter, r *http.Request) {
+	var request GetTelegramLinkCodeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTelegramLinkCode(ctx, request.(GetTelegramLinkCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTelegramLinkCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTelegramLinkCodeResponseObject); ok {
+		if err := validResponse.VisitGetTelegramLinkCodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUnreadNotificationCount operation middleware
+func (sh *strictHandler) GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request) {
+	var request GetUnreadNotificationCountRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUnreadNotificationCount(ctx, request.(GetUnreadNotificationCountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUnreadNotificationCount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUnreadNotificationCountResponseObject); ok {
+		if err := validResponse.VisitGetUnreadNotificationCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkNotificationRead operation middleware
+func (sh *strictHandler) MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId string) {
+	var request MarkNotificationReadRequestObject
+
+	request.NotificationId = notificationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkNotificationRead(ctx, request.(MarkNotificationReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkNotificationRead")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkNotificationReadResponseObject); ok {
+		if err := validResponse.VisitMarkNotificationReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RespondToNotification operation middleware
+func (sh *strictHandler) RespondToNotification(w http.ResponseWriter, r *http.Request, notificationId string) {
+	var request RespondToNotificationRequestObject
+
+	request.NotificationId = notificationId
+
+	var body RespondToNotificationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RespondToNotification(ctx, request.(RespondToNotificationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RespondToNotification")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RespondToNotificationResponseObject); ok {
+		if err := validResponse.VisitRespondToNotificationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

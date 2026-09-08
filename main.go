@@ -254,6 +254,15 @@ func runGateway(configFilePath string, watchConfig bool) {
 	// Initialize dependencies for production
 	gatewayDeps := deps.NewProduction()
 
+	// Needs gatewayDeps (NotificationRepo, UserRepo) — must come after the
+	// line above — and needs to be set before NewGatewayWithDependencies
+	// wires up the OpenAPI routes below, which read gatewayDeps.
+	// NotificationService at route-registration time.
+	shutdownNotifications, err := gateway.InitNotifications(context.Background(), config.Notification, config.Server, config.Management, gatewayDeps)
+	if err != nil {
+		log.Fatalf("FATAL: failed to initialize notifications: %v", err)
+	}
+
 	gateway, err := gateway.NewGatewayWithDependencies(config, &webappEmbedFS, gatewayDeps)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
@@ -395,6 +404,14 @@ runLoop:
 	defer tracingShutdownCancel()
 	if err := shutdownTracing(tracingShutdownCtx); err != nil {
 		log.Printf("Warning: failed to flush tracing exporter cleanly: %v", err)
+	}
+
+	// Stops the Telegram long-polling goroutine, if one was started (see
+	// InitNotifications) — no-op otherwise.
+	notificationsShutdownCtx, notificationsShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer notificationsShutdownCancel()
+	if err := shutdownNotifications(notificationsShutdownCtx); err != nil {
+		log.Printf("Warning: failed to stop notification delivery cleanly: %v", err)
 	}
 
 	log.Println("API Gateway shut down gracefully.")

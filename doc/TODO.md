@@ -270,6 +270,42 @@ operator to list anything. See `session.GetClientIP`'s doc comment
       wrong audience/issuer/expiry/signing key are each correctly
       rejected.
 
+# Notifications
+
+- [x] **Generic notification system** (`notification/`, `db.Notification`/
+      `NotificationDelivery`/`NotificationChannelLink`/
+      `NotificationLinkCode`, `handlers/api_notifications.go`) — requested
+      by a downstream app (Academia, via a cross-session message) that
+      needed in-app + email notifications and didn't want to duplicate
+      delivery/storage logic per app, since the gateway already owns user
+      identity, sessions, and SMTP config. Built as a shared-interface-
+      plus-registry design mirroring `providers/`'s OAuth2 architecture
+      (`notification.Provider`, one implementation per channel, one
+      registry in `notification.Service`) rather than hardcoding email —
+      the ask expanded mid-design to "keep providers generic, add Telegram
+      now, WhatsApp later," which this shape accommodates for free. See
+      [doc/notifications.md](./notifications.md) for the full design.
+  - Scope decisions made explicitly (each was a real fork, not an
+    arbitrary default): notification creation reuses the existing
+    admin-owned API token mechanism rather than a new "server token"
+    concept (this gateway has no such concept today, unlike the
+    `gots-template` framework the requesting app is built on); no
+    `Source`/`AppID` scoping field, since this gateway has no multi-tenant/
+    multi-app concept anywhere else either — every deployment is one
+    gateway per app; Telegram delivery long-polls `getUpdates` rather than
+    registering a webhook, so no inbound network exposure is required
+    regardless of deployment shape; the email answer-link's credential is
+    an opaque random token (the same random-bytes-then-hash pattern
+    `auth.TokenService` already uses for API tokens), not an HMAC
+    signature, since it needed no new secret in config.
+  - Deliberately deferred, none of it blocking: a `POST
+    /api/notifications/batch` endpoint (a caller can loop the single-create
+    endpoint today; batching's exact shape — partial failures? one email or
+    N? — isn't worth guessing without a real caller); per-user
+    notification preferences/opt-out (would be its own table, not a field
+    bolted onto `Notification`); templated email bodies beyond plain
+    title/body/action-links.
+
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 
 Deep-dive comparison done 2026-08-28, checked against the actual code (not
