@@ -94,6 +94,15 @@ type NotificationRepository interface {
 	// expired — either way the code deletes itself here so an expired one
 	// doesn't linger).
 	ConsumeLinkCode(code string, now time.Time) (*NotificationLinkCode, error)
+
+	// GetPreferredChannel returns userID's preferred delivery channel, or
+	// "" if they've never set one (or explicitly cleared it) — never
+	// gorm.ErrRecordNotFound, so callers don't need a not-found special
+	// case just to mean "no preference."
+	GetPreferredChannel(userID string) (string, error)
+	// SetPreferredChannel sets (or, with channel == "", clears) userID's
+	// preferred delivery channel.
+	SetPreferredChannel(userID, channel string) error
 }
 
 // NotificationRepositoryDB is a database implementation of
@@ -288,4 +297,28 @@ func (r *NotificationRepositoryDB) ConsumeLinkCode(code string, now time.Time) (
 		return nil, err
 	}
 	return found, nil
+}
+
+func (r *NotificationRepositoryDB) GetPreferredChannel(userID string) (string, error) {
+	var pref NotificationPreference
+	err := r.db.Where("user_id = ?", userID).First(&pref).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return pref.PreferredChannel, nil
+}
+
+func (r *NotificationRepositoryDB) SetPreferredChannel(userID, channel string) error {
+	var existing NotificationPreference
+	err := r.db.Where("user_id = ?", userID).First(&existing).Error
+	if err == nil {
+		return r.db.Model(&NotificationPreference{}).Where("user_id = ?", userID).Update("preferred_channel", channel).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return r.db.Create(&NotificationPreference{UserID: userID, PreferredChannel: channel}).Error
 }

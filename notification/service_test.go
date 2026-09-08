@@ -21,18 +21,54 @@ func newTestService(t *testing.T, cfg config.NotificationConfig) (*Service, db.N
 	return service, repo, userRepo
 }
 
+// createOne calls Create for a single recipient and returns that one
+// notification — most tests only care about one recipient at a time;
+// TestService_Create's own "multiple recipients" subtests call Create
+// directly instead.
+func createOne(t *testing.T, service *Service, in CreateInput) *db.Notification {
+	t.Helper()
+	notifications, err := service.Create(context.Background(), in)
+	require.NoError(t, err)
+	require.Len(t, notifications, 1)
+	return notifications[0]
+}
+
 func TestService_Create(t *testing.T) {
 	t.Run("with no external channels configured, still creates the in-app record", func(t *testing.T) {
 		service, _, userRepo := newTestService(t, config.NotificationConfig{})
 		user := &db.User{Username: "u1", Email: "u1@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{
-			UserID: user.ID, Type: "track_added", Title: "New track", Body: "body",
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "track_added", Title: "New track", Body: "body",
 		})
-		require.NoError(t, err)
 		assert.NotEmpty(t, n.ID)
 		assert.Equal(t, "track_added", n.Type)
+	})
+
+	t.Run("notifies every recipient in UserIDs, each with their own independent notification", func(t *testing.T) {
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{})
+		userA := &db.User{Username: "multi-a", Email: "multi-a@example.com"}
+		require.NoError(t, userRepo.CreateUser(userA))
+		userB := &db.User{Username: "multi-b", Email: "multi-b@example.com"}
+		require.NoError(t, userRepo.CreateUser(userB))
+
+		notifications, err := service.Create(context.Background(), CreateInput{
+			UserIDs: []string{userA.ID, userB.ID}, Type: "t", Title: "T", Body: "B",
+			Actions: []Action{{ID: "approve", Label: "Approve"}},
+		})
+		require.NoError(t, err)
+		require.Len(t, notifications, 2)
+		assert.ElementsMatch(t, []string{userA.ID, userB.ID}, []string{notifications[0].UserID, notifications[1].UserID})
+		assert.NotEqual(t, notifications[0].ID, notifications[1].ID, "each recipient gets their own row, not a shared one")
+
+		// Each recipient can answer their own copy independently.
+		_, err = service.RespondViaWeb(notifications[0].ID, notifications[0].UserID, "approve")
+		require.NoError(t, err)
+
+		other, err := repo.GetNotification(notifications[1].ID)
+		require.NoError(t, err)
+		assert.Nil(t, other.RespondedAt, "the other recipient's copy must be unaffected")
 	})
 
 	t.Run("skips a requested channel the user has no recipient for, without failing Create", func(t *testing.T) {
@@ -42,11 +78,10 @@ func TestService_Create(t *testing.T) {
 		user := &db.User{Username: "u2", Email: "u2@example.com"} // no telegram link
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{
-			UserID: user.ID, Type: "t", Title: "T", Body: "B",
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
 			Channels: []string{db.NotificationChannelTelegram},
 		})
-		require.NoError(t, err)
 
 		delivery, err := repo.FindLatestDelivery(n.ID, db.NotificationChannelTelegram)
 		require.NoError(t, err)
@@ -58,11 +93,10 @@ func TestService_Create(t *testing.T) {
 		user := &db.User{Username: "u3", Email: "u3@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{
-			UserID: user.ID, Type: "t", Title: "T", Body: "B",
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
 			Channels: []string{"whatsapp"}, // not implemented yet, but must not error
 		})
-		require.NoError(t, err)
 
 		delivery, err := repo.FindLatestDelivery(n.ID, "whatsapp")
 		require.NoError(t, err)
@@ -70,7 +104,7 @@ func TestService_Create(t *testing.T) {
 		assert.Contains(t, delivery.Error, "not configured")
 	})
 
-	t.Run("with no Channels specified, attempts every configured channel", func(t *testing.T) {
+	t.Run("with no Channels specified and no preference set, attempts every configured channel", func(t *testing.T) {
 		emailServer := newFakeSMTPServer(t)
 		defer emailServer.close()
 		host, port := emailServer.addr()
@@ -81,12 +115,59 @@ func TestService_Create(t *testing.T) {
 		user := &db.User{Username: "u4", Email: "u4@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{UserID: user.ID, Type: "t", Title: "T", Body: "B"})
-		require.NoError(t, err)
+		n := createOne(t, service, CreateInput{UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B"})
 
 		delivery, err := repo.FindLatestDelivery(n.ID, db.NotificationChannelEmail)
 		require.NoError(t, err)
 		assert.Equal(t, db.NotificationDeliveryStatusSent, delivery.Status)
+	})
+
+	t.Run("with no Channels specified, a user's own preference wins over the configured-channels default", func(t *testing.T) {
+		emailServer := newFakeSMTPServer(t)
+		defer emailServer.close()
+		host, port := emailServer.addr()
+
+		// Both channels configured, but nothing ever listens on the
+		// Telegram side of things here — we're only checking which
+		// channel gets *attempted*, not whether it succeeds.
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{
+			Email:    config.EmailNotificationConfig{Enabled: true, Host: host, Port: port, From: "gw@example.com"},
+			Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "unused-in-this-test"},
+		})
+		user := &db.User{Username: "u-pref", Email: "u-pref@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+		require.NoError(t, service.SetPreferredChannel(user.ID, db.NotificationChannelTelegram))
+
+		n := createOne(t, service, CreateInput{UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B"})
+
+		deliveries, err := repo.ListDeliveries(n.ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 1, "only the preferred channel should have been attempted, not every configured one")
+		assert.Equal(t, db.NotificationChannelTelegram, deliveries[0].Channel)
+	})
+
+	t.Run("an explicit Channels list overrides the user's own preference", func(t *testing.T) {
+		emailServer := newFakeSMTPServer(t)
+		defer emailServer.close()
+		host, port := emailServer.addr()
+
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{
+			Email:    config.EmailNotificationConfig{Enabled: true, Host: host, Port: port, From: "gw@example.com"},
+			Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "unused-in-this-test"},
+		})
+		user := &db.User{Username: "u-pref-override", Email: "u-pref-override@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+		require.NoError(t, service.SetPreferredChannel(user.ID, db.NotificationChannelTelegram))
+
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
+			Channels: []string{db.NotificationChannelEmail},
+		})
+
+		deliveries, err := repo.ListDeliveries(n.ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 1)
+		assert.Equal(t, db.NotificationChannelEmail, deliveries[0].Channel, "the caller's explicit Channels list wins over the stored preference")
 	})
 
 	t.Run("email delivery with actions issues a respond token", func(t *testing.T) {
@@ -100,12 +181,11 @@ func TestService_Create(t *testing.T) {
 		user := &db.User{Username: "u5", Email: "u5@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{
-			UserID: user.ID, Type: "t", Title: "Approve?", Body: "B",
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "Approve?", Body: "B",
 			Actions:  []Action{{ID: "approve", Label: "Approve"}},
 			Channels: []string{db.NotificationChannelEmail},
 		})
-		require.NoError(t, err)
 
 		fetched, err := repo.GetNotification(n.ID)
 		require.NoError(t, err)
@@ -114,14 +194,33 @@ func TestService_Create(t *testing.T) {
 	})
 }
 
+func TestService_PreferredChannel(t *testing.T) {
+	service, _, userRepo := newTestService(t, config.NotificationConfig{})
+	user := &db.User{Username: "pref-svc-user", Email: "pref-svc@example.com"}
+	require.NoError(t, userRepo.CreateUser(user))
+
+	channel, err := service.GetPreferredChannel(user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, channel)
+
+	require.NoError(t, service.SetPreferredChannel(user.ID, db.NotificationChannelEmail))
+	channel, err = service.GetPreferredChannel(user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, db.NotificationChannelEmail, channel)
+
+	require.NoError(t, service.SetPreferredChannel(user.ID, ""))
+	channel, err = service.GetPreferredChannel(user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, channel, "an empty channel clears the preference")
+}
+
 func TestService_ListAndReadState(t *testing.T) {
 	service, _, userRepo := newTestService(t, config.NotificationConfig{})
 	user := &db.User{Username: "list-u", Email: "list-u@example.com"}
 	require.NoError(t, userRepo.CreateUser(user))
 
 	for i := 0; i < 3; i++ {
-		_, err := service.Create(context.Background(), CreateInput{UserID: user.ID, Type: "t", Title: "T", Body: "B"})
-		require.NoError(t, err)
+		createOne(t, service, CreateInput{UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B"})
 	}
 
 	count, err := service.UnreadCount(user.ID)
@@ -156,11 +255,10 @@ func TestService_RespondViaWeb(t *testing.T) {
 	stranger := &db.User{Username: "stranger", Email: "stranger@example.com"}
 	require.NoError(t, userRepo.CreateUser(stranger))
 
-	n, err := service.Create(context.Background(), CreateInput{
-		UserID: owner.ID, Type: "t", Title: "Approve?", Body: "B",
+	n := createOne(t, service, CreateInput{
+		UserIDs: []string{owner.ID}, Type: "t", Title: "Approve?", Body: "B",
 		Actions: []Action{{ID: "approve", Label: "Approve"}},
 	})
-	require.NoError(t, err)
 
 	t.Run("rejects a response from a user who doesn't own the notification", func(t *testing.T) {
 		_, err := service.RespondViaWeb(n.ID, stranger.ID, "approve")
@@ -198,12 +296,11 @@ func TestService_RespondViaToken(t *testing.T) {
 	user := &db.User{Username: "token-u", Email: "token-u@example.com"}
 	require.NoError(t, userRepo.CreateUser(user))
 
-	n, err := service.Create(context.Background(), CreateInput{
-		UserID: user.ID, Type: "t", Title: "Approve?", Body: "B",
+	n := createOne(t, service, CreateInput{
+		UserIDs: []string{user.ID}, Type: "t", Title: "Approve?", Body: "B",
 		Actions:  []Action{{ID: "approve", Label: "Approve"}},
 		Channels: []string{db.NotificationChannelEmail},
 	})
-	require.NoError(t, err)
 
 	t.Run("an unknown token is rejected", func(t *testing.T) {
 		_, err := service.RespondViaToken("not-a-real-token", "approve")
@@ -275,11 +372,10 @@ func TestService_RetryFailedDeliveries(t *testing.T) {
 		user := &db.User{Username: "retry-ok-u", Email: "retry-ok@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{
-			UserID: user.ID, Type: "t", Title: "T", Body: "B",
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
 			Channels: []string{db.NotificationChannelEmail},
 		})
-		require.NoError(t, err)
 
 		deliveries, err := repo.ListDeliveries(n.ID)
 		require.NoError(t, err)
@@ -318,11 +414,10 @@ func TestService_RetryFailedDeliveries(t *testing.T) {
 		user := &db.User{Username: "retry-exhaust-u", Email: "retry-exhaust@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{
-			UserID: user.ID, Type: "t", Title: "T", Body: "B",
+		n := createOne(t, service, CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
 			Channels: []string{db.NotificationChannelEmail},
 		})
-		require.NoError(t, err)
 
 		totalAttempts := len(retryBackoffSchedule) + 1 // the initial attempt plus every scheduled retry
 		for i := 1; i < totalAttempts; i++ {
@@ -352,8 +447,7 @@ func TestService_RetryFailedDeliveries(t *testing.T) {
 		user := &db.User{Username: "retry-skip-u", Email: "retry-skip@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
 
-		n, err := service.Create(context.Background(), CreateInput{UserID: user.ID, Type: "t", Title: "T", Body: "B"})
-		require.NoError(t, err)
+		n := createOne(t, service, CreateInput{UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B"})
 
 		// Simulate a channel that was configured when it first failed but
 		// no longer is by the time its retry comes due.
@@ -382,8 +476,7 @@ func TestService_ListDeliveries(t *testing.T) {
 	stranger := &db.User{Username: "deliveries-stranger", Email: "deliveries-stranger@example.com"}
 	require.NoError(t, userRepo.CreateUser(stranger))
 
-	n, err := service.Create(context.Background(), CreateInput{UserID: owner.ID, Type: "t", Title: "T", Body: "B"})
-	require.NoError(t, err)
+	n := createOne(t, service, CreateInput{UserIDs: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
 
 	t.Run("the owner can list their own notification's deliveries", func(t *testing.T) {
 		_, err := service.ListDeliveries(n.ID, owner.ID, false)

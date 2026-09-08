@@ -17,6 +17,18 @@ it from wherever they saw it.
 - **Always stored in-app**, regardless of configuration — a notification
   exists and is listable/readable via the API the moment it's created, with
   no external delivery required.
+- **One call can notify several users at once** — `POST /api/notifications`
+  takes a list of user IDs, not just one, all sharing the same
+  type/title/body/actions but each getting their own independent
+  notification: their own read state, their own delivery attempts, their
+  own answer. Notifying every parent in a family is one call, not a loop of
+  them on the caller's side.
+- **Each user can pick their own preferred channel** — a user who'd rather
+  get notifications by Telegram than email (or vice versa) sets that once
+  (`PUT /api/notifications/preferences`), and every notification that
+  doesn't name explicit channels uses it from then on, no matter which app
+  or call created the notification. See "Per-user channel preference"
+  below.
 - **Optionally delivered over one or more external channels** — today,
   email (via SMTP) and Telegram (via a bot). Delivery is best-effort and
   independent per channel: a failed or skipped email doesn't affect a
@@ -60,6 +72,8 @@ it from wherever they saw it.
   row — the gateway already knows every user's email from `User.Email`.
 - `NotificationLinkCode` — a short-lived, single-use code powering the
   Telegram "connect" deep link (see below).
+- `NotificationPreference` — one row per user who's set a preferred
+  delivery channel; see "Per-user channel preference" below.
 
 ## Enabling it
 
@@ -103,7 +117,7 @@ happens):
 
 | Method & path | Auth | Purpose |
 |---|---|---|
-| `POST /api/notifications` | Admin-owned API token | Create a notification, optionally with `actions` and/or a `channels` list. Omitting `channels` attempts every channel this gateway has configured. |
+| `POST /api/notifications` | Admin-owned API token | Create one notification per entry in `userIds`, optionally with `actions` and/or a `channels` list. Omitting `channels` uses each recipient's own preferred channel if they've set one (see "Per-user channel preference"), else every channel this gateway has configured. |
 
 Creation is admin-only, reusing the existing admin-owned API token
 mechanism (`POST /api/users/{userId}/tokens`, same as every other
@@ -122,6 +136,8 @@ User-facing (an app's frontend, same session cookie it already uses for
 | `POST /api/notifications/{id}/respond` | Answer one of a notification's actions from the in-app list. |
 | `GET /api/notifications/{id}/deliveries` | Full delivery history for one notification — every attempt, every channel, newest first (owner or admin only). |
 | `GET /api/notifications/telegram/link` | Get a fresh `https://t.me/<bot>?start=<code>` deep link to connect the current user's Telegram chat. |
+| `GET /api/notifications/preferences` | Get the current user's preferred delivery channel, if they've set one. |
+| `PUT /api/notifications/preferences` | Set (or, with an empty/omitted value, clear) it. |
 
 Public, unauthenticated (only reachable via the link an email actually
 sends):
@@ -161,6 +177,34 @@ keyboard buttons. Tapping one is authorized by checking that the tapping
 chat is linked to the *same user* the notification was sent to — not just
 "some linked user" — otherwise anyone who discovered a notification ID
 could answer someone else's notification.
+
+## Per-user channel preference
+
+A user sets which single channel they'd rather be notified on:
+
+```
+PUT /api/notifications/preferences
+{"preferredChannel": "telegram"}
+```
+
+From then on, any `POST /api/notifications` call that notifies this user
+**without naming explicit `channels`** uses only their preferred channel,
+instead of every channel the gateway has configured. An explicit
+`channels` list on the create call always wins over the preference — a
+caller that genuinely needs a specific channel for one particular
+notification (e.g. "this one has to go by email, it has an attachment-style
+link that doesn't make sense as a Telegram button") isn't blocked by
+whatever the user picked as their everyday default.
+
+`preferredChannel` isn't validated against which channels this gateway
+currently has configured, the same "an unknown/unconfigured channel is
+recorded as skipped, not rejected" philosophy the `channels` field on
+notification creation already follows — see
+`GET /api/notifications/{id}/deliveries` to see when that's actually
+happened to a user's own notifications. `PUT` with an empty (or omitted)
+`preferredChannel` clears the preference back to "no preference — use
+every configured channel," the original default from before per-user
+preferences existed.
 
 ## Retries
 
@@ -213,10 +257,13 @@ No live SMTP server or Telegram bot is needed to test this:
   simulated button tap, decoded from real JSON.
 - `notification/service_test.go` and `db/notificationrepository_test.go`
   cover the business logic and persistence layer against a real SQLite test
-  database — including the retry schedule's exhaustion boundary and a full
-  fail-then-succeed retry cycle, by directly backdating a delivery's
-  `NextRetryAt` (the shortest real backoff is a minute, far too slow for a
-  unit test to actually wait out) rather than mocking time.
+  database — including the retry schedule's exhaustion boundary, a full
+  fail-then-succeed retry cycle (backdating a delivery's `NextRetryAt`
+  directly rather than mocking time, since the shortest real backoff is a
+  minute — far too slow for a unit test to actually wait out), multi-
+  recipient `Create` producing independent notifications, and preference
+  resolution (explicit `channels` beats a stored preference beats "every
+  configured channel").
 - `handlers/api_notifications_test.go` covers the HTTP handlers'
   auth/ownership/status-code decisions directly.
 

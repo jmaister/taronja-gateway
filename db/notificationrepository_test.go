@@ -290,4 +290,43 @@ func TestNotificationRepository(t *testing.T) {
 		_, err = repo.ConsumeLinkCode("expired-code", time.Now())
 		assert.ErrorIs(t, err, ErrNotificationLinkCodeInvalid)
 	})
+
+	t.Run("preferred channel: unset, set, changed, and cleared", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "pref-user", Email: "pref@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+
+		channel, err := repo.GetPreferredChannel(u.ID)
+		require.NoError(t, err)
+		assert.Empty(t, channel, "no preference set yet")
+
+		require.NoError(t, repo.SetPreferredChannel(u.ID, NotificationChannelTelegram))
+		channel, err = repo.GetPreferredChannel(u.ID)
+		require.NoError(t, err)
+		assert.Equal(t, NotificationChannelTelegram, channel)
+
+		// Setting again overwrites, it doesn't add a second row.
+		require.NoError(t, repo.SetPreferredChannel(u.ID, NotificationChannelEmail))
+		channel, err = repo.GetPreferredChannel(u.ID)
+		require.NoError(t, err)
+		assert.Equal(t, NotificationChannelEmail, channel)
+
+		var count int64
+		require.NoError(t, dbConn.Model(&NotificationPreference{}).Where("user_id = ?", u.ID).Count(&count).Error)
+		assert.Equal(t, int64(1), count)
+
+		// An empty channel clears the preference back to "none set".
+		require.NoError(t, repo.SetPreferredChannel(u.ID, ""))
+		channel, err = repo.GetPreferredChannel(u.ID)
+		require.NoError(t, err)
+		assert.Empty(t, channel)
+
+		// A user who's never touched their preference at all gets the
+		// same "no preference" answer, not an error.
+		other := User{Username: "no-pref-user", Email: "no-pref@example.com"}
+		require.NoError(t, dbConn.Create(&other).Error)
+		channel, err = repo.GetPreferredChannel(other.ID)
+		require.NoError(t, err)
+		assert.Empty(t, channel)
+	})
 }

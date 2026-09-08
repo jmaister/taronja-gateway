@@ -28,6 +28,21 @@ func sessionContext(userID string, isAdmin bool) context.Context {
 	return context.WithValue(context.Background(), session.SessionKey, sess)
 }
 
+// createOneNotification calls CreateNotification for a single recipient as
+// an admin, requires a 201, and returns that one created notification —
+// most handler tests only care about one recipient's created notification;
+// TestCreateNotification's own "multiple recipients" subtest calls
+// CreateNotification directly instead.
+func createOneNotification(t *testing.T, server *StrictApiServer, body api.CreateNotificationJSONRequestBody) api.Notification {
+	t.Helper()
+	resp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{Body: &body})
+	require.NoError(t, err)
+	created, ok := resp.(api.CreateNotification201JSONResponse)
+	require.True(t, ok, "expected a 201, got %T", resp)
+	require.Len(t, created.Notifications, 1)
+	return created.Notifications[0]
+}
+
 func TestCreateNotification(t *testing.T) {
 	server, dependencies := setupNotificationTestServer(t)
 	user := &db.User{Username: "recipient", Email: "recipient@example.com"}
@@ -35,7 +50,7 @@ func TestCreateNotification(t *testing.T) {
 
 	t.Run("rejects a non-admin caller", func(t *testing.T) {
 		resp, err := server.CreateNotification(sessionContext(user.ID, false), api.CreateNotificationRequestObject{
-			Body: &api.CreateNotificationJSONRequestBody{UserId: user.ID, Type: "t", Title: "T", Body: "B"},
+			Body: &api.CreateNotificationJSONRequestBody{UserIds: []string{user.ID}, Type: "t", Title: "T", Body: "B"},
 		})
 		require.NoError(t, err)
 		_, ok := resp.(api.CreateNotification401JSONResponse)
@@ -44,28 +59,47 @@ func TestCreateNotification(t *testing.T) {
 
 	t.Run("rejects an unauthenticated caller", func(t *testing.T) {
 		resp, err := server.CreateNotification(context.Background(), api.CreateNotificationRequestObject{
-			Body: &api.CreateNotificationJSONRequestBody{UserId: user.ID, Type: "t", Title: "T", Body: "B"},
+			Body: &api.CreateNotificationJSONRequestBody{UserIds: []string{user.ID}, Type: "t", Title: "T", Body: "B"},
 		})
 		require.NoError(t, err)
 		_, ok := resp.(api.CreateNotification401JSONResponse)
 		assert.True(t, ok)
 	})
 
-	t.Run("an admin caller creates a notification with actions", func(t *testing.T) {
-		style := "primary"
+	t.Run("rejects an empty userIds list", func(t *testing.T) {
 		resp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{
-			Body: &api.CreateNotificationJSONRequestBody{
-				UserId: user.ID, Type: "track_added", Title: "New track", Body: "body",
-				Actions: &[]api.NotificationAction{{Id: "approve", Label: "Approve", Style: &style}},
-			},
+			Body: &api.CreateNotificationJSONRequestBody{UserIds: []string{}, Type: "t", Title: "T", Body: "B"},
 		})
 		require.NoError(t, err)
-		created, ok := resp.(api.CreateNotification201JSONResponse)
-		require.True(t, ok)
+		_, ok := resp.(api.CreateNotification400JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("an admin caller creates a notification with actions", func(t *testing.T) {
+		style := "primary"
+		created := createOneNotification(t, server, api.CreateNotificationJSONRequestBody{
+			UserIds: []string{user.ID}, Type: "track_added", Title: "New track", Body: "body",
+			Actions: &[]api.NotificationAction{{Id: "approve", Label: "Approve", Style: &style}},
+		})
 		assert.Equal(t, "track_added", created.Type)
 		require.NotNil(t, created.Actions)
 		require.Len(t, *created.Actions, 1)
 		assert.Equal(t, "approve", (*created.Actions)[0].Id)
+	})
+
+	t.Run("a userIds list with multiple entries creates one independent notification per recipient", func(t *testing.T) {
+		userB := &db.User{Username: "recipient-b", Email: "recipient-b@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(userB))
+
+		resp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{
+			Body: &api.CreateNotificationJSONRequestBody{UserIds: []string{user.ID, userB.ID}, Type: "t", Title: "T", Body: "B"},
+		})
+		require.NoError(t, err)
+		created, ok := resp.(api.CreateNotification201JSONResponse)
+		require.True(t, ok)
+		require.Len(t, created.Notifications, 2)
+		assert.ElementsMatch(t, []string{user.ID, userB.ID}, []string{created.Notifications[0].UserId, created.Notifications[1].UserId})
+		assert.NotEqual(t, created.Notifications[0].Id, created.Notifications[1].Id)
 	})
 }
 
@@ -74,12 +108,8 @@ func TestListAndReadNotifications(t *testing.T) {
 	user := &db.User{Username: "u", Email: "u@example.com"}
 	require.NoError(t, dependencies.UserRepo.CreateUser(user))
 
-	adminCtx := sessionContext("admin-id", true)
 	for i := 0; i < 2; i++ {
-		_, err := server.CreateNotification(adminCtx, api.CreateNotificationRequestObject{
-			Body: &api.CreateNotificationJSONRequestBody{UserId: user.ID, Type: "t", Title: "T", Body: "B"},
-		})
-		require.NoError(t, err)
+		createOneNotification(t, server, api.CreateNotificationJSONRequestBody{UserIds: []string{user.ID}, Type: "t", Title: "T", Body: "B"})
 	}
 
 	userCtx := sessionContext(user.ID, false)
@@ -117,14 +147,10 @@ func TestRespondToNotification(t *testing.T) {
 	stranger := &db.User{Username: "stranger", Email: "stranger@example.com"}
 	require.NoError(t, dependencies.UserRepo.CreateUser(stranger))
 
-	createResp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{
-		Body: &api.CreateNotificationJSONRequestBody{
-			UserId: owner.ID, Type: "t", Title: "Approve?", Body: "B",
-			Actions: &[]api.NotificationAction{{Id: "approve", Label: "Approve"}},
-		},
+	created := createOneNotification(t, server, api.CreateNotificationJSONRequestBody{
+		UserIds: []string{owner.ID}, Type: "t", Title: "Approve?", Body: "B",
+		Actions: &[]api.NotificationAction{{Id: "approve", Label: "Approve"}},
 	})
-	require.NoError(t, err)
-	created := createResp.(api.CreateNotification201JSONResponse)
 
 	t.Run("a stranger gets 403", func(t *testing.T) {
 		resp, err := server.RespondToNotification(sessionContext(stranger.ID, false), api.RespondToNotificationRequestObject{
@@ -185,6 +211,54 @@ func TestGetTelegramLinkCode(t *testing.T) {
 	})
 }
 
+func TestNotificationPreference(t *testing.T) {
+	server, dependencies := setupNotificationTestServer(t)
+	user := &db.User{Username: "pref-handler-user", Email: "pref-handler@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(user))
+	userCtx := sessionContext(user.ID, false)
+
+	t.Run("GetNotificationPreference starts with no preference set", func(t *testing.T) {
+		resp, err := server.GetNotificationPreference(userCtx, api.GetNotificationPreferenceRequestObject{})
+		require.NoError(t, err)
+		pref, ok := resp.(api.GetNotificationPreference200JSONResponse)
+		require.True(t, ok)
+		assert.Nil(t, pref.PreferredChannel)
+	})
+
+	t.Run("SetNotificationPreference sets it, and GetNotificationPreference reflects it", func(t *testing.T) {
+		channel := "telegram"
+		resp, err := server.SetNotificationPreference(userCtx, api.SetNotificationPreferenceRequestObject{
+			Body: &api.SetNotificationPreferenceJSONRequestBody{PreferredChannel: &channel},
+		})
+		require.NoError(t, err)
+		updated, ok := resp.(api.SetNotificationPreference200JSONResponse)
+		require.True(t, ok)
+		require.NotNil(t, updated.PreferredChannel)
+		assert.Equal(t, "telegram", *updated.PreferredChannel)
+
+		getResp, err := server.GetNotificationPreference(userCtx, api.GetNotificationPreferenceRequestObject{})
+		require.NoError(t, err)
+		pref, ok := getResp.(api.GetNotificationPreference200JSONResponse)
+		require.True(t, ok)
+		require.NotNil(t, pref.PreferredChannel)
+		assert.Equal(t, "telegram", *pref.PreferredChannel)
+	})
+
+	t.Run("GetNotificationPreference requires authentication", func(t *testing.T) {
+		resp, err := server.GetNotificationPreference(context.Background(), api.GetNotificationPreferenceRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationPreference401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("SetNotificationPreference requires authentication", func(t *testing.T) {
+		resp, err := server.SetNotificationPreference(context.Background(), api.SetNotificationPreferenceRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.SetNotificationPreference401JSONResponse)
+		assert.True(t, ok)
+	})
+}
+
 func TestListNotificationDeliveries(t *testing.T) {
 	server, dependencies := setupNotificationTestServer(t)
 	owner := &db.User{Username: "deliveries-owner", Email: "deliveries-owner@example.com"}
@@ -192,11 +266,7 @@ func TestListNotificationDeliveries(t *testing.T) {
 	stranger := &db.User{Username: "deliveries-stranger", Email: "deliveries-stranger@example.com"}
 	require.NoError(t, dependencies.UserRepo.CreateUser(stranger))
 
-	createResp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{
-		Body: &api.CreateNotificationJSONRequestBody{UserId: owner.ID, Type: "t", Title: "T", Body: "B"},
-	})
-	require.NoError(t, err)
-	created := createResp.(api.CreateNotification201JSONResponse)
+	created := createOneNotification(t, server, api.CreateNotificationJSONRequestBody{UserIds: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
 
 	// No external channels are configured in the test dependencies, so
 	// this notification has no delivery attempts at all — the owner

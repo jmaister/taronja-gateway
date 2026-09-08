@@ -586,3 +586,28 @@ func (l *NotificationLinkCode) BeforeSave(tx *gorm.DB) error {
 	l.ExpiresAt = l.ExpiresAt.UTC()
 	return nil
 }
+
+// NotificationPreference records one user's preferred delivery channel —
+// "each user can decide to receive notifications by one different
+// provider," independently of what any particular caller's
+// CreateInput.Channels asks for. One row per user (UserID is the primary
+// key, not a foreign key constraint — same convention every other table
+// here embedding a bare "user_id" column follows). No row at all, or an
+// empty PreferredChannel, both mean "no preference set" — see
+// NotificationRepository.GetPreferredChannel, which returns "" for
+// either case rather than distinguishing them, since callers never need
+// to.
+//
+// PreferredChannel is deliberately just a string, not validated against
+// which channels this gateway currently has configured (see
+// notification.Service.SetPreferredChannel's doc comment) — the same
+// "unknown/unconfigured channel is skipped, not rejected" philosophy
+// Notification.Actions/CreateInput.Channels already follow, so a user's
+// preference set today keeps working unchanged if the gateway adds a new
+// channel (WhatsApp, Slack, ...) tomorrow and they switch to it.
+type NotificationPreference struct {
+	UserID           string    `gorm:"primaryKey;column:user_id;type:varchar(255);not null"`
+	PreferredChannel string    `gorm:"type:varchar(50)"`
+	CreatedAt        time.Time `gorm:"autoCreateTime"`
+	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
+}

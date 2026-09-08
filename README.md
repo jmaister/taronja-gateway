@@ -746,9 +746,11 @@ geolocation:
 The gateway can store and deliver notifications on behalf of the app(s) it
 sits in front of — in-app always, plus email and/or Telegram if
 configured — so each app doesn't need to build its own notification list,
-SMTP integration, or Telegram bot. Failed deliveries retry automatically
-with backoff, and the full delivery history (every attempt, every channel)
-is queryable per notification. See [doc/notifications.md](doc/notifications.md)
+SMTP integration, or Telegram bot. One call can notify a whole list of
+users at once, each independently, and each user can pick their own
+preferred delivery channel. Failed deliveries retry automatically with
+backoff, and the full delivery history (every attempt, every channel) is
+queryable per notification. See [doc/notifications.md](doc/notifications.md)
 for the full data model, API reference, retry schedule, and how the email
 answer-link and Telegram account-linking flows work.
 

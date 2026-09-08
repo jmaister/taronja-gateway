@@ -214,12 +214,13 @@ func TestTelegramPoller(t *testing.T) {
 		})
 
 		t.Run("a callback query records the response and edits the message", func(t *testing.T) {
-			notif, err := service.Create(context.Background(), CreateInput{
-				UserID: user.ID, Type: "t", Title: "Approve?", Body: "b",
+			notifications, err := service.Create(context.Background(), CreateInput{
+				UserIDs: []string{user.ID}, Type: "t", Title: "Approve?", Body: "b",
 				Actions:  []Action{{ID: "approve", Label: "Approve"}},
 				Channels: []string{db.NotificationChannelTelegram},
 			})
 			require.NoError(t, err)
+			notif := notifications[0]
 
 			update := mustDecodeUpdate(t, fmt.Sprintf(
 				`{"update_id":2,"callback_query":{"id":"cbq-1","data":%q,"from":{"id":555},"message":{"message_id":42,"chat":{"id":555}}}}`,
@@ -248,12 +249,13 @@ func TestTelegramPoller(t *testing.T) {
 		t.Run("a callback query from a chat that isn't the notification's owner is rejected", func(t *testing.T) {
 			other := &db.User{Username: "other-user", Email: "other@example.com"}
 			require.NoError(t, db.GetConnection().Create(other).Error)
-			notif, err := service.Create(context.Background(), CreateInput{
-				UserID: other.ID, Type: "t", Title: "Approve?", Body: "b",
+			notifications, err := service.Create(context.Background(), CreateInput{
+				UserIDs: []string{other.ID}, Type: "t", Title: "Approve?", Body: "b",
 				Actions:  []Action{{ID: "approve", Label: "Approve"}},
 				Channels: []string{db.NotificationChannelTelegram},
 			})
 			require.NoError(t, err)
+			notif := notifications[0]
 
 			// Chat 555 is linked to `user`, not `other` — tapping "approve"
 			// from it must not answer other's notification.

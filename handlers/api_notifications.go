@@ -91,13 +91,16 @@ func (s *StrictApiServer) CreateNotification(ctx context.Context, request api.Cr
 		return api.CreateNotification400JSONResponse{Code: http.StatusBadRequest, Message: "Request body is required"}, nil
 	}
 	body := request.Body
+	if len(body.UserIds) == 0 {
+		return api.CreateNotification400JSONResponse{Code: http.StatusBadRequest, Message: "userIds must have at least one entry"}, nil
+	}
 
 	in := notification.CreateInput{
-		UserID: body.UserId,
-		Type:   body.Type,
-		Title:  body.Title,
-		Body:   body.Body,
-		URL:    body.Url,
+		UserIDs: body.UserIds,
+		Type:    body.Type,
+		Title:   body.Title,
+		Body:    body.Body,
+		URL:     body.Url,
 	}
 	if body.Metadata != nil {
 		in.Metadata = *body.Metadata
@@ -115,15 +118,30 @@ func (s *StrictApiServer) CreateNotification(ctx context.Context, request api.Cr
 		in.Channels = *body.Channels
 	}
 
-	n, err := s.notificationService.Create(ctx, in)
-	if err != nil {
-		return nil, err
+	notifications, err := s.notificationService.Create(ctx, in)
+	if len(notifications) == 0 {
+		// Every recipient failed to be stored — a genuine failure, not the
+		// best-effort partial-success case below.
+		if err != nil {
+			return api.CreateNotification400JSONResponse{Code: http.StatusBadRequest, Message: err.Error()}, nil
+		}
+		return nil, fmt.Errorf("no notifications were created and no error was reported")
 	}
-	apiNotification, err := toAPINotification(n)
-	if err != nil {
-		return nil, err
+	// Some recipients succeeded even if err is non-nil for the rest (see
+	// Service.Create's doc comment) — respond with whatever did, the same
+	// "don't lose the four that worked over the one that didn't"
+	// philosophy delivery itself already follows. err is intentionally not
+	// otherwise surfaced here; the caller can compare the returned
+	// notifications' userIds against what it sent to see who was missed.
+	apiNotifications := make([]api.Notification, 0, len(notifications))
+	for _, n := range notifications {
+		apiNotification, err := toAPINotification(n)
+		if err != nil {
+			return nil, err
+		}
+		apiNotifications = append(apiNotifications, apiNotification)
 	}
-	return api.CreateNotification201JSONResponse(apiNotification), nil
+	return api.CreateNotification201JSONResponse{Notifications: apiNotifications}, nil
 }
 
 // ListNotifications handles GET /api/notifications.
@@ -356,4 +374,50 @@ func (s *StrictApiServer) ListNotificationDeliveries(ctx context.Context, reques
 		apiDeliveries = append(apiDeliveries, toAPIDelivery(d))
 	}
 	return api.ListNotificationDeliveries200JSONResponse{Deliveries: apiDeliveries}, nil
+}
+
+// GetNotificationPreference handles GET /api/notifications/preferences.
+func (s *StrictApiServer) GetNotificationPreference(ctx context.Context, request api.GetNotificationPreferenceRequestObject) (api.GetNotificationPreferenceResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.GetNotificationPreference401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetNotificationPreference200JSONResponse{}, nil
+	}
+	channel, err := s.notificationService.GetPreferredChannel(sessionObj.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetNotificationPreference200JSONResponse{PreferredChannel: emptyToNil(channel)}, nil
+}
+
+// SetNotificationPreference handles PUT /api/notifications/preferences.
+func (s *StrictApiServer) SetNotificationPreference(ctx context.Context, request api.SetNotificationPreferenceRequestObject) (api.SetNotificationPreferenceResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.SetNotificationPreference401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	var channel string
+	if request.Body != nil && request.Body.PreferredChannel != nil {
+		channel = *request.Body.PreferredChannel
+	}
+	if s.notificationService != nil {
+		if err := s.notificationService.SetPreferredChannel(sessionObj.UserID, channel); err != nil {
+			return nil, err
+		}
+	}
+	return api.SetNotificationPreference200JSONResponse{PreferredChannel: emptyToNil(channel)}, nil
+}
+
+// emptyToNil returns nil for an empty string, or a pointer to s otherwise —
+// api.NotificationPreference.PreferredChannel is optional/nullable, and an
+// empty string on the wire is indistinguishable from "no preference set"
+// either way, so there's no reason to send an explicit "" over omitting
+// the field entirely.
+func emptyToNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

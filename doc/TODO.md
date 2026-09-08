@@ -324,6 +324,31 @@ operator to list anything. See `session.GetClientIP`'s doc comment
       real wait, but the retry worker's own 30-second tick and the actual
       resend were both real), and a real email finally delivered on the
       third attempt.
+- [x] **Multi-recipient create and per-user channel preference** — the
+      next same-day follow-up: "Recipients can be a list of users, and each
+      user can decide to receive notifications by one different provider."
+      `CreateInput.UserID` (single) became `UserIDs []string`: `Create`
+      stores one independent `db.Notification` per recipient (same
+      type/title/body/actions, each with its own read state, delivery
+      attempts, and answer) rather than requiring the caller to loop —
+      this is effectively the `POST /api/notifications/batch` endpoint
+      floated and deliberately deferred in the very first entry above,
+      just folded into the primary create call instead of a second
+      endpoint, since there was no real caller yet to validate a separate
+      batch shape against and this needed no new one. `db.NotificationPreference`
+      (one row per user, resolved by `resolveChannelsForUser`) lets a user
+      set a single preferred channel that wins over "every configured
+      channel" whenever a `POST /api/notifications` call doesn't name
+      explicit `channels` — an explicit `channels` list still overrides the
+      preference, so a caller that genuinely needs a specific channel for
+      one notification isn't blocked by whatever the user picked as their
+      default. Verified for real against a live `tg` binary: one call
+      notifying two users produced two independent notifications
+      (answering one left the other's read/response state untouched), and
+      a user's telegram preference was shown to override the
+      "every-configured-channel" default even with email actually
+      configured and telegram not — the delivery history recorded exactly
+      one skipped telegram attempt, never an email one.
 
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 

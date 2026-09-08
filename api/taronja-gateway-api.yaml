@@ -467,14 +467,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      summary: Create a notification for a user (server-to-server, admin only)
+      summary: Create a notification for one or more users (server-to-server, admin only)
       description: >
         Called by the app the gateway sits in front of when something happens
-        that the affected user should be told about. The notification always
-        gets stored and is visible via GET /api/notifications regardless of
-        channels; each named (or, if omitted, every configured) external
-        channel is attempted independently and best-effort — see
-        NotificationDelivery in doc/notifications.md.
+        that the affected user(s) should be told about. One notification is
+        created per entry in userIds, all sharing the same
+        type/title/body/url/metadata/actions but each independently stored,
+        delivered, read, and answered — notifying five people is one call,
+        not five. Every notification always gets stored and is visible via
+        GET /api/notifications regardless of channels; for each recipient,
+        the channels named in this request (or, if omitted, that recipient's
+        own preferred channel — see PUT /api/notifications/preferences — or,
+        failing that, every configured channel) are attempted independently
+        and best-effort — see NotificationDelivery in doc/notifications.md.
       operationId: createNotification
       tags:
         - Notification
@@ -489,11 +494,11 @@ paths:
               $ref: '#/components/schemas/CreateNotificationRequest'
       responses:
         '201':
-          description: Notification created
+          description: Notification(s) created — one entry per userIds, in the same order
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Notification'
+                $ref: '#/components/schemas/CreateNotificationResponse'
         '400':
           description: Bad Request
           content:
@@ -715,6 +720,66 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: Telegram delivery isn't configured on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/preferences:
+    get:
+      summary: Get the current user's preferred notification channel
+      description: >
+        "Each user can decide to receive notifications by one different
+        provider" — this is that preference. Consulted by
+        POST /api/notifications whenever a caller doesn't name explicit
+        channels: this user's preferred one is used instead of every
+        configured channel. Not validated against which channels this
+        gateway currently has configured — an unconfigured or unknown
+        preference just means every notification for this user is recorded
+        as skipped on that channel, the same "skip, don't reject"
+        philosophy the channels field on notification creation follows.
+      operationId: getNotificationPreference
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The current preference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreference'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Set (or clear) the current user's preferred notification channel
+      operationId: setNotificationPreference
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreference'
+      responses:
+        '200':
+          description: The updated preference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreference'
+        '401':
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -2424,8 +2489,16 @@ components:
     CreateNotificationRequest:
       type: object
       properties:
-        userId:
-          type: string
+        userIds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: >
+            One notification is created per user ID here, all sharing this
+            same type/title/body/url/metadata/actions but each independently
+            stored, delivered, read, and answered.
+          example: ["user-abc", "user-def"]
         type:
           type: string
           example: "music_track_added"
@@ -2447,16 +2520,41 @@ components:
           items:
             type: string
           description: >
-            External channels to attempt delivery on, e.g. ["email", "telegram"].
-            Omit to attempt every channel this gateway has configured. An
-            unconfigured or unknown channel is recorded as skipped, not an
-            error — see NotificationDelivery in doc/notifications.md.
+            External channels to attempt delivery on, for every recipient in
+            userIds alike, e.g. ["email", "telegram"]. Omit to instead use
+            each recipient's own preferred channel (see
+            PUT /api/notifications/preferences), or, if they haven't set one,
+            every channel this gateway has configured. An unconfigured or
+            unknown channel is recorded as skipped, not an error — see
+            NotificationDelivery in doc/notifications.md.
           example: ["email", "telegram"]
       required:
-        - userId
+        - userIds
         - type
         - title
         - body
+
+    CreateNotificationResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+          description: One entry per userIds, in the same order.
+      required:
+        - notifications
+
+    NotificationPreference:
+      type: object
+      properties:
+        preferredChannel:
+          type: string
+          description: >
+            The channel this user prefers, e.g. "email" or "telegram". Empty
+            (or omitted, on the PUT request) means no preference — every
+            configured channel is used instead.
+          example: "telegram"
 
   securitySchemes:
     cookieAuth:

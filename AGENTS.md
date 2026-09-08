@@ -303,9 +303,17 @@ network exposure is required).
   Telegram-linking code and the email respond-link token, both of which
   need to hand a raw secret to something outside the gateway's own auth
   while only ever persisting its hash).
-- `service.go` — `Service.Create` stores a `db.Notification` unconditionally,
-  then attempts delivery on every requested (or, if none named, every
-  configured) channel independently via `deliver`; a channel that isn't
+- `service.go` — `Service.Create` takes `CreateInput.UserIDs []string`, not
+  a single ID: it stores one `db.Notification` per recipient (all sharing
+  the same type/title/body/actions, each independently read/answered/
+  delivered), collecting per-recipient DB failures via `errors.Join` rather
+  than letting one bad row abort the whole batch. For each recipient it
+  then attempts delivery on `resolveChannelsForUser`'s answer: the request's
+  explicit `Channels` if given, else that *recipient's own* preferred
+  channel (`SetPreferredChannel`/`GetPreferredChannel`,
+  `db.NotificationPreference` — "each user can decide to receive
+  notifications by one different provider") if they've set one, else every
+  configured channel — the pre-preferences default. A channel that isn't
   configured, or that the user has no recipient for, is recorded as
   `db.NotificationDeliveryStatusSkipped` rather than failing `Create`. A
   failed delivery isn't final: `RetryFailedDeliveries` (polled every 30s by
@@ -321,8 +329,12 @@ network exposure is required).
   `recordValidatedResponse` — first response wins,
   `db.NotificationRepository.RecordResponse` rejects a second one.
 - `db/notificationrepository.go` — the repository interface/impl, plus
-  `NotificationChannelLink` (user ↔ external chat ID) and
-  `NotificationLinkCode` (the short-lived `/start <code>` linking code)
+  `NotificationChannelLink` (user ↔ external chat ID),
+  `NotificationLinkCode` (the short-lived `/start <code>` linking code),
+  and `NotificationPreference` (one row per user with a stored channel
+  preference — `GetPreferredChannel` returns `""`, never
+  `gorm.ErrRecordNotFound`, for "no row" and "empty preference" alike, so
+  `resolveChannelsForUser` doesn't need a not-found special case)
   persistence. `FindDeliveriesDueForRetry`/`ClearNextRetry` rely on an
   invariant documented on `db.NotificationDelivery`: at most one row per
   (NotificationID, Channel) ever has a non-null `NextRetryAt` at a time,
@@ -336,7 +348,10 @@ network exposure is required).
   in `middleware.OperationWithNoSecurity` since it has no session to check —
   the opaque `token` query parameter is the credential instead, verified
   inside the handler. `ListNotificationDeliveries` (owner or admin) exposes
-  the full retry/delivery history built above.
+  the full retry/delivery history built above. `GetNotificationPreference`/
+  `SetNotificationPreference` are self-service (the caller's own session,
+  no admin check) — a user manages only their own preference, never
+  someone else's.
 
 **Adding a new delivery channel** (WhatsApp, Slack, SMS, ...) means writing
 a new `Provider` implementation and registering it in

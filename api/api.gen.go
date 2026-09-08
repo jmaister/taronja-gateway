@@ -337,7 +337,7 @@ type CreateNotificationRequest struct {
 	Actions *[]NotificationAction `json:"actions,omitempty"`
 	Body    string                `json:"body"`
 
-	// Channels External channels to attempt delivery on, e.g. ["email", "telegram"]. Omit to attempt every channel this gateway has configured. An unconfigured or unknown channel is recorded as skipped, not an error — see NotificationDelivery in doc/notifications.md.
+	// Channels External channels to attempt delivery on, for every recipient in userIds alike, e.g. ["email", "telegram"]. Omit to instead use each recipient's own preferred channel (see PUT /api/notifications/preferences), or, if they haven't set one, every channel this gateway has configured. An unconfigured or unknown channel is recorded as skipped, not an error — see NotificationDelivery in doc/notifications.md.
 	//
 	//
 	// Example: ["email","telegram"]
@@ -346,9 +346,20 @@ type CreateNotificationRequest struct {
 	Title    string                  `json:"title"`
 
 	// Type Example: music_track_added
-	Type   string  `json:"type"`
-	Url    *string `json:"url,omitempty"`
-	UserId string  `json:"userId"`
+	Type string  `json:"type"`
+	Url  *string `json:"url,omitempty"`
+
+	// UserIds One notification is created per user ID here, all sharing this same type/title/body/url/metadata/actions but each independently stored, delivered, read, and answered.
+	//
+	//
+	// Example: ["user-abc","user-def"]
+	UserIds []string `json:"userIds"`
+}
+
+// CreateNotificationResponse defines model for CreateNotificationResponse.
+type CreateNotificationResponse struct {
+	// Notifications One entry per userIds, in the same order.
+	Notifications []Notification `json:"notifications"`
 }
 
 // Error defines model for Error.
@@ -512,6 +523,15 @@ type NotificationListResponse struct {
 	// NextCursor Pass as `cursor` to fetch the next page. Absent/null on the last page.
 	NextCursor    *string        `json:"nextCursor,omitempty"`
 	Notifications []Notification `json:"notifications"`
+}
+
+// NotificationPreference defines model for NotificationPreference.
+type NotificationPreference struct {
+	// PreferredChannel The channel this user prefers, e.g. "email" or "telegram". Empty (or omitted, on the PUT request) means no preference — every configured channel is used instead.
+	//
+	//
+	// Example: telegram
+	PreferredChannel *string `json:"preferredChannel,omitempty"`
 }
 
 // RateLimiterConfigResponse defines model for RateLimiterConfigResponse.
@@ -924,6 +944,9 @@ type AdjustUserCountersJSONRequestBody = CounterAdjustmentRequest
 // CreateNotificationJSONRequestBody defines body for CreateNotification for application/json ContentType.
 type CreateNotificationJSONRequestBody = CreateNotificationRequest
 
+// SetNotificationPreferenceJSONRequestBody defines body for SetNotificationPreference for application/json ContentType.
+type SetNotificationPreferenceJSONRequestBody = NotificationPreference
+
 // RespondToNotificationJSONRequestBody defines body for RespondToNotification for application/json ContentType.
 type RespondToNotificationJSONRequestBody RespondToNotificationJSONBody
 
@@ -965,9 +988,15 @@ type ServerInterface interface {
 	// ListNotifications List the current user's notifications, newest first
 	// (GET /api/notifications)
 	ListNotifications(w http.ResponseWriter, r *http.Request, params ListNotificationsParams)
-	// CreateNotification Create a notification for a user (server-to-server, admin only)
+	// CreateNotification Create a notification for one or more users (server-to-server, admin only)
 	// (POST /api/notifications)
 	CreateNotification(w http.ResponseWriter, r *http.Request)
+	// GetNotificationPreference Get the current user's preferred notification channel
+	// (GET /api/notifications/preferences)
+	GetNotificationPreference(w http.ResponseWriter, r *http.Request)
+	// SetNotificationPreference Set (or clear) the current user's preferred notification channel
+	// (PUT /api/notifications/preferences)
+	SetNotificationPreference(w http.ResponseWriter, r *http.Request)
 	// MarkAllNotificationsRead Mark every one of the current user's notifications as read
 	// (POST /api/notifications/read-all)
 	MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request)
@@ -1383,6 +1412,34 @@ func (siw *ServerInterfaceWrapper) CreateNotification(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateNotification(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNotificationPreference operation middleware
+func (siw *ServerInterfaceWrapper) GetNotificationPreference(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotificationPreference(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetNotificationPreference operation middleware
+func (siw *ServerInterfaceWrapper) SetNotificationPreference(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetNotificationPreference(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2182,6 +2239,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/{notificationId}/respond", wrapper.RespondToNotification)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/respond", wrapper.RespondToNotificationByToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.GetTelegramLinkCode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/preferences", wrapper.GetNotificationPreference)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications/preferences", wrapper.SetNotificationPreference)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/{notificationId}/deliveries", wrapper.ListNotificationDeliveries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
@@ -2809,7 +2868,7 @@ type CreateNotificationResponseObject interface {
 	VisitCreateNotificationResponse(w http.ResponseWriter) error
 }
 
-type CreateNotification201JSONResponse Notification
+type CreateNotification201JSONResponse CreateNotificationResponse
 
 func (response CreateNotification201JSONResponse) VisitCreateNotificationResponse(w http.ResponseWriter) error {
 
@@ -2840,6 +2899,77 @@ func (response CreateNotification400JSONResponse) VisitCreateNotificationRespons
 type CreateNotification401JSONResponse Error
 
 func (response CreateNotification401JSONResponse) VisitCreateNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationPreferenceRequestObject struct {
+}
+
+type GetNotificationPreferenceResponseObject interface {
+	VisitGetNotificationPreferenceResponse(w http.ResponseWriter) error
+}
+
+type GetNotificationPreference200JSONResponse NotificationPreference
+
+func (response GetNotificationPreference200JSONResponse) VisitGetNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationPreference401JSONResponse Error
+
+func (response GetNotificationPreference401JSONResponse) VisitGetNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationPreferenceRequestObject struct {
+	Body *SetNotificationPreferenceJSONRequestBody
+}
+
+type SetNotificationPreferenceResponseObject interface {
+	VisitSetNotificationPreferenceResponse(w http.ResponseWriter) error
+}
+
+type SetNotificationPreference200JSONResponse NotificationPreference
+
+func (response SetNotificationPreference200JSONResponse) VisitSetNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationPreference401JSONResponse Error
+
+func (response SetNotificationPreference401JSONResponse) VisitSetNotificationPreferenceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4068,9 +4198,15 @@ type StrictServerInterface interface {
 	// ListNotifications List the current user's notifications, newest first
 	// (GET /api/notifications)
 	ListNotifications(ctx context.Context, request ListNotificationsRequestObject) (ListNotificationsResponseObject, error)
-	// CreateNotification Create a notification for a user (server-to-server, admin only)
+	// CreateNotification Create a notification for one or more users (server-to-server, admin only)
 	// (POST /api/notifications)
 	CreateNotification(ctx context.Context, request CreateNotificationRequestObject) (CreateNotificationResponseObject, error)
+	// GetNotificationPreference Get the current user's preferred notification channel
+	// (GET /api/notifications/preferences)
+	GetNotificationPreference(ctx context.Context, request GetNotificationPreferenceRequestObject) (GetNotificationPreferenceResponseObject, error)
+	// SetNotificationPreference Set (or clear) the current user's preferred notification channel
+	// (PUT /api/notifications/preferences)
+	SetNotificationPreference(ctx context.Context, request SetNotificationPreferenceRequestObject) (SetNotificationPreferenceResponseObject, error)
 	// MarkAllNotificationsRead Mark every one of the current user's notifications as read
 	// (POST /api/notifications/read-all)
 	MarkAllNotificationsRead(ctx context.Context, request MarkAllNotificationsReadRequestObject) (MarkAllNotificationsReadResponseObject, error)
@@ -4469,6 +4605,61 @@ func (sh *strictHandler) CreateNotification(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateNotificationResponseObject); ok {
 		if err := validResponse.VisitCreateNotificationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNotificationPreference operation middleware
+func (sh *strictHandler) GetNotificationPreference(w http.ResponseWriter, r *http.Request) {
+	var request GetNotificationPreferenceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotificationPreference(ctx, request.(GetNotificationPreferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotificationPreference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotificationPreferenceResponseObject); ok {
+		if err := validResponse.VisitGetNotificationPreferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetNotificationPreference operation middleware
+func (sh *strictHandler) SetNotificationPreference(w http.ResponseWriter, r *http.Request) {
+	var request SetNotificationPreferenceRequestObject
+
+	var body SetNotificationPreferenceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetNotificationPreference(ctx, request.(SetNotificationPreferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetNotificationPreference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetNotificationPreferenceResponseObject); ok {
+		if err := validResponse.VisitSetNotificationPreferenceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

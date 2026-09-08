@@ -128,31 +128,43 @@ func (s *Service) TelegramPoller() *TelegramPoller {
 }
 
 // CreateInput is what a caller (typically server-to-server, see
-// handlers.CreateNotification) supplies to create one notification.
+// handlers.CreateNotification) supplies to create one notification per
+// recipient in UserIDs — all sharing the same Type/Title/Body/URL/
+// Metadata/Actions, but each getting an independent db.Notification row,
+// so each recipient reads, responds to, and (if configured) is delivered
+// theirs entirely independently of the others.
 type CreateInput struct {
-	UserID   string
+	UserIDs  []string
 	Type     string
 	Title    string
 	Body     string
 	URL      *string
 	Metadata map[string]interface{}
 	Actions  []Action
-	// Channels restricts delivery to these external channels. Empty means
-	// "every channel this gateway has configured" — the caller doesn't
-	// need to know which channels exist to get sensible default delivery,
-	// matching the "keep providers generic" goal: adding a channel never
-	// requires every existing caller to start naming it explicitly.
+	// Channels restricts delivery to these external channels, for every
+	// recipient alike. Empty means each recipient's own preferred channel
+	// (see SetPreferredChannel) if they've set one, else every channel
+	// this gateway has configured — see resolveChannelsForUser. The
+	// caller never needs to know which channels exist, or what any given
+	// recipient prefers, to get sensible default delivery.
 	Channels []string
 }
 
-// Create stores a notification and attempts delivery on every requested
-// (or, if none named, every configured) external channel. Delivery
-// failures never fail Create itself — the in-app record is the source of
-// truth and always succeeds if the database write does; each channel's
-// outcome is recorded on its own NotificationDelivery row instead (see
-// deliver), inspectable independently of whether Create returned an
-// error.
-func (s *Service) Create(ctx context.Context, in CreateInput) (*db.Notification, error) {
+// Create stores one notification per recipient and attempts delivery on
+// each recipient's own resolved channels (see resolveChannelsForUser).
+// Delivery failures never fail Create itself — the in-app record is the
+// source of truth and always succeeds if its database write does; each
+// channel's outcome is recorded on its own NotificationDelivery row
+// instead (see deliver), inspectable independently of whether Create
+// returned an error.
+//
+// One recipient's notification failing to be stored (a rare DB-level
+// failure — there's no per-recipient validation that could fail first)
+// doesn't stop the rest: Create keeps going and returns every
+// notification that *did* get created, alongside the joined set of
+// per-recipient errors, if any — a caller notifying five people shouldn't
+// lose the other four over one bad row.
+func (s *Service) Create(ctx context.Context, in CreateInput) ([]*db.Notification, error) {
 	metadataJSON, err := EncodeMetadata(in.Metadata)
 	if err != nil {
 		return nil, fmt.Errorf("encoding metadata: %w", err)
@@ -162,30 +174,69 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*db.Notification,
 		return nil, fmt.Errorf("encoding actions: %w", err)
 	}
 
-	n := &db.Notification{
-		UserID:   in.UserID,
-		Type:     in.Type,
-		Title:    in.Title,
-		Body:     in.Body,
-		URL:      in.URL,
-		Metadata: metadataJSON,
-		Actions:  actionsJSON,
-	}
-	if err := s.repo.CreateNotification(n); err != nil {
-		return nil, err
-	}
+	notifications := make([]*db.Notification, 0, len(in.UserIDs))
+	var errs []error
+	for _, userID := range in.UserIDs {
+		n := &db.Notification{
+			UserID:   userID,
+			Type:     in.Type,
+			Title:    in.Title,
+			Body:     in.Body,
+			URL:      in.URL,
+			Metadata: metadataJSON,
+			Actions:  actionsJSON,
+		}
+		if err := s.repo.CreateNotification(n); err != nil {
+			errs = append(errs, fmt.Errorf("user %s: %w", userID, err))
+			continue
+		}
+		notifications = append(notifications, n)
 
-	channels := in.Channels
-	if len(channels) == 0 {
-		for channel := range s.providers {
-			channels = append(channels, channel)
+		for _, channel := range s.resolveChannelsForUser(userID, in.Channels) {
+			s.deliver(ctx, n, in.Actions, channel)
 		}
 	}
-	for _, channel := range channels {
-		s.deliver(ctx, n, in.Actions, channel)
-	}
+	return notifications, errors.Join(errs...)
+}
 
-	return n, nil
+// resolveChannelsForUser decides which external channels to attempt
+// delivery on for one recipient: explicit, when the caller named one in
+// CreateInput.Channels (applies to every recipient of that Create call
+// alike); else that recipient's own preferred channel, so "each user can
+// decide to receive notifications by one different provider" holds even
+// when several recipients are notified in the same call; else every
+// channel this gateway has configured — the original default from before
+// per-user preferences existed.
+func (s *Service) resolveChannelsForUser(userID string, explicit []string) []string {
+	if len(explicit) > 0 {
+		return explicit
+	}
+	if preferred, err := s.repo.GetPreferredChannel(userID); err == nil && preferred != "" {
+		return []string{preferred}
+	}
+	channels := make([]string, 0, len(s.providers))
+	for channel := range s.providers {
+		channels = append(channels, channel)
+	}
+	return channels
+}
+
+// SetPreferredChannel sets (or, with channel == "", clears) userID's
+// preferred delivery channel — consulted by Create whenever a caller
+// doesn't name explicit Channels (see resolveChannelsForUser). Not
+// validated against which channels this gateway currently has configured:
+// the same "an unknown/unconfigured channel is recorded as skipped, not
+// rejected" philosophy Create's own Channels list already follows (see
+// db.NotificationDeliveryStatusSkipped), so a preference set today keeps
+// working unchanged if the gateway's configuration changes later.
+func (s *Service) SetPreferredChannel(userID, channel string) error {
+	return s.repo.SetPreferredChannel(userID, channel)
+}
+
+// GetPreferredChannel returns userID's preferred delivery channel, or ""
+// if they haven't set one.
+func (s *Service) GetPreferredChannel(userID string) (string, error) {
+	return s.repo.GetPreferredChannel(userID)
 }
 
 // deliver attempts the first delivery of n on channel and always records
