@@ -720,6 +720,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/notifications/{notificationId}/deliveries:
+    get:
+      summary: Get one notification's full delivery history
+      description: >
+        Every attempt to deliver this notification over every external
+        channel, newest first — including attempts superseded by a later
+        automatic retry (see NotificationDelivery in doc/notifications.md).
+        A channel with no attempts (e.g. it was never requested for this
+        notification) simply has no entries here, rather than a "not
+        attempted" placeholder.
+      operationId: listNotificationDeliveries
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Delivery history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deliveries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationDelivery'
+                required:
+                  - deliveries
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: This notification belongs to a different user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/statistics/requests:
     get:
       summary: Get request statistics
@@ -2330,6 +2385,41 @@ components:
           description: Pass as `cursor` to fetch the next page. Absent/null on the last page.
       required:
         - notifications
+
+    NotificationDelivery:
+      type: object
+      description: One attempt to deliver a notification over one external channel.
+      properties:
+        id:
+          type: string
+        channel:
+          type: string
+          example: "email"
+        status:
+          type: string
+          description: One of "sent", "failed", "skipped".
+          example: "sent"
+        error:
+          type: string
+          nullable: true
+          description: Populated when status is "failed" or "skipped".
+        attemptNumber:
+          type: integer
+          description: 1 for the first attempt, incrementing by one on each automatic retry.
+        createdAt:
+          type: string
+          format: date-time
+        nextRetryAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the next automatic retry is scheduled. Absent/null once sent, skipped, or once the retry schedule is exhausted.
+      required:
+        - id
+        - channel
+        - status
+        - attemptNumber
+        - createdAt
 
     CreateNotificationRequest:
       type: object

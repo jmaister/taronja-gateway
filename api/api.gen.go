@@ -485,6 +485,28 @@ type NotificationAction struct {
 	Style *string `json:"style,omitempty"`
 }
 
+// NotificationDelivery One attempt to deliver a notification over one external channel.
+type NotificationDelivery struct {
+	// AttemptNumber 1 for the first attempt, incrementing by one on each automatic retry.
+	AttemptNumber int `json:"attemptNumber"`
+
+	// Channel Example: email
+	Channel   string    `json:"channel"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Error Populated when status is "failed" or "skipped".
+	Error *string `json:"error,omitempty"`
+	Id    string  `json:"id"`
+
+	// NextRetryAt When the next automatic retry is scheduled. Absent/null once sent, skipped, or once the retry schedule is exhausted.
+	NextRetryAt *time.Time `json:"nextRetryAt,omitempty"`
+
+	// Status One of "sent", "failed", "skipped".
+	//
+	// Example: sent
+	Status string `json:"status"`
+}
+
 // NotificationListResponse defines model for NotificationListResponse.
 type NotificationListResponse struct {
 	// NextCursor Pass as `cursor` to fetch the next page. Absent/null on the last page.
@@ -958,6 +980,9 @@ type ServerInterface interface {
 	// GetUnreadNotificationCount Get the current user's unread notification count (for a bell-icon badge)
 	// (GET /api/notifications/unread-count)
 	GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request)
+	// ListNotificationDeliveries Get one notification's full delivery history
+	// (GET /api/notifications/{notificationId}/deliveries)
+	ListNotificationDeliveries(w http.ResponseWriter, r *http.Request, notificationId string)
 	// MarkNotificationRead Mark one notification as read
 	// (POST /api/notifications/{notificationId}/read)
 	MarkNotificationRead(w http.ResponseWriter, r *http.Request, notificationId string)
@@ -1446,6 +1471,32 @@ func (siw *ServerInterfaceWrapper) GetUnreadNotificationCount(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUnreadNotificationCount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotificationDeliveries operation middleware
+func (siw *ServerInterfaceWrapper) ListNotificationDeliveries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notificationId" -------------
+	var notificationId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notificationId", r.PathValue("notificationId"), &notificationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notificationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotificationDeliveries(w, r, notificationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2131,6 +2182,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/{notificationId}/respond", wrapper.RespondToNotification)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/respond", wrapper.RespondToNotificationByToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.GetTelegramLinkCode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/{notificationId}/deliveries", wrapper.ListNotificationDeliveries)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/timeseries", wrapper.GetRequestTimeSeries)
@@ -2941,6 +2993,72 @@ func (response GetUnreadNotificationCount401JSONResponse) VisitGetUnreadNotifica
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationDeliveriesRequestObject struct {
+	NotificationId string `json:"notificationId"`
+}
+
+type ListNotificationDeliveriesResponseObject interface {
+	VisitListNotificationDeliveriesResponse(w http.ResponseWriter) error
+}
+
+type ListNotificationDeliveries200JSONResponse struct {
+	Deliveries []NotificationDelivery `json:"deliveries"`
+}
+
+func (response ListNotificationDeliveries200JSONResponse) VisitListNotificationDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationDeliveries401JSONResponse Error
+
+func (response ListNotificationDeliveries401JSONResponse) VisitListNotificationDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationDeliveries403JSONResponse Error
+
+func (response ListNotificationDeliveries403JSONResponse) VisitListNotificationDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationDeliveries404JSONResponse Error
+
+func (response ListNotificationDeliveries404JSONResponse) VisitListNotificationDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3965,6 +4083,9 @@ type StrictServerInterface interface {
 	// GetUnreadNotificationCount Get the current user's unread notification count (for a bell-icon badge)
 	// (GET /api/notifications/unread-count)
 	GetUnreadNotificationCount(ctx context.Context, request GetUnreadNotificationCountRequestObject) (GetUnreadNotificationCountResponseObject, error)
+	// ListNotificationDeliveries Get one notification's full delivery history
+	// (GET /api/notifications/{notificationId}/deliveries)
+	ListNotificationDeliveries(ctx context.Context, request ListNotificationDeliveriesRequestObject) (ListNotificationDeliveriesResponseObject, error)
 	// MarkNotificationRead Mark one notification as read
 	// (POST /api/notifications/{notificationId}/read)
 	MarkNotificationRead(ctx context.Context, request MarkNotificationReadRequestObject) (MarkNotificationReadResponseObject, error)
@@ -4446,6 +4567,32 @@ func (sh *strictHandler) GetUnreadNotificationCount(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUnreadNotificationCountResponseObject); ok {
 		if err := validResponse.VisitGetUnreadNotificationCountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotificationDeliveries operation middleware
+func (sh *strictHandler) ListNotificationDeliveries(w http.ResponseWriter, r *http.Request, notificationId string) {
+	var request ListNotificationDeliveriesRequestObject
+
+	request.NotificationId = notificationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotificationDeliveries(ctx, request.(ListNotificationDeliveriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotificationDeliveries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNotificationDeliveriesResponseObject); ok {
+		if err := validResponse.VisitListNotificationDeliveriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

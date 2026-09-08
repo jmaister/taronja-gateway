@@ -491,14 +491,30 @@ func (n *Notification) BeforeSave(tx *gorm.DB) error {
 // to the specific message its buttons were attached to, and that message
 // can be edited once answered. Empty for channels that don't need it
 // (email has nothing analogous to "edit the sent message").
+//
+// AttemptNumber and NextRetryAt implement automatic retry of failed
+// deliveries (see notification.Service.RetryFailedDeliveries): each retry
+// creates a *new* NotificationDelivery row rather than mutating this one —
+// deliveries are an append-only log, so "what actually happened, and when"
+// stays fully reconstructable — with AttemptNumber one higher than the
+// attempt before it. NextRetryAt is set (to now + a backoff interval)
+// exactly on the single most recent row for a given (NotificationID,
+// Channel) pair when that attempt failed and hasn't yet exhausted the
+// retry schedule; every earlier row's NextRetryAt is cleared the moment a
+// new attempt is recorded, maintaining "at most one non-null NextRetryAt
+// per (NotificationID, Channel) at any time" as an invariant the retry
+// worker's query relies on to avoid a more expensive
+// latest-row-per-group query.
 type NotificationDelivery struct {
-	ID             string    `gorm:"primaryKey;column:id;type:varchar(255);not null"`
-	NotificationID string    `gorm:"column:notification_id;type:varchar(255);not null;index"`
-	Channel        string    `gorm:"type:varchar(50);not null"`
-	Status         string    `gorm:"type:varchar(50);not null"`
-	Error          string    `gorm:"type:text"` // populated when Status is NotificationDeliveryStatusFailed
-	ExternalRef    string    `gorm:"type:text"`
-	CreatedAt      time.Time `gorm:"autoCreateTime"`
+	ID             string     `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	NotificationID string     `gorm:"column:notification_id;type:varchar(255);not null;index"`
+	Channel        string     `gorm:"type:varchar(50);not null"`
+	Status         string     `gorm:"type:varchar(50);not null"`
+	Error          string     `gorm:"type:text"` // populated when Status is NotificationDeliveryStatusFailed
+	ExternalRef    string     `gorm:"type:text"`
+	AttemptNumber  int        `gorm:"not null;default:1"`
+	NextRetryAt    *time.Time `gorm:"index"`
+	CreatedAt      time.Time  `gorm:"autoCreateTime"`
 }
 
 // BeforeCreate will set a CUID rather than numeric ID.
@@ -508,6 +524,18 @@ func (d *NotificationDelivery) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 	d.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes NextRetryAt to UTC before it's persisted — it's
+// set via time.Now().Add(...) at the call site (notification.Service), not
+// GORM's own autoCreateTime/autoUpdateTime clock, the same reasoning as
+// Notification.BeforeSave.
+func (d *NotificationDelivery) BeforeSave(tx *gorm.DB) error {
+	if d.NextRetryAt != nil {
+		utcNextRetryAt := d.NextRetryAt.UTC()
+		d.NextRetryAt = &utcNextRetryAt
+	}
 	return nil
 }
 

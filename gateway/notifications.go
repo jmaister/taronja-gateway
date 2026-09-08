@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
@@ -10,8 +11,9 @@ import (
 )
 
 // InitNotifications builds the notification.Service from cfg, stores it on
-// d.NotificationService, and — if Telegram is configured — starts its
-// long-polling update loop in a background goroutine. Called once at
+// d.NotificationService, and starts its background goroutines: the retry
+// worker (unconditionally — retries apply to any channel) and, if
+// Telegram is configured, its long-polling update loop. Called once at
 // startup (see main.go), after deps.NewProduction (needs
 // d.NotificationRepo/d.UserRepo) and before NewGatewayWithDependencies
 // (registerOpenAPIRoutes reads d.NotificationService when wiring up
@@ -32,16 +34,27 @@ func InitNotifications(ctx context.Context, cfg config.NotificationConfig, serve
 	service := notification.NewService(cfg, d.NotificationRepo, d.UserRepo, respondBaseURL)
 	d.NotificationService = service
 
-	poller := service.TelegramPoller()
-	if poller == nil {
-		return func(context.Context) error { return nil }, nil
+	workerCtx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		service.RunRetryWorker(workerCtx)
+	}()
+
+	if poller := service.TelegramPoller(); poller != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			poller.Run(workerCtx)
+		}()
 	}
 
-	pollerCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
-		defer close(done)
-		poller.Run(pollerCtx)
+		wg.Wait()
+		close(done)
 	}()
 
 	return func(shutdownCtx context.Context) error {

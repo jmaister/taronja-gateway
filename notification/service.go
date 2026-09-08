@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
@@ -40,6 +41,39 @@ const (
 	DefaultListLimit = 20
 	MaxListLimit     = 100
 )
+
+// retryBackoffSchedule bounds how many times a failed delivery is retried
+// and how long after each failure the next attempt waits. Not
+// user-configurable (the same reasoning as gateway/deps' trafficMetrics
+// batch settings) — this gateway's own delivery volume is far too low for
+// the exact numbers to matter to an operator; the shape (a handful of
+// attempts, a growing gap between them) is the only thing that does.
+// Index 0 is the wait after the *first* attempt fails, before the 2nd is
+// tried; the schedule is exhausted (no further retries, the delivery
+// stays "failed" permanently) once an attempt number exceeds
+// len(retryBackoffSchedule).
+var retryBackoffSchedule = []time.Duration{
+	1 * time.Minute,
+	5 * time.Minute,
+	30 * time.Minute,
+	2 * time.Hour,
+}
+
+// retryWorkerInterval is how often RunRetryWorker checks for deliveries
+// whose NextRetryAt has passed. Coarser than the shortest backoff step
+// above, deliberately — there's no reason to poll faster than the fastest
+// thing that could possibly be due.
+const retryWorkerInterval = 30 * time.Second
+
+// nextRetryAt returns when a delivery that just failed on attemptNumber
+// should be retried next, or nil if the schedule is exhausted.
+func nextRetryAt(attemptNumber int, now time.Time) *time.Time {
+	if attemptNumber > len(retryBackoffSchedule) {
+		return nil
+	}
+	t := now.Add(retryBackoffSchedule[attemptNumber-1])
+	return &t
+}
 
 // Service is the notification system's business logic: creating
 // notifications, listing/reading them, delivering them over whichever
@@ -154,23 +188,44 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*db.Notification,
 	return n, nil
 }
 
-// deliver attempts one channel's delivery of n and always records the
-// outcome, even when the channel is unknown or the user has no recipient
-// for it — see db.NotificationDeliveryStatusSkipped's doc comment for why
-// that's worth recording rather than silently doing nothing.
+// deliver attempts the first delivery of n on channel and always records
+// the outcome, even when the channel is unknown or the user has no
+// recipient for it — see db.NotificationDeliveryStatusSkipped's doc
+// comment for why that's worth recording rather than silently doing
+// nothing. A failure here doesn't end the story: RetryFailedDeliveries
+// picks it up later if the schedule allows (see recordDelivery).
 func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Action, channel string) {
+	const firstAttempt = 1
+
 	provider, configured := s.providers[channel]
 	if !configured {
-		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSkipped, "channel not configured on this gateway", "")
+		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSkipped, "channel not configured on this gateway", "", firstAttempt)
 		return
 	}
 
 	recipient, err := s.resolveRecipient(n.UserID, channel)
 	if err != nil {
-		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSkipped, err.Error(), "")
+		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSkipped, err.Error(), "", firstAttempt)
 		return
 	}
 
+	req := s.buildSendRequest(n, actions, channel, recipient)
+	externalRef, err := provider.Send(ctx, req)
+	if err != nil {
+		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusFailed, err.Error(), "", firstAttempt)
+		return
+	}
+	s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSent, "", externalRef, firstAttempt)
+}
+
+// buildSendRequest assembles a SendRequest for one delivery attempt,
+// shared between deliver (attempt 1) and retryOne (every attempt after).
+// For an email with actions, this generates a *fresh* respond token every
+// single attempt, retries included — the raw token only ever exists in
+// memory for the duration of one Send call (only its hash is persisted),
+// so a retried send needs its own new one rather than reusing whatever the
+// failed attempt tried to use.
+func (s *Service) buildSendRequest(n *db.Notification, actions []Action, channel, recipient string) SendRequest {
 	req := SendRequest{Notification: n, Actions: actions, Recipient: recipient}
 	if len(actions) > 0 && channel == db.NotificationChannelEmail {
 		// A failure generating/storing the token isn't fatal to delivery —
@@ -184,23 +239,107 @@ func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Act
 			}
 		}
 	}
-
-	externalRef, err := provider.Send(ctx, req)
-	if err != nil {
-		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusFailed, err.Error(), "")
-		return
-	}
-	s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSent, "", externalRef)
+	return req
 }
 
-func (s *Service) recordDelivery(notificationID, channel, status, errMsg, externalRef string) {
-	_ = s.repo.CreateDelivery(&db.NotificationDelivery{
+// recordDelivery persists one delivery attempt. When status is "failed"
+// and the retry schedule isn't exhausted yet, this also sets NextRetryAt —
+// the only place that field is ever set — so RetryFailedDeliveries picks
+// it up later without deliver/retryOne needing to know anything about
+// scheduling themselves.
+func (s *Service) recordDelivery(notificationID, channel, status, errMsg, externalRef string, attemptNumber int) {
+	delivery := &db.NotificationDelivery{
 		NotificationID: notificationID,
 		Channel:        channel,
 		Status:         status,
 		Error:          errMsg,
 		ExternalRef:    externalRef,
-	})
+		AttemptNumber:  attemptNumber,
+	}
+	if status == db.NotificationDeliveryStatusFailed {
+		delivery.NextRetryAt = nextRetryAt(attemptNumber, time.Now())
+	}
+	_ = s.repo.CreateDelivery(delivery)
+}
+
+// RetryFailedDeliveries resends every delivery whose NextRetryAt has
+// passed, recording a new NotificationDelivery row per attempt (see
+// db.NotificationDelivery's doc comment for why retries append rather than
+// mutate the original row). Meant to be called periodically — see
+// RunRetryWorker — but exported and safe to call directly too (tests do;
+// a future manual "retry now" admin action could).
+func (s *Service) RetryFailedDeliveries(ctx context.Context) (attempted int, err error) {
+	due, err := s.repo.FindDeliveriesDueForRetry(time.Now())
+	if err != nil {
+		return 0, err
+	}
+	for _, delivery := range due {
+		// Clear first: if anything below panics or the process is killed
+		// mid-retry, this row must not stay perpetually "due" and get
+		// retried forever in the next tick.
+		if clearErr := s.repo.ClearNextRetry(delivery.ID); clearErr != nil {
+			log.Printf("notification: failed to clear retry marker on delivery %s: %v", delivery.ID, clearErr)
+			continue
+		}
+		s.retryOne(ctx, delivery)
+		attempted++
+	}
+	return attempted, nil
+}
+
+func (s *Service) retryOne(ctx context.Context, delivery *db.NotificationDelivery) {
+	nextAttempt := delivery.AttemptNumber + 1
+
+	n, err := s.repo.GetNotification(delivery.NotificationID)
+	if err != nil {
+		log.Printf("notification: retry skipped, notification %s no longer exists: %v", delivery.NotificationID, err)
+		return
+	}
+	actions, err := DecodeActions(n.Actions)
+	if err != nil {
+		log.Printf("notification: retry skipped, could not decode actions for notification %s: %v", n.ID, err)
+		return
+	}
+
+	provider, configured := s.providers[delivery.Channel]
+	if !configured {
+		s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusSkipped, "channel not configured on this gateway", "", nextAttempt)
+		return
+	}
+	recipient, err := s.resolveRecipient(n.UserID, delivery.Channel)
+	if err != nil {
+		s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusSkipped, err.Error(), "", nextAttempt)
+		return
+	}
+
+	req := s.buildSendRequest(n, actions, delivery.Channel, recipient)
+	externalRef, err := provider.Send(ctx, req)
+	if err != nil {
+		s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusFailed, err.Error(), "", nextAttempt)
+		return
+	}
+	s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusSent, "", externalRef, nextAttempt)
+}
+
+// RunRetryWorker polls for due retries every retryWorkerInterval until ctx
+// is cancelled. Started unconditionally at gateway startup (see
+// gateway.InitNotifications) — unlike TelegramPoller, this doesn't depend
+// on any particular provider being configured, since retries apply to any
+// channel; a gateway with nothing configured simply never has anything
+// due.
+func (s *Service) RunRetryWorker(ctx context.Context) {
+	ticker := time.NewTicker(retryWorkerInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := s.RetryFailedDeliveries(ctx); err != nil {
+				log.Printf("notification: retry worker failed to query due deliveries: %v", err)
+			}
+		}
+	}
 }
 
 // resolveRecipient maps a (user, channel) pair to the channel-specific
@@ -264,6 +403,22 @@ func (s *Service) Get(id, userID string) (*db.Notification, error) {
 		return nil, ErrForbidden
 	}
 	return n, nil
+}
+
+// ListDeliveries returns notificationID's full delivery history — every
+// channel, every attempt (including ones superseded by a later retry),
+// newest first — the data behind GET /api/notifications/{id}/deliveries.
+// Restricted to the notification's own owner or an admin, the same
+// ownership rule Get uses.
+func (s *Service) ListDeliveries(notificationID, userID string, isAdmin bool) ([]*db.NotificationDelivery, error) {
+	n, err := s.repo.GetNotification(notificationID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if n.UserID != userID && !isAdmin {
+		return nil, ErrForbidden
+	}
+	return s.repo.ListDeliveries(notificationID)
 }
 
 // RespondViaWeb records userID's answer to notification id from the

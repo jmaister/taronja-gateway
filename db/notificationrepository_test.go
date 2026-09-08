@@ -173,6 +173,69 @@ func TestNotificationRepository(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("ListDeliveries returns every attempt across channels, newest first", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "list-delivery-user", Email: "list-delivery@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+		n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n))
+
+		require.NoError(t, repo.CreateDelivery(&NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelEmail, Status: NotificationDeliveryStatusSent,
+		}))
+		time.Sleep(2 * time.Millisecond)
+		require.NoError(t, repo.CreateDelivery(&NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelTelegram, Status: NotificationDeliveryStatusFailed,
+		}))
+
+		deliveries, err := repo.ListDeliveries(n.ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 2)
+		assert.Equal(t, NotificationChannelTelegram, deliveries[0].Channel, "newest first")
+		assert.Equal(t, NotificationChannelEmail, deliveries[1].Channel)
+
+		empty, err := repo.ListDeliveries("nonexistent-notification")
+		require.NoError(t, err)
+		assert.Empty(t, empty)
+	})
+
+	t.Run("FindDeliveriesDueForRetry and ClearNextRetry", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "retry-user", Email: "retry@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+		n := &Notification{UserID: u.ID, Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n))
+
+		past := time.Now().Add(-1 * time.Minute)
+		future := time.Now().Add(1 * time.Hour)
+
+		due := &NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelEmail,
+			Status: NotificationDeliveryStatusFailed, AttemptNumber: 1, NextRetryAt: &past,
+		}
+		require.NoError(t, repo.CreateDelivery(due))
+		notYetDue := &NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelTelegram,
+			Status: NotificationDeliveryStatusFailed, AttemptNumber: 1, NextRetryAt: &future,
+		}
+		require.NoError(t, repo.CreateDelivery(notYetDue))
+		neverRetried := &NotificationDelivery{
+			NotificationID: n.ID, Channel: NotificationChannelEmail,
+			Status: NotificationDeliveryStatusSent, AttemptNumber: 1,
+		}
+		require.NoError(t, repo.CreateDelivery(neverRetried))
+
+		dueList, err := repo.FindDeliveriesDueForRetry(time.Now())
+		require.NoError(t, err)
+		require.Len(t, dueList, 1)
+		assert.Equal(t, due.ID, dueList[0].ID)
+
+		require.NoError(t, repo.ClearNextRetry(due.ID))
+		dueList, err = repo.FindDeliveriesDueForRetry(time.Now())
+		require.NoError(t, err)
+		assert.Empty(t, dueList, "cleared row must no longer be due")
+	})
+
 	t.Run("Channel link upsert and lookups", func(t *testing.T) {
 		SetupTestDB(t.Name())
 		u := User{Username: "link-user", Email: "link@example.com"}

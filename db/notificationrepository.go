@@ -59,6 +59,21 @@ type NotificationRepository interface {
 	// none — used to find which Telegram message to edit once a button on
 	// it is answered.
 	FindLatestDelivery(notificationID, channel string) (*NotificationDelivery, error)
+	// ListDeliveries returns every delivery attempt for one notification,
+	// across every channel, newest first — the full delivery history a
+	// caller inspects via GET /api/notifications/{id}/deliveries.
+	ListDeliveries(notificationID string) ([]*NotificationDelivery, error)
+	// FindDeliveriesDueForRetry returns every delivery row whose
+	// NextRetryAt is set and has passed — see NotificationDelivery's doc
+	// comment for the "at most one non-null NextRetryAt per
+	// (NotificationID, Channel)" invariant this relies on to stay a plain
+	// index scan rather than a latest-row-per-group query.
+	FindDeliveriesDueForRetry(now time.Time) ([]*NotificationDelivery, error)
+	// ClearNextRetry sets one delivery row's NextRetryAt to NULL —  called
+	// as the first step of processing a due retry, before attempting the
+	// resend, so a crash mid-retry can't leave the same row perpetually
+	// due (see notification.Service.RetryFailedDeliveries).
+	ClearNextRetry(deliveryID string) error
 
 	// UpsertChannelLink connects userID to externalID on channel, replacing
 	// any previous link for that (userID, channel) pair — re-linking (e.g.
@@ -193,6 +208,25 @@ func (r *NotificationRepositoryDB) FindLatestDelivery(notificationID, channel st
 		return nil, err
 	}
 	return &d, nil
+}
+
+func (r *NotificationRepositoryDB) ListDeliveries(notificationID string) ([]*NotificationDelivery, error) {
+	var deliveries []*NotificationDelivery
+	err := r.db.Where("notification_id = ?", notificationID).
+		Order("created_at DESC").Find(&deliveries).Error
+	return deliveries, err
+}
+
+func (r *NotificationRepositoryDB) FindDeliveriesDueForRetry(now time.Time) ([]*NotificationDelivery, error) {
+	var deliveries []*NotificationDelivery
+	err := r.db.Where("next_retry_at IS NOT NULL AND next_retry_at <= ?", now.UTC()).
+		Find(&deliveries).Error
+	return deliveries, err
+}
+
+func (r *NotificationRepositoryDB) ClearNextRetry(deliveryID string) error {
+	return r.db.Model(&NotificationDelivery{}).Where("id = ?", deliveryID).
+		Update("next_retry_at", nil).Error
 }
 
 func (r *NotificationRepositoryDB) UpsertChannelLink(userID, channel, externalID string) error {

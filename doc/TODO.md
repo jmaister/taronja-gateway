@@ -305,6 +305,25 @@ operator to list anything. See `session.GetClientIP`'s doc comment
     notification preferences/opt-out (would be its own table, not a field
     bolted onto `Notification`); templated email bodies beyond plain
     title/body/action-links.
+- [x] **Delivery retries and history** — a same-day follow-up once the
+      user asked "do we have notification history/status, and retries on
+      failure": neither existed at first (delivery outcomes were recorded
+      but never surfaced via the API, and a failed send was simply final).
+      Added `db.NotificationDelivery.AttemptNumber`/`NextRetryAt`, a
+      `notification.Service.RetryFailedDeliveries`/`RunRetryWorker` pair
+      (backoff schedule 1m/5m/30m/2h, not config-exposed — this gateway's
+      volume is too low for the exact numbers to matter to an operator),
+      and `GET /api/notifications/{id}/deliveries` (owner or admin) to
+      expose the resulting history. Key design choice: a retry *appends* a
+      new `NotificationDelivery` row rather than mutating the failed one,
+      so the full attempt-by-attempt history is exactly what the history
+      endpoint already needed to show — retries and history turned out to
+      be the same data model change, not two. Verified for real against a
+      live `tg` binary: a genuinely unreachable SMTP port, two real
+      automatic retries (backdating `NextRetryAt` to avoid a multi-hour
+      real wait, but the retry worker's own 30-second tick and the actual
+      resend were both real), and a real email finally delivered on the
+      third attempt.
 
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 

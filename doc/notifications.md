@@ -22,6 +22,10 @@ it from wherever they saw it.
   independent per channel: a failed or skipped email doesn't affect a
   Telegram delivery for the same notification, and neither affects the
   in-app record.
+- **Failed deliveries retry automatically**, with backoff, for a handful of
+  attempts before giving up — see "Retries" below. Every attempt (not just
+  the latest) is kept, so `GET /api/notifications/{id}/deliveries` shows
+  the complete history of what was tried, when, and with what result.
 - **Answerable from any channel** — a notification can carry a small set of
   actions (e.g. "Approve" / "Deny"), rendered as clickable links in an email
   and as inline buttons in Telegram, in addition to being answerable from
@@ -44,11 +48,13 @@ it from wherever they saw it.
   real action), `CreatedAt`, `ReadAt`, and — once answered —
   `RespondedActionID`/`RespondedAt`/`RespondedVia` (`"web"`, `"email"`, or
   `"telegram"`).
-- `NotificationDelivery` — one row per (notification, channel) delivery
-  *attempt*, recording whether it was sent, failed, or skipped (and why).
-  This, not `Notification` itself, is what "was this actually emailed?"
-  answers, since one notification can be requested on channels the user has
-  no recipient for.
+- `NotificationDelivery` — one row per delivery *attempt* (not per channel —
+  a channel that's retried gets a new row each time, `AttemptNumber` one
+  higher than the last), recording whether it was sent, failed, or skipped
+  (and why). This, not `Notification` itself, is what "was this actually
+  emailed?" answers, since one notification can be requested on channels
+  the user has no recipient for. `NextRetryAt` is set on a failed attempt
+  that hasn't yet exhausted the retry schedule; see "Retries" below.
 - `NotificationChannelLink` — connects a gateway user to an external
   channel identity (today: a Telegram chat ID). Email needs no equivalent
   row — the gateway already knows every user's email from `User.Email`.
@@ -114,6 +120,7 @@ User-facing (an app's frontend, same session cookie it already uses for
 | `POST /api/notifications/{id}/read` | Mark one as read. |
 | `POST /api/notifications/read-all` | Mark all as read. |
 | `POST /api/notifications/{id}/respond` | Answer one of a notification's actions from the in-app list. |
+| `GET /api/notifications/{id}/deliveries` | Full delivery history for one notification — every attempt, every channel, newest first (owner or admin only). |
 | `GET /api/notifications/telegram/link` | Get a fresh `https://t.me/<bot>?start=<code>` deep link to connect the current user's Telegram chat. |
 
 Public, unauthenticated (only reachable via the link an email actually
@@ -155,6 +162,43 @@ chat is linked to the *same user* the notification was sent to — not just
 "some linked user" — otherwise anyone who discovered a notification ID
 could answer someone else's notification.
 
+## Retries
+
+A failed delivery isn't the end of the story. A background worker
+(`notification.Service.RunRetryWorker`, started unconditionally alongside
+the gateway — it applies to any channel, not just one) checks every 30
+seconds for deliveries due for another attempt, and retries them with
+backoff:
+
+| Attempt | Waits before it, after the previous one failed |
+|---|---|
+| 1 (the original) | — |
+| 2 | 1 minute |
+| 3 | 5 minutes |
+| 4 | 30 minutes |
+| 5 | 2 hours |
+
+After the 5th attempt fails, the delivery stays `failed` permanently — no
+6th attempt is scheduled. This schedule isn't configurable (see
+`notification/service.go`'s `retryBackoffSchedule` — the same reasoning as
+`gateway/deps`' traffic-metrics batch settings: this gateway's own
+notification volume is far too low for the exact numbers to matter to an
+operator).
+
+Each retry **appends a new `NotificationDelivery` row** rather than
+overwriting the failed one — `GET /api/notifications/{id}/deliveries`
+shows every attempt, so "this failed twice, then succeeded on the third
+try" is visible after the fact, not just "it's fine now." A retry that
+succeeds where the original failed uses a channel-appropriate fresh
+attempt — for an email with actions, that means a brand new answer-link
+token, since the raw token from a failed attempt was never persisted
+(only its hash) and so can't be reused.
+
+A delivery that becomes unresolvable by the time its retry comes due (the
+channel was disabled, or — for Telegram — the user's link was removed) is
+recorded as `skipped` on that attempt instead of `failed`, and a `skipped`
+attempt never schedules a further retry of its own.
+
 ## Testing
 
 No live SMTP server or Telegram bot is needed to test this:
@@ -169,7 +213,10 @@ No live SMTP server or Telegram bot is needed to test this:
   simulated button tap, decoded from real JSON.
 - `notification/service_test.go` and `db/notificationrepository_test.go`
   cover the business logic and persistence layer against a real SQLite test
-  database.
+  database — including the retry schedule's exhaustion boundary and a full
+  fail-then-succeed retry cycle, by directly backdating a delivery's
+  `NextRetryAt` (the shortest real backoff is a minute, far too slow for a
+  unit test to actually wait out) rather than mocking time.
 - `handlers/api_notifications_test.go` covers the HTTP handlers'
   auth/ownership/status-code decisions directly.
 
@@ -182,11 +229,12 @@ go test ./handlers/... -run Notification -v
 
 ## Notes
 
-- **Fixed at startup, like tracing and TLS.** `notification.NewService` and
-  the Telegram poller (if configured) are constructed once, from whatever
-  `notification.*` said at startup (`gateway.InitNotifications`, called
-  from `main.go`). A config reload (SIGHUP or file-watch) that changes
-  `notification.*` is stored but has no effect until a full restart.
+- **Fixed at startup, like tracing and TLS.** `notification.NewService`,
+  the retry worker, and the Telegram poller (if configured) are constructed
+  once, from whatever `notification.*` said at startup
+  (`gateway.InitNotifications`, called from `main.go`). A config reload
+  (SIGHUP or file-watch) that changes `notification.*` is stored but has no
+  effect until a full restart.
 - **Delivery failures never fail creation.** The in-app record is the
   source of truth and always succeeds if the database write does; each
   channel's outcome is recorded on its own `NotificationDelivery` row,

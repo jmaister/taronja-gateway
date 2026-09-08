@@ -309,3 +309,51 @@ func (s *StrictApiServer) GetTelegramLinkCode(ctx context.Context, request api.G
 	}
 	return api.GetTelegramLinkCode200JSONResponse{DeepLink: deepLink, ExpiresAt: expiresAt}, nil
 }
+
+// toAPIDelivery converts one stored db.NotificationDelivery into the
+// OpenAPI-generated shape. ExternalRef is deliberately not exposed — it's
+// internal delivery plumbing (e.g. a Telegram "chatID:messageID" pair),
+// not something an API caller needs.
+func toAPIDelivery(d *db.NotificationDelivery) api.NotificationDelivery {
+	result := api.NotificationDelivery{
+		Id:            d.ID,
+		Channel:       d.Channel,
+		Status:        d.Status,
+		AttemptNumber: d.AttemptNumber,
+		CreatedAt:     d.CreatedAt,
+		NextRetryAt:   d.NextRetryAt,
+	}
+	if d.Error != "" {
+		result.Error = &d.Error
+	}
+	return result
+}
+
+// ListNotificationDeliveries handles GET /api/notifications/{notificationId}/deliveries.
+func (s *StrictApiServer) ListNotificationDeliveries(ctx context.Context, request api.ListNotificationDeliveriesRequestObject) (api.ListNotificationDeliveriesResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.ListNotificationDeliveries401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.ListNotificationDeliveries404JSONResponse{Code: http.StatusNotFound, Message: "Notification not found"}, nil
+	}
+
+	deliveries, err := s.notificationService.ListDeliveries(request.NotificationId, sessionObj.UserID, sessionObj.IsAdmin)
+	switch {
+	case err == nil:
+		// fall through
+	case errors.Is(err, notification.ErrNotFound):
+		return api.ListNotificationDeliveries404JSONResponse{Code: http.StatusNotFound, Message: "Notification not found"}, nil
+	case errors.Is(err, notification.ErrForbidden):
+		return api.ListNotificationDeliveries403JSONResponse{Code: http.StatusForbidden, Message: "This notification belongs to a different user"}, nil
+	default:
+		return nil, err
+	}
+
+	apiDeliveries := make([]api.NotificationDelivery, 0, len(deliveries))
+	for _, d := range deliveries {
+		apiDeliveries = append(apiDeliveries, toAPIDelivery(d))
+	}
+	return api.ListNotificationDeliveries200JSONResponse{Deliveries: apiDeliveries}, nil
+}

@@ -3,6 +3,7 @@ package notification
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -30,6 +31,32 @@ type fakeSMTPServer struct {
 func newFakeSMTPServer(t *testing.T) *fakeSMTPServer {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	s := &fakeSMTPServer{listener: ln}
+	go s.serveOne(t)
+	return s
+}
+
+// freeTCPPort reserves a port by briefly binding to it, then releases it —
+// good enough for a test that needs a port number *before* deciding
+// whether anything should be listening on it yet (see the retry tests in
+// service_test.go, which start with nothing listening so the first
+// delivery attempt fails, then bind newFakeSMTPServerOnPort to the same
+// port once the retry should succeed).
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+	return port
+}
+
+// newFakeSMTPServerOnPort is newFakeSMTPServer, but binding a specific,
+// already-known port instead of letting the OS pick one.
+func newFakeSMTPServerOnPort(t *testing.T, port int) *fakeSMTPServer {
+	t.Helper()
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	require.NoError(t, err)
 	s := &fakeSMTPServer{listener: ln}
 	go s.serveOne(t)

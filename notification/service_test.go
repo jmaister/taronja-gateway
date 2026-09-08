@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -231,5 +232,176 @@ func TestService_RespondViaToken(t *testing.T) {
 		label, err := service.RespondViaToken(raw, "approve")
 		require.NoError(t, err)
 		assert.Equal(t, "Approve", label)
+	})
+}
+
+func TestNextRetryAt(t *testing.T) {
+	now := time.Now()
+	for i := 1; i <= len(retryBackoffSchedule); i++ {
+		got := nextRetryAt(i, now)
+		require.NotNil(t, got, "attempt %d should still have a scheduled retry", i)
+		assert.Equal(t, now.Add(retryBackoffSchedule[i-1]), *got)
+	}
+	assert.Nil(t, nextRetryAt(len(retryBackoffSchedule)+1, now), "the schedule must be exhausted past its last entry")
+}
+
+// backdateNextRetry directly rewrites a delivery's NextRetryAt to a moment
+// in the past, standing in for "real time has passed" — the shortest real
+// backoff interval is a minute, far too slow for a unit test to actually
+// wait out. Reaches into the DB directly (there's no repository method for
+// this — production code only ever sets NextRetryAt forward, via
+// recordDelivery) since this is purely a test-setup concern.
+//
+// .UTC(): this is a raw single-column Update against an empty
+// &db.NotificationDelivery{} model, so NotificationDelivery.BeforeSave
+// never sees this value — same reasoning as
+// TokenRepositoryDB.IncrementUsageCount's identical .UTC() call, needed so
+// the stored value compares correctly against FindDeliveriesDueForRetry's
+// now.UTC().
+func backdateNextRetry(t *testing.T, deliveryID string) {
+	t.Helper()
+	past := time.Now().UTC().Add(-time.Minute)
+	err := db.GetConnection().Model(&db.NotificationDelivery{}).
+		Where("id = ?", deliveryID).Update("next_retry_at", past).Error
+	require.NoError(t, err)
+}
+
+func TestService_RetryFailedDeliveries(t *testing.T) {
+	t.Run("resends a due failed delivery and records a new successful attempt", func(t *testing.T) {
+		port := freeTCPPort(t) // nothing listens yet, so the first attempt fails
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{
+			Email: config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: port, From: "gw@example.com"},
+		})
+		user := &db.User{Username: "retry-ok-u", Email: "retry-ok@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		n, err := service.Create(context.Background(), CreateInput{
+			UserID: user.ID, Type: "t", Title: "T", Body: "B",
+			Channels: []string{db.NotificationChannelEmail},
+		})
+		require.NoError(t, err)
+
+		deliveries, err := repo.ListDeliveries(n.ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 1)
+		assert.Equal(t, db.NotificationDeliveryStatusFailed, deliveries[0].Status)
+		assert.Equal(t, 1, deliveries[0].AttemptNumber)
+		require.NotNil(t, deliveries[0].NextRetryAt, "a failed first attempt must schedule a retry")
+
+		// Not due yet — RetryFailedDeliveries right now must be a no-op.
+		attempted, err := service.RetryFailedDeliveries(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, 0, attempted)
+
+		backdateNextRetry(t, deliveries[0].ID)
+		smtpServer := newFakeSMTPServerOnPort(t, port) // now something's listening
+		defer smtpServer.close()
+
+		attempted, err = service.RetryFailedDeliveries(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, 1, attempted)
+
+		deliveries, err = repo.ListDeliveries(n.ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 2, "a retry appends a new row, it doesn't overwrite the failed one")
+		assert.Equal(t, db.NotificationDeliveryStatusSent, deliveries[0].Status, "newest first")
+		assert.Equal(t, 2, deliveries[0].AttemptNumber)
+		assert.Nil(t, deliveries[0].NextRetryAt)
+		assert.Equal(t, db.NotificationDeliveryStatusFailed, deliveries[1].Status, "the original failed attempt is preserved as history")
+	})
+
+	t.Run("stops retrying once the schedule is exhausted", func(t *testing.T) {
+		port := freeTCPPort(t) // nothing ever listens — every attempt fails
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{
+			Email: config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: port, From: "gw@example.com"},
+		})
+		user := &db.User{Username: "retry-exhaust-u", Email: "retry-exhaust@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		n, err := service.Create(context.Background(), CreateInput{
+			UserID: user.ID, Type: "t", Title: "T", Body: "B",
+			Channels: []string{db.NotificationChannelEmail},
+		})
+		require.NoError(t, err)
+
+		totalAttempts := len(retryBackoffSchedule) + 1 // the initial attempt plus every scheduled retry
+		for i := 1; i < totalAttempts; i++ {
+			latest, err := repo.FindLatestDelivery(n.ID, db.NotificationChannelEmail)
+			require.NoError(t, err)
+			require.NotNilf(t, latest.NextRetryAt, "attempt %d should still have a pending retry", i)
+
+			backdateNextRetry(t, latest.ID)
+			attempted, err := service.RetryFailedDeliveries(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, 1, attempted)
+		}
+
+		latest, err := repo.FindLatestDelivery(n.ID, db.NotificationChannelEmail)
+		require.NoError(t, err)
+		assert.Equal(t, totalAttempts, latest.AttemptNumber)
+		assert.Equal(t, db.NotificationDeliveryStatusFailed, latest.Status)
+		assert.Nil(t, latest.NextRetryAt, "no further retry should be scheduled once the backoff schedule is exhausted")
+
+		due, err := repo.FindDeliveriesDueForRetry(time.Now().Add(24 * time.Hour))
+		require.NoError(t, err)
+		assert.Empty(t, due, "an exhausted delivery must never become due again")
+	})
+
+	t.Run("records skipped, not failed, when the channel is no longer usable by retry time", func(t *testing.T) {
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{}) // nothing configured
+		user := &db.User{Username: "retry-skip-u", Email: "retry-skip@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		n, err := service.Create(context.Background(), CreateInput{UserID: user.ID, Type: "t", Title: "T", Body: "B"})
+		require.NoError(t, err)
+
+		// Simulate a channel that was configured when it first failed but
+		// no longer is by the time its retry comes due.
+		past := time.Now().Add(-time.Minute)
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: n.ID, Channel: db.NotificationChannelTelegram,
+			Status: db.NotificationDeliveryStatusFailed, AttemptNumber: 1, NextRetryAt: &past,
+		}))
+
+		attempted, err := service.RetryFailedDeliveries(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, 1, attempted)
+
+		latest, err := repo.FindLatestDelivery(n.ID, db.NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.Equal(t, db.NotificationDeliveryStatusSkipped, latest.Status)
+		assert.Equal(t, 2, latest.AttemptNumber)
+		assert.Nil(t, latest.NextRetryAt, "a skip must not itself schedule a further retry")
+	})
+}
+
+func TestService_ListDeliveries(t *testing.T) {
+	service, _, userRepo := newTestService(t, config.NotificationConfig{})
+	owner := &db.User{Username: "deliveries-owner", Email: "deliveries-owner@example.com"}
+	require.NoError(t, userRepo.CreateUser(owner))
+	stranger := &db.User{Username: "deliveries-stranger", Email: "deliveries-stranger@example.com"}
+	require.NoError(t, userRepo.CreateUser(stranger))
+
+	n, err := service.Create(context.Background(), CreateInput{UserID: owner.ID, Type: "t", Title: "T", Body: "B"})
+	require.NoError(t, err)
+
+	t.Run("the owner can list their own notification's deliveries", func(t *testing.T) {
+		_, err := service.ListDeliveries(n.ID, owner.ID, false)
+		assert.NoError(t, err)
+	})
+
+	t.Run("a stranger is forbidden", func(t *testing.T) {
+		_, err := service.ListDeliveries(n.ID, stranger.ID, false)
+		assert.ErrorIs(t, err, ErrForbidden)
+	})
+
+	t.Run("an admin can, regardless of ownership", func(t *testing.T) {
+		_, err := service.ListDeliveries(n.ID, "admin-id", true)
+		assert.NoError(t, err)
+	})
+
+	t.Run("a nonexistent notification is not found", func(t *testing.T) {
+		_, err := service.ListDeliveries("nonexistent-id", owner.ID, false)
+		assert.ErrorIs(t, err, ErrNotFound)
 	})
 }

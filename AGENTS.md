@@ -307,15 +307,27 @@ network exposure is required).
   then attempts delivery on every requested (or, if none named, every
   configured) channel independently via `deliver`; a channel that isn't
   configured, or that the user has no recipient for, is recorded as
-  `db.NotificationDeliveryStatusSkipped` rather than failing `Create`.
-  `RespondViaWeb`/`RespondViaToken`/`RespondViaTelegram` are the three ways
-  a response gets recorded (in-app session, email link, Telegram button),
-  converging on the same `recordValidatedResponse` — first response wins,
+  `db.NotificationDeliveryStatusSkipped` rather than failing `Create`. A
+  failed delivery isn't final: `RetryFailedDeliveries` (polled every 30s by
+  `RunRetryWorker`, started unconditionally in `gateway.InitNotifications`)
+  resends anything past its `NextRetryAt`, appending a *new*
+  `NotificationDelivery` row each time (`AttemptNumber` incrementing) —
+  deliveries are an append-only log, never mutated in place, so the full
+  history survives every retry. `retryBackoffSchedule` (1m/5m/30m/2h, not
+  config-exposed) bounds how many times and how far apart; past the last
+  entry a delivery just stays `failed`. `RespondViaWeb`/`RespondViaToken`/
+  `RespondViaTelegram` are the three ways a response gets recorded (in-app
+  session, email link, Telegram button), converging on the same
+  `recordValidatedResponse` — first response wins,
   `db.NotificationRepository.RecordResponse` rejects a second one.
 - `db/notificationrepository.go` — the repository interface/impl, plus
   `NotificationChannelLink` (user ↔ external chat ID) and
   `NotificationLinkCode` (the short-lived `/start <code>` linking code)
-  persistence.
+  persistence. `FindDeliveriesDueForRetry`/`ClearNextRetry` rely on an
+  invariant documented on `db.NotificationDelivery`: at most one row per
+  (NotificationID, Channel) ever has a non-null `NextRetryAt` at a time,
+  which keeps the due-retry query a plain index scan instead of a
+  latest-row-per-group query.
 - `handlers/api_notifications.go` — the OpenAPI `StrictApiServer` methods.
   `CreateNotification` (server-to-server) is admin-only, checked the same
   way `CreateToken`/`ListTokens` are (`sessionObj.IsAdmin`), reusing the
@@ -323,7 +335,8 @@ network exposure is required).
   `RespondToNotificationByToken` (the public email answer link) is listed
   in `middleware.OperationWithNoSecurity` since it has no session to check —
   the opaque `token` query parameter is the credential instead, verified
-  inside the handler.
+  inside the handler. `ListNotificationDeliveries` (owner or admin) exposes
+  the full retry/delivery history built above.
 
 **Adding a new delivery channel** (WhatsApp, Slack, SMS, ...) means writing
 a new `Provider` implementation and registering it in

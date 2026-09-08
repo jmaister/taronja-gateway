@@ -184,3 +184,66 @@ func TestGetTelegramLinkCode(t *testing.T) {
 		assert.True(t, ok)
 	})
 }
+
+func TestListNotificationDeliveries(t *testing.T) {
+	server, dependencies := setupNotificationTestServer(t)
+	owner := &db.User{Username: "deliveries-owner", Email: "deliveries-owner@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(owner))
+	stranger := &db.User{Username: "deliveries-stranger", Email: "deliveries-stranger@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(stranger))
+
+	createResp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{
+		Body: &api.CreateNotificationJSONRequestBody{UserId: owner.ID, Type: "t", Title: "T", Body: "B"},
+	})
+	require.NoError(t, err)
+	created := createResp.(api.CreateNotification201JSONResponse)
+
+	// No external channels are configured in the test dependencies, so
+	// this notification has no delivery attempts at all — the owner
+	// should still get a 200 with an empty list, not an error.
+	t.Run("the owner sees an empty delivery list when nothing was attempted", func(t *testing.T) {
+		resp, err := server.ListNotificationDeliveries(sessionContext(owner.ID, false), api.ListNotificationDeliveriesRequestObject{
+			NotificationId: created.Id,
+		})
+		require.NoError(t, err)
+		list, ok := resp.(api.ListNotificationDeliveries200JSONResponse)
+		require.True(t, ok)
+		assert.Empty(t, list.Deliveries)
+	})
+
+	t.Run("a stranger gets 403", func(t *testing.T) {
+		resp, err := server.ListNotificationDeliveries(sessionContext(stranger.ID, false), api.ListNotificationDeliveriesRequestObject{
+			NotificationId: created.Id,
+		})
+		require.NoError(t, err)
+		_, ok := resp.(api.ListNotificationDeliveries403JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("a nonexistent notification gets 404", func(t *testing.T) {
+		resp, err := server.ListNotificationDeliveries(sessionContext(owner.ID, false), api.ListNotificationDeliveriesRequestObject{
+			NotificationId: "nonexistent-id",
+		})
+		require.NoError(t, err)
+		_, ok := resp.(api.ListNotificationDeliveries404JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("unauthenticated gets 401", func(t *testing.T) {
+		resp, err := server.ListNotificationDeliveries(context.Background(), api.ListNotificationDeliveriesRequestObject{
+			NotificationId: created.Id,
+		})
+		require.NoError(t, err)
+		_, ok := resp.(api.ListNotificationDeliveries401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("an admin can see a stranger's delivery history", func(t *testing.T) {
+		resp, err := server.ListNotificationDeliveries(sessionContext("admin-id", true), api.ListNotificationDeliveriesRequestObject{
+			NotificationId: created.Id,
+		})
+		require.NoError(t, err)
+		_, ok := resp.(api.ListNotificationDeliveries200JSONResponse)
+		assert.True(t, ok)
+	})
+}
