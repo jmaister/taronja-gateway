@@ -39,6 +39,8 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type NotificationConfig](<#NotificationConfig>)
 - [type RateLimiterConfig](<#RateLimiterConfig>)
   - [func \(r RateLimiterConfig\) IsEnabled\(\) bool](<#RateLimiterConfig.IsEnabled>)
+- [type ResponseWebhookConfig](<#ResponseWebhookConfig>)
+  - [func \(w ResponseWebhookConfig\) IsConfigured\(\) bool](<#ResponseWebhookConfig.IsConfigured>)
 - [type RouteConfig](<#RouteConfig>)
   - [func \(route \*RouteConfig\) GetCacheControlHeader\(\) string](<#RouteConfig.GetCacheControlHeader>)
   - [func \(route \*RouteConfig\) ShouldSetCacheHeader\(\) bool](<#RouteConfig.ShouldSetCacheHeader>)
@@ -157,7 +159,7 @@ type ACMEConfig struct {
 ```
 
 <a name="AdminConfig"></a>
-## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L258-L263>)
+## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L287-L292>)
 
 AdminConfig configures administrative access to the management dashboard. When enabled, allows a single admin user to access the dashboard at \<management.prefix\>/admin/
 
@@ -329,7 +331,7 @@ func (c CORSConfig) IsEnabled() bool
 IsEnabled reports whether CORS handling should run at all: only when at least one allowed origin is configured.
 
 <a name="EmailNotificationConfig"></a>
-## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L220-L228>)
+## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L221-L229>)
 
 EmailNotificationConfig configures the SMTP relay notifications with sendEmail: true are delivered through. This is a plain synchronous SMTP send per notification \(net/smtp\) — no queue, no retry — appropriate for the low volume a per\-user notification system produces; a high\-volume deployment should put a relay with its own queuing in front of this instead of expecting the gateway to grow one.
 
@@ -346,7 +348,7 @@ type EmailNotificationConfig struct {
 ```
 
 <a name="EmailNotificationConfig.IsConfigured"></a>
-### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L232>)
+### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L233>)
 
 ```go
 func (e EmailNotificationConfig) IsConfigured() bool
@@ -355,7 +357,7 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L329-L341>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L358-L370>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -376,7 +378,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L344>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L373>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -385,7 +387,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L561>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L590>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -394,7 +396,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L322-L324>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L351-L353>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -405,7 +407,7 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L276-L286>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L305-L315>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
@@ -480,19 +482,20 @@ type MiddlewareSection struct {
 ```
 
 <a name="NotificationConfig"></a>
-## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L209-L212>)
+## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L209-L213>)
 
 NotificationConfig defines notification system settings: the gateway stores every notification regardless of configuration \(that part needs no setup\), and additionally delivers it over zero or more external channels. Each channel is its own independent, optional block — a deployment can enable email, Telegram, both, or neither. See notification.Provider for the interface every channel implements, kept deliberately generic so a future channel \(WhatsApp, Slack, SMS, ...\) only needs a new block here and a new Provider, not a change to the notification data model or API.
 
 ```go
 type NotificationConfig struct {
-    Email    EmailNotificationConfig    `yaml:"email"`    // Email delivery via SMTP. Optional; disabled by default.
-    Telegram TelegramNotificationConfig `yaml:"telegram"` // Telegram delivery via a bot. Optional; disabled by default.
+    Email           EmailNotificationConfig    `yaml:"email"`           // Email delivery via SMTP. Optional; disabled by default.
+    Telegram        TelegramNotificationConfig `yaml:"telegram"`        // Telegram delivery via a bot. Optional; disabled by default.
+    ResponseWebhook ResponseWebhookConfig      `yaml:"responseWebhook"` // Outbound callback fired when a user responds to a notification. Optional; disabled by default.
 }
 ```
 
 <a name="RateLimiterConfig"></a>
-## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L306-L312>)
+## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L335-L341>)
 
 RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address.
 
@@ -507,13 +510,41 @@ type RateLimiterConfig struct {
 ```
 
 <a name="RateLimiterConfig.IsEnabled"></a>
-### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L315>)
+### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L344>)
 
 ```go
 func (r RateLimiterConfig) IsEnabled() bool
 ```
 
 IsEnabled reports whether any rate\-limiting or vulnerability\-scan feature is active.
+
+<a name="ResponseWebhookConfig"></a>
+## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L267-L277>)
+
+ResponseWebhookConfig configures an outbound HTTP callback the gateway fires when a user responds to a notification \(from any channel — the in\-app list, an email link, or a Telegram button\) — so the app that created the notification learns about the response without polling for it. Unlike Email/Telegram, this isn't a delivery channel a notification can be sent \*to\*; it's a one\-time event fired once a response is recorded, always POSTed to this single configured URL regardless of which notification or user it's about — the same one\-gateway\-per\-app assumption every other part of this feature already makes \(see doc/notifications.md's "No multi\-tenancy / multi\-app scoping" note\).
+
+```go
+type ResponseWebhookConfig struct {
+    Enabled bool   `yaml:"enabled"` // Enable the response webhook. Default: false. Requires url.
+    URL     string `yaml:"url"`     // Absolute URL to POST the response event to. Can use environment variables. Required when enabled.
+    // Secret, if set, HMAC-SHA256-signs each request body and sends the
+    // hex digest in an X-Taronja-Signature: sha256=<hex> header, so the
+    // receiver can verify the call actually came from this gateway. Can
+    // use environment variables. Optional — omit it only on a network
+    // where forging this request isn't a real concern (e.g. a private
+    // network with no other untrusted senders).
+    Secret string `yaml:"secret,omitempty"`
+}
+```
+
+<a name="ResponseWebhookConfig.IsConfigured"></a>
+### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L281>)
+
+```go
+func (w ResponseWebhookConfig) IsConfigured() bool
+```
+
+IsConfigured reports whether the response webhook has a URL to actually POST to.
 
 <a name="RouteConfig"></a>
 ## type [RouteConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L85-L96>)
@@ -536,7 +567,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L635>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L664>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -545,7 +576,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L643>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L672>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -599,7 +630,7 @@ type ServerConfig struct {
 ```
 
 <a name="SessionConfig"></a>
-## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L266-L268>)
+## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L295-L297>)
 
 SessionConfig defines session lifetime for authenticated users.
 
@@ -610,7 +641,7 @@ type SessionConfig struct {
 ```
 
 <a name="SessionConfig.GetDuration"></a>
-### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L270>)
+### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L299>)
 
 ```go
 func (s *SessionConfig) GetDuration() time.Duration
@@ -663,7 +694,7 @@ func (t TLSConfig) EffectiveRedirectPort() int
 EffectiveRedirectPort returns the plain\-HTTP redirect port that should actually be used: RedirectPort if set \(including an explicit 0, meaning "no redirect listener"\), otherwise defaultTLSRedirectPort \(80\).
 
 <a name="TelegramNotificationConfig"></a>
-## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L245-L248>)
+## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L246-L249>)
 
 TelegramNotificationConfig configures notification delivery via a Telegram bot. Unlike email, there's no per\-recipient address the gateway already knows — a user links their gateway account to a Telegram chat once, via GET /\_/notifications/telegram/link's deep link \(see doc/notifications.md\), and delivery only happens for users who've done that. The bot receives updates by long\-polling Telegram's API rather than a webhook, deliberately: it means zero inbound network exposure is required, so this works the same whether the gateway is reachable from the internet or only from a private network.
 
@@ -675,7 +706,7 @@ type TelegramNotificationConfig struct {
 ```
 
 <a name="TelegramNotificationConfig.IsConfigured"></a>
-### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L252>)
+### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L253>)
 
 ```go
 func (t TelegramNotificationConfig) IsConfigured() bool
@@ -720,7 +751,7 @@ type TrafficMetricsConfig struct {
 ```
 
 <a name="VulnerabilityScanConfig"></a>
-## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L296-L300>)
+## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L325-L329>)
 
 RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address. VulnerabilityScanConfig contains a simple list of URL paths that are likely to be probed by automated scanners. When a client triggers too many 404 responses for those paths within the configured window, the IP is temporarily blocked. This is a lightweight signature‑free scanner detector.
 

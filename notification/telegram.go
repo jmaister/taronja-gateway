@@ -323,7 +323,7 @@ func (p *TelegramPoller) handleUpdate(ctx context.Context, update telegramUpdate
 			return
 		}
 		chatID := strconv.FormatInt(cq.From.ID, 10)
-		label, err := p.service.RespondViaTelegram(notificationID, actionID, chatID)
+		label, err := p.service.RespondViaTelegram(ctx, notificationID, actionID, chatID)
 		if err != nil {
 			p.provider.answerCallbackQuery(ctx, cq.ID, humanizeRespondError(err))
 			return

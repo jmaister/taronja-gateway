@@ -349,6 +349,28 @@ operator to list anything. See `session.GetClientIP`'s doc comment
       "every-configured-channel" default even with email actually
       configured and telegram not — the delivery history recorded exactly
       one skipped telegram attempt, never an email one.
+- [x] **Outbound response webhook** — asked directly: "Do you handle the
+      callbacks for the user responses?" The honest answer at the time was
+      no, and worse, there wasn't even a way for the calling app's backend
+      to poll for a response either (`Service.Get`, unlike `ListDeliveries`,
+      has no admin bypass — only the notification's own owner can read it
+      back). `config.ResponseWebhookConfig` (`notification.responseWebhook`)
+      now fires an HMAC-SHA256-signable POST once, automatically, the
+      moment a response is recorded on any channel. The interesting design
+      choice: implemented as an ordinary `notification.Provider`
+      (`webhook.go`'s `ResponseWebhookProvider`) purely to inherit
+      `deliver`/`recordDelivery`'s existing retry-with-backoff and
+      delivery-history machinery for free, rather than this one channel
+      getting its own, weaker reliability story — a failed callback shows
+      up in `GET /api/notifications/{id}/deliveries` with
+      `channel: "response_webhook"` and retries on the same schedule as
+      email/Telegram. It's explicitly excluded from
+      `resolveChannelsForUser`'s "every configured channel" default (it
+      isn't something a notification is ever delivered *to*) and only ever
+      invoked directly from `recordValidatedResponse`. Verified for real
+      against a live `tg` binary and a real HTTP receiver: the actual
+      payload, and an independently-recomputed HMAC signature that matched
+      exactly.
 
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 

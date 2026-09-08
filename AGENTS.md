@@ -289,10 +289,26 @@ shared-interface-plus-registry shape as `providers/`: notification.Service
 owns storage/business logic, and a small `Provider` interface
 (`Channel() string`, `Send(ctx, req) (externalRef string, err error)`) is
 implemented once per external delivery channel — `email.go` (SMTP,
-`net/smtp`) and `telegram.go` (Telegram Bot API over plain HTTP, plus
+`net/smtp`), `telegram.go` (Telegram Bot API over plain HTTP, plus
 `TelegramPoller` long-polling `getUpdates` for account-linking `/start`
 messages and inline-keyboard button taps — no webhook, so no inbound
-network exposure is required).
+network exposure is required), and `webhook.go`'s `ResponseWebhookProvider`
+— an *outbound* HTTP callback (HMAC-signed if `config.ResponseWebhookConfig.Secret`
+is set) fired once when a user responds to a notification, on any channel,
+so the app that created it learns about the response without polling —
+there's no admin-readable "check a notification's state" endpoint, so this
+webhook is deliberately implemented as an ordinary `Provider` specifically
+to inherit `deliver`/`recordDelivery`'s retry-with-backoff and delivery-
+history treatment for free, rather than needing its own weaker reliability
+story. It's excluded from `resolveChannelsForUser`'s "every configured
+channel" default (see `db.NotificationChannelResponseWebhook`'s doc
+comment) since it isn't a channel a notification is ever delivered *to* —
+it's only ever invoked directly, once, from
+`Service.recordValidatedResponse`, right after a response is recorded (the
+in-memory `Notification` is updated with the new `RespondedActionID`/
+`RespondedVia`/`RespondedAt` there, since `RecordResponse` only wrote them
+to the database, not this copy — `ResponseWebhookProvider.Send` reads them
+straight off `req.Notification`).
 
 - `notification.go` — the `Action` type (one possible answer to a
   notification) and JSON (un)marshaling helpers for the caller-opaque

@@ -242,7 +242,7 @@ func (s *StrictApiServer) RespondToNotification(ctx context.Context, request api
 		return api.RespondToNotification404JSONResponse{Code: http.StatusNotFound, Message: "Notification not found"}, nil
 	}
 
-	_, err := s.notificationService.RespondViaWeb(request.NotificationId, sessionObj.UserID, request.Body.ActionId)
+	_, err := s.notificationService.RespondViaWeb(ctx, request.NotificationId, sessionObj.UserID, request.Body.ActionId)
 	switch {
 	case err == nil:
 		// fall through to fetch-and-return below
@@ -294,7 +294,7 @@ func (s *StrictApiServer) RespondToNotificationByToken(ctx context.Context, requ
 		return respondHTMLPage("Not available", "Notifications aren't available on this gateway right now."), nil
 	}
 
-	label, err := s.notificationService.RespondViaToken(request.Params.Token, request.Params.Action)
+	label, err := s.notificationService.RespondViaToken(ctx, request.Params.Token, request.Params.Action)
 	switch {
 	case err == nil:
 		return respondHTMLPage("Thanks!", fmt.Sprintf("Your response (“%s”) has been recorded.", label)), nil

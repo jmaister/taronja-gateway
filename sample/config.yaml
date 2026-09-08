@@ -207,3 +207,12 @@ notification:
   # telegram:
   #   enabled: true
   #   botToken: ${TELEGRAM_BOT_TOKEN}
+  # Outbound callback fired once when a user responds to a notification,
+  # so the app that created it learns about the response without polling.
+  # secret is optional but recommended — it HMAC-SHA256-signs each request
+  # body (X-Taronja-Signature: sha256=<hex>) so the receiver can verify the
+  # call actually came from this gateway. See doc/notifications.md.
+  # responseWebhook:
+  #   enabled: true
+  #   url: https://your-app.example.com/webhooks/taronja-notifications
+  #   secret: ${NOTIFICATION_WEBHOOK_SECRET}

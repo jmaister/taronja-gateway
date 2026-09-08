@@ -207,8 +207,9 @@ type BrandingConfig struct {
 // future channel (WhatsApp, Slack, SMS, ...) only needs a new block here and
 // a new Provider, not a change to the notification data model or API.
 type NotificationConfig struct {
-	Email    EmailNotificationConfig    `yaml:"email"`    // Email delivery via SMTP. Optional; disabled by default.
-	Telegram TelegramNotificationConfig `yaml:"telegram"` // Telegram delivery via a bot. Optional; disabled by default.
+	Email           EmailNotificationConfig    `yaml:"email"`           // Email delivery via SMTP. Optional; disabled by default.
+	Telegram        TelegramNotificationConfig `yaml:"telegram"`        // Telegram delivery via a bot. Optional; disabled by default.
+	ResponseWebhook ResponseWebhookConfig      `yaml:"responseWebhook"` // Outbound callback fired when a user responds to a notification. Optional; disabled by default.
 }
 
 // EmailNotificationConfig configures the SMTP relay notifications with
@@ -251,6 +252,34 @@ type TelegramNotificationConfig struct {
 // actually poll for updates and send messages with.
 func (t TelegramNotificationConfig) IsConfigured() bool {
 	return t.Enabled && t.BotToken != ""
+}
+
+// ResponseWebhookConfig configures an outbound HTTP callback the gateway
+// fires when a user responds to a notification (from any channel — the
+// in-app list, an email link, or a Telegram button) — so the app that
+// created the notification learns about the response without polling for
+// it. Unlike Email/Telegram, this isn't a delivery channel a notification
+// can be sent *to*; it's a one-time event fired once a response is
+// recorded, always POSTed to this single configured URL regardless of
+// which notification or user it's about — the same one-gateway-per-app
+// assumption every other part of this feature already makes (see
+// doc/notifications.md's "No multi-tenancy / multi-app scoping" note).
+type ResponseWebhookConfig struct {
+	Enabled bool   `yaml:"enabled"` // Enable the response webhook. Default: false. Requires url.
+	URL     string `yaml:"url"`     // Absolute URL to POST the response event to. Can use environment variables. Required when enabled.
+	// Secret, if set, HMAC-SHA256-signs each request body and sends the
+	// hex digest in an X-Taronja-Signature: sha256=<hex> header, so the
+	// receiver can verify the call actually came from this gateway. Can
+	// use environment variables. Optional — omit it only on a network
+	// where forging this request isn't a real concern (e.g. a private
+	// network with no other untrusted senders).
+	Secret string `yaml:"secret,omitempty"`
+}
+
+// IsConfigured reports whether the response webhook has a URL to actually
+// POST to.
+func (w ResponseWebhookConfig) IsConfigured() bool {
+	return w.Enabled && w.URL != ""
 }
 
 // AdminConfig configures administrative access to the management dashboard.

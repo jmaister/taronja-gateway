@@ -111,6 +111,9 @@ func NewService(cfg config.NotificationConfig, repo db.NotificationRepository, u
 		providers[tg.Channel()] = tg
 		telegram = tg
 	}
+	if webhook := NewResponseWebhookProvider(cfg.ResponseWebhook); webhook != nil {
+		providers[webhook.Channel()] = webhook
+	}
 
 	return &Service{
 		repo:           repo,
@@ -216,6 +219,14 @@ func (s *Service) resolveChannelsForUser(userID string, explicit []string) []str
 	}
 	channels := make([]string, 0, len(s.providers))
 	for channel := range s.providers {
+		// response_webhook isn't a channel a notification is ever
+		// delivered *by* — it's an internal, one-time event fired after a
+		// response is recorded (see recordValidatedResponse) — so it must
+		// never be picked up by the "every configured channel" default a
+		// notification's own creation uses.
+		if channel == db.NotificationChannelResponseWebhook {
+			continue
+		}
 		channels = append(channels, channel)
 	}
 	return channels
@@ -411,6 +422,12 @@ func (s *Service) resolveRecipient(userID, channel string) (string, error) {
 			return "", fmt.Errorf("user has not linked a telegram chat")
 		}
 		return link.ExternalID, nil
+	case db.NotificationChannelResponseWebhook:
+		// Not a per-user address — ResponseWebhookProvider always POSTs to
+		// its one configured URL regardless of which user responded. A
+		// non-empty placeholder just satisfies deliver's "did we resolve a
+		// recipient" check; Send never reads req.Recipient for this channel.
+		return "response_webhook", nil
 	default:
 		return "", fmt.Errorf("unknown channel %q", channel)
 	}
@@ -476,7 +493,7 @@ func (s *Service) ListDeliveries(notificationID, userID string, isAdmin bool) ([
 // authenticated in-app list — the session cookie is userID's proof of
 // identity, the same as every other /_/ endpoint that reads
 // ctx.Value(session.SessionKey).
-func (s *Service) RespondViaWeb(id, userID, actionID string) (label string, err error) {
+func (s *Service) RespondViaWeb(ctx context.Context, id, userID, actionID string) (label string, err error) {
 	n, err := s.repo.GetNotification(id)
 	if err != nil {
 		return "", ErrNotFound
@@ -484,14 +501,14 @@ func (s *Service) RespondViaWeb(id, userID, actionID string) (label string, err 
 	if n.UserID != userID {
 		return "", ErrForbidden
 	}
-	return s.recordValidatedResponse(n, actionID, db.NotificationChannelWeb)
+	return s.recordValidatedResponse(ctx, n, actionID, db.NotificationChannelWeb)
 }
 
 // RespondViaToken records a response from the public, unauthenticated
 // email answer link — rawToken (the URL's ?token=) is itself the proof of
 // identity here, since there's no session cookie on an email click; see
 // db.Notification.RespondTokenHash's doc comment.
-func (s *Service) RespondViaToken(rawToken, actionID string) (label string, err error) {
+func (s *Service) RespondViaToken(ctx context.Context, rawToken, actionID string) (label string, err error) {
 	n, err := s.repo.FindNotificationByRespondTokenHash(hashToken(rawToken))
 	if err != nil {
 		return "", ErrNotFound
@@ -499,7 +516,7 @@ func (s *Service) RespondViaToken(rawToken, actionID string) (label string, err 
 	if n.RespondTokenExpiresAt == nil || time.Now().UTC().After(*n.RespondTokenExpiresAt) {
 		return "", ErrTokenExpired
 	}
-	return s.recordValidatedResponse(n, actionID, db.NotificationChannelEmail)
+	return s.recordValidatedResponse(ctx, n, actionID, db.NotificationChannelEmail)
 }
 
 // RespondViaTelegram records a response from a Telegram inline-keyboard
@@ -508,7 +525,7 @@ func (s *Service) RespondViaToken(rawToken, actionID string) (label string, err 
 // the notification was actually sent to, not merely "some linked user";
 // otherwise anyone who discovers a notification ID could answer someone
 // else's notification.
-func (s *Service) RespondViaTelegram(notificationID, actionID, chatID string) (label string, err error) {
+func (s *Service) RespondViaTelegram(ctx context.Context, notificationID, actionID, chatID string) (label string, err error) {
 	n, err := s.repo.GetNotification(notificationID)
 	if err != nil {
 		return "", ErrNotFound
@@ -517,10 +534,17 @@ func (s *Service) RespondViaTelegram(notificationID, actionID, chatID string) (l
 	if err != nil || link.UserID != n.UserID {
 		return "", ErrForbidden
 	}
-	return s.recordValidatedResponse(n, actionID, db.NotificationChannelTelegram)
+	return s.recordValidatedResponse(ctx, n, actionID, db.NotificationChannelTelegram)
 }
 
-func (s *Service) recordValidatedResponse(n *db.Notification, actionID, via string) (label string, err error) {
+// recordValidatedResponse records a response (from any of the three
+// Respond* entry points above) and, if a response webhook is configured,
+// fires it — see notification.ResponseWebhookProvider. The webhook fire
+// is best-effort and never changes what's returned to the caller who
+// actually answered the notification: a failure there gets Service's
+// normal retry-with-backoff treatment (recordDelivery/RetryFailedDeliveries),
+// same as any other delivery failure, not surfaced as an error here.
+func (s *Service) recordValidatedResponse(ctx context.Context, n *db.Notification, actionID, via string) (label string, err error) {
 	actions, err := DecodeActions(n.Actions)
 	if err != nil {
 		return "", err
@@ -529,12 +553,27 @@ func (s *Service) recordValidatedResponse(n *db.Notification, actionID, via stri
 	if action == nil {
 		return "", ErrInvalidAction
 	}
-	if err := s.repo.RecordResponse(n.ID, actionID, via, time.Now()); err != nil {
+	now := time.Now()
+	if err := s.repo.RecordResponse(n.ID, actionID, via, now); err != nil {
 		if errors.Is(err, db.ErrNotificationAlreadyResponded) {
 			return "", ErrAlreadyResponded
 		}
 		return "", err
 	}
+
+	if _, configured := s.providers[db.NotificationChannelResponseWebhook]; configured {
+		// Reflect the just-recorded response in memory so
+		// ResponseWebhookProvider.Send (via buildSendRequest, which reads
+		// these three fields straight off the Notification) sees it —
+		// repo.RecordResponse only updated the database row, not this
+		// in-memory copy.
+		utcNow := now.UTC()
+		n.RespondedActionID = &actionID
+		n.RespondedVia = &via
+		n.RespondedAt = &utcNow
+		s.deliver(ctx, n, actions, db.NotificationChannelResponseWebhook)
+	}
+
 	return action.Label, nil
 }
 

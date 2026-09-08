@@ -388,6 +388,14 @@ const (
 	NotificationChannelWeb      = "web" // not an external delivery — used for RespondedVia when the user answered from the in-app list, not a link/button
 	NotificationChannelEmail    = "email"
 	NotificationChannelTelegram = "telegram"
+	// NotificationChannelResponseWebhook is a NotificationDelivery.Channel
+	// value only — it never appears as a Notification.RespondedVia (the
+	// webhook doesn't answer a notification, it reports that one was
+	// already answered) and is deliberately excluded from
+	// notification.Service.resolveChannelsForUser's "every configured
+	// channel" default, since it isn't something a notification is ever
+	// requested to be delivered *by* — see config.ResponseWebhookConfig.
+	NotificationChannelResponseWebhook = "response_webhook"
 )
 
 // Notification delivery statuses — the value NotificationDelivery.Status

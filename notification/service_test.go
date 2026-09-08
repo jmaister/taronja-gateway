@@ -63,7 +63,7 @@ func TestService_Create(t *testing.T) {
 		assert.NotEqual(t, notifications[0].ID, notifications[1].ID, "each recipient gets their own row, not a shared one")
 
 		// Each recipient can answer their own copy independently.
-		_, err = service.RespondViaWeb(notifications[0].ID, notifications[0].UserID, "approve")
+		_, err = service.RespondViaWeb(context.Background(), notifications[0].ID, notifications[0].UserID, "approve")
 		require.NoError(t, err)
 
 		other, err := repo.GetNotification(notifications[1].ID)
@@ -261,26 +261,26 @@ func TestService_RespondViaWeb(t *testing.T) {
 	})
 
 	t.Run("rejects a response from a user who doesn't own the notification", func(t *testing.T) {
-		_, err := service.RespondViaWeb(n.ID, stranger.ID, "approve")
+		_, err := service.RespondViaWeb(context.Background(), n.ID, stranger.ID, "approve")
 		assert.ErrorIs(t, err, ErrForbidden)
 	})
 
 	t.Run("rejects an action ID that isn't one of the notification's actions", func(t *testing.T) {
-		_, err := service.RespondViaWeb(n.ID, owner.ID, "not-a-real-action")
+		_, err := service.RespondViaWeb(context.Background(), n.ID, owner.ID, "not-a-real-action")
 		assert.ErrorIs(t, err, ErrInvalidAction)
 	})
 
 	t.Run("rejects a notification ID that doesn't exist", func(t *testing.T) {
-		_, err := service.RespondViaWeb("nonexistent-id", owner.ID, "approve")
+		_, err := service.RespondViaWeb(context.Background(), "nonexistent-id", owner.ID, "approve")
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
 
 	t.Run("records the response once and rejects a second attempt", func(t *testing.T) {
-		label, err := service.RespondViaWeb(n.ID, owner.ID, "approve")
+		label, err := service.RespondViaWeb(context.Background(), n.ID, owner.ID, "approve")
 		require.NoError(t, err)
 		assert.Equal(t, "Approve", label)
 
-		_, err = service.RespondViaWeb(n.ID, owner.ID, "approve")
+		_, err = service.RespondViaWeb(context.Background(), n.ID, owner.ID, "approve")
 		assert.ErrorIs(t, err, ErrAlreadyResponded)
 	})
 }
@@ -303,7 +303,7 @@ func TestService_RespondViaToken(t *testing.T) {
 	})
 
 	t.Run("an unknown token is rejected", func(t *testing.T) {
-		_, err := service.RespondViaToken("not-a-real-token", "approve")
+		_, err := service.RespondViaToken(context.Background(), "not-a-real-token", "approve")
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
 
@@ -326,7 +326,7 @@ func TestService_RespondViaToken(t *testing.T) {
 		raw := "test-raw-token-value"
 		require.NoError(t, repo.SetRespondToken(n.ID, hashToken(raw), fetched.RespondTokenExpiresAt.Add(0)))
 
-		label, err := service.RespondViaToken(raw, "approve")
+		label, err := service.RespondViaToken(context.Background(), raw, "approve")
 		require.NoError(t, err)
 		assert.Equal(t, "Approve", label)
 	})

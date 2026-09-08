@@ -44,6 +44,14 @@ it from wherever they saw it.
   the in-app list. Whichever answer arrives first wins; a second attempt
   (a double-tapped button, a stale email link clicked twice) is rejected,
   not silently overwritten.
+- **The app that created a notification learns when it's answered** — an
+  optional outbound webhook (`notification.responseWebhook` in config)
+  fires once, automatically, the moment a response is recorded, on any
+  channel. Without it, a response just sits in the gateway's database with
+  no way for the calling app to find out about it at all — there's no
+  admin-readable "check this notification's state" endpoint either, so
+  this webhook is the only way that information leaves the gateway today.
+  See "Response webhook" below.
 - **Channel-agnostic by design** — delivery is a small `notification.Provider`
   interface (`Channel() string`, `Send(ctx, req) (externalRef string, err error)`),
   the same shape as this codebase's OAuth2 `AuthenticationProvider`
@@ -206,6 +214,68 @@ happened to a user's own notifications. `PUT` with an empty (or omitted)
 every configured channel," the original default from before per-user
 preferences existed.
 
+## Response webhook
+
+Without this, a response a user gives is only ever visible to that same
+user's own frontend — the app that created the notification has no way to
+learn about it, and there's no admin-readable endpoint to poll for it
+either (`GET /api/notifications/{id}` requires the session cookie of the
+notification's own owner; there's deliberately no admin bypass on that
+one, unlike the delivery-history endpoint). The response webhook is the
+one way that information leaves the gateway.
+
+```yaml
+notification:
+  responseWebhook:
+    enabled: true
+    url: https://your-app.example.com/webhooks/taronja-notifications
+    secret: ${NOTIFICATION_WEBHOOK_SECRET}   # optional but recommended
+```
+
+Once configured, every time a user answers a notification — from the
+in-app list, an email link, or a Telegram button, it doesn't matter which —
+the gateway POSTs this once, automatically:
+
+```json
+{
+  "notificationId": "cm...",
+  "userId": "cm...",
+  "type": "music_track_added",
+  "metadata": {"folderId": "f-123"},
+  "respondedActionId": "approve",
+  "respondedVia": "web",
+  "respondedAt": "2026-01-02T03:04:05Z"
+}
+```
+
+`metadata` is exactly whatever the caller attached at creation time —
+this is deliberately minimal, only the information the caller couldn't
+already know from having created the notification itself (which action,
+via which channel, when), plus enough to correlate it back
+(`notificationId`, `userId`, `type`, `metadata`) without a second lookup.
+
+If `secret` is set, the request carries `X-Taronja-Signature:
+sha256=<hex>` — an HMAC-SHA256 of the raw request body, keyed with
+`secret` — so the receiver can verify the call actually came from this
+gateway and not something forging it. Verify it the same way any
+GitHub-/Stripe-style webhook signature is checked: compute the same HMAC
+over the raw bytes you received (before any JSON parsing) and compare.
+Omitting `secret` is only reasonable on a network where forging this
+request isn't a real concern.
+
+**This isn't a delivery channel a notification is ever sent *to*** — it
+never appears in a `channels` list, is never a user's preferred channel,
+and is never part of the "every configured channel" default. It's an
+internal, one-time event, fired only from the moment a response is
+recorded — see `notification.Service.recordValidatedResponse`. It's also,
+deliberately, implemented as an ordinary `notification.Provider` under the
+hood (`ResponseWebhookProvider`), which is what gets it the exact same
+automatic retry-with-backoff and delivery-history treatment as email or
+Telegram, for free: a failed webhook call shows up in
+`GET /api/notifications/{id}/deliveries` with `channel: "response_webhook"`
+and retries on the same schedule as any other channel (see "Retries"
+below) — there's no separate, weaker reliability story for this one.
+
 ## Retries
 
 A failed delivery isn't the end of the story. A background worker
@@ -255,6 +325,12 @@ No live SMTP server or Telegram bot is needed to test this:
   enough of Telegram's Bot API to exercise `TelegramProvider` and
   `TelegramPoller` end to end — including the `/start` linking flow and a
   simulated button tap, decoded from real JSON.
+- `notification/webhook_test.go` runs a real HTTP server to verify
+  `ResponseWebhookProvider`'s actual payload and HMAC signature, plus
+  end-to-end `Service` tests proving the webhook fires exactly once per
+  response (never as part of a notification's own initial delivery), stays
+  fully invisible when unconfigured, and gets a real fail-then-retry-then-
+  succeed cycle through the exact same retry machinery email/Telegram use.
 - `notification/service_test.go` and `db/notificationrepository_test.go`
   cover the business logic and persistence layer against a real SQLite test
   database — including the retry schedule's exhaustion boundary, a full
