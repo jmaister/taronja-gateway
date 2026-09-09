@@ -165,6 +165,27 @@ the same private network/Docker/Kubernetes cluster — without asking an
 operator to list anything. See `session.GetClientIP`'s doc comment
 (`session/clientinfo.go`).
 
+**Follow-up, a distinct bug under the same log line (2026-09-09):** a real
+deployment showed `Error getting geo data for IP 192.168.1.60: IPLocate
+returned status code 401` — an entirely legitimate, correctly-trusted
+private-range client IP (not a spoofing attempt this time; the header
+trust fix above was working as intended), still being sent to the
+geolocation API, which obviously has nothing to say about a non-routable
+address. Root cause: `GetGeoDataFromIP`'s own "skip this IP" check
+(`session/ipgeo.go`) only ever matched a literal `"127."`/`"localhost"`
+string prefix, so it caught IPv4 loopback and nothing else — every other
+non-routable range (RFC 1918 private, RFC 4193 IPv6 unique-local,
+link-local, IPv6 loopback) fell through to a real, always-failing network
+call, on every single request from a client on the same private network
+as a reverse proxy in front of this gateway — a normal, common deployment
+shape, not an edge case. Fixed the same way the header-trust check above
+already does it: a real `net.ParseIP` classification
+(`session.isNonRoutable`, `IsLoopback`/`IsPrivate`/`IsLinkLocalUnicast`/
+`IsLinkLocalMulticast`/`IsUnspecified`) instead of a string prefix match.
+Verified for real: a live gateway with a deliberately invalid geo API key
+logged the 401 for a spoofed public IP (8.8.8.8) but logged nothing at all
+for a spoofed 192.168.1.60 — the exact address from the report.
+
 # Rate limiter
 
 - [x] Store persistent info about attackers (IP, user agent, etc.) — done:

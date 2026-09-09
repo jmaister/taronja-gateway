@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -82,6 +83,28 @@ var ipCache = &IPGeoCache{
 	cache: make(map[string]geoCacheEntry),
 }
 
+// isNonRoutable reports whether ip is loopback, private (RFC 1918 /
+// RFC 4193), link-local, or unspecified ("0.0.0.0"/"::") — none of which a
+// public geolocation API can meaningfully answer for, and none of which
+// should ever be sent to one. Parses the address with net.ParseIP rather
+// than matching a string prefix: the "127."/"localhost" check this
+// replaced only ever caught IPv4 loopback, so a deployment behind a
+// reverse proxy on the same private network — a normal, common shape for
+// this gateway — sent every internal client's real RFC 1918 address
+// (192.168.x.x, 10.x.x.x, 172.16-31.x.x) straight to the geolocation API,
+// which naturally has no idea what to do with a non-routable address and
+// returned an error for every single one of them, logged on every request.
+// A malformed value (not a real IP at all) falls through to a real lookup
+// attempt rather than being silently treated as non-routable here — that
+// case surfaces as its own clear API error instead.
+func isNonRoutable(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast() || parsed.IsUnspecified()
+}
+
 // GetGeoDataFromIP attempts to get comprehensive geolocation data for an IP address
 // Uses iplocate.io if config has API key set, otherwise falls back to freeipapi.com
 func GetGeoDataFromIP(ip string) (GeoData, error) {
@@ -91,9 +114,8 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 	if ip == "" {
 		return GeoData{}, fmt.Errorf("IP address is empty")
 	}
-	// Check if IP is localhost or 127.x.x.x
-	if strings.Index(ip, "127.") == 0 || strings.Index(ip, "localhost") == 0 {
-		return GeoData{}, nil // Return empty GeoData for localhost or 127.x.x.x
+	if isNonRoutable(ip) {
+		return GeoData{}, nil // nothing a public geo API could ever answer for
 	}
 
 	// First check the cache — a hit, success or failure, is returned as-is
