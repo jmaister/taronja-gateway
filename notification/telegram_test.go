@@ -214,7 +214,7 @@ func TestTelegramPoller(t *testing.T) {
 		})
 
 		t.Run("a callback query records the response and edits the message", func(t *testing.T) {
-			notifications, err := service.Create(context.Background(), CreateInput{
+			notifications, _, err := service.Create(context.Background(), CreateInput{
 				UserIDs: []string{user.ID}, Type: "t", Title: "Approve?", Body: "b",
 				Actions:  []Action{{ID: "approve", Label: "Approve"}},
 				Channels: []string{db.NotificationChannelTelegram},
@@ -249,7 +249,7 @@ func TestTelegramPoller(t *testing.T) {
 		t.Run("a callback query from a chat that isn't the notification's owner is rejected", func(t *testing.T) {
 			other := &db.User{Username: "other-user", Email: "other@example.com"}
 			require.NoError(t, db.GetConnection().Create(other).Error)
-			notifications, err := service.Create(context.Background(), CreateInput{
+			notifications, _, err := service.Create(context.Background(), CreateInput{
 				UserIDs: []string{other.ID}, Type: "t", Title: "Approve?", Body: "b",
 				Actions:  []Action{{ID: "approve", Label: "Approve"}},
 				Channels: []string{db.NotificationChannelTelegram},

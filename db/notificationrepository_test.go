@@ -30,6 +30,30 @@ func TestNotificationRepository(t *testing.T) {
 		assert.Nil(t, fetched.RespondedAt)
 	})
 
+	t.Run("ListByBatchID returns every notification sharing a batch, and nothing else", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u1 := User{Username: "batch-user-1", Email: "batch1@example.com"}
+		require.NoError(t, dbConn.Create(&u1).Error)
+		u2 := User{Username: "batch-user-2", Email: "batch2@example.com"}
+		require.NoError(t, dbConn.Create(&u2).Error)
+
+		n1 := &Notification{UserID: u1.ID, BatchID: "batch-a", Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n1))
+		n2 := &Notification{UserID: u2.ID, BatchID: "batch-a", Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(n2))
+		other := &Notification{UserID: u1.ID, BatchID: "batch-b", Type: "t", Title: "n", Body: "b"}
+		require.NoError(t, repo.CreateNotification(other))
+
+		batch, err := repo.ListByBatchID("batch-a")
+		require.NoError(t, err)
+		require.Len(t, batch, 2)
+		assert.ElementsMatch(t, []string{n1.ID, n2.ID}, []string{batch[0].ID, batch[1].ID})
+
+		empty, err := repo.ListByBatchID("nonexistent-batch")
+		require.NoError(t, err)
+		assert.Empty(t, empty)
+	})
+
 	t.Run("ListNotifications ordering, unreadOnly, and cursor pagination", func(t *testing.T) {
 		SetupTestDB(t.Name())
 		u := User{Username: "list-user", Email: "list@example.com"}

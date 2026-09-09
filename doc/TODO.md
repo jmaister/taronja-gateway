@@ -371,6 +371,38 @@ operator to list anything. See `session.GetClientIP`'s doc comment
       against a live `tg` binary and a real HTTP receiver: the actual
       payload, and an independently-recomputed HMAC signature that matched
       exactly.
+- [x] **Computed status, per notification and per batch** — asked
+      directly: "Do we have status of Failed, sent, pending, for the whole
+      notification and for each of the recipients?" Until then, the answer
+      was "only in raw form" — `GET /api/notifications/{id}/deliveries`
+      gave every attempt, but nothing reduced that to a single answer, and
+      there was no "batch" concept at all: a multi-recipient `Create`
+      returned an unlinked array of notifications with no shared
+      identifier, so a caller had no way to ask "how did the whole blast
+      go" short of tracking every returned ID itself. Two decisions,
+      settled directly rather than assumed: (1) the rollup rule for a
+      notification with channels in different states is worst-first —
+      `pending` beats `failed` beats `sent`, so a notification isn't
+      reported "failed" while it still has a retry pending, and isn't
+      reported "sent" only because one channel got through while another
+      is still failing; `skipped` channels are excluded from the rollup
+      entirely rather than counting against it. (2) a batch *is* a
+      first-class concept: `db.Notification.BatchID`, generated fresh on
+      every `Create` call (even a single-recipient one — "a batch of one",
+      no special case needed), returned as `batchId` on
+      `CreateNotificationResponse` and on every `Notification`. New
+      `GET /api/notifications/{id}/status` (owner or admin) and
+      `GET /api/notifications/batches/{batchId}/status` (admin only — a
+      batch can span several different users' own notifications, so there's
+      no single owning user to scope it to) compute these fresh from
+      `ListDeliveries` on every call rather than maintaining a separately-
+      updated status column that could drift from the underlying attempts.
+      Verified for real against a live `tg` binary: a two-recipient batch
+      pointed at a genuinely unreachable SMTP port reported `pending` for
+      both individually and `{sent:0, pending:2, failed:0}` for the batch;
+      after a real automatic retry succeeded (same mechanism as the retries
+      feature above), both flipped to `sent` and the batch to
+      `{sent:2, pending:0, failed:0}`.
 
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 

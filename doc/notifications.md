@@ -22,7 +22,12 @@ it from wherever they saw it.
   type/title/body/actions but each getting their own independent
   notification: their own read state, their own delivery attempts, their
   own answer. Notifying every parent in a family is one call, not a loop of
-  them on the caller's side.
+  them on the caller's side. Every call, even a single-recipient one, gets
+  a `batchId` grouping its recipients — see "Status" below.
+- **A single sent/failed/pending status, per notification and for a whole
+  batch** — computed on demand from the raw delivery attempts, not
+  something the caller has to work out by reading `/deliveries` history
+  themselves. See "Status" below.
 - **Each user can pick their own preferred channel** — a user who'd rather
   get notifications by Telegram than email (or vice versa) sets that once
   (`PUT /api/notifications/preferences`), and every notification that
@@ -62,12 +67,13 @@ it from wherever they saw it.
 
 ## Data model
 
-- `Notification` — one row per notification: `UserID`, `Type`, `Title`,
-  `Body`, optional `URL`, caller-opaque `Metadata` and `Actions` (both
-  stored as JSON, only interpreted enough to validate a response names a
-  real action), `CreatedAt`, `ReadAt`, and — once answered —
-  `RespondedActionID`/`RespondedAt`/`RespondedVia` (`"web"`, `"email"`, or
-  `"telegram"`).
+- `Notification` — one row per notification: `UserID`, `BatchID` (groups
+  every recipient's row from one `Create` call — see "Status" below),
+  `Type`, `Title`, `Body`, optional `URL`, caller-opaque `Metadata` and
+  `Actions` (both stored as JSON, only interpreted enough to validate a
+  response names a real action), `CreatedAt`, `ReadAt`, and — once
+  answered — `RespondedActionID`/`RespondedAt`/`RespondedVia` (`"web"`,
+  `"email"`, or `"telegram"`).
 - `NotificationDelivery` — one row per delivery *attempt* (not per channel —
   a channel that's retried gets a new row each time, `AttemptNumber` one
   higher than the last), recording whether it was sent, failed, or skipped
@@ -143,6 +149,8 @@ User-facing (an app's frontend, same session cookie it already uses for
 | `POST /api/notifications/read-all` | Mark all as read. |
 | `POST /api/notifications/{id}/respond` | Answer one of a notification's actions from the in-app list. |
 | `GET /api/notifications/{id}/deliveries` | Full delivery history for one notification — every attempt, every channel, newest first (owner or admin only). |
+| `GET /api/notifications/{id}/status` | One rolled-up sent/failed/pending status, plus the per-channel breakdown behind it (owner or admin only). |
+| `GET /api/notifications/batches/{batchId}/status` | Rolled-up sent/failed/pending counts across every recipient of one create call (admin only — see "Status"). |
 | `GET /api/notifications/telegram/link` | Get a fresh `https://t.me/<bot>?start=<code>` deep link to connect the current user's Telegram chat. |
 | `GET /api/notifications/preferences` | Get the current user's preferred delivery channel, if they've set one. |
 | `PUT /api/notifications/preferences` | Set (or, with an empty/omitted value, clear) it. |
@@ -276,6 +284,54 @@ Telegram, for free: a failed webhook call shows up in
 and retries on the same schedule as any other channel (see "Retries"
 below) — there's no separate, weaker reliability story for this one.
 
+## Status
+
+`GET /api/notifications/{id}/deliveries` (above) gives you every raw
+delivery attempt; most callers don't want to reduce that themselves just
+to answer "is this done, and did it work." `GET /api/notifications/{id}/status`
+does that reduction for you:
+
+```json
+{
+  "overall": "pending",
+  "channels": {"email": "sent", "telegram": "pending"}
+}
+```
+
+Each channel's own status is the outcome of its *most recent* attempt:
+
+| Channel status | Meaning |
+|---|---|
+| `sent` | Delivered successfully. |
+| `failed` | The most recent attempt failed and the retry schedule is exhausted — permanent. |
+| `pending` | The most recent attempt failed, but a retry is still scheduled — not permanent yet. |
+| `skipped` | The channel was never usable for this user/config (see `NotificationDeliveryStatusSkipped`) — never attempted, so it's neither a success nor a failure. |
+
+`overall` rolls those up worst-first: **pending beats failed beats sent**.
+A notification with even one channel still retrying is `pending` overall,
+even if every other channel already succeeded; only once nothing is left
+retrying does a remaining failure make it `failed`. `skipped` channels are
+excluded from the rollup entirely — a channel the gateway never had a
+recipient or config for doesn't drag down an otherwise fully-successful
+notification, and a notification with *only* skipped channels (or no
+external channels attempted at all) rolls up to `sent`: the in-app record,
+which always exists regardless of configuration, is the baseline success
+every external channel is additive to.
+
+For a whole multi-recipient `POST /api/notifications` call,
+`GET /api/notifications/batches/{batchId}/status` (**admin only** — a
+batch can span several different users' own notifications, so there's no
+single owning user this could be scoped to the way the per-notification
+endpoint is) gives the same rollup as *counts* across every recipient:
+
+```json
+{"batchId": "cm...", "total": 5, "sent": 3, "failed": 1, "pending": 1}
+```
+
+`batchId` is on every `Notification` (including in
+`CreateNotificationResponse`) — even a single-recipient create call gets
+one, so there's no special case for "was this actually a batch."
+
 ## Retries
 
 A failed delivery isn't the end of the story. A background worker
@@ -337,9 +393,11 @@ No live SMTP server or Telegram bot is needed to test this:
   fail-then-succeed retry cycle (backdating a delivery's `NextRetryAt`
   directly rather than mocking time, since the shortest real backoff is a
   minute — far too slow for a unit test to actually wait out), multi-
-  recipient `Create` producing independent notifications, and preference
-  resolution (explicit `channels` beats a stored preference beats "every
-  configured channel").
+  recipient `Create` producing independent notifications sharing one
+  `batchID`, preference resolution (explicit `channels` beats a stored
+  preference beats "every configured channel"), and the status rollup
+  itself — every combination of sent/failed/pending/skipped channels,
+  worst-first, plus the batch-level counts across a mix of recipients.
 - `handlers/api_notifications_test.go` covers the HTTP handlers'
   auth/ownership/status-code decisions directly.
 

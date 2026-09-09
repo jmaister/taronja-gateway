@@ -749,11 +749,13 @@ configured — so each app doesn't need to build its own notification list,
 SMTP integration, or Telegram bot. One call can notify a whole list of
 users at once, each independently, and each user can pick their own
 preferred delivery channel. Failed deliveries retry automatically with
-backoff, and the full delivery history (every attempt, every channel) is
-queryable per notification. An optional signed outbound webhook tells the
-calling app when a user actually responds, so it doesn't have to poll for
-that either. See [doc/notifications.md](doc/notifications.md) for the full
-data model, API reference, retry schedule, and how the email answer-link
+backoff, and a single sent/failed/pending status — per notification, and
+rolled up across a whole multi-recipient batch — is computed on demand
+from the full delivery history (every attempt, every channel). An
+optional signed outbound webhook tells the calling app when a user
+actually responds, so it doesn't have to poll for that either. See
+[doc/notifications.md](doc/notifications.md) for the full data model, API
+reference, retry schedule, and how the email answer-link
 and Telegram account-linking flows work.
 
 ```yaml

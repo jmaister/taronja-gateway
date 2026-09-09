@@ -840,6 +840,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/notifications/{notificationId}/status:
+    get:
+      summary: Get one notification's rolled-up status
+      description: >
+        A single "sent"/"failed"/"pending" answer, computed fresh from the
+        notification's delivery attempts (worst-first across its
+        channels), plus the per-channel breakdown behind it. See
+        doc/notifications.md's "Status" section for the exact rollup rule.
+      operationId: getNotificationStatus
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The notification's status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStatus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: This notification belongs to a different user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/batches/{batchId}/status:
+    get:
+      summary: Get a rolled-up status count across every recipient of one create call (admin only)
+      description: >
+        A batch is every recipient notified together in one
+        POST /api/notifications call (see batchId on Notification/
+        CreateNotificationResponse) — even a single-recipient call gets
+        one. Admin-only: a batch can span several different users' own
+        notifications, so there's no single owning user this could be
+        scoped to the way GET /api/notifications/{id}/status is; only the
+        caller who created the batch (necessarily an admin) is in a
+        position to ask "how did the whole thing go."
+      operationId: getNotificationBatchStatus
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The batch's rolled-up status counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationBatchStatus'
+        '401':
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No notifications found for this batch ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/statistics/requests:
     get:
       summary: Get request statistics
@@ -2392,6 +2482,12 @@ components:
           type: string
         userId:
           type: string
+        batchId:
+          type: string
+          description: >
+            Groups every recipient's notification from the same
+            POST /api/notifications call — even a single-recipient call gets
+            one. See GET /api/notifications/batches/{batchId}/status.
         type:
           type: string
           description: Caller-defined, opaque to the gateway.
@@ -2432,6 +2528,7 @@ components:
       required:
         - id
         - userId
+        - batchId
         - type
         - title
         - body
@@ -2542,8 +2639,59 @@ components:
           items:
             $ref: '#/components/schemas/Notification'
           description: One entry per userIds, in the same order.
+        batchId:
+          type: string
+          description: Pass to GET /api/notifications/batches/{batchId}/status for a rolled-up status across every recipient in this call.
       required:
         - notifications
+        - batchId
+
+    NotificationStatus:
+      type: object
+      description: >
+        A notification's status, computed fresh from its delivery
+        attempts: worst-first across its channels (pending beats failed
+        beats sent). See doc/notifications.md's "Status" section for the
+        exact rollup rule.
+      properties:
+        overall:
+          type: string
+          description: One of "sent", "failed", "pending".
+          example: "pending"
+        channels:
+          type: object
+          additionalProperties:
+            type: string
+          description: >
+            Each channel this notification was attempted on, mapped to its
+            own status: "sent", "failed", "pending", or "skipped" (a
+            channel that was never usable for this user/config — excluded
+            from `overall`'s rollup).
+          example: {"email": "sent", "telegram": "pending"}
+      required:
+        - overall
+        - channels
+
+    NotificationBatchStatus:
+      type: object
+      description: A rolled-up status count across every recipient notified in one POST /api/notifications call.
+      properties:
+        batchId:
+          type: string
+        total:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+        pending:
+          type: integer
+      required:
+        - batchId
+        - total
+        - sent
+        - failed
+        - pending
 
     NotificationPreference:
       type: object

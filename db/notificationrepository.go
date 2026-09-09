@@ -35,6 +35,11 @@ type NotificationRepository interface {
 	// it (keyset pagination on CreatedAt/ID) — pass the last item's ID from
 	// a previous page to get the next one.
 	ListNotifications(userID string, unreadOnly bool, limit int, cursor *string) ([]*Notification, error)
+	// ListByBatchID returns every notification created together in one
+	// Create call (see Notification.BatchID's doc comment), in no
+	// particular order — used to compute a batch-wide status rollup, not
+	// to render a user-facing list.
+	ListByBatchID(batchID string) ([]*Notification, error)
 	CountUnread(userID string) (int64, error)
 	// MarkRead sets ReadAt to now for one notification owned by userID, if
 	// not already read. A no-op (not an error) if already read, missing,
@@ -159,6 +164,12 @@ func (r *NotificationRepositoryDB) ListNotifications(userID string, unreadOnly b
 	}
 	var notifications []*Notification
 	err := q.Order("created_at DESC, id DESC").Limit(limit).Find(&notifications).Error
+	return notifications, err
+}
+
+func (r *NotificationRepositoryDB) ListByBatchID(batchID string) ([]*Notification, error) {
+	var notifications []*Notification
+	err := r.db.Where("batch_id = ?", batchID).Find(&notifications).Error
 	return notifications, err
 }
 

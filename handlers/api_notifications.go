@@ -29,6 +29,7 @@ func toAPINotification(n *db.Notification) (api.Notification, error) {
 	result := api.Notification{
 		Id:                n.ID,
 		UserId:            n.UserID,
+		BatchId:           n.BatchID,
 		Type:              n.Type,
 		Title:             n.Title,
 		Body:              n.Body,
@@ -118,7 +119,7 @@ func (s *StrictApiServer) CreateNotification(ctx context.Context, request api.Cr
 		in.Channels = *body.Channels
 	}
 
-	notifications, err := s.notificationService.Create(ctx, in)
+	notifications, batchID, err := s.notificationService.Create(ctx, in)
 	if len(notifications) == 0 {
 		// Every recipient failed to be stored — a genuine failure, not the
 		// best-effort partial-success case below.
@@ -141,7 +142,7 @@ func (s *StrictApiServer) CreateNotification(ctx context.Context, request api.Cr
 		}
 		apiNotifications = append(apiNotifications, apiNotification)
 	}
-	return api.CreateNotification201JSONResponse{Notifications: apiNotifications}, nil
+	return api.CreateNotification201JSONResponse{Notifications: apiNotifications, BatchId: batchID}, nil
 }
 
 // ListNotifications handles GET /api/notifications.
@@ -420,4 +421,58 @@ func emptyToNil(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// GetNotificationStatus handles GET /api/notifications/{notificationId}/status.
+func (s *StrictApiServer) GetNotificationStatus(ctx context.Context, request api.GetNotificationStatusRequestObject) (api.GetNotificationStatusResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.GetNotificationStatus401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetNotificationStatus404JSONResponse{Code: http.StatusNotFound, Message: "Notification not found"}, nil
+	}
+
+	overall, channels, err := s.notificationService.GetNotificationStatus(request.NotificationId, sessionObj.UserID, sessionObj.IsAdmin)
+	switch {
+	case err == nil:
+		return api.GetNotificationStatus200JSONResponse{Overall: overall, Channels: channels}, nil
+	case errors.Is(err, notification.ErrNotFound):
+		return api.GetNotificationStatus404JSONResponse{Code: http.StatusNotFound, Message: "Notification not found"}, nil
+	case errors.Is(err, notification.ErrForbidden):
+		return api.GetNotificationStatus403JSONResponse{Code: http.StatusForbidden, Message: "This notification belongs to a different user"}, nil
+	default:
+		return nil, err
+	}
+}
+
+// GetNotificationBatchStatus handles GET /api/notifications/batches/{batchId}/status
+// — admin only, since a batch can span several different users' own
+// notifications (see Service.GetBatchStatus's doc comment).
+func (s *StrictApiServer) GetNotificationBatchStatus(ctx context.Context, request api.GetNotificationBatchStatusRequestObject) (api.GetNotificationBatchStatusResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.GetNotificationBatchStatus401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetNotificationBatchStatus404JSONResponse{Code: http.StatusNotFound, Message: "No notifications found for this batch ID"}, nil
+	}
+
+	counts, err := s.notificationService.GetBatchStatus(request.BatchId, sessionObj.IsAdmin)
+	switch {
+	case err == nil:
+		return api.GetNotificationBatchStatus200JSONResponse{
+			BatchId: request.BatchId,
+			Total:   counts.Total,
+			Sent:    counts.Sent,
+			Failed:  counts.Failed,
+			Pending: counts.Pending,
+		}, nil
+	case errors.Is(err, notification.ErrForbidden):
+		return api.GetNotificationBatchStatus401JSONResponse{Code: http.StatusUnauthorized, Message: "Admin access required"}, nil
+	case errors.Is(err, notification.ErrNotFound):
+		return api.GetNotificationBatchStatus404JSONResponse{Code: http.StatusNotFound, Message: "No notifications found for this batch ID"}, nil
+	default:
+		return nil, err
+	}
 }

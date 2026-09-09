@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/lucsky/cuid"
 )
 
 // Sentinel errors Service methods return — handlers/api_notifications.go
@@ -153,13 +155,15 @@ type CreateInput struct {
 	Channels []string
 }
 
-// Create stores one notification per recipient and attempts delivery on
-// each recipient's own resolved channels (see resolveChannelsForUser).
+// Create stores one notification per recipient, all sharing one freshly
+// generated batchID — even a single-recipient call gets one, a "batch of
+// one" (see db.Notification.BatchID's doc comment) — and attempts delivery
+// on each recipient's own resolved channels (see resolveChannelsForUser).
 // Delivery failures never fail Create itself — the in-app record is the
 // source of truth and always succeeds if its database write does; each
 // channel's outcome is recorded on its own NotificationDelivery row
 // instead (see deliver), inspectable independently of whether Create
-// returned an error.
+// returned an error, or in aggregate via GetBatchStatus.
 //
 // One recipient's notification failing to be stored (a rare DB-level
 // failure — there's no per-recipient validation that could fail first)
@@ -167,21 +171,26 @@ type CreateInput struct {
 // notification that *did* get created, alongside the joined set of
 // per-recipient errors, if any — a caller notifying five people shouldn't
 // lose the other four over one bad row.
-func (s *Service) Create(ctx context.Context, in CreateInput) ([]*db.Notification, error) {
+func (s *Service) Create(ctx context.Context, in CreateInput) (notifications []*db.Notification, batchID string, err error) {
 	metadataJSON, err := EncodeMetadata(in.Metadata)
 	if err != nil {
-		return nil, fmt.Errorf("encoding metadata: %w", err)
+		return nil, "", fmt.Errorf("encoding metadata: %w", err)
 	}
 	actionsJSON, err := EncodeActions(in.Actions)
 	if err != nil {
-		return nil, fmt.Errorf("encoding actions: %w", err)
+		return nil, "", fmt.Errorf("encoding actions: %w", err)
+	}
+	batchID, err = cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return nil, "", fmt.Errorf("generating batch id: %w", err)
 	}
 
-	notifications := make([]*db.Notification, 0, len(in.UserIDs))
+	notifications = make([]*db.Notification, 0, len(in.UserIDs))
 	var errs []error
 	for _, userID := range in.UserIDs {
 		n := &db.Notification{
 			UserID:   userID,
+			BatchID:  batchID,
 			Type:     in.Type,
 			Title:    in.Title,
 			Body:     in.Body,
@@ -199,7 +208,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) ([]*db.Notificatio
 			s.deliver(ctx, n, in.Actions, channel)
 		}
 	}
-	return notifications, errors.Join(errs...)
+	return notifications, batchID, errors.Join(errs...)
 }
 
 // resolveChannelsForUser decides which external channels to attempt
@@ -487,6 +496,150 @@ func (s *Service) ListDeliveries(notificationID, userID string, isAdmin bool) ([
 		return nil, ErrForbidden
 	}
 	return s.repo.ListDeliveries(notificationID)
+}
+
+// Status values GetNotificationStatus/GetBatchStatus report — distinct
+// from the raw, per-attempt db.NotificationDeliveryStatus* values a
+// NotificationDelivery row itself takes. StatusPending specifically means
+// "the most recent attempt on this channel failed, but a retry is still
+// scheduled" — it never appears as a NotificationDelivery.Status value,
+// only as this package's interpretation of one.
+const (
+	StatusSent    = "sent"
+	StatusFailed  = "failed"
+	StatusPending = "pending"
+)
+
+// channelStatus reduces one channel's most recent delivery attempt to a
+// single status: the outcome of that attempt, with a failed one promoted
+// to StatusPending if a retry is still scheduled. Returns
+// db.NotificationDeliveryStatusSkipped (not a Status constant above) for a
+// skipped attempt — skipped channels are reported in the per-channel
+// breakdown but deliberately excluded from overallStatus's rollup.
+func channelStatus(latest *db.NotificationDelivery) string {
+	switch latest.Status {
+	case db.NotificationDeliveryStatusSent:
+		return StatusSent
+	case db.NotificationDeliveryStatusFailed:
+		if latest.NextRetryAt != nil {
+			return StatusPending
+		}
+		return StatusFailed
+	default: // db.NotificationDeliveryStatusSkipped
+		return db.NotificationDeliveryStatusSkipped
+	}
+}
+
+// overallStatus rolls up a set of per-channel statuses (as channelStatus
+// produces — "skipped" included) into one Status, worst-first: pending
+// beats failed beats sent. Skipped channels are excluded from the rollup
+// entirely — a channel the gateway never had a working recipient or
+// config for shouldn't make an otherwise-successful notification look
+// failed, or an otherwise-pending one look worse. A notification with no
+// non-skipped channels at all — including one with no external delivery
+// ever attempted — rolls up to StatusSent: the in-app record, which
+// always exists regardless of configuration, is the baseline success
+// every external channel is additive to.
+func overallStatus(channelStatuses map[string]string) string {
+	sawFailed := false
+	for _, status := range channelStatuses {
+		switch status {
+		case StatusPending:
+			return StatusPending
+		case StatusFailed:
+			sawFailed = true
+		}
+	}
+	if sawFailed {
+		return StatusFailed
+	}
+	return StatusSent
+}
+
+// channelStatuses returns notificationID's latest attempt on every channel
+// it's ever been attempted on, reduced via channelStatus, keyed by channel
+// name.
+func (s *Service) channelStatuses(notificationID string) (map[string]string, error) {
+	deliveries, err := s.repo.ListDeliveries(notificationID)
+	if err != nil {
+		return nil, err
+	}
+	// ListDeliveries returns newest first, across every channel and every
+	// attempt — the first row seen per channel is that channel's latest.
+	statuses := make(map[string]string, len(deliveries))
+	for _, d := range deliveries {
+		if _, seen := statuses[d.Channel]; seen {
+			continue
+		}
+		statuses[d.Channel] = channelStatus(d)
+	}
+	return statuses, nil
+}
+
+// GetNotificationStatus returns notificationID's overall status (see
+// overallStatus) and the per-channel breakdown behind it. Restricted to
+// the notification's own owner or an admin, the same ownership rule
+// ListDeliveries uses.
+func (s *Service) GetNotificationStatus(notificationID, userID string, isAdmin bool) (overall string, channels map[string]string, err error) {
+	n, err := s.repo.GetNotification(notificationID)
+	if err != nil {
+		return "", nil, ErrNotFound
+	}
+	if n.UserID != userID && !isAdmin {
+		return "", nil, ErrForbidden
+	}
+	channels, err = s.channelStatuses(notificationID)
+	if err != nil {
+		return "", nil, err
+	}
+	return overallStatus(channels), channels, nil
+}
+
+// BatchStatusCounts summarizes one batch's notifications by their overall
+// GetNotificationStatus — see GetBatchStatus.
+type BatchStatusCounts struct {
+	Total   int
+	Sent    int
+	Failed  int
+	Pending int
+}
+
+// GetBatchStatus rolls up every notification created together in one
+// Create call (see db.Notification.BatchID) into counts of how many are
+// Sent/Failed/Pending overall. Admin-only: a batch can span several
+// different users' own notifications (that's the whole point of a
+// multi-recipient Create), so there's no single owning user this could be
+// scoped to the way GetNotificationStatus/ListDeliveries are — only the
+// caller who created the batch (necessarily an admin, since
+// CreateNotification itself is admin-only) is in a position to ask "how
+// did the whole thing go."
+func (s *Service) GetBatchStatus(batchID string, isAdmin bool) (BatchStatusCounts, error) {
+	if !isAdmin {
+		return BatchStatusCounts{}, ErrForbidden
+	}
+	notifications, err := s.repo.ListByBatchID(batchID)
+	if err != nil {
+		return BatchStatusCounts{}, err
+	}
+	if len(notifications) == 0 {
+		return BatchStatusCounts{}, ErrNotFound
+	}
+	counts := BatchStatusCounts{Total: len(notifications)}
+	for _, n := range notifications {
+		channels, err := s.channelStatuses(n.ID)
+		if err != nil {
+			return BatchStatusCounts{}, err
+		}
+		switch overallStatus(channels) {
+		case StatusSent:
+			counts.Sent++
+		case StatusFailed:
+			counts.Failed++
+		case StatusPending:
+			counts.Pending++
+		}
+	}
+	return counts, nil
 }
 
 // RespondViaWeb records userID's answer to notification id from the

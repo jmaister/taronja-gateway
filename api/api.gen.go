@@ -358,6 +358,9 @@ type CreateNotificationRequest struct {
 
 // CreateNotificationResponse defines model for CreateNotificationResponse.
 type CreateNotificationResponse struct {
+	// BatchId Pass to GET /api/notifications/batches/{batchId}/status for a rolled-up status across every recipient in this call.
+	BatchId string `json:"batchId"`
+
 	// Notifications One entry per userIds, in the same order.
 	Notifications []Notification `json:"notifications"`
 }
@@ -459,7 +462,10 @@ type MiddlewareStatusList = []MiddlewareStatusItem
 
 // Notification defines model for Notification.
 type Notification struct {
-	Actions           *[]NotificationAction   `json:"actions,omitempty"`
+	Actions *[]NotificationAction `json:"actions,omitempty"`
+
+	// BatchId Groups every recipient's notification from the same POST /api/notifications call — even a single-recipient call gets one. See GET /api/notifications/batches/{batchId}/status.
+	BatchId           string                  `json:"batchId"`
 	Body              string                  `json:"body"`
 	CreatedAt         time.Time               `json:"createdAt"`
 	Id                string                  `json:"id"`
@@ -494,6 +500,15 @@ type NotificationAction struct {
 	//
 	// Example: primary
 	Style *string `json:"style,omitempty"`
+}
+
+// NotificationBatchStatus A rolled-up status count across every recipient notified in one POST /api/notifications call.
+type NotificationBatchStatus struct {
+	BatchId string `json:"batchId"`
+	Failed  int    `json:"failed"`
+	Pending int    `json:"pending"`
+	Sent    int    `json:"sent"`
+	Total   int    `json:"total"`
 }
 
 // NotificationDelivery One attempt to deliver a notification over one external channel.
@@ -532,6 +547,20 @@ type NotificationPreference struct {
 	//
 	// Example: telegram
 	PreferredChannel *string `json:"preferredChannel,omitempty"`
+}
+
+// NotificationStatus A notification's status, computed fresh from its delivery attempts: worst-first across its channels (pending beats failed beats sent). See doc/notifications.md's "Status" section for the exact rollup rule.
+type NotificationStatus struct {
+	// Channels Each channel this notification was attempted on, mapped to its own status: "sent", "failed", "pending", or "skipped" (a channel that was never usable for this user/config — excluded from `overall`'s rollup).
+	//
+	//
+	// Example: {"email":"sent","telegram":"pending"}
+	Channels map[string]string `json:"channels"`
+
+	// Overall One of "sent", "failed", "pending".
+	//
+	// Example: pending
+	Overall string `json:"overall"`
 }
 
 // RateLimiterConfigResponse defines model for RateLimiterConfigResponse.
@@ -991,6 +1020,9 @@ type ServerInterface interface {
 	// CreateNotification Create a notification for one or more users (server-to-server, admin only)
 	// (POST /api/notifications)
 	CreateNotification(w http.ResponseWriter, r *http.Request)
+	// GetNotificationBatchStatus Get a rolled-up status count across every recipient of one create call (admin only)
+	// (GET /api/notifications/batches/{batchId}/status)
+	GetNotificationBatchStatus(w http.ResponseWriter, r *http.Request, batchId string)
 	// GetNotificationPreference Get the current user's preferred notification channel
 	// (GET /api/notifications/preferences)
 	GetNotificationPreference(w http.ResponseWriter, r *http.Request)
@@ -1018,6 +1050,9 @@ type ServerInterface interface {
 	// RespondToNotification Answer one of a notification's actions, from the in-app list
 	// (POST /api/notifications/{notificationId}/respond)
 	RespondToNotification(w http.ResponseWriter, r *http.Request, notificationId string)
+	// GetNotificationStatus Get one notification's rolled-up status
+	// (GET /api/notifications/{notificationId}/status)
+	GetNotificationStatus(w http.ResponseWriter, r *http.Request, notificationId string)
 	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
 	// (GET /api/rate-limiter/blocked)
 	GetBlockedClients(w http.ResponseWriter, r *http.Request, params GetBlockedClientsParams)
@@ -1421,6 +1456,32 @@ func (siw *ServerInterfaceWrapper) CreateNotification(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetNotificationBatchStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetNotificationBatchStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "batchId" -------------
+	var batchId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "batchId", r.PathValue("batchId"), &batchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "batchId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotificationBatchStatus(w, r, batchId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNotificationPreference operation middleware
 func (siw *ServerInterfaceWrapper) GetNotificationPreference(w http.ResponseWriter, r *http.Request) {
 
@@ -1606,6 +1667,32 @@ func (siw *ServerInterfaceWrapper) RespondToNotification(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RespondToNotification(w, r, notificationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNotificationStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetNotificationStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notificationId" -------------
+	var notificationId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notificationId", r.PathValue("notificationId"), &notificationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notificationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotificationStatus(w, r, notificationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2242,6 +2329,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/preferences", wrapper.GetNotificationPreference)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications/preferences", wrapper.SetNotificationPreference)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/{notificationId}/deliveries", wrapper.ListNotificationDeliveries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/{notificationId}/status", wrapper.GetNotificationStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/batches/{batchId}/status", wrapper.GetNotificationBatchStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests", wrapper.GetRequestStatistics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/requests/details", wrapper.GetRequestDetails)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/statistics/timeseries", wrapper.GetRequestTimeSeries)
@@ -2910,6 +2999,56 @@ func (response CreateNotification401JSONResponse) VisitCreateNotificationRespons
 	return err
 }
 
+type GetNotificationBatchStatusRequestObject struct {
+	BatchId string `json:"batchId"`
+}
+
+type GetNotificationBatchStatusResponseObject interface {
+	VisitGetNotificationBatchStatusResponse(w http.ResponseWriter) error
+}
+
+type GetNotificationBatchStatus200JSONResponse NotificationBatchStatus
+
+func (response GetNotificationBatchStatus200JSONResponse) VisitGetNotificationBatchStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationBatchStatus401JSONResponse Error
+
+func (response GetNotificationBatchStatus401JSONResponse) VisitGetNotificationBatchStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationBatchStatus404JSONResponse Error
+
+func (response GetNotificationBatchStatus404JSONResponse) VisitGetNotificationBatchStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNotificationPreferenceRequestObject struct {
 }
 
@@ -3312,6 +3451,70 @@ func (response RespondToNotification422JSONResponse) VisitRespondToNotificationR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationStatusRequestObject struct {
+	NotificationId string `json:"notificationId"`
+}
+
+type GetNotificationStatusResponseObject interface {
+	VisitGetNotificationStatusResponse(w http.ResponseWriter) error
+}
+
+type GetNotificationStatus200JSONResponse NotificationStatus
+
+func (response GetNotificationStatus200JSONResponse) VisitGetNotificationStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationStatus401JSONResponse Error
+
+func (response GetNotificationStatus401JSONResponse) VisitGetNotificationStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationStatus403JSONResponse Error
+
+func (response GetNotificationStatus403JSONResponse) VisitGetNotificationStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationStatus404JSONResponse Error
+
+func (response GetNotificationStatus404JSONResponse) VisitGetNotificationStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4201,6 +4404,9 @@ type StrictServerInterface interface {
 	// CreateNotification Create a notification for one or more users (server-to-server, admin only)
 	// (POST /api/notifications)
 	CreateNotification(ctx context.Context, request CreateNotificationRequestObject) (CreateNotificationResponseObject, error)
+	// GetNotificationBatchStatus Get a rolled-up status count across every recipient of one create call (admin only)
+	// (GET /api/notifications/batches/{batchId}/status)
+	GetNotificationBatchStatus(ctx context.Context, request GetNotificationBatchStatusRequestObject) (GetNotificationBatchStatusResponseObject, error)
 	// GetNotificationPreference Get the current user's preferred notification channel
 	// (GET /api/notifications/preferences)
 	GetNotificationPreference(ctx context.Context, request GetNotificationPreferenceRequestObject) (GetNotificationPreferenceResponseObject, error)
@@ -4228,6 +4434,9 @@ type StrictServerInterface interface {
 	// RespondToNotification Answer one of a notification's actions, from the in-app list
 	// (POST /api/notifications/{notificationId}/respond)
 	RespondToNotification(ctx context.Context, request RespondToNotificationRequestObject) (RespondToNotificationResponseObject, error)
+	// GetNotificationStatus Get one notification's rolled-up status
+	// (GET /api/notifications/{notificationId}/status)
+	GetNotificationStatus(ctx context.Context, request GetNotificationStatusRequestObject) (GetNotificationStatusResponseObject, error)
 	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
 	// (GET /api/rate-limiter/blocked)
 	GetBlockedClients(ctx context.Context, request GetBlockedClientsRequestObject) (GetBlockedClientsResponseObject, error)
@@ -4612,6 +4821,32 @@ func (sh *strictHandler) CreateNotification(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetNotificationBatchStatus operation middleware
+func (sh *strictHandler) GetNotificationBatchStatus(w http.ResponseWriter, r *http.Request, batchId string) {
+	var request GetNotificationBatchStatusRequestObject
+
+	request.BatchId = batchId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotificationBatchStatus(ctx, request.(GetNotificationBatchStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotificationBatchStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotificationBatchStatusResponseObject); ok {
+		if err := validResponse.VisitGetNotificationBatchStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetNotificationPreference operation middleware
 func (sh *strictHandler) GetNotificationPreference(w http.ResponseWriter, r *http.Request) {
 	var request GetNotificationPreferenceRequestObject
@@ -4843,6 +5078,32 @@ func (sh *strictHandler) RespondToNotification(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RespondToNotificationResponseObject); ok {
 		if err := validResponse.VisitRespondToNotificationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNotificationStatus operation middleware
+func (sh *strictHandler) GetNotificationStatus(w http.ResponseWriter, r *http.Request, notificationId string) {
+	var request GetNotificationStatusRequestObject
+
+	request.NotificationId = notificationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotificationStatus(ctx, request.(GetNotificationStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotificationStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotificationStatusResponseObject); ok {
+		if err := validResponse.VisitGetNotificationStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

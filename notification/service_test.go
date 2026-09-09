@@ -27,7 +27,7 @@ func newTestService(t *testing.T, cfg config.NotificationConfig) (*Service, db.N
 // directly instead.
 func createOne(t *testing.T, service *Service, in CreateInput) *db.Notification {
 	t.Helper()
-	notifications, err := service.Create(context.Background(), in)
+	notifications, _, err := service.Create(context.Background(), in)
 	require.NoError(t, err)
 	require.Len(t, notifications, 1)
 	return notifications[0]
@@ -53,7 +53,7 @@ func TestService_Create(t *testing.T) {
 		userB := &db.User{Username: "multi-b", Email: "multi-b@example.com"}
 		require.NoError(t, userRepo.CreateUser(userB))
 
-		notifications, err := service.Create(context.Background(), CreateInput{
+		notifications, batchID, err := service.Create(context.Background(), CreateInput{
 			UserIDs: []string{userA.ID, userB.ID}, Type: "t", Title: "T", Body: "B",
 			Actions: []Action{{ID: "approve", Label: "Approve"}},
 		})
@@ -61,6 +61,9 @@ func TestService_Create(t *testing.T) {
 		require.Len(t, notifications, 2)
 		assert.ElementsMatch(t, []string{userA.ID, userB.ID}, []string{notifications[0].UserID, notifications[1].UserID})
 		assert.NotEqual(t, notifications[0].ID, notifications[1].ID, "each recipient gets their own row, not a shared one")
+		assert.NotEmpty(t, batchID)
+		assert.Equal(t, batchID, notifications[0].BatchID)
+		assert.Equal(t, batchID, notifications[1].BatchID, "both recipients share the same batch")
 
 		// Each recipient can answer their own copy independently.
 		_, err = service.RespondViaWeb(context.Background(), notifications[0].ID, notifications[0].UserID, "approve")
@@ -495,6 +498,129 @@ func TestService_ListDeliveries(t *testing.T) {
 
 	t.Run("a nonexistent notification is not found", func(t *testing.T) {
 		_, err := service.ListDeliveries("nonexistent-id", owner.ID, false)
+		assert.ErrorIs(t, err, ErrNotFound)
+	})
+}
+
+func TestOverallStatus(t *testing.T) {
+	assert.Equal(t, StatusSent, overallStatus(nil), "no channels at all rolls up to sent — the in-app record is the baseline")
+	assert.Equal(t, StatusSent, overallStatus(map[string]string{"email": StatusSent}))
+	assert.Equal(t, StatusSent, overallStatus(map[string]string{"email": db.NotificationDeliveryStatusSkipped}), "an all-skipped notification still rolls up to sent")
+	assert.Equal(t, StatusSent, overallStatus(map[string]string{"email": StatusSent, "telegram": db.NotificationDeliveryStatusSkipped}), "skipped never drags down an otherwise-sent notification")
+	assert.Equal(t, StatusFailed, overallStatus(map[string]string{"email": StatusFailed}))
+	assert.Equal(t, StatusPending, overallStatus(map[string]string{"email": StatusPending}))
+	assert.Equal(t, StatusPending, overallStatus(map[string]string{"email": StatusSent, "telegram": StatusPending}), "pending beats sent")
+	assert.Equal(t, StatusPending, overallStatus(map[string]string{"email": StatusFailed, "telegram": StatusPending}), "pending beats failed")
+}
+
+func TestService_GetNotificationStatus(t *testing.T) {
+	service, repo, userRepo := newTestService(t, config.NotificationConfig{})
+	owner := &db.User{Username: "status-owner", Email: "status-owner@example.com"}
+	require.NoError(t, userRepo.CreateUser(owner))
+	stranger := &db.User{Username: "status-stranger", Email: "status-stranger@example.com"}
+	require.NoError(t, userRepo.CreateUser(stranger))
+
+	t.Run("no deliveries at all reports overall sent with no channels", func(t *testing.T) {
+		n := createOne(t, service, CreateInput{UserIDs: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
+		overall, channels, err := service.GetNotificationStatus(n.ID, owner.ID, false)
+		require.NoError(t, err)
+		assert.Equal(t, StatusSent, overall)
+		assert.Empty(t, channels)
+	})
+
+	t.Run("reflects a mix of sent, permanently failed, and pending channels", func(t *testing.T) {
+		n := createOne(t, service, CreateInput{UserIDs: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: n.ID, Channel: db.NotificationChannelEmail, Status: db.NotificationDeliveryStatusSent, AttemptNumber: 1,
+		}))
+		future := time.Now().Add(time.Hour)
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: n.ID, Channel: db.NotificationChannelTelegram, Status: db.NotificationDeliveryStatusFailed, AttemptNumber: 1, NextRetryAt: &future,
+		}))
+
+		overall, channels, err := service.GetNotificationStatus(n.ID, owner.ID, false)
+		require.NoError(t, err)
+		assert.Equal(t, StatusPending, overall, "a pending channel beats an otherwise-sent one")
+		assert.Equal(t, StatusSent, channels[db.NotificationChannelEmail])
+		assert.Equal(t, StatusPending, channels[db.NotificationChannelTelegram])
+	})
+
+	t.Run("a permanently exhausted failure with no pending channels reports overall failed", func(t *testing.T) {
+		n := createOne(t, service, CreateInput{UserIDs: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: n.ID, Channel: db.NotificationChannelEmail, Status: db.NotificationDeliveryStatusFailed, AttemptNumber: 5, // NextRetryAt nil: schedule exhausted
+		}))
+
+		overall, channels, err := service.GetNotificationStatus(n.ID, owner.ID, false)
+		require.NoError(t, err)
+		assert.Equal(t, StatusFailed, overall)
+		assert.Equal(t, StatusFailed, channels[db.NotificationChannelEmail])
+	})
+
+	t.Run("a stranger is forbidden", func(t *testing.T) {
+		n := createOne(t, service, CreateInput{UserIDs: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
+		_, _, err := service.GetNotificationStatus(n.ID, stranger.ID, false)
+		assert.ErrorIs(t, err, ErrForbidden)
+	})
+
+	t.Run("an admin can, regardless of ownership", func(t *testing.T) {
+		n := createOne(t, service, CreateInput{UserIDs: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
+		_, _, err := service.GetNotificationStatus(n.ID, "admin-id", true)
+		assert.NoError(t, err)
+	})
+
+	t.Run("a nonexistent notification is not found", func(t *testing.T) {
+		_, _, err := service.GetNotificationStatus("nonexistent-id", owner.ID, false)
+		assert.ErrorIs(t, err, ErrNotFound)
+	})
+}
+
+func TestService_GetBatchStatus(t *testing.T) {
+	service, repo, userRepo := newTestService(t, config.NotificationConfig{})
+	userA := &db.User{Username: "batch-status-a", Email: "batch-status-a@example.com"}
+	require.NoError(t, userRepo.CreateUser(userA))
+	userB := &db.User{Username: "batch-status-b", Email: "batch-status-b@example.com"}
+	require.NoError(t, userRepo.CreateUser(userB))
+	userC := &db.User{Username: "batch-status-c", Email: "batch-status-c@example.com"}
+	require.NoError(t, userRepo.CreateUser(userC))
+
+	t.Run("counts each recipient by their own overall status", func(t *testing.T) {
+		notifications, batchID, err := service.Create(context.Background(), CreateInput{
+			UserIDs: []string{userA.ID, userB.ID, userC.ID}, Type: "t", Title: "T", Body: "B",
+		})
+		require.NoError(t, err)
+		require.Len(t, notifications, 3)
+
+		// userA: sent. userB: pending (a failed attempt with a scheduled
+		// retry). userC: failed (schedule exhausted).
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: notifications[0].ID, Channel: db.NotificationChannelEmail, Status: db.NotificationDeliveryStatusSent, AttemptNumber: 1,
+		}))
+		future := time.Now().Add(time.Hour)
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: notifications[1].ID, Channel: db.NotificationChannelEmail, Status: db.NotificationDeliveryStatusFailed, AttemptNumber: 1, NextRetryAt: &future,
+		}))
+		require.NoError(t, repo.CreateDelivery(&db.NotificationDelivery{
+			NotificationID: notifications[2].ID, Channel: db.NotificationChannelEmail, Status: db.NotificationDeliveryStatusFailed, AttemptNumber: 5,
+		}))
+
+		counts, err := service.GetBatchStatus(batchID, true)
+		require.NoError(t, err)
+		assert.Equal(t, 3, counts.Total)
+		assert.Equal(t, 1, counts.Sent)
+		assert.Equal(t, 1, counts.Pending)
+		assert.Equal(t, 1, counts.Failed)
+	})
+
+	t.Run("a non-admin caller is forbidden", func(t *testing.T) {
+		_, batchID, err := service.Create(context.Background(), CreateInput{UserIDs: []string{userA.ID}, Type: "t", Title: "T", Body: "B"})
+		require.NoError(t, err)
+		_, err = service.GetBatchStatus(batchID, false)
+		assert.ErrorIs(t, err, ErrForbidden)
+	})
+
+	t.Run("a nonexistent batch is not found", func(t *testing.T) {
+		_, err := service.GetBatchStatus("nonexistent-batch", true)
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
 }

@@ -420,8 +420,18 @@ const (
 // — see the notification package's Action type for the structure encoded
 // here, and notification.Service for the (un)marshaling.
 type Notification struct {
-	ID       string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
-	UserID   string `gorm:"column:user_id;type:varchar(255);not null;index"`
+	ID     string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID string `gorm:"column:user_id;type:varchar(255);not null;index"`
+	// BatchID groups every recipient's row from one Create call — even a
+	// single-recipient call gets one, a "batch of one", so callers never
+	// need to special-case "was this actually a batch" (see
+	// notification.Service.Create). Not a foreign key to any table of its
+	// own: a batch has no row or metadata beyond "the set of Notification
+	// rows sharing this value" — see
+	// NotificationRepository.ListByBatchID and
+	// notification.Service.GetBatchStatus, the only things that ever
+	// query by it.
+	BatchID  string `gorm:"type:varchar(255);not null;index"`
 	Type     string `gorm:"type:varchar(255);not null"` // caller-defined, opaque to the gateway, e.g. "music_track_added"
 	Title    string `gorm:"type:text;not null"`
 	Body     string `gorm:"type:text;not null"`

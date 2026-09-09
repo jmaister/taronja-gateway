@@ -317,3 +317,92 @@ func TestListNotificationDeliveries(t *testing.T) {
 		assert.True(t, ok)
 	})
 }
+
+func TestGetNotificationStatus(t *testing.T) {
+	server, dependencies := setupNotificationTestServer(t)
+	owner := &db.User{Username: "status-owner", Email: "status-owner@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(owner))
+	stranger := &db.User{Username: "status-stranger", Email: "status-stranger@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(stranger))
+
+	created := createOneNotification(t, server, api.CreateNotificationJSONRequestBody{UserIds: []string{owner.ID}, Type: "t", Title: "T", Body: "B"})
+
+	t.Run("the owner sees overall sent when nothing was attempted", func(t *testing.T) {
+		resp, err := server.GetNotificationStatus(sessionContext(owner.ID, false), api.GetNotificationStatusRequestObject{NotificationId: created.Id})
+		require.NoError(t, err)
+		status, ok := resp.(api.GetNotificationStatus200JSONResponse)
+		require.True(t, ok)
+		assert.Equal(t, "sent", status.Overall)
+	})
+
+	t.Run("a stranger gets 403", func(t *testing.T) {
+		resp, err := server.GetNotificationStatus(sessionContext(stranger.ID, false), api.GetNotificationStatusRequestObject{NotificationId: created.Id})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationStatus403JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("a nonexistent notification gets 404", func(t *testing.T) {
+		resp, err := server.GetNotificationStatus(sessionContext(owner.ID, false), api.GetNotificationStatusRequestObject{NotificationId: "nonexistent-id"})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationStatus404JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("unauthenticated gets 401", func(t *testing.T) {
+		resp, err := server.GetNotificationStatus(context.Background(), api.GetNotificationStatusRequestObject{NotificationId: created.Id})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationStatus401JSONResponse)
+		assert.True(t, ok)
+	})
+}
+
+func TestGetNotificationBatchStatus(t *testing.T) {
+	server, dependencies := setupNotificationTestServer(t)
+	userA := &db.User{Username: "batch-status-a", Email: "batch-status-a@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(userA))
+	userB := &db.User{Username: "batch-status-b", Email: "batch-status-b@example.com"}
+	require.NoError(t, dependencies.UserRepo.CreateUser(userB))
+
+	createResp, err := server.CreateNotification(sessionContext("admin-id", true), api.CreateNotificationRequestObject{
+		Body: &api.CreateNotificationJSONRequestBody{UserIds: []string{userA.ID, userB.ID}, Type: "t", Title: "T", Body: "B"},
+	})
+	require.NoError(t, err)
+	created := createResp.(api.CreateNotification201JSONResponse)
+	require.NotEmpty(t, created.BatchId)
+	require.Len(t, created.Notifications, 2)
+	assert.Equal(t, created.BatchId, created.Notifications[0].BatchId)
+	assert.Equal(t, created.BatchId, created.Notifications[1].BatchId)
+
+	t.Run("an admin sees the rolled-up counts", func(t *testing.T) {
+		resp, err := server.GetNotificationBatchStatus(sessionContext("admin-id", true), api.GetNotificationBatchStatusRequestObject{BatchId: created.BatchId})
+		require.NoError(t, err)
+		status, ok := resp.(api.GetNotificationBatchStatus200JSONResponse)
+		require.True(t, ok)
+		assert.Equal(t, 2, status.Total)
+		assert.Equal(t, 2, status.Sent)
+		assert.Equal(t, 0, status.Failed)
+		assert.Equal(t, 0, status.Pending)
+	})
+
+	t.Run("a non-admin (even the batch's own recipient) gets 401", func(t *testing.T) {
+		resp, err := server.GetNotificationBatchStatus(sessionContext(userA.ID, false), api.GetNotificationBatchStatusRequestObject{BatchId: created.BatchId})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationBatchStatus401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("a nonexistent batch gets 404", func(t *testing.T) {
+		resp, err := server.GetNotificationBatchStatus(sessionContext("admin-id", true), api.GetNotificationBatchStatusRequestObject{BatchId: "nonexistent-batch"})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationBatchStatus404JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("unauthenticated gets 401", func(t *testing.T) {
+		resp, err := server.GetNotificationBatchStatus(context.Background(), api.GetNotificationBatchStatusRequestObject{BatchId: created.BatchId})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetNotificationBatchStatus401JSONResponse)
+		assert.True(t, ok)
+	})
+}
