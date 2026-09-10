@@ -431,5 +431,3 @@ go test ./handlers/... -run Notification -v
 - [README.md#authentication-providers](../README.md#authentication-providers) —
   the OAuth2 provider architecture this feature's `Provider`
   interface/registry design mirrors.
-- `doc/TODO.md` — background on why this was added and the design
-  decisions (channel scoping, auth, email template) made along the way.

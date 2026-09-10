@@ -140,5 +140,6 @@ your application's real routes.
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/cors.md](cors.md) — runs immediately before this one in
   the default chain.
-- `doc/TODO.md`'s "Rate limiter" section for remaining planned work (a map
-  of attackers by country; the persistent-registry item itself is done).
+- `doc/TODO.md`'s "Rate limiter" section for remaining planned work (request-
+  details filtering by IP/user-agent/date-range; the persistent-registry
+  and attacker-map items are both done).

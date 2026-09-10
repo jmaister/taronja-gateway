@@ -79,11 +79,11 @@ func isTrustedProxy(remoteIP string) bool {
 // unconditionally, regardless of who actually sent it — which meant any
 // direct client, not just a real proxy in front of this gateway, could
 // set its own "IP" to anything at all, including something that isn't an
-// IP address. That's not a theoretical concern: doc/TODO.md's "Fix GEO
-// IP" section shows a JNDI-exploit probe's own crafted string ending up
-// logged as the "client IP" and passed to the geo-lookup API — not
-// because of anything in the request's URL, but because the attacker's
-// own X-Forwarded-For header was trusted at face value. Beyond the log
+// IP address. That's not a theoretical concern: a real deployment's logs
+// showed a JNDI-exploit probe's own crafted string ending up logged as
+// the "client IP" and passed to the geo-lookup API — not because of
+// anything in the request's URL, but because the attacker's own
+// X-Forwarded-For header was trusted at face value. Beyond the log
 // noise, unconditionally trusting these headers also made IP-based rate
 // limiting (middleware/ratelimiter.go) and analytics trivially spoofable
 // by any client that isn't actually behind a real proxy. An earlier fix

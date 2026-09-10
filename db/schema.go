@@ -310,9 +310,7 @@ const (
 // ends and the IP has gone quiet, so without this, "was this IP blocked
 // last week, and why" had no answer once that happened — only
 // RateLimiter.Stats()'s live snapshot of whatever's still tracked right
-// now. See doc/TODO.md's "Rate limiter" section, which asked for exactly
-// this ("store persistent info about attackers... show blocked IPs with
-// start and end date of the block").
+// now.
 type BlockedClient struct {
 	gorm.Model
 	// Reason names which counter tripped the block — one of the

