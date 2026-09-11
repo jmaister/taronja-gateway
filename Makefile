@@ -158,7 +158,16 @@ install: build
 ifeq ($(OS),Windows_NT)
 	cp $(BINARY_NAME) ~/bin/$(BINARY_NAME)
 else
-	cp $(BINARY_NAME) ~/.local/bin/$(BINARY_NAME)
+	@mkdir -p ~/.local/bin
+	@# Copy to a temp file in the same directory, then rename it over the
+	@# target, instead of copying directly onto it: a plain `cp` opens the
+	@# destination for writing, which the kernel refuses with "Text file
+	@# busy" if that exact binary is currently running (e.g. `tg run` still
+	@# up from before this install) — a rename just repoints the directory
+	@# entry, which works even while the old inode is executing, and is how
+	@# every real package manager replaces a running binary.
+	cp $(BINARY_NAME) ~/.local/bin/$(BINARY_NAME).new
+	mv -f ~/.local/bin/$(BINARY_NAME).new ~/.local/bin/$(BINARY_NAME)
 endif
 
 # Default target
