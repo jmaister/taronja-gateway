@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Taronja Gateway — Docker Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
+    img { max-width: 100%; }
+    code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    ul { padding-left: 1.2rem; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <img src="/images/logo.png" alt="Taronja Gateway logo">
+  <h1>Taronja Gateway — Docker Demo</h1>
+  <p>
+    This page itself is a <strong>static route</strong>: the gateway is
+    serving these files directly from disk (<code>static: true</code>,
+    <code>toFolder</code>), with a 1-hour <code>Cache-Control</code> header —
+    check the response headers on this request.
+  </p>
+
+  <div class="card">
+    <h2>Routes to try</h2>
+    <ul>
+      <li><a href="/second_page.html">/second_page.html</a> — a second static page, same route.</li>
+      <li><a href="/web/">/web/</a> — <strong>proxy route</strong>: reverse-proxied to an independent
+        <code>whoami</code> container elsewhere in this compose file. Reload it a few times; the
+        hostname/IP it reports is the backend container, not the gateway.</li>
+      <li><a href="/secret/">/secret/</a> — the same kind of static route as this page, but with
+        <code>authentication.enabled: true</code>. You'll be redirected to log in first.</li>
+      <li><a href="/_/admin/">/_/admin/</a> — the built-in admin dashboard (analytics, sessions,
+        users, rate limiter stats, middleware status). Log in with the admin credentials from
+        your <code>.env</code>.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Things that don't have a page to click</h2>
+    <p>See this demo's <code>README.md</code> for <code>curl</code> examples of:</p>
+    <ul>
+      <li>the rate limiter (repeated requests to <code>/web/*</code> start getting <code>429</code>s)</li>
+      <li>CORS preflight response headers on <code>/web/*</code></li>
+      <li>hot config reload — edit <code>config.yaml</code> on the host and it takes effect without restarting the container</li>
+    </ul>
+  </div>
+</body>
+</html>

@@ -38,6 +38,7 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 		SameSite: http.SameSiteLaxMode,
 	}
 	cookieValue := clearCookie.String()
+	cacheControl := "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
 
 	// Check if we're on HTTPS and add Secure flag if needed
 	// Note: We can't access the request.TLS directly here as we only have the context
@@ -47,9 +48,9 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 	// Return a 302 response with the Set-Cookie header
 	return api.LogoutUser302Response{
 		Headers: api.LogoutUser302ResponseHeaders{
-			Location:     *redirectURL,
-			CacheControl: "no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
-			SetCookie:    cookieValue,
+			Location:     redirectURL,
+			CacheControl: &cacheControl,
+			SetCookie:    &cookieValue,
 		},
 	}, nil
 }

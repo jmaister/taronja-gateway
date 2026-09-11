@@ -22,6 +22,11 @@ func JA4Middleware(next http.Handler) http.Handler {
 		// Store the fingerprint in a custom header
 		r.Header.Set(fingerprint.JA4HHeaderName, ja4hFingerprint)
 
+		// Also compute and store the reduced-entropy "stable" fingerprint —
+		// see fingerprint.StableFingerprint's doc comment for why this
+		// exists alongside JA4H rather than replacing it.
+		r.Header.Set(fingerprint.StableFingerprintHeaderName, fingerprint.StableFingerprint(r))
+
 		next.ServeHTTP(w, r)
 	})
 }

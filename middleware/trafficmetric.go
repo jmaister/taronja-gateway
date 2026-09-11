@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"log"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
@@ -62,10 +61,23 @@ func (rw *responseWriterWithStats) Body() string {
 	return rw.body.String()
 }
 
-// TrafficMetricMiddleware creates middleware for collecting request statistics
-func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository) func(http.Handler) http.Handler {
+// TrafficMetricMiddleware creates middleware for collecting request
+// statistics. When excludeStaticAssets is true, requests whose path looks
+// like a static asset (session.IsStaticAssetPath — CSS, JS, images, fonts,
+// ...) skip this middleware's work entirely: no response-writer wrapping, no
+// TrafficMetric built, no async DB write. That's most of what this
+// middleware costs per request (see PERFORMANCE_ANALYSIS.md's profile of
+// BenchmarkStaticRequest), and static assets are the least useful requests
+// to spend it on — they carry no user action worth attributing, unlike a
+// page view or API call using the same session.
+func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository, excludeStaticAssets bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if excludeStaticAssets && session.IsStaticAssetPath(req.URL.Path) {
+				next.ServeHTTP(w, req)
+				return
+			}
+
 			startTime := time.Now()
 
 			// Wrap the response writer to capture statistics
@@ -116,45 +128,6 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository) func(http.Han
 }
 
 // StatisticsMiddlewareFunc creates an api.MiddlewareFunc for OpenAPI generated handlers
-func StatisticsMiddlewareFunc(statsRepo db.TrafficMetricRepository) func(http.Handler) http.Handler {
-	return TrafficMetricMiddleware(statsRepo)
-}
-
-// Helper function to check if a path should be excluded from statistics
-func shouldExcludeFromStats(path string) bool {
-	// Define patterns to exclude (health checks, static assets, etc.)
-	excludePatterns := []string{
-		`^/health$`,
-		`^/favicon\.ico$`,
-		`^/robots\.txt$`,
-		`^/sitemap\.xml$`,
-		`^/_/static/.*`, // Assuming static files are under /_/static/
-	}
-
-	for _, pattern := range excludePatterns {
-		matched, err := regexp.MatchString(pattern, path)
-		if err == nil && matched {
-			return true
-		}
-	}
-
-	return false
-}
-
-// ConditionalStatisticsMiddleware wraps StatisticsMiddleware with path exclusion logic
-func ConditionalStatisticsMiddleware(statsRepo db.TrafficMetricRepository) func(http.Handler) http.Handler {
-	statsMiddleware := TrafficMetricMiddleware(statsRepo)
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip statistics collection for certain paths
-			if shouldExcludeFromStats(r.URL.Path) {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Apply statistics middleware
-			statsMiddleware(next).ServeHTTP(w, r)
-		})
-	}
+func StatisticsMiddlewareFunc(statsRepo db.TrafficMetricRepository, excludeStaticAssets bool) func(http.Handler) http.Handler {
+	return TrafficMetricMiddleware(statsRepo, excludeStaticAssets)
 }

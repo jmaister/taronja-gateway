@@ -93,7 +93,7 @@ func TestRouteConfig_CacheControlMethods(t *testing.T) {
 	route1 := &RouteConfig{
 		Name: "test-route-1",
 		From: "/test1",
-		To:   "http://example.com",
+		To:   []string{"http://example.com"},
 	}
 
 	if route1.Options == nil {
@@ -108,7 +108,7 @@ func TestRouteConfig_CacheControlMethods(t *testing.T) {
 	route2 := &RouteConfig{
 		Name: "test-route-2",
 		From: "/test2",
-		To:   "http://example.com",
+		To:   []string{"http://example.com"},
 		Options: &RouteOptions{
 			CacheControlSeconds: intPtr(7200),
 		},
@@ -126,7 +126,7 @@ func TestRouteConfig_CacheControlMethods(t *testing.T) {
 	route3 := &RouteConfig{
 		Name: "test-route-3",
 		From: "/test3",
-		To:   "http://example.com",
+		To:   []string{"http://example.com"},
 		Options: &RouteOptions{
 			CacheControlSeconds: intPtr(0),
 		},

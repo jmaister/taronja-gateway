@@ -1,0 +1,51 @@
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    command: ["run", "--config", "/etc/taronja-gateway/config.yaml"]
+    volumes:
+      # The whole directory, not just config.yaml, is bind-mounted —
+      # deliberately: Docker's single-file bind mounts break when the host
+      # replaces the file via the write-a-new-file-then-rename-it pattern
+      # most editors and `sed -i` use (the mount stays pinned to the old,
+      # now-unlinked inode), which would silently defeat file-watch reload
+      # below. A directory bind mount doesn't have that problem.
+      #
+      # Edit config/config.yaml on the host and either send SIGHUP
+      # (`docker compose kill -s HUP gateway`) or just save it — the gateway
+      # watches it by default and hot-reloads, no restart needed. See
+      # README.md "Try hot config reload".
+      - ./config:/etc/taronja-gateway:ro
+      - ./static-site:/srv/static-site:ro
+      - ./static-site-secret:/srv/static-site-secret:ro
+      # Named volume, not a bind mount: the sqlite DB (admin user, sessions,
+      # traffic metrics) persists across `docker compose down && up`, but
+      # isn't a file you're meant to look at on the host.
+      - gateway-db:/data
+    environment:
+      # Consumed by config.yaml's ${GOOGLE_CLIENT_ID} etc. placeholders (see
+      # README.md "Configure Google authentication"). The :- defaults here
+      # are Compose-side only — they just mean "don't error if .env is
+      # missing entirely"; config.yaml treats an actually-empty value as
+      # "provider not configured", not an error either way.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    depends_on:
+      - web-service
+
+  # The target of the "web" proxy route (config.yaml's /web/* -> http://web-service:80).
+  # traefik/whoami is a ~5MB single-binary HTTP server that just echoes back
+  # the request it received as plain text — an easy way to actually see what
+  # the gateway forwards (X-Forwarded-For, injected X-User-Id/X-User-Data
+  # when authenticated, the stripped path) rather than a static page that
+  # never changes.
+  web-service:
+    image: traefik/whoami:latest
+
+volumes:
+  gateway-db:

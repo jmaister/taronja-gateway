@@ -507,7 +507,7 @@ type MockUserDataFetcher struct {
 	err      error
 }
 
-func (m *MockUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (m *MockUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

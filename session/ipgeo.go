@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,11 +21,48 @@ func SetGeolocationConfig(geoConfig *config.GeolocationConfig) {
 	globalGeoConfig = geoConfig
 }
 
+// geoSuccessTTL and geoFailureTTL are how long GetGeoDataFromIP trusts a
+// cached result before calling the geolocation API again. A successful
+// lookup is cached for a long time — an IP's location essentially never
+// changes. A *failed* lookup — the API unreachable, rate-limiting, timing
+// out — is cached too, but only briefly: long enough that repeated
+// requests from the same client during an outage don't each pay the full
+// network timeout (5s, see getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate),
+// short enough that service recovers within a minute of the API coming
+// back. Before this, a failure was never cached at all, so every single
+// request from an IP the API couldn't be reached for paid that 5s penalty
+// — confirmed directly: 1,000 requests from the same test IP, with the
+// free API unreachable from the sandbox this was found in, turned
+// gateway/performance_test.go's TestMemoryUsage into an 80+ minute hang
+// instead of a sub-second test.
+const (
+	geoSuccessTTL = 7 * 24 * time.Hour
+	geoFailureTTL = time.Minute
+)
+
+// geoCacheEntry holds one cached GetGeoDataFromIP result — either outcome,
+// not just success (see geoSuccessTTL/geoFailureTTL above).
+type geoCacheEntry struct {
+	data GeoData
+	err  error
+	at   time.Time
+}
+
+// expired reports whether e should be treated as a cache miss as of t —
+// geoFailureTTL after it was recorded if it was a failure, geoSuccessTTL
+// after if it was a success.
+func (e geoCacheEntry) expired(t time.Time) bool {
+	ttl := geoSuccessTTL
+	if e.err != nil {
+		ttl = geoFailureTTL
+	}
+	return t.Sub(e.at) >= ttl
+}
+
 // IPGeoCache provides caching to avoid excessive API calls for the same IP
 type IPGeoCache struct {
-	cache map[string]GeoData
+	cache map[string]geoCacheEntry
 	mutex sync.RWMutex
-	ttl   time.Duration
 }
 
 // GeoData holds the geolocation data for an IP
@@ -38,13 +76,33 @@ type GeoData struct {
 	Continent    string
 	ZipCode      string
 	FormattedLoc string // Formatted location string for display
-	Timestamp    time.Time
 }
 
-// Global cache instance with 7-day TTL
+// Global cache instance
 var ipCache = &IPGeoCache{
-	cache: make(map[string]GeoData),
-	ttl:   7 * 24 * time.Hour,
+	cache: make(map[string]geoCacheEntry),
+}
+
+// isNonRoutable reports whether ip is loopback, private (RFC 1918 /
+// RFC 4193), link-local, or unspecified ("0.0.0.0"/"::") — none of which a
+// public geolocation API can meaningfully answer for, and none of which
+// should ever be sent to one. Parses the address with net.ParseIP rather
+// than matching a string prefix: the "127."/"localhost" check this
+// replaced only ever caught IPv4 loopback, so a deployment behind a
+// reverse proxy on the same private network — a normal, common shape for
+// this gateway — sent every internal client's real RFC 1918 address
+// (192.168.x.x, 10.x.x.x, 172.16-31.x.x) straight to the geolocation API,
+// which naturally has no idea what to do with a non-routable address and
+// returned an error for every single one of them, logged on every request.
+// A malformed value (not a real IP at all) falls through to a real lookup
+// attempt rather than being silently treated as non-routable here — that
+// case surfaces as its own clear API error instead.
+func isNonRoutable(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast() || parsed.IsUnspecified()
 }
 
 // GetGeoDataFromIP attempts to get comprehensive geolocation data for an IP address
@@ -56,19 +114,19 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 	if ip == "" {
 		return GeoData{}, fmt.Errorf("IP address is empty")
 	}
-	// Check if IP is localhost or 127.x.x.x
-	if strings.Index(ip, "127.") == 0 || strings.Index(ip, "localhost") == 0 {
-		return GeoData{}, nil // Return empty GeoData for localhost or 127.x.x.x
+	if isNonRoutable(ip) {
+		return GeoData{}, nil // nothing a public geo API could ever answer for
 	}
 
-	// First check the cache
+	// First check the cache — a hit, success or failure, is returned as-is
+	// without calling the API again. See geoSuccessTTL/geoFailureTTL for
+	// why a failure is cached too, just briefly.
 	ipCache.mutex.RLock()
-	cachedData, found := ipCache.cache[ip]
+	entry, found := ipCache.cache[ip]
 	ipCache.mutex.RUnlock()
 
-	// If found in cache and not expired, use the cached data
-	if found && time.Since(cachedData.Timestamp) < ipCache.ttl {
-		return cachedData, nil
+	if found && !entry.expired(time.Now()) {
+		return entry.data, entry.err
 	}
 
 	// Check if we have an API key for iplocate.io
@@ -81,15 +139,18 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 		geoData, err = getGeoDataFromFreeIPAPI(ip)
 	}
 
+	// Cache the outcome either way (see geoSuccessTTL/geoFailureTTL) — a
+	// failed lookup used to never be cached at all, so every request from
+	// an IP the geolocation API couldn't be reached for paid its full
+	// network timeout, forever, for as long as that IP kept sending
+	// requests.
+	ipCache.mutex.Lock()
+	ipCache.cache[ip] = geoCacheEntry{data: geoData, err: err, at: time.Now()}
+	ipCache.mutex.Unlock()
+
 	if err != nil {
 		return GeoData{}, err
 	}
-
-	// Update the cache
-	ipCache.mutex.Lock()
-	ipCache.cache[ip] = geoData
-	ipCache.mutex.Unlock()
-
 	return geoData, nil
 }
 
@@ -134,7 +195,6 @@ func getGeoDataFromFreeIPAPI(ip string) (GeoData, error) {
 		Region:      result.RegionName,
 		Continent:   result.Continent,
 		ZipCode:     result.ZipCode,
-		Timestamp:   time.Now(),
 	}
 
 	formatGeoLocation(&geoData)
@@ -190,7 +250,6 @@ func getGeoDataFromIPLocate(ip, apiKey string) (GeoData, error) {
 		Region:      result.Subdivision,
 		Continent:   result.Continent,
 		ZipCode:     result.PostalCode,
-		Timestamp:   time.Now(),
 	}
 
 	formatGeoLocation(&geoData)

@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -35,8 +36,16 @@ type UserInfo struct {
 	Provider      string `json:"provider"`
 }
 
+// UserDataFetcher turns a completed OAuth2 token exchange into UserInfo.
+// Every provider except Apple does this via one authenticated REST call
+// using the access token (r is unused, kept only so the interface has one
+// shape); Apple has no such REST endpoint at all — its user info comes from
+// decoding+verifying the ID token already present in token (see apple.go),
+// plus, on the user's very first authorization only, a one-time JSON
+// payload Apple includes in the callback request itself (why r is needed
+// here rather than just the token).
 type UserDataFetcher interface {
-	FetchUserData(accessToken string) (*UserInfo, error)
+	FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error)
 }
 
 // Define the AuthProvider interface
@@ -46,7 +55,14 @@ type AuthProvider interface {
 
 // RegisterProviders registers all enabled authentication providers.
 // It now accepts db.SessionRepository.
-func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+//
+// ctx governs the lifetime of any background goroutine a provider starts
+// during registration — currently just Apple's JWKS refresh loop (see
+// RegisterAppleAuth). Callers that re-run this on every config reload (as
+// gateway.registerLoginRoutes does) must cancel the ctx from the *previous*
+// call once the new one is registered, or each reload leaks one more such
+// goroutine.
+func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
@@ -68,6 +84,29 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
 	} else {
 		log.Printf("Google Authentication provider not configured, skipping registration")
+	}
+
+	if gatewayConfig.AuthenticationProviders.Microsoft.ClientId != "" &&
+		gatewayConfig.AuthenticationProviders.Microsoft.ClientSecret != "" {
+		log.Printf("Registering Microsoft Authentication provider")
+		RegisterMicrosoftAuth(mux, sessionStore, gatewayConfig, userRepo)
+	} else {
+		log.Printf("Microsoft Authentication provider not configured, skipping registration")
+	}
+
+	if gatewayConfig.AuthenticationProviders.Facebook.ClientId != "" &&
+		gatewayConfig.AuthenticationProviders.Facebook.ClientSecret != "" {
+		log.Printf("Registering Facebook Authentication provider")
+		RegisterFacebookAuth(mux, sessionStore, gatewayConfig, userRepo)
+	} else {
+		log.Printf("Facebook Authentication provider not configured, skipping registration")
+	}
+
+	if gatewayConfig.AuthenticationProviders.Apple.IsConfigured() {
+		log.Printf("Registering Apple Authentication provider")
+		RegisterAppleAuth(ctx, mux, sessionStore, gatewayConfig, userRepo)
+	} else {
+		log.Printf("Apple Authentication provider not configured, skipping registration")
 	}
 }
 
@@ -93,6 +132,24 @@ type AuthenticationProvider struct {
 	UserRepo      db.UserRepository
 	SessionStore  session.SessionStore
 	GatewayConfig *config.GatewayConfig
+
+	// ClientSecretFunc, when set, is called to (re)generate
+	// OAuthConfig.ClientSecret immediately before every token exchange.
+	// Every provider but Apple leaves this nil and keeps a static
+	// ClientSecret set once at registration — Apple's "client secret" is
+	// instead a short-lived JWT it signs itself (see apple.go's
+	// buildAppleClientSecret), which would go stale if only ever built
+	// once at gateway startup.
+	ClientSecretFunc func() (string, error)
+
+	// ResponseMode, when set, is sent as the OAuth2 response_mode
+	// authorization parameter. Apple requires "form_post" whenever
+	// name/email scopes are requested — its callback then arrives as a
+	// POST form body instead of GET query params (Callback below reads
+	// state/code via r.FormValue, which transparently covers both).
+	// Every other provider here leaves this empty for the default,
+	// GET-based redirect.
+	ResponseMode string
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -131,7 +188,11 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	authCodeURL := ap.OAuthConfig.AuthCodeURL(state)
+	var opts []oauth2.AuthCodeOption
+	if ap.ResponseMode != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("response_mode", ap.ResponseMode))
+	}
+	authCodeURL := ap.OAuthConfig.AuthCodeURL(state, opts...)
 
 	// Get redirect URL from query parameters, default to "/"
 	originalURL := r.URL.Query().Get("redirect")
@@ -166,8 +227,17 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 // Callback handles the OAuth2 callback.
 // Uses db.SessionRepository methods.
 func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
-	code := r.URL.Query().Get("code")
+	// r.FormValue reads from the URL query for every provider's GET
+	// callback, and additionally from a POST body for Apple's
+	// response_mode=form_post callback — one code path covers both, no
+	// need to branch on r.Method.
+	if err := r.ParseForm(); err != nil {
+		log.Printf("Error parsing callback request: %v", err)
+		http.Error(w, "Invalid callback request", http.StatusBadRequest)
+		return
+	}
+	state := r.FormValue("state")
+	code := r.FormValue("code")
 
 	// Retrieve the state from cookie
 	stateCookie, err := r.Cookie(StateCookieName)
@@ -187,8 +257,27 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		MaxAge:   -1, // Delete immediately
 	})
 
+	// oauthConfig starts out as the provider's shared config and is only
+	// ever replaced below, never mutated in place: ap.OAuthConfig is one
+	// instance shared by every concurrent Callback call for this provider,
+	// so writing a freshly-generated secret directly onto it would race
+	// with other in-flight callbacks reading or overwriting the same
+	// field. A per-request copy keeps each call's secret to itself.
+	oauthConfig := ap.OAuthConfig
+	if ap.ClientSecretFunc != nil {
+		secret, err := ap.ClientSecretFunc()
+		if err != nil {
+			log.Printf("Error generating client secret for %s: %v", ap.Provider.Name(), err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		cfgCopy := *ap.OAuthConfig
+		cfgCopy.ClientSecret = secret
+		oauthConfig = &cfgCopy
+	}
+
 	// Exchange code for token
-	token, err := ap.OAuthConfig.Exchange(r.Context(), code)
+	token, err := oauthConfig.Exchange(r.Context(), code)
 	if err != nil {
 		log.Printf("Error exchanging code for token: %v", err)
 		http.Error(w, "Failed to exchange auth code", http.StatusInternalServerError)
@@ -196,7 +285,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Fetch user data using the token
-	userInfo, err := ap.Fetcher.FetchUserData(token.AccessToken)
+	userInfo, err := ap.Fetcher.FetchUserData(r, token)
 	if err != nil {
 		log.Printf("Error loading user data from provider %s: %v", ap.Provider.Name(), err)
 		http.Error(w, "Error loading user data from provider", http.StatusInternalServerError)

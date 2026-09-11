@@ -4,7 +4,9 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/auth"
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
 )
@@ -20,13 +22,46 @@ type Dependencies struct {
 	TrafficMetricRepo db.TrafficMetricRepository
 	TokenRepo         db.TokenRepository
 	CountersRepo      db.CountersRepository
+	BlockedClientRepo db.BlockedClientRepository
+	NotificationRepo  db.NotificationRepository
 
 	// Services
 	SessionStore session.SessionStore
 	TokenService *auth.TokenService
+	// NotificationService is nil until gateway.InitNotifications sets it —
+	// unlike the repositories above, it needs config.NotificationConfig
+	// (SMTP/Telegram credentials), which isn't available yet inside
+	// NewProduction/NewTest. See gateway/notifications.go.
+	NotificationService *notification.Service
 
 	// Application state
 	StartTime time.Time
+}
+
+// trafficMetricsBatchSize and trafficMetricsFlushInterval configure the
+// db.BatchingTrafficMetricRepository NewProduction wraps TrafficMetricRepo
+// in. Not user-configurable (unlike management.excludeStaticAssets): this
+// is a pure implementation-detail efficiency change with no user-visible
+// behavior difference beyond "up to this much recent traffic-metrics data
+// can be lost on a hard crash instead of a graceful shutdown", so there's
+// no meaningful trade-off for an operator to tune — 500ms/100 records is a
+// small enough window that it isn't one in practice.
+const (
+	trafficMetricsBatchSize     = 100
+	trafficMetricsFlushInterval = 500 * time.Millisecond
+)
+
+// Close releases resources that need an explicit, orderly shutdown rather
+// than just being dropped — today, just flushing TrafficMetricRepo's
+// buffered-but-not-yet-written records if it's batching (NewProduction
+// wraps it in one; NewTest/NewTestWithName don't, so this is a no-op for
+// test dependencies). Call once, after the HTTP server has stopped
+// accepting new requests (e.g. after http.Server.Shutdown returns) so nothing
+// is still calling Create concurrently.
+func (d *Dependencies) Close() {
+	if closer, ok := d.TrafficMetricRepo.(interface{ Close() }); ok {
+		closer.Close()
+	}
 }
 
 // NewProduction creates dependencies configured for production use
@@ -38,9 +73,18 @@ func NewProduction() *Dependencies {
 	// Create repositories using database implementations
 	userRepo := db.NewDBUserRepository(gormDB)
 	sessionRepo := db.NewSessionRepositoryDB(gormDB)
-	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
+	// Wrapped in a batcher: see the trafficMetricsBatchSize doc comment and
+	// PERFORMANCE_ANALYSIS.md for why. Dependencies.Close flushes it on
+	// shutdown.
+	trafficMetricRepo := db.NewBatchingTrafficMetricRepository(
+		db.NewTrafficMetricRepository(gormDB),
+		trafficMetricsBatchSize,
+		trafficMetricsFlushInterval,
+	)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
+	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
+	notificationRepo := db.NewNotificationRepositoryDB(gormDB)
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -55,9 +99,14 @@ func NewProduction() *Dependencies {
 		TrafficMetricRepo: trafficMetricRepo,
 		TokenRepo:         tokenRepo,
 		CountersRepo:      countersRepo,
+		BlockedClientRepo: blockedClientRepo,
+		NotificationRepo:  notificationRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
-		StartTime:         time.Now(),
+		// NotificationService is left nil here — gateway.InitNotifications
+		// sets it once config.NotificationConfig is available (see its own
+		// doc comment for why that can't happen inside NewProduction).
+		StartTime: time.Now(),
 	}
 }
 
@@ -78,6 +127,8 @@ func NewTestWithName(testName string) *Dependencies {
 	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
 	tokenRepo := db.NewTokenRepositoryDB(gormDB)
 	countersRepo := db.NewDBCountersRepository(gormDB)
+	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
+	notificationRepo := db.NewNotificationRepositoryDB(gormDB)
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)
@@ -85,15 +136,25 @@ func NewTestWithName(testName string) *Dependencies {
 	// Create token service
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
+	// A real, working Service with no external channels configured — every
+	// test that exercises notification handlers gets in-app create/list/
+	// read/respond for free, without needing its own SMTP/Telegram setup
+	// (see notification.NewService's nil-provider-map-entry behavior for
+	// an unconfigured channel).
+	notificationService := notification.NewService(config.NotificationConfig{}, notificationRepo, userRepo, "")
+
 	return &Dependencies{
-		DB:                gormDB,
-		UserRepo:          userRepo,
-		SessionRepo:       sessionRepo,
-		TrafficMetricRepo: trafficMetricRepo,
-		TokenRepo:         tokenRepo,
-		CountersRepo:      countersRepo,
-		SessionStore:      sessionStore,
-		TokenService:      tokenService,
-		StartTime:         time.Now(),
+		DB:                  gormDB,
+		UserRepo:            userRepo,
+		SessionRepo:         sessionRepo,
+		TrafficMetricRepo:   trafficMetricRepo,
+		TokenRepo:           tokenRepo,
+		CountersRepo:        countersRepo,
+		BlockedClientRepo:   blockedClientRepo,
+		NotificationRepo:    notificationRepo,
+		SessionStore:        sessionStore,
+		TokenService:        tokenService,
+		NotificationService: notificationService,
+		StartTime:           time.Now(),
 	}
 }

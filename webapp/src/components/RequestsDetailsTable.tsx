@@ -38,6 +38,14 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
         return `${decimalFormatter.format(ms / 3600000)} h`;
     };
     
+    if (totalRequests === 0) {
+        return (
+            <div className="w-full rounded-lg border border-border bg-surface p-6 text-center text-sm text-muted-fg shadow-soft">
+                No requests in this period.
+            </div>
+        );
+    }
+
     return (
         <div className="w-full">
             <div className="mb-2 flex flex-wrap gap-4 text-sm text-muted-fg">
@@ -52,6 +60,7 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                         <tr>
                             <th className="min-w-36 border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Timestamp</th>
                             <th className="min-w-48 border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Path</th>
+                            <th className="w-20 border-b border-border px-2 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Type</th>
                             <th className="min-w-24 border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">User</th>
                             <th className="w-16 border-b border-border px-2 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Status</th>
                             <th className="w-20 border-b border-border px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-muted-fg">Time (ms)</th>
@@ -74,6 +83,17 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                                         {req.path}
                                     </a>
                                 </div>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm">
+                                <span
+                                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                        req.is_static
+                                            ? "bg-surface-2 text-muted-fg"
+                                            : "bg-primary/10 text-primary"
+                                    }`}
+                                >
+                                    {req.is_static ? "Static" : "Dynamic"}
+                                </span>
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap text-sm">
                                 {req.username ? (

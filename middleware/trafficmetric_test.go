@@ -30,7 +30,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		// Use the modern dependency injection approach with isolated database
 		dependencies := deps.NewTestWithName(testName)
 
-		middleware := TrafficMetricMiddleware(dependencies.TrafficMetricRepo)
+		middleware := TrafficMetricMiddleware(dependencies.TrafficMetricRepo, false)
 
 		// Create a simple handler
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +82,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("records error request metrics", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		// Create a handler that returns an error
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +124,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("records session information when available", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		// Create handler
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +161,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("handles long error messages by truncating", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		// Create a handler that returns a very long error message
 		longErrorMsg := make([]byte, 1200) // Longer than 1000 byte limit
@@ -196,7 +196,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("measures response time accurately", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		// Create a handler that sleeps to create measurable response time
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +229,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("handles nil session gracefully", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -261,7 +261,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("records mobile device information correctly", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -301,7 +301,7 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 	t.Run("records Android device information correctly", func(t *testing.T) {
 		statsRepo := setupTestTrafficRepo(t)
-		middleware := TrafficMetricMiddleware(statsRepo)
+		middleware := TrafficMetricMiddleware(statsRepo, false)
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)

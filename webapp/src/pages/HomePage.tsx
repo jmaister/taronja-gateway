@@ -2,7 +2,7 @@ import { getUserDisplayName, useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
-import { useRateLimiterConfig } from '../services/services';
+import { useRateLimiterConfig } from '../services/rateLimiter';
 
 /**
  * Home page - A simple welcome page without detailed user information

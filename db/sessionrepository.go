@@ -38,11 +38,15 @@ func (s *SessionStoreDB) CreateSession(token string, sessionData *Session) error
 	sessionData.Token = token
 	// Initialize GORM Model fields if they are zero, GORM might do this automatically
 	// but being explicit can avoid issues if not using AutoCreate/AutoUpdate time.
+	// .UTC() to match this schema's UTC convention (db.utcNowFunc would set
+	// these to the same thing via GORM's own clock, but only if they're
+	// still zero by the time Create's callbacks run — this pre-set already
+	// wins, so it has to get UTC right itself).
 	if sessionData.CreatedAt.IsZero() {
-		sessionData.CreatedAt = time.Now()
+		sessionData.CreatedAt = time.Now().UTC()
 	}
 	if sessionData.UpdatedAt.IsZero() {
-		sessionData.UpdatedAt = time.Now()
+		sessionData.UpdatedAt = time.Now().UTC()
 	}
 
 	result := s.dbConn.Create(sessionData)
@@ -96,7 +100,10 @@ func (s *SessionStoreDB) GetSessionsByUserID(userID string) ([]Session, error) {
 
 // CloseSession marks a session as closed by setting its ClosedOn timestamp.
 func (s *SessionStoreDB) CloseSession(token string) error {
-	now := time.Now()
+	// .UTC(): this is a raw single-column Update against an empty
+	// &Session{} model, so Session.BeforeSave never sees this value —
+	// normalize it here instead, to match this schema's UTC convention.
+	now := time.Now().UTC()
 	result := s.dbConn.Model(&Session{}).Where("token = ? AND closed_on IS NULL", token).Update("closed_on", now) // Changed type to db.Session
 	if result.Error != nil {
 		return result.Error

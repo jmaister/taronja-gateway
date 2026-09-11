@@ -14,32 +14,56 @@ const AdminProvider = "tg_admin_provider"
 
 // ClientInfo contains common client and geographical information
 type ClientInfo struct {
-	IPAddress string `gorm:"type:varchar(45)"`  // IP address of the client
-	UserAgent string `gorm:"type:text"`         // User agent string
-	Referrer  string `gorm:"type:varchar(500)"` // HTTP referrer
+	// Indexed: BlockedClient's registry is routinely queried/filtered by
+	// IP (db.BlockedClientRepositoryDB.List), and this is the field that
+	// query filters on across every table ClientInfo is embedded in.
+	IPAddress string `gorm:"type:varchar(45);index" json:"ipAddress"` // IP address of the client
+	UserAgent string `gorm:"type:text" json:"userAgent"`              // User agent string
+	Referrer  string `gorm:"type:varchar(500)" json:"referrer"`       // HTTP referrer
 
 	// Device (UserAgent) information
-	BrowserFamily  string `gorm:"type:varchar(100)"` // Browser family (Chrome, Firefox, etc.)
-	BrowserVersion string `gorm:"type:varchar(100)"` // Browser version
-	OSFamily       string `gorm:"type:varchar(100)"` // Operating system
-	OSVersion      string `gorm:"type:varchar(100)"` // Operating system version
-	DeviceFamily   string `gorm:"type:varchar(100)"` // Device type (mobile, desktop, tablet)
-	DeviceBrand    string `gorm:"type:varchar(100)"` // Device brand (if applicable)
-	DeviceModel    string `gorm:"type:varchar(100)"` // Device model (if applicable)
+	BrowserFamily  string `gorm:"type:varchar(100)" json:"browserFamily"`  // Browser family (Chrome, Firefox, etc.)
+	BrowserVersion string `gorm:"type:varchar(100)" json:"browserVersion"` // Browser version
+	OSFamily       string `gorm:"type:varchar(100)" json:"osFamily"`       // Operating system
+	OSVersion      string `gorm:"type:varchar(100)" json:"osVersion"`      // Operating system version
+	DeviceFamily   string `gorm:"type:varchar(100)" json:"deviceFamily"`   // Device type (mobile, desktop, tablet)
+	DeviceBrand    string `gorm:"type:varchar(100)" json:"deviceBrand"`    // Device brand (if applicable)
+	DeviceModel    string `gorm:"type:varchar(100)" json:"deviceModel"`    // Device model (if applicable)
 
 	// Detailed geographical information (might be the address, city, etc.)
-	GeoLocation string  `gorm:"type:varchar(200)"`  // General geo location string
-	Latitude    float64 `gorm:"type:decimal(10,8)"` // GPS latitude
-	Longitude   float64 `gorm:"type:decimal(11,8)"` // GPS longitude
-	City        string  `gorm:"type:varchar(100)"`  // City name
-	ZipCode     string  `gorm:"type:varchar(20)"`   // Postal/ZIP code
-	Country     string  `gorm:"type:varchar(100)"`  // Country name
-	CountryCode string  `gorm:"type:varchar(3)"`    // ISO country code
-	Region      string  `gorm:"type:varchar(100)"`  // State/Province/Region
-	Continent   string  `gorm:"type:varchar(50)"`   // Continent name
+	GeoLocation string  `gorm:"type:varchar(200)" json:"geoLocation"` // General geo location string
+	Latitude    float64 `gorm:"type:decimal(10,8)" json:"latitude"`   // GPS latitude
+	Longitude   float64 `gorm:"type:decimal(11,8)" json:"longitude"`  // GPS longitude
+	City        string  `gorm:"type:varchar(100)" json:"city"`        // City name
+	ZipCode     string  `gorm:"type:varchar(20)" json:"zipCode"`      // Postal/ZIP code
+	Country     string  `gorm:"type:varchar(100)" json:"country"`     // Country name
+	CountryCode string  `gorm:"type:varchar(3)" json:"countryCode"`   // ISO country code
+	Region      string  `gorm:"type:varchar(100)" json:"region"`      // State/Province/Region
+	Continent   string  `gorm:"type:varchar(50)" json:"continent"`    // Continent name
 
-	// JA4H HTTP fingerprint
-	JA4Fingerprint string `gorm:"type:varchar(100)"`
+	// Fingerprint is the single client fingerprint value for this
+	// request/session — see FingerprintType for which algorithm produced
+	// it. Only one is ever stored, chosen by priority among the available
+	// signals (most reliable wins) via fingerprint.SelectFingerprint:
+	// TLS-level JA4 (fingerprint.TypeJA4TLS, only available when the
+	// gateway terminates TLS itself — see gateway/ja4tls.go) over the
+	// reduced-entropy "stable" fingerprint (fingerprint.TypeStable, works
+	// without TLS but still request-type-independent — see
+	// middleware/fingerprint.StableFingerprint) over JA4H
+	// (fingerprint.TypeJA4H, always available but the noisiest of the
+	// three — see doc/middleware/ja4-fingerprint.md). Empty if none of the
+	// three produced anything at all. Indexed (on whichever table embeds
+	// ClientInfo) since db/timeseries.go's new-vs-returning-visitor
+	// calculation does a MIN(timestamp) GROUP BY fingerprint over the
+	// entire TrafficMetric table — an unindexed scan of that would get
+	// more expensive as the table grows, the opposite of that feature's
+	// entire point.
+	Fingerprint string `gorm:"type:varchar(100);index" json:"fingerprint"`
+	// FingerprintType names which algorithm produced Fingerprint —
+	// fingerprint.TypeJA4TLS ("ja4_tls"), fingerprint.TypeStable
+	// ("stable"), or fingerprint.TypeJA4H ("ja4h"). Empty exactly when
+	// Fingerprint is empty too.
+	FingerprintType string `gorm:"type:varchar(20)" json:"fingerprintType"`
 }
 
 // User struct definition
@@ -75,7 +99,12 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// BeforeSave will handle password encryption if the password field is set
+// BeforeSave will handle password encryption if the password field is set,
+// and normalizes PasswordResetExpires/EmailConfirmationExpires to UTC —
+// see TrafficMetric.BeforeCreate's comment for why this needs doing
+// defensively here rather than trusting every call site that sets these
+// (e.g. a password-reset handler building the expiry from time.Now(), which
+// carries the server's local zone) to remember .UTC() itself.
 func (u *User) BeforeSave(tx *gorm.DB) error {
 	if u.Password != "" && !encryption.IsPasswordHashed(u.Password) {
 		hashedPassword, err := encryption.GeneratePasswordHash(u.Password)
@@ -84,27 +113,70 @@ func (u *User) BeforeSave(tx *gorm.DB) error {
 		}
 		u.Password = hashedPassword
 	}
+	if u.PasswordResetExpires != nil {
+		utcExpires := u.PasswordResetExpires.UTC()
+		u.PasswordResetExpires = &utcExpires
+	}
+	if u.EmailConfirmationExpires != nil {
+		utcExpires := u.EmailConfirmationExpires.UTC()
+		u.EmailConfirmationExpires = &utcExpires
+	}
 	return nil
 }
 
 // Session struct definition for persistent sessions
+//
+// JSON tags on this struct (and the embedded ClientInfo's) are what
+// actually shape the X-User-Data header a backend route receives — see
+// gateway.go's json.Marshal(sessionObject) and README.md's "X-User-Data
+// JSON Structure" reference, which documents the exact camelCase shape
+// these tags produce. Note gorm.Model's own embedded fields (ID,
+// CreatedAt, UpdatedAt, DeletedAt) have no tags of their own and so still
+// serialize in Go's default PascalCase — that's a pre-existing gap in the
+// X-User-Data contract this change doesn't attempt to close, since
+// suppressing an embedded struct's fields from JSON needs shadowing it
+// entirely, a larger change than what was asked for here.
 type Session struct {
 	gorm.Model
-	Token           string `gorm:"primaryKey;column:token;type:varchar(255);not null"`
-	UserID          string `gorm:"column:user_id;type:varchar(255)"`
-	Username        string
-	Email           string
-	IsAuthenticated bool
-	IsAdmin         bool
-	ValidUntil      time.Time
-	Provider        string
-	ClosedOn        *time.Time
-	LastActivity    time.Time
-	SessionName     string `gorm:"type:varchar(100)"`
-	CreatedFrom     string `gorm:"type:varchar(100)"` // How the session was created
+	Token           string     `gorm:"primaryKey;column:token;type:varchar(255);not null" json:"token"`
+	UserID          string     `gorm:"column:user_id;type:varchar(255)" json:"userId"`
+	Username        string     `json:"username"`
+	Email           string     `json:"email"`
+	IsAuthenticated bool       `json:"isAuthenticated"`
+	IsAdmin         bool       `json:"isAdmin"`
+	ValidUntil      time.Time  `json:"validUntil"`
+	Provider        string     `json:"provider"`
+	ClosedOn        *time.Time `json:"closedOn"`
+	LastActivity    time.Time  `json:"lastActivity"`
+	SessionName     string     `gorm:"type:varchar(100)" json:"sessionName"`
+	CreatedFrom     string     `gorm:"type:varchar(100)" json:"createdFrom"` // How the session was created
 
 	// Embed common client information
 	ClientInfo
+}
+
+// BeforeSave normalizes ValidUntil, LastActivity, and ClosedOn to UTC
+// before they're persisted — see TrafficMetric.BeforeCreate's comment for
+// the same reasoning applied here: every one of these is set from a plain
+// time.Now() somewhere (session/session.go), which carries the server
+// process's local zone, and this makes the schema's UTC convention hold
+// regardless of what any given call site remembers to do. Only reaches the
+// paths that pass a full *Session through GORM's Create/Save — the one
+// raw-column update in this codebase (SessionRepository.CloseSession's
+// Update("closed_on", ...)) normalizes its own value at the call site
+// instead, since a hook on an empty *Session{} model can't see it.
+func (s *Session) BeforeSave(tx *gorm.DB) error {
+	if !s.ValidUntil.IsZero() {
+		s.ValidUntil = s.ValidUntil.UTC()
+	}
+	if !s.LastActivity.IsZero() {
+		s.LastActivity = s.LastActivity.UTC()
+	}
+	if s.ClosedOn != nil {
+		utcClosedOn := s.ClosedOn.UTC()
+		s.ClosedOn = &utcClosedOn
+	}
+	return nil
 }
 
 // TrafficMetric struct definition
@@ -120,8 +192,42 @@ type TrafficMetric struct {
 	Error          string    `gorm:"type:text"`                  // Any error message if the request failed
 	UserID         string    `gorm:"type:varchar(255)"`          // ID of the user making the request, if authenticated
 	SessionID      string    `gorm:"type:varchar(255)"`          // ID of the session, if applicable
+	// default:false, not just not null: this column was added after
+	// TrafficMetric already existed in the wild (see AGENTS.md's "Data
+	// migrations" section), and AutoMigrate's ALTER TABLE ADD COLUMN for a
+	// NOT NULL column with no default fails outright on SQLite the moment
+	// the table already has one row — not a soft failure, a startup panic
+	// (confirmed against a real database from before this column existed:
+	// "SQL logic error: Cannot add a NOT NULL column with default value
+	// NULL"). false is the correct backfill value regardless: every
+	// pre-existing row predates this column's introduction, at which point
+	// every request was recorded, static or not (excludeStaticAssets
+	// skipping most static-asset rows came later still), so an old row
+	// having no way to say "this one was static" defaulting to "not
+	// static" undercounts static traffic for that old data, never fabricates
+	// it.
+	IsStaticAsset bool `gorm:"not null;default:false;index"` // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
 	// Embed common client and geographical information
 	ClientInfo
+}
+
+// BeforeCreate normalizes Timestamp to UTC before it's persisted.
+// db/timeseries.go's SQL-side bucketing (GetTimeSeries) extracts just the
+// "YYYY-MM-DD HH:MM:SS" prefix of the stored value — the pure-Go SQLite
+// driver this project uses stores time.Time as Go's default .String()
+// representation ("2026-06-10 08:00:00 +0200 CEST"), which none of
+// SQLite's date/time functions parse, but stripping the trailing
+// offset/zone leaves a format they do — and interprets that prefix
+// directly as UTC wall-clock time, with no offset conversion applied. A
+// non-UTC Timestamp would silently bucket at the wrong hour (its own local
+// wall-clock hour, not the equivalent UTC one) without this normalization,
+// which is why it happens here — once, defensively, on every insert path
+// (including CreateBatch, since GORM invokes model hooks per-record in a
+// batch create) — rather than trusting every call site that constructs a
+// TrafficMetric to remember `.UTC()` itself.
+func (t *TrafficMetric) BeforeCreate(tx *gorm.DB) error {
+	t.Timestamp = t.Timestamp.UTC()
+	return nil
 }
 
 // TrafficMetricWithUser combines TrafficMetric with User information for detailed reports
@@ -161,6 +267,91 @@ func (t *Token) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// BeforeSave normalizes ExpiresAt, LastUsedAt, and RevokedAt to UTC before
+// they're persisted — see TrafficMetric.BeforeCreate's comment for the same
+// reasoning applied here. ExpiresAt in particular is API-caller-supplied
+// (handlers/api_tokens.go, from request JSON) rather than always built from
+// time.Now() server-side, so this is the one place that can normalize it
+// regardless of what offset a client happened to send. Only reaches the
+// paths that pass a full *Token through GORM's Create/Save — the two
+// raw-column updates in this codebase (TokenRepository's RevokeToken and
+// IncrementUsageCount) normalize their own values at the call site instead,
+// since a hook on an empty *Token{} model can't see them.
+func (t *Token) BeforeSave(tx *gorm.DB) error {
+	if t.ExpiresAt != nil {
+		utcExpiresAt := t.ExpiresAt.UTC()
+		t.ExpiresAt = &utcExpiresAt
+	}
+	if t.LastUsedAt != nil {
+		utcLastUsedAt := t.LastUsedAt.UTC()
+		t.LastUsedAt = &utcLastUsedAt
+	}
+	if t.RevokedAt != nil {
+		utcRevokedAt := t.RevokedAt.UTC()
+		t.RevokedAt = &utcRevokedAt
+	}
+	return nil
+}
+
+// Block reason constants — the value BlockedClient.Reason takes,
+// matching exactly which counter middleware/ratelimiter.go's Handler
+// found tripped a configured threshold.
+const (
+	BlockReasonRateLimit         = "rate_limit"
+	BlockReasonMaxErrors         = "max_errors"
+	BlockReasonVulnerabilityScan = "vulnerability_scan"
+)
+
+// BlockedClient records one rate-limiter block event: an IP was blocked,
+// for how long, and what triggered it. This is a persistent history —
+// the in-memory RateLimiter itself keeps no such record past the block's
+// own expiry: middleware/ratelimiter.go's cleanupLoop deletes an IP's
+// entire tracked state (including its block) the moment the block window
+// ends and the IP has gone quiet, so without this, "was this IP blocked
+// last week, and why" had no answer once that happened — only
+// RateLimiter.Stats()'s live snapshot of whatever's still tracked right
+// now.
+type BlockedClient struct {
+	gorm.Model
+	// Reason names which counter tripped the block — one of the
+	// BlockReason* constants above.
+	Reason string `gorm:"type:varchar(30);not null;index" json:"reason"`
+	// Path is the request path that triggered the block. Only ever set
+	// for BlockReasonVulnerabilityScan (the specific configured URL
+	// pattern that matched) — BlockReasonRateLimit and
+	// BlockReasonMaxErrors trip on an aggregate count accumulated across
+	// many requests/paths, not any one specific path, so there's no
+	// single "the" path to record for those.
+	Path string `gorm:"type:varchar(500)" json:"path"`
+	// TriggerCount is the relevant counter's value at the moment it
+	// crossed the configured threshold — requests-in-the-last-minute for
+	// BlockReasonRateLimit, errors-in-the-block-window for
+	// BlockReasonMaxErrors, or scan-404s-in-the-block-window for
+	// BlockReasonVulnerabilityScan.
+	TriggerCount int `gorm:"not null" json:"triggerCount"`
+	// BlockedAt and BlockedUntil bound the block window. Always UTC —
+	// see BeforeCreate below, and TrafficMetric.BeforeCreate's comment
+	// for the same reasoning applied here.
+	BlockedAt    time.Time `gorm:"not null;index" json:"blockedAt"`
+	BlockedUntil time.Time `gorm:"not null" json:"blockedUntil"`
+	// Embed common client and geographical information — the same
+	// IP/User-Agent/geolocation/fingerprint fields every other traffic
+	// record carries, captured once at block time via
+	// session.NewClientInfo, the same helper TrafficMetric/Session use.
+	ClientInfo
+}
+
+// BeforeCreate normalizes BlockedAt/BlockedUntil to UTC before they're
+// persisted — see TrafficMetric.BeforeCreate's comment for why this
+// happens defensively here rather than trusting every call site
+// (middleware/ratelimiter.go builds both from a plain time.Now(), which
+// carries the server's local zone) to remember .UTC() itself.
+func (b *BlockedClient) BeforeCreate(tx *gorm.DB) error {
+	b.BlockedAt = b.BlockedAt.UTC()
+	b.BlockedUntil = b.BlockedUntil.UTC()
+	return nil
+}
+
 // Counter struct definition for counter transactions
 type Counter struct {
 	gorm.Model
@@ -184,4 +375,255 @@ func (c *Counter) BeforeCreate(tx *gorm.DB) error {
 	}
 	c.ID = newId
 	return nil
+}
+
+// Notification channel names — the value NotificationDelivery.Channel and
+// Notification.RespondedVia take. Kept as plain strings rather than an enum
+// type so a future channel (WhatsApp, Slack, SMS, ...) is just a new
+// constant here plus a new notification.Provider implementation, never a
+// schema or migration change.
+const (
+	NotificationChannelWeb      = "web" // not an external delivery — used for RespondedVia when the user answered from the in-app list, not a link/button
+	NotificationChannelEmail    = "email"
+	NotificationChannelTelegram = "telegram"
+	// NotificationChannelResponseWebhook is a NotificationDelivery.Channel
+	// value only — it never appears as a Notification.RespondedVia (the
+	// webhook doesn't answer a notification, it reports that one was
+	// already answered) and is deliberately excluded from
+	// notification.Service.resolveChannelsForUser's "every configured
+	// channel" default, since it isn't something a notification is ever
+	// requested to be delivered *by* — see config.ResponseWebhookConfig.
+	NotificationChannelResponseWebhook = "response_webhook"
+)
+
+// Notification delivery statuses — the value NotificationDelivery.Status
+// takes.
+const (
+	NotificationDeliveryStatusSent    = "sent"
+	NotificationDeliveryStatusFailed  = "failed"
+	NotificationDeliveryStatusSkipped = "skipped" // channel requested but the user has no recipient for it (no linked Telegram chat, provider disabled, ...)
+)
+
+// Notification is one in-app notification for one user. It always exists in
+// the database regardless of configuration — external delivery (email,
+// Telegram, ...) is an optional, best-effort addition on top, recorded per
+// attempt in NotificationDelivery rather than on this row, since one
+// notification can be delivered over several channels independently and
+// each can succeed or fail on its own.
+//
+// Metadata and Actions are both caller-opaque JSON: the gateway never
+// interprets Metadata at all (it's returned as-is to whatever frontend
+// reads the notification back), and only interprets Actions enough to
+// render buttons/links and to validate that a response names a real action
+// — see the notification package's Action type for the structure encoded
+// here, and notification.Service for the (un)marshaling.
+type Notification struct {
+	ID     string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID string `gorm:"column:user_id;type:varchar(255);not null;index"`
+	// BatchID groups every recipient's row from one Create call — even a
+	// single-recipient call gets one, a "batch of one", so callers never
+	// need to special-case "was this actually a batch" (see
+	// notification.Service.Create). Not a foreign key to any table of its
+	// own: a batch has no row or metadata beyond "the set of Notification
+	// rows sharing this value" — see
+	// NotificationRepository.ListByBatchID and
+	// notification.Service.GetBatchStatus, the only things that ever
+	// query by it.
+	BatchID  string `gorm:"type:varchar(255);not null;index"`
+	Type     string `gorm:"type:varchar(255);not null"` // caller-defined, opaque to the gateway, e.g. "music_track_added"
+	Title    string `gorm:"type:text;not null"`
+	Body     string `gorm:"type:text;not null"`
+	URL      *string
+	Metadata string `gorm:"type:text"` // JSON object, caller-defined, opaque to the gateway. "" means none.
+	Actions  string `gorm:"type:text"` // JSON array of notification.Action. "" means none (a plain, unanswerable notification).
+
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	ReadAt    *time.Time
+
+	// Set once the user responds to one of Actions, from any channel —
+	// clicking an email link, tapping a Telegram button, or answering from
+	// the in-app list. A notification with no Actions can never have these
+	// set. Re-answering is rejected (first response wins) rather than
+	// silently overwritten, since a caller reacting to "the user chose X"
+	// needs that to be a one-time event, not a value that can change under
+	// it after the fact.
+	RespondedActionID *string
+	RespondedAt       *time.Time
+	RespondedVia      *string // one of the NotificationChannel* constants
+
+	// RespondTokenHash is the sha256 hex of a random, single-use, unguessable
+	// token embedded in the answer links sent by email (there's no session
+	// cookie to authenticate an email click with, so the token in the URL
+	// *is* the credential — see auth.TokenService.GenerateToken for the same
+	// random-bytes-then-hash pattern used for API tokens). Empty when no
+	// email with actions has been sent for this notification yet.
+	// RespondTokenExpiresAt bounds how long a stale, unopened notification
+	// email's links keep working.
+	RespondTokenHash      string
+	RespondTokenExpiresAt *time.Time
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (n *Notification) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	n.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes ReadAt, RespondedAt, and RespondTokenExpiresAt to
+// UTC before they're persisted — none of them are set via GORM's own
+// autoCreateTime/autoUpdateTime clock (NowFunc), so each is normalized here
+// instead, the same reasoning as Token.BeforeSave.
+func (n *Notification) BeforeSave(tx *gorm.DB) error {
+	if n.ReadAt != nil {
+		utcReadAt := n.ReadAt.UTC()
+		n.ReadAt = &utcReadAt
+	}
+	if n.RespondedAt != nil {
+		utcRespondedAt := n.RespondedAt.UTC()
+		n.RespondedAt = &utcRespondedAt
+	}
+	if n.RespondTokenExpiresAt != nil {
+		utcExpiresAt := n.RespondTokenExpiresAt.UTC()
+		n.RespondTokenExpiresAt = &utcExpiresAt
+	}
+	return nil
+}
+
+// NotificationDelivery records one attempt to deliver a Notification over
+// one external channel. A single Notification can have zero, one, or
+// several of these (one per channel the caller asked for) — this table,
+// not Notification itself, is what "was this actually emailed?" answers,
+// since a notification can be requested on channels the user has no
+// recipient for (see NotificationDeliveryStatusSkipped) or that fail.
+//
+// ExternalRef is an opaque, per-channel value a Provider may want
+// remembered for this exact delivery — e.g. Telegram's "chatID:messageID",
+// so a later button tap (which only carries a chat ID and callback data,
+// not which Notification row it came from beyond that) can be matched back
+// to the specific message its buttons were attached to, and that message
+// can be edited once answered. Empty for channels that don't need it
+// (email has nothing analogous to "edit the sent message").
+//
+// AttemptNumber and NextRetryAt implement automatic retry of failed
+// deliveries (see notification.Service.RetryFailedDeliveries): each retry
+// creates a *new* NotificationDelivery row rather than mutating this one —
+// deliveries are an append-only log, so "what actually happened, and when"
+// stays fully reconstructable — with AttemptNumber one higher than the
+// attempt before it. NextRetryAt is set (to now + a backoff interval)
+// exactly on the single most recent row for a given (NotificationID,
+// Channel) pair when that attempt failed and hasn't yet exhausted the
+// retry schedule; every earlier row's NextRetryAt is cleared the moment a
+// new attempt is recorded, maintaining "at most one non-null NextRetryAt
+// per (NotificationID, Channel) at any time" as an invariant the retry
+// worker's query relies on to avoid a more expensive
+// latest-row-per-group query.
+type NotificationDelivery struct {
+	ID             string     `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	NotificationID string     `gorm:"column:notification_id;type:varchar(255);not null;index"`
+	Channel        string     `gorm:"type:varchar(50);not null"`
+	Status         string     `gorm:"type:varchar(50);not null"`
+	Error          string     `gorm:"type:text"` // populated when Status is NotificationDeliveryStatusFailed
+	ExternalRef    string     `gorm:"type:text"`
+	AttemptNumber  int        `gorm:"not null;default:1"`
+	NextRetryAt    *time.Time `gorm:"index"`
+	CreatedAt      time.Time  `gorm:"autoCreateTime"`
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (d *NotificationDelivery) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	d.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes NextRetryAt to UTC before it's persisted — it's
+// set via time.Now().Add(...) at the call site (notification.Service), not
+// GORM's own autoCreateTime/autoUpdateTime clock, the same reasoning as
+// Notification.BeforeSave.
+func (d *NotificationDelivery) BeforeSave(tx *gorm.DB) error {
+	if d.NextRetryAt != nil {
+		utcNextRetryAt := d.NextRetryAt.UTC()
+		d.NextRetryAt = &utcNextRetryAt
+	}
+	return nil
+}
+
+// NotificationChannelLink records that a gateway user has connected an
+// external channel identity to their account — today, only Telegram (a
+// chat ID), established via the /start deep-link flow in
+// GET /_/notifications/telegram/link. Email needs no equivalent row: the
+// gateway already knows every user's email address from User.Email.
+type NotificationChannelLink struct {
+	ID         string    `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID     string    `gorm:"column:user_id;type:varchar(255);not null;uniqueIndex:idx_notification_channel_link_user_channel"`
+	Channel    string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_notification_channel_link_user_channel"`
+	ExternalID string    `gorm:"type:varchar(255);not null;index"` // e.g. the Telegram chat ID, as a string
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
+}
+
+// BeforeCreate will set a CUID rather than numeric ID.
+func (l *NotificationChannelLink) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	l.ID = newId
+	return nil
+}
+
+// NotificationLinkCode is a short-lived, single-use code that connects one
+// gateway user to one external channel identity — e.g. the code embedded in
+// a Telegram "https://t.me/<bot>?start=<code>" deep link. The Code itself
+// (not a hash of it) is the primary key: unlike an API token, this is
+// deliberately short-lived (minutes, see notification.linkCodeTTL) and
+// consumed the moment it's used (ConsumeLinkCode deletes the row), so the
+// exposure window a stored plaintext code represents is small enough not to
+// warrant hashing it the way a long-lived Token is.
+type NotificationLinkCode struct {
+	Code      string    `gorm:"primaryKey;column:code;type:varchar(255);not null"`
+	UserID    string    `gorm:"column:user_id;type:varchar(255);not null"`
+	Channel   string    `gorm:"type:varchar(50);not null"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	ExpiresAt time.Time
+}
+
+// BeforeSave normalizes ExpiresAt to UTC before it's persisted — it's set
+// via time.Now().Add(...) at the call site (notification.Service), not
+// GORM's own autoCreateTime/autoUpdateTime clock, the same reasoning as
+// Token.BeforeSave and Notification.BeforeSave.
+func (l *NotificationLinkCode) BeforeSave(tx *gorm.DB) error {
+	l.ExpiresAt = l.ExpiresAt.UTC()
+	return nil
+}
+
+// NotificationPreference records one user's preferred delivery channel —
+// "each user can decide to receive notifications by one different
+// provider," independently of what any particular caller's
+// CreateInput.Channels asks for. One row per user (UserID is the primary
+// key, not a foreign key constraint — same convention every other table
+// here embedding a bare "user_id" column follows). No row at all, or an
+// empty PreferredChannel, both mean "no preference set" — see
+// NotificationRepository.GetPreferredChannel, which returns "" for
+// either case rather than distinguishing them, since callers never need
+// to.
+//
+// PreferredChannel is deliberately just a string, not validated against
+// which channels this gateway currently has configured (see
+// notification.Service.SetPreferredChannel's doc comment) — the same
+// "unknown/unconfigured channel is skipped, not rejected" philosophy
+// Notification.Actions/CreateInput.Channels already follow, so a user's
+// preference set today keeps working unchanged if the gateway adds a new
+// channel (WhatsApp, Slack, ...) tomorrow and they switch to it.
+type NotificationPreference struct {
+	UserID           string    `gorm:"primaryKey;column:user_id;type:varchar(255);not null"`
+	PreferredChannel string    `gorm:"type:varchar(50)"`
+	CreatedAt        time.Time `gorm:"autoCreateTime"`
+	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
 }

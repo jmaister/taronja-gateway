@@ -10,8 +10,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestJA4HIntegration verifies that JA4H fingerprints flow correctly from middleware to session/metrics
-func TestJA4HIntegration(t *testing.T) {
+// TestFingerprintIntegration verifies that a client fingerprint flows
+// correctly from the JA4 middleware to session/metrics via the same
+// consolidated Fingerprint/FingerprintType fields — see
+// fingerprint.SelectFingerprint. With a real User-Agent set (as here), the
+// stable fingerprint outranks JA4H in that selection, so that's what
+// actually ends up stored — not literally the JA4H value, even though the
+// middleware that computes it is still named "JA4 middleware" (it computes
+// all three signals, JA4H included; see ja4.go).
+func TestFingerprintIntegration(t *testing.T) {
 	// Simple handler that creates session and metric like the real gateway
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Test session creation (what happens during login)
@@ -21,8 +28,9 @@ func TestJA4HIntegration(t *testing.T) {
 		trafficMetric := session.NewTrafficMetric(r)
 
 		// Return fingerprints for verification
-		w.Header().Set("Session-JA4H", clientInfo.JA4Fingerprint)
-		w.Header().Set("Metric-JA4H", trafficMetric.JA4Fingerprint)
+		w.Header().Set("Session-Fingerprint", clientInfo.Fingerprint)
+		w.Header().Set("Session-Fingerprint-Type", clientInfo.FingerprintType)
+		w.Header().Set("Metric-Fingerprint", trafficMetric.Fingerprint)
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -39,21 +47,26 @@ func TestJA4HIntegration(t *testing.T) {
 	middlewareChain.ServeHTTP(rr, req)
 
 	// Verify the fingerprints were populated
-	sessionJA4H := rr.Header().Get("Session-JA4H")
-	metricJA4H := rr.Header().Get("Metric-JA4H")
+	sessionFingerprint := rr.Header().Get("Session-Fingerprint")
+	sessionType := rr.Header().Get("Session-Fingerprint-Type")
+	metricFingerprint := rr.Header().Get("Metric-Fingerprint")
 
-	assert.NotEmpty(t, sessionJA4H, "Session should have JA4H fingerprint")
-	assert.NotEmpty(t, metricJA4H, "Traffic metric should have JA4H fingerprint")
-	assert.Equal(t, sessionJA4H, metricJA4H, "Session and metric should have the same JA4H fingerprint")
+	assert.NotEmpty(t, sessionFingerprint, "Session should have a fingerprint")
+	assert.NotEmpty(t, metricFingerprint, "Traffic metric should have a fingerprint")
+	assert.Equal(t, sessionFingerprint, metricFingerprint, "Session and metric should have the same fingerprint")
+	// A real User-Agent plus no TLS means "stable" wins over JA4H — see
+	// fingerprint.SelectFingerprint's priority order.
+	assert.Equal(t, fp.TypeStable, sessionType)
 
-	t.Logf("JA4H Integration: %s", sessionJA4H)
+	t.Logf("Fingerprint Integration: %s (%s)", sessionFingerprint, sessionType)
 }
 
-// TestJA4HWithoutMiddleware verifies that without the middleware, no fingerprint is generated
-func TestJA4HWithoutMiddleware(t *testing.T) {
+// TestFingerprintWithoutMiddleware verifies that without the middleware, no
+// fingerprint is generated at all.
+func TestFingerprintWithoutMiddleware(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientInfo := session.NewClientInfo(r)
-		w.Header().Set(fp.JA4HHeaderName, clientInfo.JA4Fingerprint)
+		w.Header().Set(fp.JA4HHeaderName, clientInfo.Fingerprint)
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -64,11 +77,12 @@ func TestJA4HWithoutMiddleware(t *testing.T) {
 	// Execute the request directly (no middleware)
 	handler.ServeHTTP(rr, req)
 
-	// Verify that no JA4H fingerprint was generated
+	// Verify that no fingerprint was generated
 	fingerprintValue := rr.Header().Get(fp.JA4HHeaderName)
-	assert.Empty(t, fingerprintValue, "Without middleware, JA4H fingerprint should be empty")
+	assert.Empty(t, fingerprintValue, "Without middleware, no fingerprint should be generated")
 
-	// Verify header doesn't contain fingerprint
-	headerFingerprint := req.Header.Get(fp.JA4HHeaderName)
-	assert.Empty(t, headerFingerprint, "Without middleware, header should not contain JA4H fingerprint")
+	// Verify none of the underlying headers were set either
+	assert.Empty(t, req.Header.Get(fp.JA4HHeaderName))
+	assert.Empty(t, req.Header.Get(fp.StableFingerprintHeaderName))
+	assert.Empty(t, req.Header.Get(fp.JA4TLSHeaderName))
 }

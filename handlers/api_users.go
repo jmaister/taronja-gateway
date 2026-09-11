@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
@@ -16,10 +17,13 @@ import (
 
 // dbUserToAPIUserResponse converts a db.User object to an API UserResponse object.
 // It handles the conversion of ID to string and formats timestamps to RFC3339.
-// Nullable fields (Name, Picture, Provider) are converted to pointers to strings.
+// Nullable fields (Name, Picture, Provider, CreatedAt, UpdatedAt) are converted
+// to pointers, omitted (left nil) when the underlying value is unset.
 func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	// ID is already string in db.User and api.UserResponse
-	// CreatedAt and UpdatedAt are time.Time in db.User and api.UserResponse
+	// CreatedAt and UpdatedAt are time.Time in db.User (via the embedded
+	// gorm.Model, populated by GORM on create/update) and *time.Time in
+	// api.UserResponse.
 
 	var namePtr *string
 	if dbUser.Name != "" {
@@ -32,6 +36,14 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	var providerPtr *string
 	if dbUser.Provider != "" {
 		providerPtr = &dbUser.Provider
+	}
+	var createdAtPtr *time.Time
+	if !dbUser.CreatedAt.IsZero() {
+		createdAtPtr = &dbUser.CreatedAt
+	}
+	var updatedAtPtr *time.Time
+	if !dbUser.UpdatedAt.IsZero() {
+		updatedAtPtr = &dbUser.UpdatedAt
 	}
 
 	// Handle email conversion safely - only include if it's a valid email
@@ -46,12 +58,14 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	}
 
 	return api.UserResponse{
-		Id:       dbUser.ID,
-		Username: dbUser.Username,
-		Email:    emailPtr,
-		Name:     namePtr,
-		Picture:  picturePtr,
-		Provider: providerPtr,
+		Id:        dbUser.ID,
+		Username:  dbUser.Username,
+		Email:     emailPtr,
+		Name:      namePtr,
+		Picture:   picturePtr,
+		Provider:  providerPtr,
+		CreatedAt: createdAtPtr,
+		UpdatedAt: updatedAtPtr,
 	}
 }
 

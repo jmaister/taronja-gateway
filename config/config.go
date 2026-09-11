@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -18,9 +19,10 @@ import (
 // ServerConfig defines the gateway server's network configuration.
 // All fields are required.
 type ServerConfig struct {
-	Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
-	Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
-	URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	Host string    `yaml:"host"`          // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
+	Port int       `yaml:"port"`          // Server port number (e.g., 8080). Required. The HTTPS port when tls.enabled is true.
+	URL  string    `yaml:"url"`           // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	TLS  TLSConfig `yaml:"tls,omitempty"` // HTTPS termination. Optional; disabled by default (plain HTTP).
 }
 
 // AuthenticationConfig controls whether authentication is required for a specific route.
@@ -33,12 +35,57 @@ type RouteOptions struct {
 	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N"
 }
 
+// RouteTargets is one or more backend URLs a proxy route sends requests to.
+// A `to:` field accepts either a single scalar string (the original,
+// still-most-common form: one backend, no load balancing) or a YAML list
+// (multiple backends: the gateway round-robins across them per request and
+// fails over to the next one if a backend's connection attempt fails — see
+// gateway.newRoundRobinTransport). Both forms unmarshal into this same
+// []string-backed type, so every existing single-backend config keeps
+// working unchanged.
+//
+// Multiple targets are assumed to be interchangeable replicas of the same
+// backend (same path structure, differing only in scheme/host) — this is
+// what "load balancing" means here, not a way to route different paths to
+// different places. Use separate route entries (with different `from:`
+// patterns) for that instead.
+type RouteTargets []string
+
+// UnmarshalYAML implements custom decoding so `to:` accepts a bare string
+// or a list interchangeably. yaml.v3 calls this with the value node for the
+// `to:` key itself (not the whole route mapping), so Kind is always either
+// ScalarNode (a string) or SequenceNode (a list) for valid input.
+func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var single string
+		if err := value.Decode(&single); err != nil {
+			return err
+		}
+		if single == "" {
+			*t = nil
+			return nil
+		}
+		*t = RouteTargets{single}
+		return nil
+	case yaml.SequenceNode:
+		var list []string
+		if err := value.Decode(&list); err != nil {
+			return err
+		}
+		*t = RouteTargets(list)
+		return nil
+	default:
+		return fmt.Errorf("line %d: 'to' must be a string or a list of strings", value.Line)
+	}
+}
+
 // RouteConfig defines a single routing rule for the gateway.
 // Routes can proxy to remote servers or serve static files.
 type RouteConfig struct {
 	Name           string               `yaml:"name"`              // Human-readable route name for logging. Required.
 	From           string               `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
-	To             string               `yaml:"to"`                // Target URL for proxying (e.g., "https://api.example.com"). Required for proxy routes.
+	To             RouteTargets         `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
 	ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
 	ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
 	Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false
@@ -55,6 +102,52 @@ type AuthProviderCredentials struct {
 	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from provider. Can use environment variables (e.g., ${GOOGLE_CLIENT_SECRET})
 }
 
+// MicrosoftAuthProviderCredentials is AuthProviderCredentials plus the one
+// extra setting Microsoft's own OAuth2 endpoint needs: which Azure AD/Entra
+// ID tenant to authenticate against.
+type MicrosoftAuthProviderCredentials struct {
+	ClientId     string `yaml:"clientId"`     // OAuth2 client ID (Application ID) from the Azure/Entra app registration. Can use environment variables (e.g., ${MICROSOFT_CLIENT_ID})
+	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from the app registration. Can use environment variables (e.g., ${MICROSOFT_CLIENT_SECRET})
+	// Tenant restricts login to one Azure AD/Entra ID organization (its
+	// tenant ID or verified domain, e.g. "contoso.onmicrosoft.com").
+	// Empty (default) uses Microsoft's "common" endpoint, which accepts
+	// both personal Microsoft accounts and any organizational account.
+	Tenant string `yaml:"tenant,omitempty"`
+}
+
+// AppleAuthProviderCredentials configures "Sign in with Apple" — a
+// different credential shape than every other OAuth2 provider here. Apple
+// never issues a static client secret string; instead it's a JWT the
+// gateway signs itself (see providers/apple.go's buildAppleClientSecret),
+// using these four values, all from an Apple Developer account:
+// https://developer.apple.com/account/resources/authkeys/list.
+type AppleAuthProviderCredentials struct {
+	// ClientId is Apple's "Services ID" (e.g. "com.example.service") — the
+	// identifier registered for web authentication, not the app's Bundle
+	// ID. Can use environment variables (e.g. ${APPLE_CLIENT_ID}).
+	ClientId string `yaml:"clientId"`
+	// TeamId is the 10-character Apple Developer Team ID, shown on the
+	// "Membership" page of the developer account.
+	TeamId string `yaml:"teamId"`
+	// KeyId is the ID of the private key created for "Sign in with Apple"
+	// under Certificates, Identifiers & Profiles → Keys.
+	KeyId string `yaml:"keyId"`
+	// PrivateKey is the PEM-encoded EC private key content from the .p8
+	// file Apple generates when the key above is created (downloadable
+	// only once, at creation time). Can use environment variables (e.g.
+	// ${APPLE_PRIVATE_KEY}, if the environment supports a multi-line
+	// value) or a YAML literal block scalar (`privateKey: |` followed by
+	// the indented PEM content) for local/file-based configuration.
+	PrivateKey string `yaml:"privateKey"`
+}
+
+// IsConfigured reports whether every credential Apple requires is present —
+// unlike the other providers' plain ClientId/ClientSecret pair, this is
+// four fields, all required for RegisterAppleAuth to do anything.
+func (a AppleAuthProviderCredentials) IsConfigured() bool {
+	return a.ClientId != "" && a.TeamId != "" && a.KeyId != "" && a.PrivateKey != ""
+}
+
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
@@ -63,9 +156,12 @@ type BasicAuthenticationConfig struct {
 // AuthenticationProviders defines all available authentication methods.
 // At least one provider should be enabled if authentication is required on any route.
 type AuthenticationProviders struct {
-	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
-	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
-	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
+	Basic     BasicAuthenticationConfig        `yaml:"basic"`     // Basic username/password authentication
+	Google    AuthProviderCredentials          `yaml:"google"`    // Google OAuth2 authentication. Optional.
+	Github    AuthProviderCredentials          `yaml:"github"`    // GitHub OAuth2 authentication. Optional.
+	Microsoft MicrosoftAuthProviderCredentials `yaml:"microsoft"` // Microsoft (Entra ID / Azure AD) OAuth2 authentication. Optional.
+	Facebook  AuthProviderCredentials          `yaml:"facebook"`  // Facebook OAuth2 authentication. Optional.
+	Apple     AppleAuthProviderCredentials     `yaml:"apple"`     // "Sign in with Apple" authentication. Optional.
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -80,6 +176,21 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		fmt.Println("[OAUTH] GitHub callback URL:")
 		fmt.Println("   ", githubCallback)
 	}
+	if a.Microsoft.ClientId != "" && a.Microsoft.ClientSecret != "" {
+		microsoftCallback := fmt.Sprintf("%s%s/auth/microsoft/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Microsoft callback URL:")
+		fmt.Println("   ", microsoftCallback)
+	}
+	if a.Facebook.ClientId != "" && a.Facebook.ClientSecret != "" {
+		facebookCallback := fmt.Sprintf("%s%s/auth/facebook/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Facebook callback URL:")
+		fmt.Println("   ", facebookCallback)
+	}
+	if a.Apple.IsConfigured() {
+		appleCallback := fmt.Sprintf("%s%s/auth/apple/callback", serverURL, managementPrefix)
+		fmt.Println("[OAUTH] Apple callback URL:")
+		fmt.Println("   ", appleCallback)
+	}
 }
 
 // BrandingConfig contains visual customization options for the gateway UI.
@@ -87,19 +198,88 @@ type BrandingConfig struct {
 	LogoUrl string `yaml:"logoUrl,omitempty"` // URL or path to custom logo image for login page. Optional.
 }
 
-// NotificationConfig defines notification system settings.
+// NotificationConfig defines notification system settings: the gateway
+// stores every notification regardless of configuration (that part needs no
+// setup), and additionally delivers it over zero or more external channels.
+// Each channel is its own independent, optional block — a deployment can
+// enable email, Telegram, both, or neither. See notification.Provider for
+// the interface every channel implements, kept deliberately generic so a
+// future channel (WhatsApp, Slack, SMS, ...) only needs a new block here and
+// a new Provider, not a change to the notification data model or API.
 type NotificationConfig struct {
-	Email struct {
-		Enabled bool `yaml:"enabled"` // Enable email notifications. Default: false
-		SMTP    struct {
-			Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com")
-			Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for TLS, 465 for SSL)
-			Username string `yaml:"username"` // SMTP authentication username. Can use environment variables.
-			Password string `yaml:"password"` // SMTP authentication password. Can use environment variables.
-			From     string `yaml:"from"`     // From email address. Can use environment variables.
-			FromName string `yaml:"fromName"` // From display name. Can use environment variables.
-		} `yaml:"smtp"`
-	} `yaml:"email"`
+	Email           EmailNotificationConfig    `yaml:"email"`           // Email delivery via SMTP. Optional; disabled by default.
+	Telegram        TelegramNotificationConfig `yaml:"telegram"`        // Telegram delivery via a bot. Optional; disabled by default.
+	ResponseWebhook ResponseWebhookConfig      `yaml:"responseWebhook"` // Outbound callback fired when a user responds to a notification. Optional; disabled by default.
+}
+
+// EmailNotificationConfig configures the SMTP relay notifications with
+// sendEmail: true are delivered through. This is a plain synchronous SMTP
+// send per notification (net/smtp) — no queue, no retry — appropriate for
+// the low volume a per-user notification system produces; a high-volume
+// deployment should put a relay with its own queuing in front of this
+// instead of expecting the gateway to grow one.
+type EmailNotificationConfig struct {
+	Enabled  bool   `yaml:"enabled"`  // Enable email delivery. Default: false. Requires smtp.host and from at minimum.
+	Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com"). Required when enabled.
+	Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for STARTTLS, 465 for implicit TLS). Required when enabled.
+	Username string `yaml:"username"` // SMTP authentication username. Can use environment variables. Optional — some relays allow unauthenticated local delivery.
+	Password string `yaml:"password"` // SMTP authentication password. Can use environment variables.
+	From     string `yaml:"from"`     // From email address. Can use environment variables. Required when enabled.
+	FromName string `yaml:"fromName"` // From display name. Optional.
+}
+
+// IsConfigured reports whether email delivery has the minimum settings
+// (host and from address) to actually attempt a send.
+func (e EmailNotificationConfig) IsConfigured() bool {
+	return e.Enabled && e.Host != "" && e.From != ""
+}
+
+// TelegramNotificationConfig configures notification delivery via a
+// Telegram bot. Unlike email, there's no per-recipient address the gateway
+// already knows — a user links their gateway account to a Telegram chat
+// once, via GET /_/notifications/telegram/link's deep link (see
+// doc/notifications.md), and delivery only happens for users who've done
+// that. The bot receives updates by long-polling Telegram's API rather
+// than a webhook, deliberately: it means zero inbound network exposure is
+// required, so this works the same whether the gateway is reachable from
+// the internet or only from a private network.
+type TelegramNotificationConfig struct {
+	Enabled  bool   `yaml:"enabled"`  // Enable Telegram delivery. Default: false. Requires botToken.
+	BotToken string `yaml:"botToken"` // Bot token from @BotFather (e.g., "123456:ABC-DEF..."). Can use environment variables. Required when enabled.
+}
+
+// IsConfigured reports whether Telegram delivery has a bot token to
+// actually poll for updates and send messages with.
+func (t TelegramNotificationConfig) IsConfigured() bool {
+	return t.Enabled && t.BotToken != ""
+}
+
+// ResponseWebhookConfig configures an outbound HTTP callback the gateway
+// fires when a user responds to a notification (from any channel — the
+// in-app list, an email link, or a Telegram button) — so the app that
+// created the notification learns about the response without polling for
+// it. Unlike Email/Telegram, this isn't a delivery channel a notification
+// can be sent *to*; it's a one-time event fired once a response is
+// recorded, always POSTed to this single configured URL regardless of
+// which notification or user it's about — the same one-gateway-per-app
+// assumption every other part of this feature already makes (see
+// doc/notifications.md's "No multi-tenancy / multi-app scoping" note).
+type ResponseWebhookConfig struct {
+	Enabled bool   `yaml:"enabled"` // Enable the response webhook. Default: false. Requires url.
+	URL     string `yaml:"url"`     // Absolute URL to POST the response event to. Can use environment variables. Required when enabled.
+	// Secret, if set, HMAC-SHA256-signs each request body and sends the
+	// hex digest in an X-Taronja-Signature: sha256=<hex> header, so the
+	// receiver can verify the call actually came from this gateway. Can
+	// use environment variables. Optional — omit it only on a network
+	// where forging this request isn't a real concern (e.g. a private
+	// network with no other untrusted senders).
+	Secret string `yaml:"secret,omitempty"`
+}
+
+// IsConfigured reports whether the response webhook has a URL to actually
+// POST to.
+func (w ResponseWebhookConfig) IsConfigured() bool {
+	return w.Enabled && w.URL != ""
 }
 
 // AdminConfig configures administrative access to the management dashboard.
@@ -123,12 +303,15 @@ func (s *SessionConfig) GetDuration() time.Duration {
 // ManagementConfig defines the management API and dashboard settings.
 // The management API provides endpoints for metrics, user management, and admin dashboard.
 type ManagementConfig struct {
-	Prefix      string            `yaml:"prefix"`      // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
-	Logging     bool              `yaml:"logging"`     // Enable request/response logging. Default: false. Logs all HTTP requests.
-	Analytics   bool              `yaml:"analytics"`   // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
-	Admin       AdminConfig       `yaml:"admin"`       // Admin dashboard access configuration
-	Session     SessionConfig     `yaml:"session"`     // Session lifetime configuration for authenticated users
-	RateLimiter RateLimiterConfig `yaml:"rateLimiter"` // Rate limiter settings. Optional; zero values disable.
+	Prefix              string            `yaml:"prefix"`              // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
+	Logging             bool              `yaml:"logging"`             // Enable request/response logging. Default: false. Logs all HTTP requests.
+	Compression         bool              `yaml:"compression"`         // Enable brotli/zstd/gzip/deflate response compression, negotiated per-request via the client's Accept-Encoding header. Default: false. Has no other options — see middleware.CompressionMiddleware.
+	Analytics           bool              `yaml:"analytics"`           // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
+	ExcludeStaticAssets bool              `yaml:"excludeStaticAssets"` // Skip traffic-metrics collection for requests to static assets (by extension/path, see middleware.IsStaticAssetPath). Default: false, so existing configs keep recording everything Analytics already did. Has no effect when Analytics is false. Reduces per-request overhead and stats-table volume on asset-heavy sites; rows already recorded before this is enabled are unaffected and stay filterable by "is it a static asset" in the request-details report.
+	Admin               AdminConfig       `yaml:"admin"`               // Admin dashboard access configuration
+	Session             SessionConfig     `yaml:"session"`             // Session lifetime configuration for authenticated users
+	RateLimiter         RateLimiterConfig `yaml:"rateLimiter"`         // Rate limiter settings. Optional; zero values disable.
+	CORS                CORSConfig        `yaml:"cors"`                // Cross-origin request settings. Optional; empty allowedOrigins disables CORS entirely (no headers added — the pre-CORS-support behavior).
 }
 
 // RateLimiterConfig contains simple in-memory rate limiting settings.
@@ -173,6 +356,7 @@ type GeolocationConfig struct {
 // It contains all settings needed to run the gateway including server, routing, authentication, and management.
 // Configuration is loaded from a YAML file and supports environment variable expansion (${VAR_NAME}).
 type GatewayConfig struct {
+	Version                 *int                    `yaml:"version,omitempty"`       // Config schema version. Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1" explicitly, not the same thing spelled two ways. See CurrentConfigVersion and LoadConfig's version-check behavior in version.go.
 	Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
 	Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
 	Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
@@ -181,6 +365,8 @@ type GatewayConfig struct {
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
+	Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
+	Tracing                 TracingConfig           `yaml:"tracing,omitempty"`       // Distributed tracing via OpenTelemetry. Optional; disabled by default.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -212,6 +398,12 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	err = yaml.Unmarshal([]byte(expandedData), config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
+	}
+
+	// Refuse to run against a config file older than CurrentConfigVersion —
+	// see version.go. Run `tg migrate --config <path>` to upgrade it first.
+	if err := checkConfigVersion(configAbsPath, config); err != nil {
+		return nil, err
 	}
 
 	// --- Post-Unmarshal Validation and Path Resolution ---
@@ -252,6 +444,21 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		log.Printf("Admin access is disabled")
 	}
 
+	// Validate explicit middleware section, if present
+	seenMiddleware := make(map[string]bool, len(config.Middleware.Global))
+	for _, entry := range config.Middleware.Global {
+		if entry.Name == "" {
+			return nil, fmt.Errorf("middleware.global: entry is missing 'name'")
+		}
+		if !IsMiddlewareNameKnown(entry.Name) {
+			return nil, fmt.Errorf("middleware.global: unknown middleware '%s' (known: %v)", entry.Name, KnownMiddlewareNames)
+		}
+		if seenMiddleware[entry.Name] {
+			return nil, fmt.Errorf("middleware.global: middleware '%s' is listed more than once", entry.Name)
+		}
+		seenMiddleware[entry.Name] = true
+	}
+
 	// Validate authentication providers
 	if !config.HasAnyAuthentication() {
 		log.Printf("WARNING: No authentication providers are configured. Consider enabling at least one authentication method:")
@@ -263,6 +470,64 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	log.Printf("Current working directory: %s", currentDir)
+
+	// Validate TLS config. Resolving paths and confirming a static cert/key
+	// pair actually parses here (not just deferring to the gateway's own
+	// startup) means "tg validate" catches a bad cert/key pair before
+	// deploy, the same way it already catches a bad admin/CORS/route
+	// config — this is a pure local file read, no network call, so it's
+	// safe for validate's no-side-effects contract. The gateway loads the
+	// pair again for real at startup (config doesn't hold a
+	// *tls.Certificate itself); the point here is catching the error early
+	// with a clear message, not caching it. ACME's equivalent — actually
+	// obtaining a certificate — is inherently a network operation and can
+	// only happen at real gateway startup (see gateway/tls.go), so there's
+	// nothing more to check here than the config's own shape.
+	if config.Server.TLS.Enabled {
+		usingFiles := config.Server.TLS.CertFile != "" || config.Server.TLS.KeyFile != ""
+		usingACME := config.Server.TLS.ACME != nil
+
+		switch {
+		case usingFiles && usingACME:
+			return nil, fmt.Errorf("server.tls: certFile/keyFile and acme are mutually exclusive — configure one certificate source, not both")
+
+		case usingACME:
+			if len(config.Server.TLS.ACME.Domains) == 0 {
+				return nil, fmt.Errorf("server.tls.acme.domains must list at least one domain")
+			}
+			if config.Server.TLS.ACME.CacheDir == "" {
+				config.Server.TLS.ACME.CacheDir = defaultACMECacheDir
+			}
+			if !filepath.IsAbs(config.Server.TLS.ACME.CacheDir) {
+				config.Server.TLS.ACME.CacheDir = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.ACME.CacheDir))
+			}
+
+		case usingFiles:
+			if config.Server.TLS.CertFile == "" || config.Server.TLS.KeyFile == "" {
+				return nil, fmt.Errorf("server.tls.enabled is true but certFile and/or keyFile is not set")
+			}
+			if !filepath.IsAbs(config.Server.TLS.CertFile) {
+				config.Server.TLS.CertFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.CertFile))
+			}
+			if !filepath.IsAbs(config.Server.TLS.KeyFile) {
+				config.Server.TLS.KeyFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.KeyFile))
+			}
+			if _, err := tls.LoadX509KeyPair(config.Server.TLS.CertFile, config.Server.TLS.KeyFile); err != nil {
+				return nil, fmt.Errorf("server.tls: failed to load certificate/key pair (certFile=%q, keyFile=%q): %w", config.Server.TLS.CertFile, config.Server.TLS.KeyFile, err)
+			}
+
+		default:
+			return nil, fmt.Errorf("server.tls.enabled is true but neither certFile/keyFile nor acme is set")
+		}
+	}
+
+	// Validate tracing config. Nothing more to check than the config's own
+	// shape here — like ACME, actually reaching the collector is a network
+	// operation that can only happen at real gateway startup (see
+	// gateway.InitTracing), not something "tg validate" can confirm.
+	if config.Tracing.Enabled && config.Tracing.Endpoint == "" {
+		return nil, fmt.Errorf("tracing.enabled is true but tracing.endpoint is not set")
+	}
 
 	for i := range config.Routes {
 		route := &config.Routes[i]
@@ -326,6 +591,9 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
+		c.AuthenticationProviders.Microsoft.ClientId != "" ||
+		c.AuthenticationProviders.Facebook.ClientId != "" ||
+		c.AuthenticationProviders.Apple.IsConfigured() ||
 		c.Management.Admin.Enabled
 }
 
@@ -339,6 +607,15 @@ type loginPageData struct {
 			Enabled bool
 		}
 		Github struct {
+			Enabled bool
+		}
+		Microsoft struct {
+			Enabled bool
+		}
+		Facebook struct {
+			Enabled bool
+		}
+		Apple struct {
 			Enabled bool
 		}
 	}
@@ -356,6 +633,9 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
+	data.AuthenticationProviders.Microsoft.Enabled = gatewayConfig.AuthenticationProviders.Microsoft.ClientId != ""
+	data.AuthenticationProviders.Facebook.Enabled = gatewayConfig.AuthenticationProviders.Facebook.ClientId != ""
+	data.AuthenticationProviders.Apple.Enabled = gatewayConfig.AuthenticationProviders.Apple.IsConfigured()
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }
