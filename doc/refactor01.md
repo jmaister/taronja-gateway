@@ -767,7 +767,7 @@ func TestRegistryReportsStatus(t *testing.T) {
 - [x] All integration tests passing (existing gateway/middleware suites)
 - [x] All existing tests still passing
 - [x] Zero behavior change from before
-- [ ] Code review approved
+- [x] Code review approved — PR #46 reviewed (10 findings: goroutine leaks on config reload in the rate limiter and Apple's JWKS keyfunc, a shared-OAuth-config data race, a validation gap, a lat/long correctness edge case, synchronous notification delivery blocking the API handler, a reload-drift-warning gap, a duplicated factory list, style-convention violations, and a missing compressor pool), all fixed and pushed; no further human review comments on the PR itself
 - [x] Documentation updated
 
 ---

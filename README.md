@@ -51,10 +51,14 @@ Features table, shows what is implemented and what is planned.
 | Response Compression (brotli/zstd/gzip/deflate) | ✅ | v1.0.0 |
 | Distributed Tracing (OpenTelemetry) | ✅ | v1.0.0 |
 | Notifications (in-app, email, Telegram) | ✅ | v1.0.0 |
+| - Multi-recipient, per-user delivery channel, automatic retries | ✅ | v1.0.0 |
+| - Sent/failed/pending status, per notification and per batch | ✅ | v1.0.0 |
+| - Outbound webhook on user response                | ✅ | v1.0.0 |
 | Rate Limiter                  | ✅       | v0.0.22 |
-| - Requess per minute per IP   | ✅       | v0.0.22 |
+| - Requests per minute per IP  | ✅       | v0.0.22 |
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
 | - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       | v0.0.22 |
+| - Persistent block-event history, with a per-country attacker map | ✅ | v1.0.0 |
 | Hot config reload             | ✅       |        |
 | Feature Flags                 | 🚧       |        |
 | Circuit breaker               | 🚧       |        |
@@ -871,7 +875,13 @@ When a new version is ready to be released:
    git push origin v1.0.0
    ```
 
-2. Create a new release on GitHub, pointing to the created tag.
+2. Create a new release on GitHub, pointing to the created tag — this is
+   the step that actually publishes anything; GoReleaser and the SDK/clients
+   workflows all trigger on the release being *published*, not on the tag
+   existing. See [`doc/v1.0.0-release-notes.md`](doc/v1.0.0-release-notes.md)
+   for a human-readable summary of what's in this release, useful as a
+   starting point for the release description (GoReleaser also generates
+   its own changelog from commit messages automatically).
 
 3. The GitHub action will automatically:
    - Build binaries for multiple platforms
