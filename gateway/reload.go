@@ -137,6 +137,18 @@ func (g *Gateway) applyConfig(cfg *config.GatewayConfig) error {
 	// NewGatewayWithDependencies, when there's nothing to compare against.
 	warnIfImmutableFieldsChanged(g.GatewayConfig, cfg)
 
+	// Captured before the swap so the *previous* generation's RateLimiter
+	// can be closed once it's no longer reachable from g — buildRuntime
+	// above already built rt.rateLimiter as a brand-new instance with its
+	// own cleanup goroutine (see middleware.NewRateLimiter), so without
+	// this the old one's goroutine (and, more importantly, its in-memory
+	// blocked-IP entries) would keep running forever, orphaned, one more
+	// leaked instance per reload. previousRateLimiter is nil on the very
+	// first call (NewGatewayWithDependencies), when there's nothing to
+	// close — RateLimiter.Close is a no-op on a nil receiver for exactly
+	// that case.
+	previousRateLimiter := g.RateLimiter
+
 	g.configMu.Lock()
 	g.GatewayConfig = cfg
 	g.Mux = rt.mux
@@ -146,6 +158,8 @@ func (g *Gateway) applyConfig(cfg *config.GatewayConfig) error {
 	g.HttpCacheMiddleware = rt.cacheMiddleware
 	g.RouteChainBuilder = rt.routeChainBuilder
 	g.configMu.Unlock()
+
+	previousRateLimiter.Close()
 
 	// Registers every route/management handler onto the new (not yet live)
 	// mux. Reads g's just-swapped fields; safe without configMu here since
@@ -290,6 +304,20 @@ func warnIfImmutableFieldsChanged(oldCfg, newCfg *config.GatewayConfig) {
 		oldCfg.Tracing.Endpoint != newCfg.Tracing.Endpoint ||
 		oldCfg.Tracing.Insecure != newCfg.Tracing.Insecure {
 		log.Printf("Warning: config reload changed tracing settings, but the OpenTelemetry exporter is already initialized against the previous configuration and can't be reconfigured without a full restart. The new value is stored but has no effect until then.")
+	}
+
+	// The notification.Service (email/Telegram/webhook providers, the
+	// retry worker, the Telegram poller) is built once at startup by
+	// gateway.InitNotifications and stored on Dependencies — applyConfig
+	// never touches it, so a reload has no way to pick up a changed
+	// provider credential, a newly-enabled channel, or a different
+	// respondBaseURL. See InitNotifications' own doc comment for why that
+	// reload-unawareness is intentional rather than a gap to fill here; a
+	// deep comparison of the whole struct is enough for a warning like
+	// this since every field of it is a plain value type (no pointers to
+	// compare identity-vs-value on, unlike ACME's config above).
+	if !reflect.DeepEqual(oldCfg.Notification, newCfg.Notification) {
+		log.Printf("Warning: config reload changed notification settings, but the notification service (email/Telegram/webhook providers, retry worker, Telegram poller) is already initialized against the previous configuration and can't be reconfigured without a full restart. The new value is stored but has no effect until then.")
 	}
 }
 

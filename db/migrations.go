@@ -66,7 +66,8 @@ func applyDBMigrations(gdb *gorm.DB) error {
 		return fmt.Errorf("getting underlying sql.DB for migrations: %w", err)
 	}
 	var current int
-	if err := sqlDB.QueryRow("PRAGMA user_version").Scan(&current); err != nil {
+	err = sqlDB.QueryRow("PRAGMA user_version").Scan(&current)
+	if err != nil {
 		return fmt.Errorf("reading PRAGMA user_version: %w", err)
 	}
 	for _, m := range dbMigrations {
@@ -74,13 +75,15 @@ func applyDBMigrations(gdb *gorm.DB) error {
 			continue
 		}
 		log.Printf("db: applying migration %d: %s", m.version, m.description)
-		if err := m.apply(gdb); err != nil {
+		err = m.apply(gdb)
+		if err != nil {
 			return fmt.Errorf("db migration %d (%s): %w", m.version, m.description, err)
 		}
 		// PRAGMA doesn't support bound parameters in SQLite — safe here
 		// regardless, since m.version is a compile-time constant from
 		// dbMigrations above, never external input.
-		if _, err := sqlDB.Exec(fmt.Sprintf("PRAGMA user_version = %d", m.version)); err != nil {
+		_, err = sqlDB.Exec(fmt.Sprintf("PRAGMA user_version = %d", m.version))
+		if err != nil {
 			return fmt.Errorf("recording db migration %d as applied: %w", m.version, err)
 		}
 	}
@@ -169,7 +172,8 @@ var utcTimestampColumns = []utcTimestampColumn{
 // a table isn't a regression.
 func migrateTimestampsToUTC(gdb *gorm.DB) error {
 	for _, col := range utcTimestampColumns {
-		if err := backfillColumnToUTC(gdb, col); err != nil {
+		err := backfillColumnToUTC(gdb, col)
+		if err != nil {
 			return err
 		}
 	}
@@ -190,7 +194,8 @@ func backfillColumnToUTC(gdb *gorm.DB, col utcTimestampColumn) error {
 	}
 	var rows []scannedRow
 	selectSQL := fmt.Sprintf("SELECT %s AS pk, %s AS value FROM %s WHERE %s IS NOT NULL", col.pk, col.column, col.table, col.column)
-	if err := gdb.Raw(selectSQL).Scan(&rows).Error; err != nil {
+	err := gdb.Raw(selectSQL).Scan(&rows).Error
+	if err != nil {
 		return fmt.Errorf("reading %s.%s for UTC backfill: %w", col.table, col.column, err)
 	}
 
@@ -207,7 +212,8 @@ func backfillColumnToUTC(gdb *gorm.DB, col utcTimestampColumn) error {
 		if _, offset := parsed.Zone(); offset == 0 {
 			continue // already UTC, nothing to rewrite
 		}
-		if err := gdb.Exec(updateSQL, parsed.UTC(), row.PK).Error; err != nil {
+		err = gdb.Exec(updateSQL, parsed.UTC(), row.PK).Error
+		if err != nil {
 			return fmt.Errorf("rewriting %s.%s to UTC for %s=%s: %w", col.table, col.column, col.pk, row.PK, err)
 		}
 	}
@@ -268,7 +274,8 @@ var legacyFingerprintTables = []string{"sessions", "traffic_metrics", "tokens"}
 // this check.
 func migrateLegacyFingerprintColumns(gdb *gorm.DB) error {
 	for _, table := range legacyFingerprintTables {
-		if err := backfillLegacyFingerprintColumn(gdb, table); err != nil {
+		err := backfillLegacyFingerprintColumn(gdb, table)
+		if err != nil {
 			return err
 		}
 	}
@@ -306,7 +313,8 @@ func backfillLegacyFingerprintColumn(gdb *gorm.DB, table string) error {
 		WHERE (fingerprint IS NULL OR fingerprint = '') AND (%s)`,
 		table, fingerprintCases.String(), typeCases.String(), anyPresentConds.String(),
 	)
-	if err := gdb.Exec(updateSQL).Error; err != nil {
+	err := gdb.Exec(updateSQL).Error
+	if err != nil {
 		return fmt.Errorf("backfilling fingerprint/fingerprint_type on %s from legacy columns: %w", table, err)
 	}
 	return nil

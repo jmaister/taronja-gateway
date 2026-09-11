@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -200,6 +201,70 @@ func isIncompressibleContentType(ct string) bool {
 	return false
 }
 
+// compressorPools holds one sync.Pool per supported encoding, each pooling
+// the writer type that encoding's case in decide() constructs (gzip.Writer,
+// *flate.Writer, brotli.Writer, *zstd.Encoder). All four expose a
+// Reset(io.Writer) method that fully re-initializes their internal state
+// for a new stream, which is what lets a pooled instance move from one
+// request's ResponseWriter to the next's safely.
+//
+// This exists because every one of these constructors allocates real
+// working memory up front — gzip/flate their sliding-window and Huffman
+// tables, brotli its larger internal buffers, zstd its encoder state and
+// (per compression.go's own WithEncoderConcurrency(1) comment) goroutine
+// bookkeeping — and a gateway compressing every eligible response would
+// otherwise pay that allocation on every single request, only to throw it
+// away a few milliseconds later once Close() finishes flushing the body.
+// Pooling turns that into "allocate once, Reset() many times." Each pool's
+// New func builds against io.Discard purely as a placeholder destination —
+// decide() immediately Resets to the real cw.ResponseWriter before any byte
+// is written to it.
+var (
+	gzipWriterPool = sync.Pool{
+		New: func() interface{} { return gzip.NewWriter(io.Discard) },
+	}
+	flateWriterPool = sync.Pool{
+		New: func() interface{} {
+			// flate.DefaultCompression is a fixed, valid level — the error
+			// return only ever fires for an out-of-range level, never this
+			// one — so it's safe to discard here the same way NewWriter's
+			// call site used to before pooling.
+			fw, _ := flate.NewWriter(io.Discard, flate.DefaultCompression)
+			return fw
+		},
+	}
+	brotliWriterPool = sync.Pool{
+		New: func() interface{} { return brotli.NewWriter(io.Discard) },
+	}
+	zstdWriterPool = sync.Pool{
+		New: func() interface{} {
+			// Same WithEncoderConcurrency(1) reasoning as the case below —
+			// this only errors on invalid options, none used here.
+			zw, _ := zstd.NewWriter(io.Discard, zstd.WithEncoderConcurrency(1))
+			return zw
+		},
+	}
+)
+
+// putCompressor returns c to the pool matching encoding, once decide()'s
+// switch has confirmed which concrete type it is — the inverse of that
+// switch's Get+Reset. A no-op for an encoding this middleware doesn't
+// recognize, so a future new encoding can't panic here if someone adds its
+// decide() case without also adding a pool for it (it'll just allocate a
+// fresh writer every time instead, same as before pooling existed).
+func putCompressor(encoding string, c io.WriteCloser) {
+	switch encoding {
+	case "br":
+		brotliWriterPool.Put(c)
+	case "zstd":
+		zstdWriterPool.Put(c)
+	case "gzip":
+		gzipWriterPool.Put(c)
+	case "deflate":
+		flateWriterPool.Put(c)
+	}
+}
+
 // compressingResponseWriter wraps an http.ResponseWriter, deferring the
 // decision of whether to actually compress until the first byte is about to
 // be written (WriteHeader or Write, whichever comes first) — by then the
@@ -266,35 +331,29 @@ func (cw *compressingResponseWriter) decide() {
 		}
 	}
 
-	// Built before any header is touched, and only committed to below if
-	// this succeeds: gzip.NewWriter/brotli.NewWriter can't fail, but
-	// flate.NewWriter and zstd.NewWriter both return an error, and setting
-	// Content-Encoding first would leave the response lying about its own
-	// encoding if the writer then failed to construct and this fell back
-	// to writing the body uncompressed.
+	// Fetched from encoding's pool and Reset onto cw.ResponseWriter rather
+	// than constructed fresh — see compressorPools' doc comment for why.
+	// Every one of these Reset methods is unconditional (no error return),
+	// same as construction was before pooling: gzip/brotli's NewWriter
+	// never failed either, and flate/zstd's only ever failed on a bad
+	// level/option, which pool creation already validated once up front.
 	var compressor io.WriteCloser
 	switch cw.encoding {
 	case "br":
-		compressor = brotli.NewWriter(cw.ResponseWriter)
+		bw := brotliWriterPool.Get().(*brotli.Writer)
+		bw.Reset(cw.ResponseWriter)
+		compressor = bw
 	case "zstd":
-		// WithEncoderConcurrency(1): zstd's default concurrency is
-		// GOMAXPROCS, spinning up that many background goroutines per
-		// Writer — fine for compressing one large file, wasteful per HTTP
-		// response on a busy gateway creating one of these per request.
-		// A single response body rarely dwarfs the coordination overhead
-		// concurrent encoding would need to pay for anyway.
-		zw, err := zstd.NewWriter(cw.ResponseWriter, zstd.WithEncoderConcurrency(1))
-		if err != nil {
-			return // extremely unlikely; fall back to uncompressed
-		}
+		zw := zstdWriterPool.Get().(*zstd.Encoder)
+		zw.Reset(cw.ResponseWriter)
 		compressor = zw
 	case "gzip":
-		compressor = gzip.NewWriter(cw.ResponseWriter)
+		gw := gzipWriterPool.Get().(*gzip.Writer)
+		gw.Reset(cw.ResponseWriter)
+		compressor = gw
 	case "deflate":
-		fw, err := flate.NewWriter(cw.ResponseWriter, flate.DefaultCompression)
-		if err != nil {
-			return // extremely unlikely (only invalid levels error); fall back to uncompressed
-		}
+		fw := flateWriterPool.Get().(*flate.Writer)
+		fw.Reset(cw.ResponseWriter)
 		compressor = fw
 	default:
 		return
@@ -307,16 +366,23 @@ func (cw *compressingResponseWriter) decide() {
 	cw.compress = true
 }
 
-// Close flushes and closes the compressor, if one was created. It's a no-op
-// if the response was never written to (decide never ran) or wasn't
-// compressed. Must be called after the wrapped handler returns — every
-// compressor this middleware uses buffers internally and won't emit its
-// final bytes (including gzip's trailer/checksum) until Close.
+// Close flushes and closes the compressor, if one was created, then returns
+// it to its encoding's pool (see compressorPools) — safe the moment Close
+// returns, since nothing holds a reference to cw.compressor afterwards and
+// every supported compressor's Reset fully re-initializes it for the next
+// request that pulls it back out. It's a no-op if the response was never
+// written to (decide never ran) or wasn't compressed. Must be called after
+// the wrapped handler returns — every compressor this middleware uses
+// buffers internally and won't emit its final bytes (including gzip's
+// trailer/checksum) until Close.
 func (cw *compressingResponseWriter) Close() error {
 	if cw.compressor == nil {
 		return nil
 	}
-	return cw.compressor.Close()
+	err := cw.compressor.Close()
+	putCompressor(cw.encoding, cw.compressor)
+	cw.compressor = nil
+	return err
 }
 
 // Flush implements http.Flusher, forwarding through the compressor (if

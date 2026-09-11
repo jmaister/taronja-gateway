@@ -128,7 +128,8 @@ func (r *NotificationRepositoryDB) CreateNotification(n *Notification) error {
 
 func (r *NotificationRepositoryDB) GetNotification(id string) (*Notification, error) {
 	var n Notification
-	if err := r.db.Where("id = ?", id).First(&n).Error; err != nil {
+	err := r.db.Where("id = ?", id).First(&n).Error
+	if err != nil {
 		return nil, err
 	}
 	return &n, nil
@@ -136,7 +137,8 @@ func (r *NotificationRepositoryDB) GetNotification(id string) (*Notification, er
 
 func (r *NotificationRepositoryDB) FindNotificationByRespondTokenHash(tokenHash string) (*Notification, error) {
 	var n Notification
-	if err := r.db.Where("respond_token_hash = ? AND respond_token_hash != ''", tokenHash).First(&n).Error; err != nil {
+	err := r.db.Where("respond_token_hash = ? AND respond_token_hash != ''", tokenHash).First(&n).Error
+	if err != nil {
 		return nil, err
 	}
 	return &n, nil
@@ -149,7 +151,8 @@ func (r *NotificationRepositoryDB) ListNotifications(userID string, unreadOnly b
 	}
 	if cursor != nil {
 		var after Notification
-		if err := r.db.Select("created_at", "id").Where("id = ?", *cursor).First(&after).Error; err != nil {
+		err := r.db.Select("created_at", "id").Where("id = ?", *cursor).First(&after).Error
+		if err != nil {
 			// An unknown/stale cursor behaves like "no more pages" rather
 			// than an error — a page fetched right as its cursor row was
 			// deleted (it can't be, notifications aren't deleted today,
@@ -194,7 +197,8 @@ func (r *NotificationRepositoryDB) MarkAllRead(userID string, now time.Time) err
 func (r *NotificationRepositoryDB) RecordResponse(id, actionID, via string, now time.Time) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var n Notification
-		if err := tx.Where("id = ?", id).First(&n).Error; err != nil {
+		err := tx.Where("id = ?", id).First(&n).Error
+		if err != nil {
 			return err
 		}
 		if n.RespondedAt != nil {
@@ -267,7 +271,8 @@ func (r *NotificationRepositoryDB) UpsertChannelLink(userID, channel, externalID
 
 func (r *NotificationRepositoryDB) FindChannelLink(userID, channel string) (*NotificationChannelLink, error) {
 	var l NotificationChannelLink
-	if err := r.db.Where("user_id = ? AND channel = ?", userID, channel).First(&l).Error; err != nil {
+	err := r.db.Where("user_id = ? AND channel = ?", userID, channel).First(&l).Error
+	if err != nil {
 		return nil, err
 	}
 	return &l, nil
@@ -275,7 +280,8 @@ func (r *NotificationRepositoryDB) FindChannelLink(userID, channel string) (*Not
 
 func (r *NotificationRepositoryDB) FindChannelLinkByExternalID(channel, externalID string) (*NotificationChannelLink, error) {
 	var l NotificationChannelLink
-	if err := r.db.Where("channel = ? AND external_id = ?", channel, externalID).First(&l).Error; err != nil {
+	err := r.db.Where("channel = ? AND external_id = ?", channel, externalID).First(&l).Error
+	if err != nil {
 		return nil, err
 	}
 	return &l, nil
@@ -289,13 +295,15 @@ func (r *NotificationRepositoryDB) ConsumeLinkCode(code string, now time.Time) (
 	var found *NotificationLinkCode
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var l NotificationLinkCode
-		if err := tx.Where("code = ?", code).First(&l).Error; err != nil {
+		err := tx.Where("code = ?", code).First(&l).Error
+		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrNotificationLinkCodeInvalid
 			}
 			return err
 		}
-		if err := tx.Where("code = ?", code).Delete(&NotificationLinkCode{}).Error; err != nil {
+		err = tx.Where("code = ?", code).Delete(&NotificationLinkCode{}).Error
+		if err != nil {
 			return err
 		}
 		if now.UTC().After(l.ExpiresAt) {

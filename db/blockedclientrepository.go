@@ -46,7 +46,8 @@ func (r *BlockedClientRepositoryDB) List(ip string, limit, offset int) ([]Blocke
 	if ip != "" {
 		countQuery = countQuery.Where("ip_address = ?", ip)
 	}
-	if err := countQuery.Count(&total).Error; err != nil {
+	err := countQuery.Count(&total).Error
+	if err != nil {
 		return nil, 0, err
 	}
 
@@ -55,7 +56,8 @@ func (r *BlockedClientRepositoryDB) List(ip string, limit, offset int) ([]Blocke
 	if ip != "" {
 		listQuery = listQuery.Where("ip_address = ?", ip)
 	}
-	if err := listQuery.Order("blocked_at DESC").Limit(limit).Offset(offset).Find(&items).Error; err != nil {
+	err = listQuery.Order("blocked_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	if err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil

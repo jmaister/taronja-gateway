@@ -348,7 +348,7 @@ func TestRegisterAppleAuth(t *testing.T) {
 			},
 		}
 
-		RegisterAppleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterAppleAuth(context.Background(), mux, sessionStore, gatewayConfig, userRepo)
 
 		loginReq := httptest.NewRequest("GET", "/_/auth/apple/login", nil)
 		loginRec := httptest.NewRecorder()
@@ -378,7 +378,7 @@ func TestRegisterAppleAuth(t *testing.T) {
 			},
 		}
 
-		RegisterAppleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterAppleAuth(context.Background(), mux, sessionStore, gatewayConfig, userRepo)
 
 		loginReq := httptest.NewRequest("GET", "/_/auth/apple/login", nil)
 		loginRec := httptest.NewRecorder()

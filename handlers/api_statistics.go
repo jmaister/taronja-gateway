@@ -221,12 +221,18 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 			userID = &m.TrafficMetric.UserID
 		}
 
+		// Gated on Country rather than "!= 0": Latitude/Longitude are plain
+		// float64 columns with no way to distinguish "never looked up" from
+		// a real (0, longitude) point on the equator or a real (latitude, 0)
+		// point on the prime meridian — both of which exist on land. Country
+		// is always populated alongside coordinates by a successful geo
+		// lookup (session.GetGeoDataFromIP) and always empty when one never
+		// happened (private/non-routable IP, lookup failure), so it's a
+		// reliable stand-in for "do we actually have geo data here."
 		var latitude, longitude *float32
-		if m.TrafficMetric.Latitude != 0 {
+		if m.TrafficMetric.Country != "" {
 			lat := float32(m.TrafficMetric.Latitude)
 			latitude = &lat
-		}
-		if m.TrafficMetric.Longitude != 0 {
 			lon := float32(m.TrafficMetric.Longitude)
 			longitude = &lon
 		}
@@ -416,11 +422,13 @@ func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBloc
 		if bc.City != "" {
 			item.City = &bc.City
 		}
-		if bc.Latitude != 0 {
+		// See the identical Country-gated check in GetRequestDetails above:
+		// Latitude/Longitude are plain float64 columns, so "!= 0" can't
+		// tell a real equator/prime-meridian point apart from "never looked
+		// up" — Country is empty in exactly the latter case.
+		if bc.Country != "" {
 			lat := float32(bc.Latitude)
 			item.Latitude = &lat
-		}
-		if bc.Longitude != 0 {
 			lon := float32(bc.Longitude)
 			item.Longitude = &lon
 		}

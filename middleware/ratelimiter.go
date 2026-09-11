@@ -15,11 +15,20 @@ import (
 )
 
 // RateLimiter implements an in‑memory rate limiter keyed by client IP.
-// It's safe for concurrent use and maintains its own cleanup goroutine.
+// It's safe for concurrent use and maintains its own cleanup goroutine —
+// call Close when a RateLimiter is being discarded (e.g. gateway/reload.go
+// building a fresh one for a config reload) so that goroutine actually
+// stops instead of running forever alongside its replacement.
 type RateLimiter struct {
 	cfg             config.RateLimiterConfig
 	entries         sync.Map // map[string]*rateEntry
 	cleanupInterval time.Duration
+	// stop, closed by Close, tells cleanupLoop to exit. Close is safe to
+	// call more than once (sync.Once) since a reload only ever needs to
+	// close the *previous* generation's limiter once, but nothing enforces
+	// that at the call site.
+	stop     chan struct{}
+	stopOnce sync.Once
 	// scanPatterns is cfg.VulnerabilityScan.URLs, preprocessed once here
 	// instead of on every 404 — see scanPattern's doc comment.
 	scanPatterns []scanPattern
@@ -130,9 +139,24 @@ func NewRateLimiter(cfg config.RateLimiterConfig, blockedClientRepo db.BlockedCl
 		cleanupInterval:   interval,
 		scanPatterns:      scanPatterns,
 		blockedClientRepo: blockedClientRepo,
+		stop:              make(chan struct{}),
 	}
 	go rl.cleanupLoop()
 	return rl
+}
+
+// Close stops the cleanup goroutine started by NewRateLimiter. Safe to call
+// more than once, and safe to call on a nil *RateLimiter (a no-op) so a
+// call site holding a possibly-not-yet-set RateLimiter reference (e.g. a
+// gateway's very first config load, before any limiter has been built)
+// doesn't need its own nil check.
+func (rl *RateLimiter) Close() {
+	if rl == nil {
+		return
+	}
+	rl.stopOnce.Do(func() {
+		close(rl.stop)
+	})
 }
 
 // Handler is the middleware implementation.
@@ -382,20 +406,30 @@ func (rl *RateLimiter) Config() config.RateLimiterConfig {
 	return rl.cfg
 }
 
-// cleanupLoop periodically removes stale entries from the map.
+// cleanupLoop periodically removes stale entries from the map, until Close
+// is called — without this exit path, a RateLimiter discarded by a config
+// reload (gateway/reload.go builds a brand-new one on every reload) would
+// leak this goroutine and its ticker forever, one more per reload, and its
+// still-running cleanup would keep expiring entries an operator might
+// expect to remain read-only history at that point.
 func (rl *RateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(rl.cleanupInterval)
 	defer ticker.Stop()
-	for now := range ticker.C {
-		rl.entries.Range(func(key, val interface{}) bool {
-			entry := val.(*rateEntry)
-			entry.mu.Lock()
-			entry.trim(now, rl.cfg)
-			if entry.blockedUntil.Before(now) && len(entry.requests) == 0 && len(entry.errors) == 0 && len(entry.scan404) == 0 {
-				rl.entries.Delete(key)
-			}
-			entry.mu.Unlock()
-			return true
-		})
+	for {
+		select {
+		case <-rl.stop:
+			return
+		case now := <-ticker.C:
+			rl.entries.Range(func(key, val interface{}) bool {
+				entry := val.(*rateEntry)
+				entry.mu.Lock()
+				entry.trim(now, rl.cfg)
+				if entry.blockedUntil.Before(now) && len(entry.requests) == 0 && len(entry.errors) == 0 && len(entry.scan404) == 0 {
+					rl.entries.Delete(key)
+				}
+				entry.mu.Unlock()
+				return true
+			})
+		}
 	}
 }

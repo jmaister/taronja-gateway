@@ -30,7 +30,18 @@ func createOne(t *testing.T, service *Service, in CreateInput) *db.Notification 
 	notifications, _, err := service.Create(context.Background(), in)
 	require.NoError(t, err)
 	require.Len(t, notifications, 1)
+	waitForPendingDeliveries(service)
 	return notifications[0]
+}
+
+// waitForPendingDeliveries blocks until every delivery goroutine Create has
+// spawned so far (see Service.pendingDeliveries) has finished, giving tests
+// a deterministic point to assert on NotificationDelivery rows without
+// sleeping or polling. Every test that calls service.Create directly
+// instead of through createOne must call this too before reading delivery
+// state.
+func waitForPendingDeliveries(service *Service) {
+	service.pendingDeliveries.Wait()
 }
 
 func TestService_Create(t *testing.T) {
@@ -58,6 +69,7 @@ func TestService_Create(t *testing.T) {
 			Actions: []Action{{ID: "approve", Label: "Approve"}},
 		})
 		require.NoError(t, err)
+		waitForPendingDeliveries(service)
 		require.Len(t, notifications, 2)
 		assert.ElementsMatch(t, []string{userA.ID, userB.ID}, []string{notifications[0].UserID, notifications[1].UserID})
 		assert.NotEqual(t, notifications[0].ID, notifications[1].ID, "each recipient gets their own row, not a shared one")

@@ -154,6 +154,20 @@ func (r *MiddlewareRegistryV2) GetStatus() map[string]MiddlewareStatus {
 	return status
 }
 
+// Factories returns every factory currently registered, in no particular
+// order (they're stored in a map, keyed by name — see RegisterFactory).
+// Exists so a second registry can be seeded from an already-built one's
+// factory set — see referenceGlobalFactories, which uses this to mirror
+// NewGlobalMiddlewareRegistry's real factory list instead of hand-duplicating
+// it a second time.
+func (r *MiddlewareRegistryV2) Factories() []MiddlewareFactory {
+	out := make([]MiddlewareFactory, 0, len(r.factories))
+	for _, f := range r.factories {
+		out = append(out, f)
+	}
+	return out
+}
+
 // ValidateSpecs checks that every spec names a registered factory and that
 // its dependencies are satisfied by an earlier spec in the same list —
 // without creating any middleware instances. This is the same dependency
@@ -187,17 +201,22 @@ func (r *MiddlewareRegistryV2) ValidateSpecs(specs []MiddlewareSpec) error {
 // validated (names + dependency graph) via ValidateGlobalChainSpecs without
 // needing live dependencies — those factories' Create() is never called for
 // validation, only GetName()/GetDependencies().
-func referenceGlobalFactories() []MiddlewareFactory {
-	return []MiddlewareFactory{
-		NewTracingFactory(),
-		NewCompressionFactory(),
-		NewCORSFactory(),
-		NewRateLimiterFactory(nil),
-		NewJA4Factory(),
-		NewSessionExtractionFactory(nil, nil),
-		NewTrafficMetricsFactory(nil),
-		NewLoggingFactory(),
+//
+// This is built from NewGlobalMiddlewareRegistry itself (with every
+// dependency argument nil, which every one of its factories tolerates for
+// exactly this reason) rather than a second, hand-written list of the same
+// New*Factory() calls: two independent enumerations of "every built-in
+// global middleware" could silently drift apart the moment a new one is
+// added to one but not the other — a config naming it would then either be
+// wrongly rejected as unknown at validation time, or wrongly accepted and
+// fail later when the chain actually builds. Deriving this one from the
+// other makes that drift impossible instead of just unlikely.
+func referenceGlobalFactories() ([]MiddlewareFactory, error) {
+	registry, err := NewGlobalMiddlewareRegistry(nil, nil, nil, nil)
+	if err != nil {
+		return nil, err
 	}
+	return registry.Factories(), nil
 }
 
 // ValidateGlobalChainSpecs validates specs (typically produced by
@@ -205,8 +224,12 @@ func referenceGlobalFactories() []MiddlewareFactory {
 // every name must be recognized and every dependency must be satisfied by an
 // earlier spec. It does not require or use real middleware dependencies.
 func ValidateGlobalChainSpecs(specs []MiddlewareSpec) error {
+	factories, err := referenceGlobalFactories()
+	if err != nil {
+		return err
+	}
 	registry := NewMiddlewareRegistryV2()
-	for _, f := range referenceGlobalFactories() {
+	for _, f := range factories {
 		if err := registry.RegisterFactory(f); err != nil {
 			return err
 		}

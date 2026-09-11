@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
@@ -95,6 +96,17 @@ type Service struct {
 	// Empty when config.ServerConfig.URL isn't set — Create still works,
 	// it just can't offer clickable email actions (see deliver).
 	respondBaseURL string
+
+	// pendingDeliveries tracks the in-flight background goroutines Create
+	// spawns for each recipient/channel delivery attempt (see Create's doc
+	// comment for why those run in the background rather than inline).
+	// Production code never waits on it — delivery outcomes are meant to
+	// be inspected later via GetNotificationStatus/GetBatchStatus/
+	// ListDeliveries, never by blocking on this. Tests that need a
+	// deterministic point to assert on a delivery row use
+	// waitForPendingDeliveries (service_test.go) instead of sleeping or
+	// polling.
+	pendingDeliveries sync.WaitGroup
 }
 
 // NewService builds a Service from configuration, registering a Provider
@@ -157,13 +169,30 @@ type CreateInput struct {
 
 // Create stores one notification per recipient, all sharing one freshly
 // generated batchID — even a single-recipient call gets one, a "batch of
-// one" (see db.Notification.BatchID's doc comment) — and attempts delivery
-// on each recipient's own resolved channels (see resolveChannelsForUser).
+// one" (see db.Notification.BatchID's doc comment) — and kicks off delivery
+// on each recipient's own resolved channels (see resolveChannelsForUser) in
+// the background, one goroutine per recipient/channel pair. Create itself
+// returns as soon as the in-app records are written, without waiting for
+// any of those deliveries to finish: handlers.CreateNotification calls this
+// directly from an HTTP handler, and a caller notifying many recipients
+// over a slow channel (an SMTP server with a slow greeting, a flaky
+// webhook) would otherwise hold that request open for as long as every
+// send takes, combined. Each delivery uses a context detached from ctx
+// (context.WithoutCancel) for exactly this reason — ctx is usually an
+// *http.Request's, which is canceled the moment the handler returns, and a
+// canceled context would abort an in-flight send that Create no longer
+// waits for anyway.
+//
 // Delivery failures never fail Create itself — the in-app record is the
 // source of truth and always succeeds if its database write does; each
 // channel's outcome is recorded on its own NotificationDelivery row
 // instead (see deliver), inspectable independently of whether Create
-// returned an error, or in aggregate via GetBatchStatus.
+// returned an error, or in aggregate via GetBatchStatus. Because delivery
+// is now asynchronous, a NotificationDelivery row for a given recipient
+// may not exist yet the instant Create returns — callers that need to
+// observe the outcome of a specific send (rather than just that Create
+// accepted the notification) should poll GetNotificationStatus/
+// GetBatchStatus rather than assume delivery is complete.
 //
 // One recipient's notification failing to be stored (a rare DB-level
 // failure — there's no per-recipient validation that could fail first)
@@ -204,8 +233,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (notifications []*
 		}
 		notifications = append(notifications, n)
 
+		deliverCtx := context.WithoutCancel(ctx)
 		for _, channel := range s.resolveChannelsForUser(userID, in.Channels) {
-			s.deliver(ctx, n, in.Actions, channel)
+			s.pendingDeliveries.Add(1)
+			go func(n *db.Notification, channel string) {
+				defer s.pendingDeliveries.Done()
+				s.deliver(deliverCtx, n, in.Actions, channel)
+			}(n, channel)
 		}
 	}
 	return notifications, batchID, errors.Join(errs...)

@@ -182,7 +182,13 @@ func (f *AppleUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Toke
 
 // RegisterAppleAuth configures and registers "Sign in with Apple"
 // authentication.
-func RegisterAppleAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+//
+// ctx bounds the lifetime of keyfunc's hourly JWKS-refresh goroutine — the
+// caller (RegisterProviders, in turn gateway.registerLoginRoutes) cancels
+// the ctx from the previous registration before this runs again on a config
+// reload, so each reload's fetcher replaces rather than piles on top of the
+// last one.
+func RegisterAppleAuth(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	creds := gatewayConfig.AuthenticationProviders.Apple
 	if !creds.IsConfigured() {
 		return // Skip if not fully configured
@@ -193,7 +199,7 @@ func RegisterAppleAuth(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	// very first fetch failing and keeps retrying hourly in the
 	// background, so a transient network hiccup at gateway startup can't
 	// prevent Apple auth from registering.
-	kf, err := keyfunc.NewDefaultCtx(context.Background(), []string{appleJWKSURL})
+	kf, err := keyfunc.NewDefaultCtx(ctx, []string{appleJWKSURL})
 	if err != nil {
 		log.Printf("Apple auth: failed to set up JWKS key fetcher, skipping registration: %v", err)
 		return

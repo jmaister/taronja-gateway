@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -54,7 +55,14 @@ type AuthProvider interface {
 
 // RegisterProviders registers all enabled authentication providers.
 // It now accepts db.SessionRepository.
-func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+//
+// ctx governs the lifetime of any background goroutine a provider starts
+// during registration — currently just Apple's JWKS refresh loop (see
+// RegisterAppleAuth). Callers that re-run this on every config reload (as
+// gateway.registerLoginRoutes does) must cancel the ctx from the *previous*
+// call once the new one is registered, or each reload leaks one more such
+// goroutine.
+func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
@@ -96,7 +104,7 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 
 	if gatewayConfig.AuthenticationProviders.Apple.IsConfigured() {
 		log.Printf("Registering Apple Authentication provider")
-		RegisterAppleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterAppleAuth(ctx, mux, sessionStore, gatewayConfig, userRepo)
 	} else {
 		log.Printf("Apple Authentication provider not configured, skipping registration")
 	}
@@ -249,6 +257,13 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		MaxAge:   -1, // Delete immediately
 	})
 
+	// oauthConfig starts out as the provider's shared config and is only
+	// ever replaced below, never mutated in place: ap.OAuthConfig is one
+	// instance shared by every concurrent Callback call for this provider,
+	// so writing a freshly-generated secret directly onto it would race
+	// with other in-flight callbacks reading or overwriting the same
+	// field. A per-request copy keeps each call's secret to itself.
+	oauthConfig := ap.OAuthConfig
 	if ap.ClientSecretFunc != nil {
 		secret, err := ap.ClientSecretFunc()
 		if err != nil {
@@ -256,11 +271,13 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		ap.OAuthConfig.ClientSecret = secret
+		cfgCopy := *ap.OAuthConfig
+		cfgCopy.ClientSecret = secret
+		oauthConfig = &cfgCopy
 	}
 
 	// Exchange code for token
-	token, err := ap.OAuthConfig.Exchange(r.Context(), code)
+	token, err := oauthConfig.Exchange(r.Context(), code)
 	if err != nil {
 		log.Printf("Error exchanging code for token: %v", err)
 		http.Error(w, "Failed to exchange auth code", http.StatusInternalServerError)

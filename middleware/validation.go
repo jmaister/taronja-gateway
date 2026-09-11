@@ -136,9 +136,17 @@ func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.Ga
 	return nil
 }
 
-// ValidateRateLimiterMiddleware validates the rate limiter configuration
+// ValidateRateLimiterMiddleware validates the rate limiter configuration.
+//
+// This reads EffectiveRateLimiterConfig rather than config.Management.RateLimiter
+// directly, so an explicit `middleware: global` rate_limiter entry's own
+// override (see specsFromMiddlewareSection) gets validated too — otherwise an
+// invalid per-entry override (e.g. a negative requestsPerMinute) would sail
+// through startup validation untouched, since it never lives under
+// management.rateLimiter at all, and only misbehave once the chain actually
+// builds.
 func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	rl := config.Management.RateLimiter
+	rl := EffectiveRateLimiterConfig(config)
 	// if neither mode is enabled, nothing to check
 	if !rl.IsEnabled() {
 		return nil

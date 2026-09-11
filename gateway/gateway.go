@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -86,6 +87,15 @@ type Gateway struct {
 	// reloadMu serializes applyConfig calls (e.g. a file-watch event and a
 	// SIGHUP arriving together), so two reloads can never interleave.
 	reloadMu sync.Mutex
+	// providersCancel stops the background goroutine(s) started by the
+	// most recent providers.RegisterProviders call — currently just
+	// Apple's hourly JWKS-refresh loop (see providers.RegisterAppleAuth).
+	// registerLoginRoutes re-registers every provider from scratch on each
+	// config reload, so without cancelling the previous generation's
+	// context first, each reload would leak one more such goroutine. Only
+	// ever accessed from registerLoginRoutes, itself only ever called
+	// while g.reloadMu is held, so it needs no lock of its own.
+	providersCancel context.CancelFunc
 }
 
 // --- NewGatewayWithDependencies Function ---
@@ -415,8 +425,18 @@ func (g *Gateway) registerLoginRoutes() {
 
 	// Register all providers - basic, OAuth, etc.
 	if cfg.HasAnyAuthentication() {
+		// Cancel the previous generation's provider context (if any) before
+		// registering a fresh one, so a config reload replaces rather than
+		// piles onto whatever background goroutine(s) the last registration
+		// started — see providersCancel's doc comment on the Gateway struct.
+		if g.providersCancel != nil {
+			g.providersCancel()
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		g.providersCancel = cancel
+
 		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
+		providers.RegisterProviders(ctx, g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
 	}
 
 	// Login page handler
