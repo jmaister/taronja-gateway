@@ -678,15 +678,18 @@ func migrateConfigFile(configFilePath string) {
 	// a "new" file should know it's actually identical to the source, since
 	// that's not otherwise obvious from the output. Otherwise stay quiet on
 	// stderr so the command composes cleanly in a pipeline. fromVersion is
-	// nil when the file has no version: field at all — see
-	// config.GatewayConfig.Version's doc comment for why that's reported
-	// distinctly rather than as "version 1".
+	// nil when the file has no version: field at all — that's no longer a
+	// no-op case (see config.legacyConfigVersion's doc comment), so it falls
+	// through to the "migrated" case below like any other outdated version.
 	switch {
-	case fromVersion == nil:
-		fmt.Fprintf(os.Stderr, "Note: '%s' has no declared version (current: %d) — printing it unchanged.\n",
-			configFilePath, config.CurrentConfigVersion)
-	case *fromVersion >= config.CurrentConfigVersion:
+	case fromVersion != nil && *fromVersion >= config.CurrentConfigVersion:
 		fmt.Fprintf(os.Stderr, "Note: '%s' is already version %d (current: %d) — printing it unchanged.\n",
+			configFilePath, *fromVersion, config.CurrentConfigVersion)
+	case fromVersion == nil:
+		fmt.Fprintf(os.Stderr, "'%s' had no declared version (treated as pre-v1.0.0) — migrated to version %d.\n",
+			configFilePath, config.CurrentConfigVersion)
+	default:
+		fmt.Fprintf(os.Stderr, "'%s' migrated from version %d to %d.\n",
 			configFilePath, *fromVersion, config.CurrentConfigVersion)
 	}
 

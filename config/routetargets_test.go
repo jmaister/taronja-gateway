@@ -17,7 +17,7 @@ func writeRouteTestConfig(t *testing.T, routesYAML string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	raw := "name: Test Gateway\nserver:\n  host: 127.0.0.1\n  port: 8080\nmanagement:\n  admin:\n    enabled: false\n" + routesYAML
+	raw := "version: 1\nname: Test Gateway\nserver:\n  host: 127.0.0.1\n  port: 8080\nmanagement:\n  admin:\n    enabled: false\n" + routesYAML
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 	return path
 }

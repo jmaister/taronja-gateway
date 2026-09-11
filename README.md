@@ -220,21 +220,24 @@ supports:
 Config file version: 1 (current: 1)
 ```
 
-A file with no `version:` key at all is also treated as version 1 — every
-config file is version 1 as of this release, whether or not it says so
-explicitly.
+**A file with no `version:` key at all is treated as pre-v1.0.0**, not as
+already current — every config file written before this release has no
+`version:` field (the field itself is new in v1.0.0), and some of those
+need a real, one-time content change to keep working correctly under the
+current schema (the `notification.email.smtp.*` block became
+`notification.email.*` directly — see below). Add `version: 1` once you've
+migrated to declare your config current going forward.
 
-**The gateway refuses to start against an outdated config file.** If a
-future release raises the schema version, `tg run` (and `tg middleware
-list`) will fail immediately for a config file older than that release
-supports, with an error telling you what to do:
+**The gateway refuses to start against an outdated (or undeclared) config
+file.** `tg run` (and `tg middleware list`) fail immediately with an error
+telling you what to do:
 
 ```
-FATAL: Failed to load configuration: config file 'config.yaml' is version 1, but this gateway requires version 2
+FATAL: Failed to load configuration: config file 'config.yaml' has no declared version (treated as pre-v1.0.0), but this gateway requires version 1
 
 Run this to upgrade it (it prints the migrated config; redirect it to a file):
 
-    tg migrate --config config.yaml > config-v2.yaml
+    tg migrate --config config.yaml > config-v1.yaml
 
 Then point --config at the new file.
 ```
@@ -255,6 +258,32 @@ v1→v2→v3), so a single `tg migrate` run always gets you all the way to the
 version this build requires. Running it on a config that's already current
 just prints the file back unchanged (with a note on stderr, so it doesn't
 pollute the redirected output).
+
+**What actually changes for a pre-v1.0.0 config today:** the only real
+content migration so far flattens a `notification.email.smtp:` block (the
+original, v0.0.24-era shape) directly onto `notification.email:` —
+
+```yaml
+# before (pre-v1.0.0)
+notification:
+  email:
+    enabled: true
+    smtp:
+      host: smtp.example.com
+      port: 587
+
+# after (version: 1)
+notification:
+  email:
+    enabled: true
+    host: smtp.example.com
+    port: 587
+```
+
+— plus stamping `version: 1` on the file. A config with no
+`notification.email.smtp` block to begin with (most of them) only gets the
+`version: 1` line added; everything else, including comments and
+`${VAR_NAME}` placeholders, passes through untouched.
 
 ## Configuration Sections
 

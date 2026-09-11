@@ -49,17 +49,16 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return outBuf.String(), errBuf.String()
 }
 
-// TestMigrateConfigFile_AbsentVersion_NoteOnStderrOnly is the
-// current-schema equivalent of what used to be a genuine migration: with
-// config.CurrentConfigVersion at 1 (the first released schema — see its doc
-// comment), a config file with no `version:` field at all (fromVersion nil
-// — see config.GatewayConfig.Version's doc comment) is accepted as-is, so
-// `tg migrate` echoes it unchanged to stdout and notes that on stderr,
-// distinctly from the "already version N" note
+// TestMigrateConfigFile_AbsentVersion_ActuallyMigrates covers a config file
+// with no `version:` field at all — treated as config.legacyConfigVersion,
+// not as already-current (see its doc comment for why: some pre-v1.0.0
+// configs have real content, like notification.email.smtp.*, that needs an
+// actual rewrite to keep working). `tg migrate` must print the migrated
+// content to stdout and note on stderr that it migrated, distinctly from
+// the "already version N" no-op note
 // TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout below
-// covers for a file with an explicit version: field — there's no longer a
-// real "older" config to actually migrate either way.
-func TestMigrateConfigFile_AbsentVersion_NoteOnStderrOnly(t *testing.T) {
+// covers for a file that's already current.
+func TestMigrateConfigFile_AbsentVersion_ActuallyMigrates(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	raw := "name: Test\nserver:\n  port: 8080\n"
@@ -69,8 +68,9 @@ func TestMigrateConfigFile_AbsentVersion_NoteOnStderrOnly(t *testing.T) {
 		migrateConfigFile(path)
 	})
 
-	assert.Equal(t, raw, stdout, "stdout must be exactly the unchanged config content, nothing else mixed in")
-	assert.Contains(t, stderr, "has no declared version")
+	assert.Contains(t, stdout, fmt.Sprintf("version: %d", config.CurrentConfigVersion), "stdout must contain the migrated, now-versioned content")
+	assert.Contains(t, stdout, "name: Test", "the rest of the file's content must survive")
+	assert.Contains(t, stderr, "no declared version", "a real migration still gets an informational note, distinct from the no-op notes below")
 }
 
 // TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout guards

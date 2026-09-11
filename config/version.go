@@ -18,13 +18,40 @@ import (
 // config file declares.
 //
 // This is 1 — not 2 — as of the gateway's v1.0.0 release: the `version:`
-// field and its migration machinery were built and tested ahead of ever
-// shipping, so what was internally "version 2" during development never
-// existed in a released config file. Renumbering it 1 for the first public
-// release avoids implying there was ever a real, released "version 1"
-// format publicly using this project name to migrate away from — there
-// wasn't.
+// field itself was built and tested ahead of ever shipping, so no released
+// config file ever declared an explicit "version: 1" to migrate away from.
+// That does NOT mean an undeclared version is already current, though —
+// see legacyConfigVersion, which is what an absent field actually means.
 const CurrentConfigVersion = 1
+
+// legacyConfigVersion is the version an absent `version:` field is treated
+// as: every config file written before v1.0.0 (when the field was
+// introduced), regardless of which pre-1.0.0 release wrote it. It's
+// numbered 0 — strictly below CurrentConfigVersion — not because a real
+// "version 0" was ever declared anywhere, but because that's genuinely a
+// different, older config shape with real content to migrate: v0.0.24 (the
+// last tag before this field existed) shipped notification.email.smtp.* as
+// a nested block, later flattened to notification.email.* directly (see
+// migrateLegacyToV1) with nothing else changed. A config missing the
+// version: field could be from any release before that flattening, so it's
+// treated as needing that migration — running it again on a file that
+// never had the nested smtp: block to begin with is a safe no-op (see
+// flattenNotificationEmailSMTP). Deliberately its own named constant
+// rather than a literal 0 inline: it must keep meaning exactly this even
+// after a future schema change moves CurrentConfigVersion past 1.
+const legacyConfigVersion = 0
+
+// declaredOrLegacyVersion returns v dereferenced, or legacyConfigVersion if
+// v is nil (no `version:` field in the file at all) — the one place that
+// mapping is made, so every caller that needs to compare or migrate from a
+// file's version agrees on what "undeclared" means instead of each
+// special-casing nil separately.
+func declaredOrLegacyVersion(v *int) int {
+	if v == nil {
+		return legacyConfigVersion
+	}
+	return *v
+}
 
 // configMigration transforms the raw YAML bytes of a config file written for
 // one version into the equivalent content for the next version up. It
@@ -41,26 +68,107 @@ type configMigration func(raw []byte) []byte
 // back to just stamping the version forward if one is ever missing, but
 // that's a bug-safety net, not something to rely on).
 //
-// Empty today: CurrentConfigVersion is 1, and there is no version before 1
-// to migrate from (see its doc comment) — this is genuinely the first
-// released schema. Add the first real entry here (keyed 1, migrating to a
-// new version 2) whenever the schema next changes. A migration that needs
-// to restructure the document — not just add or update a field — will need
-// a different strategy than the line-level text edit setTopLevelVersionField
-// uses (e.g. parsing into yaml.Node to edit the AST while still preserving
-// comments), since re-marshaling a GatewayConfig struct would drop every
-// comment in the file.
-var configMigrations = map[int]configMigration{}
+// legacyConfigVersion (0) is the only entry today, migrating every
+// pre-v1.0.0 config up to version 1 — see migrateLegacyToV1. Add the next
+// real entry here (keyed 1, migrating to a new version 2) whenever the
+// schema next changes.
+var configMigrations = map[int]configMigration{
+	legacyConfigVersion: migrateLegacyToV1,
+}
+
+// migrateLegacyToV1 upgrades a pre-v1.0.0 config (legacyConfigVersion) to
+// version 1: flattens notification.email.smtp.* to notification.email.*
+// (see flattenNotificationEmailSMTP — the one real content change between
+// the two), then stamps the file with an explicit version: 1.
+func migrateLegacyToV1(raw []byte) []byte {
+	return setTopLevelVersionField(flattenNotificationEmailSMTP(raw), 1)
+}
+
+// flattenNotificationEmailSMTP rewrites a config's notification.email.smtp
+// block, if present, into fields directly on notification.email — the
+// shape EmailNotificationConfig has used since the generic notification
+// system replaced the original, v0.0.24-era email-only implementation.
+// Every field smtp.* named (host, port, username, password, from,
+// fromName) is renamed straight to email.* with no other change; a config
+// with no notification.email.smtp block at all (most of them — email
+// notifications were opt-in even before v1.0.0) passes through this
+// function untouched.
+//
+// Unlike setTopLevelVersionField's line-level text edit, this genuinely
+// restructures the document, which needs parsing — done here via
+// yaml.Node so comments, key order, and unresolved ${VAR_NAME} placeholders
+// elsewhere in the file survive, the same guarantee configMigration's own
+// doc comment promises. The cost: yaml.v3 may reformat quoting/indentation
+// on re-marshal in ways a byte-for-byte diff would notice, even though the
+// content is unchanged — an unavoidable tradeoff of actually moving keys
+// around, not something a text-level edit like setTopLevelVersionField
+// could do at all.
+func flattenNotificationEmailSMTP(raw []byte) []byte {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+		// Malformed or empty YAML: leave it exactly as-is. LoadConfig will
+		// report a real parse error on it shortly after anyway — this isn't
+		// the place to fail (or worse, half-mangle) it.
+		return raw
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return raw
+	}
+
+	email := mappingValue(mappingValue(root, "notification"), "email")
+	smtp := removeMappingKey(email, "smtp")
+	if smtp == nil || smtp.Kind != yaml.MappingNode {
+		return raw // no notification/email/smtp section at all — nothing to do
+	}
+	email.Content = append(email.Content, smtp.Content...)
+
+	out, err := yaml.Marshal(&doc)
+	if err != nil {
+		return raw // shouldn't happen; fail safe to the original bytes
+	}
+	return out
+}
+
+// mappingValue returns the value node for key in mapping node m, or nil if
+// m is nil, isn't a mapping, or has no such key.
+func mappingValue(m *yaml.Node, key string) *yaml.Node {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// removeMappingKey deletes key (and its value) from mapping node m in
+// place, returning the removed value node, or nil if m is nil, isn't a
+// mapping, or has no such key.
+func removeMappingKey(m *yaml.Node, key string) *yaml.Node {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			val := m.Content[i+1]
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
+			return val
+		}
+	}
+	return nil
+}
 
 // migrateConfigToCurrent steps raw config bytes forward from fromVersion to
 // toVersion by applying each intervening version's migration in turn.
 // Returns raw unchanged if fromVersion is already at or past toVersion.
 // toVersion is a parameter rather than always CurrentConfigVersion so tests
-// can exercise the actual step-through-multiple-versions logic with
-// synthetic version numbers, independent of how many real migrations
-// configMigrations currently holds (none, as of CurrentConfigVersion 1 —
-// see its doc comment). MigrateConfigContent, the only production caller,
-// always passes CurrentConfigVersion.
+// can exercise the step-through-multiple-versions logic with synthetic
+// version numbers too, not just the one real step configMigrations holds
+// today. MigrateConfigContent, the only production caller, always passes
+// CurrentConfigVersion.
 func migrateConfigToCurrent(raw []byte, fromVersion, toVersion int) []byte {
 	for v := fromVersion; v < toVersion; v++ {
 		migrate, ok := configMigrations[v]
@@ -96,33 +204,36 @@ func setTopLevelVersionField(raw []byte, version int) []byte {
 }
 
 // checkConfigVersion logs cfg's declared config schema version — or that
-// none was declared — and returns an error if a declared version is older
-// than CurrentConfigVersion: the gateway must not run against an outdated
-// config file (see doc/refactor01.md's config versioning section — this
-// used to migrate the file automatically instead of refusing to start, but
-// a silently-rewritten config someone might not notice was the wrong
-// tradeoff). The error message tells the user to run `tg migrate` rather
-// than leaving them to guess.
+// none was declared, in which case it's treated as legacyConfigVersion, not
+// ignored — and returns an error if that's older than CurrentConfigVersion:
+// the gateway must not run against an outdated config file (see
+// doc/refactor01.md's config versioning section — this used to migrate the
+// file automatically instead of refusing to start, but a silently-rewritten
+// config someone might not notice was the wrong tradeoff). The error
+// message tells the user to run `tg migrate` rather than leaving them to
+// guess.
 //
-// A nil cfg.Version — no `version:` field in the file at all — is accepted
-// without comparison, not treated as any particular version number: every
-// config file written before v1.0.0 (the `version:` field's own first
-// released version) has no version field, so treating its absence as an
-// error would refuse to start against every existing user's config. See
-// GatewayConfig.Version's doc comment for why this is a distinct state from
-// an explicit "version: 1", not the same thing spelled two ways.
+// An undeclared version is NOT accepted as "already fine": every config
+// file written before v1.0.0 has no version field at all, and some of
+// those really do need the one real migration that exists today (the
+// notification.email.smtp.* flattening — see migrateLegacyToV1) to keep
+// working correctly under this schema. Treating "no version field" the
+// same as "already current" would mean that flattening never runs for
+// exactly the files that need it, silently leaving email notifications
+// misconfigured with no error anywhere. See GatewayConfig.Version's doc
+// comment for why nil and an explicit "version: 1" are still tracked as
+// distinct states even though both compare the same way here.
 //
 // A version *newer* than this build supports is logged as a warning, not an
 // error — there's no way to downgrade a config, and refusing to start over a
 // merely-unrecognized newer field would be more disruptive than useful.
 func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
+	fileVersion := declaredOrLegacyVersion(cfg.Version)
 	if cfg.Version == nil {
-		log.Printf("Config file version: not declared (current: %d)", CurrentConfigVersion)
-		return nil
+		log.Printf("Config file version: not declared, treated as pre-v1.0.0 (current: %d)", CurrentConfigVersion)
+	} else {
+		log.Printf("Config file version: %d (current: %d)", fileVersion, CurrentConfigVersion)
 	}
-
-	fileVersion := *cfg.Version
-	log.Printf("Config file version: %d (current: %d)", fileVersion, CurrentConfigVersion)
 
 	if fileVersion > CurrentConfigVersion {
 		log.Printf("Warning: config file '%s' declares version %d, newer than this gateway version supports (%d). Proceeding, but some settings may not be recognized.",
@@ -130,31 +241,36 @@ func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 		return nil
 	}
 	if fileVersion < CurrentConfigVersion {
+		declared := fmt.Sprintf("is version %d", fileVersion)
+		if cfg.Version == nil {
+			declared = "has no declared version (treated as pre-v1.0.0)"
+		}
 		return fmt.Errorf(
-			"config file '%s' is version %d, but this gateway requires version %d\n\n"+
+			"config file '%s' %s, but this gateway requires version %d\n\n"+
 				"Run this to upgrade it (it prints the migrated config; redirect it to a file):\n\n"+
 				"    tg migrate --config %s > %s\n\n"+
 				"Then point --config at the new file.",
-			configPath, fileVersion, CurrentConfigVersion, configPath, versionedConfigPath(configPath, CurrentConfigVersion),
+			configPath, declared, CurrentConfigVersion, configPath, versionedConfigPath(configPath, CurrentConfigVersion),
 		)
 	}
 	return nil
 }
 
 // MigrateConfigContent reads the config file at path and returns its content
-// migrated up to CurrentConfigVersion (migrateConfigToCurrent) — or
-// unchanged, if it declares no version at all, or is already at
-// CurrentConfigVersion or newer. It never writes anything: this is what `tg
-// migrate` calls to produce the output it prints to stdout, leaving it up
-// to the caller (a shell redirect, in the CLI's case) to decide whether and
-// where to save it. See checkConfigVersion for why the gateway doesn't
-// migrate a config file automatically or write one on its own anymore.
+// migrated up to CurrentConfigVersion (migrateConfigToCurrent) — unchanged
+// only if it's already at CurrentConfigVersion or newer. It never writes
+// anything: this is what `tg migrate` calls to produce the output it prints
+// to stdout, leaving it up to the caller (a shell redirect, in the CLI's
+// case) to decide whether and where to save it. See checkConfigVersion for
+// why the gateway doesn't migrate a config file automatically or write one
+// on its own anymore.
 //
 // fromVersion is the file's declared version exactly as read from it — nil
-// if it has no `version:` field, which is always treated the same as
-// already-current: there's no version before CurrentConfigVersion (1) for
-// an undeclared file to be migrated from. Useful for callers that want to
-// report whether a migration actually happened.
+// if it has no `version:` field. That's still migrated (from
+// legacyConfigVersion, internally), it's just reported to the caller as nil
+// rather than 0, so a caller distinguishing "this file predates versioning
+// entirely" from "this file explicitly declared some old number" (main.go's
+// migrateConfigFile does, for its own message) can tell them apart.
 func MigrateConfigContent(path string) (content []byte, fromVersion *int, err error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -170,11 +286,12 @@ func MigrateConfigContent(path string) (content []byte, fromVersion *int, err er
 		return nil, nil, fmt.Errorf("failed to parse config file '%s': %w", path, err)
 	}
 
-	if probe.Version == nil || *probe.Version >= CurrentConfigVersion {
+	effectiveVersion := declaredOrLegacyVersion(probe.Version)
+	if effectiveVersion >= CurrentConfigVersion {
 		return raw, probe.Version, nil
 	}
 
-	return migrateConfigToCurrent(raw, *probe.Version, CurrentConfigVersion), probe.Version, nil
+	return migrateConfigToCurrent(raw, effectiveVersion, CurrentConfigVersion), probe.Version, nil
 }
 
 // versionedConfigPath returns a conventional suggested filename for a
