@@ -946,8 +946,10 @@ Every proxied request (authenticated or not) includes the following standard hea
 | Header              | Type     | Description                                                    |
 |---------------------|----------|----------------------------------------------------------------|
 | `X-Forwarded-Host`  | `string` | The original `Host` header from the client request.            |
-| `X-Forwarded-Proto` | `string` | The protocol used by the client (`http` or `https`).           |
-| `X-Forwarded-For`   | `string` | The client's IP address. Appended to existing values if present. |
+| `X-Forwarded-Proto` | `string` | The protocol the client's connection to this gateway actually used — `https` only when TLS terminated here or a trusted upstream proxy said so, `http` otherwise. |
+| `X-Forwarded-For`   | `string` | The client's real IP address, resolved the same way `X-Real-IP`/`X-Client-IP` are — trusted only from a loopback/private-range peer, never taken from a direct client at face value. |
+
+**`X-Forwarded-Host` is not verified.** Unlike `X-Forwarded-Proto`/`X-Forwarded-For` above, this gateway forwards the client's `Host` header exactly as received, with no check that it matches anything this gateway is actually configured to serve — any direct client can set it to whatever they want. If a backend route builds an absolute URL from this header (a password-reset link, an OAuth redirect, a cache key), that URL is only as trustworthy as the client who sent the request — treat it the same way you'd treat any other unauthenticated, client-supplied input, not as something this gateway already validated for you.
 
 ### Authentication Headers
 
