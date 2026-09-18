@@ -155,7 +155,7 @@ func TestHTTPSRedirectHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := httpsRedirectHandler(tt.httpsPort)
+			handler := httpsRedirectHandler(tt.httpsPort, nil)
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			req.Host = tt.host
 			rw := httptest.NewRecorder()
@@ -172,7 +172,7 @@ func TestHTTPSRedirectHandler_PreservesMethodAndBody(t *testing.T) {
 	// GET on the redirected request — this only asserts the status code,
 	// since actually following the redirect and re-sending the body is the
 	// HTTP client's job, not the handler's, but 308 is the whole point.
-	handler := httpsRedirectHandler(443)
+	handler := httpsRedirectHandler(443, nil)
 	req := httptest.NewRequest(http.MethodPost, "/submit", nil)
 	req.Host = "example.com"
 	rw := httptest.NewRecorder()
@@ -180,6 +180,65 @@ func TestHTTPSRedirectHandler_PreservesMethodAndBody(t *testing.T) {
 
 	assert.Equal(t, http.StatusPermanentRedirect, rw.Code)
 	assert.Equal(t, "https://example.com/submit", rw.Header().Get("Location"))
+}
+
+// TestHTTPSRedirectHandler_RejectsUnknownHost is the regression test for
+// Finding 14: a forged Host header used to be redirected to verbatim, with
+// no check against anything the gateway is actually configured to serve —
+// an open-redirect/reputation-laundering primitive off the gateway's own
+// domain. A Host not in allowedHosts must get a plain 400, never a
+// redirect built from it.
+func TestHTTPSRedirectHandler_RejectsUnknownHost(t *testing.T) {
+	handler := httpsRedirectHandler(443, map[string]bool{"example.com": true})
+
+	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+	req.Host = "evil.example"
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	assert.Equal(t, http.StatusBadRequest, rw.Code)
+	assert.Empty(t, rw.Header().Get("Location"), "a rejected Host must never produce a redirect target")
+}
+
+// TestHTTPSRedirectHandler_AllowsMatchingHost confirms the check doesn't
+// overreach: a Host that IS in allowedHosts must still redirect normally,
+// case-insensitively (Host header casing isn't meaningful for DNS names).
+func TestHTTPSRedirectHandler_AllowsMatchingHost(t *testing.T) {
+	handler := httpsRedirectHandler(443, map[string]bool{"example.com": true})
+
+	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+	req.Host = "Example.COM"
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	assert.Equal(t, http.StatusPermanentRedirect, rw.Code)
+	assert.Equal(t, "https://Example.COM/foo", rw.Header().Get("Location"))
+}
+
+// --- allowedRedirectHosts ---------------------------------------------------
+
+func TestAllowedRedirectHosts(t *testing.T) {
+	t.Run("ACME domains win when ACME is configured", func(t *testing.T) {
+		cfg := &config.GatewayConfig{}
+		cfg.Server.URL = "https://ignored.example" // must not be used when ACME is set
+		cfg.Server.TLS.ACME = &config.ACMEConfig{Domains: []string{"Example.com", "www.example.com"}}
+
+		got := allowedRedirectHosts(cfg)
+		assert.Equal(t, map[string]bool{"example.com": true, "www.example.com": true}, got, "domains are lowercased for case-insensitive comparison")
+	})
+
+	t.Run("falls back to server.url's hostname when ACME isn't configured", func(t *testing.T) {
+		cfg := &config.GatewayConfig{}
+		cfg.Server.URL = "https://Example.com:8443/base"
+
+		got := allowedRedirectHosts(cfg)
+		assert.Equal(t, map[string]bool{"example.com": true}, got)
+	})
+
+	t.Run("empty when neither is configured", func(t *testing.T) {
+		cfg := &config.GatewayConfig{}
+		assert.Empty(t, allowedRedirectHosts(cfg))
+	})
 }
 
 // --- buildRedirectServer ---------------------------------------------------

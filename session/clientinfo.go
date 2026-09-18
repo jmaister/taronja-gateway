@@ -46,7 +46,7 @@ func stripPort(ip string) string {
 	return host
 }
 
-// isTrustedProxy reports whether remoteIP (with any port already
+// IsTrustedProxy reports whether remoteIP (with any port already
 // stripped) is a peer GetClientIP should trust to supply a client's real
 // IP via a forwarded-for header, with no configuration involved at all: a
 // loopback or RFC 1918/RFC 4193 private-range address. That's the same
@@ -59,7 +59,15 @@ func stripPort(ip string) string {
 // real TCP peer address in the first place: that's not routable from the
 // public internet, so there's nothing to spoof. See GetClientIP's doc
 // comment for what this replaced and why.
-func isTrustedProxy(remoteIP string) bool {
+//
+// Exported (not just used internally by GetClientIP/
+// rightmostUntrustedForwardedFor below) so gateway.go's reverse-proxy
+// director can apply the exact same trust boundary to X-Forwarded-Proto
+// that this file already applies to X-Forwarded-For/X-Real-IP/
+// X-Client-IP — trusting a client-supplied "https" claim from a direct,
+// untrusted connection is the same class of spoofing this function exists
+// to prevent for IP headers.
+func IsTrustedProxy(remoteIP string) bool {
 	ip := net.ParseIP(remoteIP)
 	if ip == nil {
 		return false
@@ -69,7 +77,7 @@ func isTrustedProxy(remoteIP string) bool {
 
 // GetClientIP extracts the request's real client IP: the TCP connection's
 // own peer address (r.RemoteAddr) unless that peer is a loopback/private
-// address (see isTrustedProxy), in which case the client-supplied
+// address (see IsTrustedProxy), in which case the client-supplied
 // X-Forwarded-For/X-Real-IP/X-Client-IP headers are honored instead —
 // the same idea as nginx's set_real_ip_from or Traefik's trustedIPs, just
 // with a fixed, zero-configuration answer for "which peers to trust"
@@ -97,7 +105,7 @@ func isTrustedProxy(remoteIP string) bool {
 func GetClientIP(r *http.Request) string {
 	remoteIP := stripPort(r.RemoteAddr)
 
-	if isTrustedProxy(remoteIP) {
+	if IsTrustedProxy(remoteIP) {
 		if xForwardedFor := r.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
 			if ip := rightmostUntrustedForwardedFor(xForwardedFor); ip != "" {
 				return ip
@@ -147,7 +155,7 @@ func rightmostUntrustedForwardedFor(xForwardedFor string) string {
 		if candidate == "" {
 			continue
 		}
-		if !isTrustedProxy(candidate) {
+		if !IsTrustedProxy(candidate) {
 			return candidate
 		}
 	}

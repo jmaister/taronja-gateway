@@ -201,4 +201,48 @@ func TestEmailProvider(t *testing.T) {
 		})
 		assert.Error(t, err)
 	})
+
+	// TestEmailProvider/Send_gives_up_on_an_unresponsive_relay is the
+	// regression test for Finding 16: unlike the webhook and Telegram
+	// providers, Send used to have no deadline at all — net/smtp.SendMail
+	// offers no way to set one — so a relay that accepts the TCP
+	// connection and then simply never speaks (a hung greeting, a
+	// half-open firewall, anything short of an outright refused
+	// connection) hung this delivery goroutine forever. hangingSMTPServer
+	// accepts and holds the connection open without ever writing the "220"
+	// greeting SendMail always waits for first, so Send has nothing to do
+	// but wait — this asserts it gives up within smtpTimeout instead.
+	t.Run("Send gives up on an unresponsive relay instead of hanging forever", func(t *testing.T) {
+		original := smtpTimeout
+		smtpTimeout = 200 * time.Millisecond
+		t.Cleanup(func() { smtpTimeout = original })
+
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer ln.Close()
+		go func() {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			<-t.Context().Done() // hold the connection open, say nothing, until the test ends
+		}()
+		tcpAddr := ln.Addr().(*net.TCPAddr)
+
+		provider := NewEmailProvider(config.EmailNotificationConfig{
+			Enabled: true, Host: tcpAddr.IP.String(), Port: tcpAddr.Port, From: "gateway@example.com",
+		})
+		require.NotNil(t, provider)
+
+		start := time.Now()
+		_, err = provider.Send(context.Background(), SendRequest{
+			Notification: &db.Notification{Title: "x", Body: "y"},
+			Recipient:    "parent@example.com",
+		})
+		elapsed := time.Since(start)
+
+		assert.Error(t, err, "an unresponsive relay must eventually fail the send, not hang forever")
+		assert.Less(t, elapsed, 5*time.Second, "Send took far longer than the (shrunk, for this test) smtpTimeout should ever allow")
+	})
 }

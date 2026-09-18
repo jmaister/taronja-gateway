@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -80,15 +82,55 @@ func (g *Gateway) ReloadTLSCertificate() error {
 // redirected POST into a GET, dropping the body; 308 explicitly preserves
 // both method and body, which matters for a blanket HTTP->HTTPS redirect
 // that has no idea what request it's redirecting.
-func httpsRedirectHandler(httpsPort int) http.Handler {
+//
+// allowedHosts, when non-empty, is the exact set of Host values (see
+// allowedRedirectHosts) this handler will build a redirect target from — a
+// request whose Host isn't in it gets a plain 400 instead. Without this, a
+// direct request with a forged Host header got a 308 pointing at whatever
+// host the attacker supplied, off the gateway's own domain — an
+// open-redirect/reputation-laundering primitive, even though this listener
+// never terminates TLS itself and so never exposes a cookie doing it. An
+// empty allowedHosts (nothing could be derived from cfg — see that
+// function) falls back to today's fully permissive behavior rather than
+// rejecting every request, since a deployment that hasn't set server.url
+// shouldn't have its redirect listener broken outright by this check.
+func httpsRedirectHandler(httpsPort int, allowedHosts map[string]bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := requestHost(r)
+		if len(allowedHosts) > 0 && !allowedHosts[strings.ToLower(host)] {
+			http.Error(w, "invalid host", http.StatusBadRequest)
+			return
+		}
 		if httpsPort != 443 {
 			host = net.JoinHostPort(host, strconv.Itoa(httpsPort))
 		}
 		target := "https://" + host + r.URL.RequestURI()
 		http.Redirect(w, r, target, http.StatusPermanentRedirect)
 	})
+}
+
+// allowedRedirectHosts derives the Host values httpsRedirectHandler should
+// accept from cfg: when ACME is configured, its own Domains list — the
+// exact set of hostnames the gateway will actually present a valid
+// certificate for, so nothing else is a legitimate redirect target anyway
+// — otherwise the hostname parsed out of server.url. Returns an empty map
+// (not nil is not required; either works, see httpsRedirectHandler) when
+// neither is configured, in which case there's genuinely no known-good
+// value in this config to validate a Host header against.
+func allowedRedirectHosts(cfg *config.GatewayConfig) map[string]bool {
+	hosts := map[string]bool{}
+	if cfg.Server.TLS.ACME != nil {
+		for _, domain := range cfg.Server.TLS.ACME.Domains {
+			hosts[strings.ToLower(domain)] = true
+		}
+		return hosts
+	}
+	if cfg.Server.URL != "" {
+		if parsed, err := url.Parse(cfg.Server.URL); err == nil && parsed.Hostname() != "" {
+			hosts[strings.ToLower(parsed.Hostname())] = true
+		}
+	}
+	return hosts
 }
 
 // requestHost returns r.Host with any port stripped, tolerant of a bare
@@ -167,7 +209,7 @@ func buildRedirectServer(cfg *config.GatewayConfig) *http.Server {
 	}
 	return &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, redirectPort),
-		Handler:      httpsRedirectHandler(cfg.Server.Port),
+		Handler:      httpsRedirectHandler(cfg.Server.Port, allowedRedirectHosts(cfg)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,

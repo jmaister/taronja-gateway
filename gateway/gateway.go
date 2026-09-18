@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -643,8 +644,28 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		// Set forwarded headers
 		req.Header.Set("X-Forwarded-Host", req.Host)
 		scheme := "http"
-		if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
+		if req.TLS != nil {
 			scheme = "https"
+		} else if req.Header.Get("X-Forwarded-Proto") == "https" {
+			// Only honor a client-supplied "https" claim from a peer this
+			// gateway already trusts to speak for a client at all — the
+			// same isTrustedProxy boundary session.GetClientIP applies to
+			// X-Forwarded-For/X-Real-IP/X-Client-IP. Without this, any
+			// direct client — even one connecting over plain HTTP, TLS
+			// never having been involved anywhere in the request's real
+			// path — could set this header itself and have it forwarded
+			// to the backend as fact, and a backend that (reasonably)
+			// trusts its own front-end gateway to report scheme correctly
+			// would treat an insecure connection as secure: skipping a
+			// "Secure" cookie downgrade check, an HSTS enforcement, or
+			// any other scheme-conditional logic.
+			remoteIP := req.RemoteAddr
+			if host, _, err := net.SplitHostPort(remoteIP); err == nil {
+				remoteIP = host
+			}
+			if session.IsTrustedProxy(remoteIP) {
+				scheme = "https"
+			}
 		}
 		req.Header.Set("X-Forwarded-Proto", scheme)
 		if clientIP := req.RemoteAddr; clientIP != "" {

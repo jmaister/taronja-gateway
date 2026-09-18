@@ -204,3 +204,62 @@ func TestGatewayStripsForgedUserHeadersOnNoAuthRoute(t *testing.T) {
 	assert.Empty(t, receivedHeaders.Get(session.UserIdHeader), "a forged X-User-Id must never reach the backend on a no-auth route")
 	assert.Empty(t, receivedHeaders.Get(session.UserDataHeader), "a forged X-User-Data must never reach the backend on a no-auth route")
 }
+
+// TestGatewayForwardedProto is the regression test for Finding 15: a
+// client-supplied X-Forwarded-Proto: https used to be forwarded to the
+// backend as fact regardless of who sent it, with no check that the
+// sender is actually a proxy this gateway trusts to speak for a client —
+// unlike X-Forwarded-For/X-Real-IP/X-Client-IP, which already only honor
+// that claim from a loopback/private peer (session.IsTrustedProxy). A
+// direct client connecting over plain HTTP could set the header itself
+// and have a backend that (reasonably) trusts its own gateway treat an
+// insecure connection as secure. Invokes gw.handler.ServeHTTP directly
+// (rather than through a real TCP listener) specifically so RemoteAddr
+// can be set to a real public address — a test client dialing a loopback
+// listener would always show up as a trusted loopback peer itself,
+// defeating the point of this test.
+func TestGatewayForwardedProto(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		want       string
+	}{
+		{"trusted loopback peer's claim is honored", "127.0.0.1:54321", "https"},
+		{"trusted private-range peer's claim is honored", "192.168.1.50:54321", "https"},
+		{"untrusted public peer's claim is ignored", "203.0.113.5:54321", "http"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var receivedProto string
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedProto = r.Header.Get("X-Forwarded-Proto")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer backend.Close()
+
+			gwConfig := &config.GatewayConfig{
+				Server:     config.ServerConfig{Host: "localhost", Port: 0},
+				Management: config.ManagementConfig{Prefix: "/admin"},
+				Routes: []config.RouteConfig{
+					{
+						Name:           "ProtoTest",
+						From:           "/proto",
+						To:             []string{backend.URL},
+						Authentication: config.AuthenticationConfig{Enabled: false},
+					},
+				},
+			}
+			gw, err := NewGatewayWithDependencies(gwConfig, nil, deps.NewTest())
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, "/proto/", nil)
+			req.RemoteAddr = tt.remoteAddr
+			req.Header.Set("X-Forwarded-Proto", "https") // the claim under test — request itself is plain HTTP (req.TLS is nil)
+			rw := httptest.NewRecorder()
+			gw.handler.ServeHTTP(rw, req)
+
+			require.Equal(t, http.StatusOK, rw.Code)
+			assert.Equal(t, tt.want, receivedProto)
+		})
+	}
+}

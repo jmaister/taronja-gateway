@@ -117,7 +117,7 @@ func TestIsTrustedProxy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, isTrustedProxy(tt.ip))
+			assert.Equal(t, tt.want, IsTrustedProxy(tt.ip))
 		})
 	}
 }
