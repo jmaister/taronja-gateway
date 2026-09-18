@@ -107,6 +107,31 @@ notification:
 	assert.Nil(t, parsed.Notification.Email.SMTP, "the smtp: key itself must be gone, not just emptied")
 }
 
+// TestFlattenNotificationEmailSMTP_Uses2SpaceIndent is the regression test
+// for a real bug: yaml.Marshal's package-level function has no way to set
+// the indent width and defaults to 4 spaces, so re-marshaling through it
+// reformatted a migrated config's indentation from 2 spaces (what every
+// config this project ships or generates uses) to 4 — every line the
+// restructuring touched, not just the notification.email.smtp block
+// itself. The fields round-tripping correctly (see
+// TestFlattenNotificationEmailSMTP_MovesFieldsUpAndDropsSMTPKey) doesn't
+// catch this, since unmarshaling the output is indent-width-agnostic —
+// this checks the actual written bytes instead.
+func TestFlattenNotificationEmailSMTP_Uses2SpaceIndent(t *testing.T) {
+	raw := []byte(`name: Test
+notification:
+  email:
+    enabled: true
+    smtp:
+      host: smtp.example.com
+      port: 587
+`)
+	got := flattenNotificationEmailSMTP(raw)
+
+	assert.Contains(t, string(got), "notification:\n  email:\n    enabled: true\n    host: smtp.example.com\n    port: 587\n",
+		"nested keys must stay 2-space indented, not widen to yaml.v3's 4-space default")
+}
+
 func TestFlattenNotificationEmailSMTP_NoOpWhenNoSMTPBlock(t *testing.T) {
 	raw := []byte("name: Test\nnotification:\n  email:\n    enabled: false\n")
 	got := flattenNotificationEmailSMTP(raw)

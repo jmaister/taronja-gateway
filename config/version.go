@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -123,11 +124,22 @@ func flattenNotificationEmailSMTP(raw []byte) []byte {
 	}
 	email.Content = append(email.Content, smtp.Content...)
 
-	out, err := yaml.Marshal(&doc)
-	if err != nil {
+	// yaml.Marshal's package-level function has no way to set the
+	// indent width and defaults to 4 spaces — inconsistent with every
+	// config file this project ships or generates (2 spaces, the
+	// conventional YAML style). Going through an *Encoder with
+	// SetIndent(2) instead keeps a migrated config's indentation
+	// matching what it had before this function touched it.
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
 		return raw // shouldn't happen; fail safe to the original bytes
 	}
-	return out
+	if err := enc.Close(); err != nil {
+		return raw
+	}
+	return buf.Bytes()
 }
 
 // mappingValue returns the value node for key in mapping node m, or nil if

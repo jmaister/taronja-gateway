@@ -111,7 +111,7 @@ func IsMiddlewareNameKnown(name string) bool
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
 
 <a name="MigrateConfigContent"></a>
-## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L274>)
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L286>)
 
 ```go
 func MigrateConfigContent(path string) (content []byte, fromVersion *int, err error)
