@@ -207,7 +207,7 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		Value:    originalURL,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
 		MaxAge:   300, // 5 minutes
 	})
 
@@ -217,7 +217,7 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
 		MaxAge:   300, // 5 minutes
 	})
 
@@ -254,7 +254,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
 		MaxAge:   -1, // Delete immediately
 	})
 
@@ -302,16 +302,33 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 
 	if user == nil {
 		user = &db.User{
-			Email:          userInfo.Email,
-			Username:       userInfo.Username, // Or generate one if not provided/unique
-			Name:           userInfo.Name,
-			GivenName:      userInfo.GivenName,
-			FamilyName:     userInfo.FamilyName,
-			Picture:        userInfo.Picture,
-			Locale:         userInfo.Locale,
-			Provider:       ap.Provider.Name(),
-			ProviderId:     userInfo.ID,
-			EmailConfirmed: true, // Typically true for OAuth
+			Email:      userInfo.Email,
+			Username:   userInfo.Username, // Or generate one if not provided/unique
+			Name:       userInfo.Name,
+			GivenName:  userInfo.GivenName,
+			FamilyName: userInfo.FamilyName,
+			Picture:    userInfo.Picture,
+			Locale:     userInfo.Locale,
+			Provider:   ap.Provider.Name(),
+			ProviderId: userInfo.ID,
+			// EmailConfirmed follows the provider's own verified-email
+			// signal (see UserInfo.VerifiedEmail) rather than being
+			// unconditionally true. Every currently configured provider
+			// (see each FetchUserData) already only ever reports Email
+			// non-empty when it's effectively verified — Apple/Google read
+			// a genuine verification claim from the provider itself,
+			// Facebook/Microsoft/GitHub's own APIs only ever hand back a
+			// usable email once it's confirmed — so this gate is dormant
+			// in practice today, not a behavior change for any real user.
+			// It exists for the provider that doesn't hold to that: an
+			// OAuth provider whose Email can be genuinely unverified would
+			// otherwise let anyone claim any email address and get an
+			// immediately-usable, "confirmed" account under it — the
+			// account-takeover-by-email-spoofing path this closes. A user
+			// this actually blocks has no in-app recovery (no confirmation
+			// email is ever sent for OAuth signups) and needs to verify
+			// their email with the provider itself, then sign in again.
+			EmailConfirmed: userInfo.VerifiedEmail,
 		}
 		if user.Username == "" { // Fallback for username if not provided
 			user.Username = userInfo.Email
@@ -337,7 +354,10 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		user.Picture = userInfo.Picture
 		user.Locale = userInfo.Locale
 		user.ProviderId = userInfo.ID // Update ProviderId in case it changed or wasn't set
-		user.EmailConfirmed = true    // Re-confirm email
+		// See the account-creation branch's comment on EmailConfirmed
+		// above for why this follows the provider's signal rather than
+		// being unconditionally true.
+		user.EmailConfirmed = userInfo.VerifiedEmail
 		if err := ap.UserRepo.UpdateUser(user); err != nil {
 			log.Printf("Error updating user %s: %v", user.Email, err)
 			// Non-critical, proceed with login
@@ -362,7 +382,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Value:    sessionObj.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
 		MaxAge:   int(ap.GatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
@@ -391,7 +411,7 @@ func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request)
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   r.TLS != nil,
+			Secure:   session.RequestIsSecure(r),
 			MaxAge:   -1,
 		})
 	}

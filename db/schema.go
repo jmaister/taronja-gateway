@@ -284,15 +284,21 @@ type TrafficMetricWithUser struct {
 
 // Token struct definition for API tokens
 type Token struct {
-	ID          string     `gorm:"primaryKey;column:id;type:varchar(255);not null"`
-	UserID      string     `gorm:"column:user_id;type:varchar(255);not null"`
-	TokenHash   string     `gorm:"type:varchar(255);not null;index"` // Hashed version of the token
-	Name        string     `gorm:"type:varchar(100);not null"`       // User-defined name for the token
-	IsActive    bool       `gorm:"default:true"`                     // Whether the token is active
-	ExpiresAt   *time.Time // When the token expires (nullable for no expiration)
-	UsageCount  int64      `gorm:"default:0"` // How many times the token has been used
-	LastUsedAt  *time.Time // When the token was last used
-	Scopes      string     `gorm:"type:text"`         // JSON array of scopes/permissions
+	ID         string     `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID     string     `gorm:"column:user_id;type:varchar(255);not null"`
+	TokenHash  string     `gorm:"type:varchar(255);not null;index"` // Hashed version of the token
+	Name       string     `gorm:"type:varchar(100);not null"`       // User-defined name for the token
+	IsActive   bool       `gorm:"default:true"`                     // Whether the token is active
+	ExpiresAt  *time.Time // When the token expires (nullable for no expiration)
+	UsageCount int64      `gorm:"default:0"` // How many times the token has been used
+	LastUsedAt *time.Time // When the token was last used
+	// Scopes is a JSON array of caller-supplied labels for the token's
+	// intended purpose, stored and returned as-is. Not read or enforced
+	// anywhere else in this codebase — a token grants everything its
+	// owning user's session would, regardless of what's listed here. See
+	// api/taronja-gateway-api.yaml's TokenResponse.scopes description,
+	// which carries the same caveat for API consumers.
+	Scopes      string     `gorm:"type:text"`
 	CreatedFrom string     `gorm:"type:varchar(100)"` // How the token was created
 	RevokedAt   *time.Time // When the token was revoked
 	RevokedBy   string     `gorm:"type:varchar(255)"` // Who revoked the token

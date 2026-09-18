@@ -65,7 +65,7 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 		Value:    sessionObject.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
 		MaxAge:   int(gatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 

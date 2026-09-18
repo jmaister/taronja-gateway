@@ -757,7 +757,7 @@ type TokenCreateRequest struct {
 	// Name User-defined name for the token
 	Name string `json:"name"`
 
-	// Scopes Permissions/scopes for the token
+	// Scopes Optional labels for the token's intended purpose, stored and returned as-is on later reads. Not currently enforced: the created token grants everything the requesting user's session would, regardless of what's listed here.
 	Scopes *[]string `json:"scopes,omitempty"`
 }
 
@@ -791,7 +791,7 @@ type TokenResponse struct {
 	// RevokedAt When the token was revoked (null if not revoked)
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 
-	// Scopes Permissions/scopes for the token
+	// Scopes Labels for the token's intended purpose, stored and returned as-is. Not currently enforced anywhere: a token grants everything its owning user's session would, regardless of what scopes it was created with. Use a separate token per purpose if you need to be able to revoke one without affecting others.
 	Scopes []string `json:"scopes"`
 
 	// UsageCount Number of times the token has been used

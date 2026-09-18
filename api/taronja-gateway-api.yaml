@@ -2226,7 +2226,12 @@ components:
           type: array
           items:
             type: string
-          description: Permissions/scopes for the token
+          description: >-
+            Labels for the token's intended purpose, stored and returned
+            as-is. Not currently enforced anywhere: a token grants
+            everything its owning user's session would, regardless of what
+            scopes it was created with. Use a separate token per purpose if
+            you need to be able to revoke one without affecting others.
         revoked_at:
           type: string
           format: date-time
@@ -2257,7 +2262,11 @@ components:
           type: array
           items:
             type: string
-          description: Permissions/scopes for the token
+          description: >-
+            Optional labels for the token's intended purpose, stored and
+            returned as-is on later reads. Not currently enforced: the
+            created token grants everything the requesting user's session
+            would, regardless of what's listed here.
           default: []
       required:
         - name
