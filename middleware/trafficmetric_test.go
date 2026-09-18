@@ -22,6 +22,25 @@ func setupTestTrafficRepo(t *testing.T) db.TrafficMetricRepository {
 	return dependencies.TrafficMetricRepo
 }
 
+// waitForTrafficMetric polls repo for path's recorded metric(s), returning
+// as soon as at least one exists. A deterministic replacement for a fixed
+// time.Sleep: TrafficMetricMiddleware now builds and records the metric
+// entirely from a background goroutine (see its own doc comment for why),
+// so how long that takes depends on work — user-agent parsing, a
+// non-routable-IP check — that a short fixed sleep isn't reliably longer
+// than, especially under the race detector's overhead.
+func waitForTrafficMetric(t *testing.T, repo db.TrafficMetricRepository, path string) []db.TrafficMetric {
+	t.Helper()
+	var stats []db.TrafficMetric
+	var lastErr error
+	require.Eventually(t, func() bool {
+		stats, lastErr = repo.FindByPath(path, 10)
+		return lastErr == nil && len(stats) > 0
+	}, 2*time.Second, 5*time.Millisecond, "traffic metric for %q was never recorded", path)
+	require.NoError(t, lastErr)
+	return stats
+}
+
 func TestTrafficMetricMiddleware(t *testing.T) {
 	t.Run("records successful request metrics", func(t *testing.T) {
 		// Generate a unique test name to ensure database isolation
@@ -50,16 +69,12 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation to complete
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify response
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "Success response", w.Body.String())
 
 		// Verify metrics were recorded
-		stats, err := dependencies.TrafficMetricRepo.FindByPath("/api/test", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, dependencies.TrafficMetricRepo, "/api/test")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
@@ -99,15 +114,11 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify error response
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 
 		// Verify error metrics were recorded
-		stats, err := statsRepo.FindByPath("/api/create", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/create")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
@@ -146,12 +157,8 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify session info was recorded
-		stats, err := statsRepo.FindByPath("/api/profile", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/profile")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
@@ -180,12 +187,8 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify error message was truncated
-		stats, err := statsRepo.FindByPath("/api/error", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/error")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
@@ -214,12 +217,8 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		wrappedHandler.ServeHTTP(w, req)
 		actualDuration := time.Since(startTime)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify response time was measured
-		stats, err := statsRepo.FindByPath("/api/slow", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/slow")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
@@ -246,12 +245,8 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify metrics were recorded without session info
-		stats, err := statsRepo.FindByPath("/api/public", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/public")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
@@ -270,27 +265,31 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 		wrappedHandler := middleware(handler)
 
-		// Create request with mobile user agent
+		// Create request with mobile user agent. RemoteAddr is a private
+		// (RFC 1918) address, like the earlier subtests in this file — not
+		// a routable one: session.NewTrafficMetric's geo-IP lookup treats a
+		// routable address as a real, possibly slow (network-timeout-bound)
+		// outbound call, now made from the background goroutine this
+		// middleware defers stat-building to (see TrafficMetricMiddleware's
+		// own comment on why), which this test's fixed, short sleep below
+		// isn't meant to wait out — this test is about user-agent parsing,
+		// not geo-IP latency.
 		req := httptest.NewRequest("GET", "/api/mobile", nil)
-		req.RemoteAddr = "203.0.113.50:443"
+		req.RemoteAddr = "192.168.2.50:443"
 		req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1")
 
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify mobile device info was recorded
-		stats, err := statsRepo.FindByPath("/api/mobile", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/mobile")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
 		assert.Equal(t, "GET", stat.HttpMethod)
 		assert.Equal(t, "/api/mobile", stat.Path)
 		assert.Equal(t, 200, stat.HttpStatus)
-		assert.Equal(t, "203.0.113.50", stat.IPAddress)
+		assert.Equal(t, "192.168.2.50", stat.IPAddress)
 		assert.Equal(t, "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1", stat.UserAgent)
 		assert.Equal(t, "iPhone", stat.DeviceFamily) // Should detect iPhone
 		assert.Equal(t, "Mobile Safari", stat.BrowserFamily)
@@ -310,27 +309,24 @@ func TestTrafficMetricMiddleware(t *testing.T) {
 
 		wrappedHandler := middleware(handler)
 
-		// Create request with Android user agent (Samsung Galaxy)
+		// Create request with Android user agent (Samsung Galaxy). Private
+		// RemoteAddr for the same reason as the mobile subtest above.
 		req := httptest.NewRequest("GET", "/api/android", nil)
-		req.RemoteAddr = "203.0.113.75:443"
+		req.RemoteAddr = "192.168.2.75:443"
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36")
 
 		w := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait for async operation
-		time.Sleep(15 * time.Millisecond)
-
 		// Verify Android device info was recorded
-		stats, err := statsRepo.FindByPath("/api/android", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/android")
 		require.Len(t, stats, 1)
 
 		stat := stats[0]
 		assert.Equal(t, "GET", stat.HttpMethod)
 		assert.Equal(t, "/api/android", stat.Path)
 		assert.Equal(t, 200, stat.HttpStatus)
-		assert.Equal(t, "203.0.113.75", stat.IPAddress)
+		assert.Equal(t, "192.168.2.75", stat.IPAddress)
 		assert.Equal(t, "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36", stat.UserAgent)
 		assert.Equal(t, "Samsung SM-G991B", stat.DeviceFamily)
 		assert.Equal(t, "Chrome Mobile", stat.BrowserFamily)

@@ -106,19 +106,34 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository, excludeStatic
 				}
 			}
 
-			// Create the statistic record
-			stat := session.NewTrafficMetric(req)
-			// Setting the rest of the fields, values not coming from req *http.Request
-			stat.Timestamp = startTime
-			stat.HttpStatus = resp.Status()
-			stat.ResponseTimeNs = responseTime
-			stat.ResponseSize = resp.Size()
-			stat.Error = errorMsg
-			stat.UserID = userID
-			stat.SessionID = sessionID
-
-			// Store the statistic (async to avoid blocking the response)
+			// Build the statistic record and store it in the background,
+			// rather than building it here and only backgrounding the
+			// write. session.NewTrafficMetric(req) is also where the geo-IP
+			// lookup happens (session.NewClientInfo -> GetGeoDataFromIP),
+			// which is a synchronous outbound HTTP call — up to several
+			// seconds on a cache miss (see ipgeo.go's client timeouts) —
+			// for every not-yet-cached client IP. Building stat here, after
+			// next.ServeHTTP has already returned the response, meant this
+			// request's goroutine (and the connection/file descriptor it
+			// holds) stayed alive for that whole lookup even though the
+			// client already has its response and may have disconnected —
+			// exactly the "detached work after cancellation" pattern that's
+			// meant to run in the background, not on the critical path.
+			// Nothing here reads req.Body (only Method/URL/Header/
+			// RemoteAddr, all decoded independently of the connection's
+			// read buffer), so it's safe to keep reading req after this
+			// handler itself returns, same as capturing userID/sessionID/
+			// errorMsg above already does.
 			go func() {
+				stat := session.NewTrafficMetric(req)
+				stat.Timestamp = startTime
+				stat.HttpStatus = resp.Status()
+				stat.ResponseTimeNs = responseTime
+				stat.ResponseSize = resp.Size()
+				stat.Error = errorMsg
+				stat.UserID = userID
+				stat.SessionID = sessionID
+
 				if err := statsRepo.Create(stat); err != nil {
 					log.Printf("Failed to store request statistic: %v", err)
 				}

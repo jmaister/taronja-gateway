@@ -1074,13 +1074,13 @@ type ServerInterface interface {
 	// GetToken Get token details (admin only)
 	// (GET /api/tokens/{tokenId})
 	GetToken(w http.ResponseWriter, r *http.Request, tokenId string)
-	// ListUsers List all users
+	// ListUsers List all users (admin only)
 	// (GET /api/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
-	// CreateUser Create a new user
+	// CreateUser Create a new user (admin only)
 	// (POST /api/users)
 	CreateUser(w http.ResponseWriter, r *http.Request)
-	// GetUserById Get a user by ID
+	// GetUserById Get a user by ID (admin only)
 	// (GET /api/users/{userId})
 	GetUserById(w http.ResponseWriter, r *http.Request, userId string)
 	// ListTokens List API tokens for a specific user (admin only)
@@ -3975,6 +3975,20 @@ func (response CreateUser400JSONResponse) VisitCreateUserResponse(w http.Respons
 	return err
 }
 
+type CreateUser401JSONResponse Error
+
+func (response CreateUser401JSONResponse) VisitCreateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateUser409JSONResponse Error
 
 func (response CreateUser409JSONResponse) VisitCreateUserResponse(w http.ResponseWriter) error {
@@ -4458,13 +4472,13 @@ type StrictServerInterface interface {
 	// GetToken Get token details (admin only)
 	// (GET /api/tokens/{tokenId})
 	GetToken(ctx context.Context, request GetTokenRequestObject) (GetTokenResponseObject, error)
-	// ListUsers List all users
+	// ListUsers List all users (admin only)
 	// (GET /api/users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
-	// CreateUser Create a new user
+	// CreateUser Create a new user (admin only)
 	// (POST /api/users)
 	CreateUser(ctx context.Context, request CreateUserRequestObject) (CreateUserResponseObject, error)
-	// GetUserById Get a user by ID
+	// GetUserById Get a user by ID (admin only)
 	// (GET /api/users/{userId})
 	GetUserById(ctx context.Context, request GetUserByIdRequestObject) (GetUserByIdResponseObject, error)
 	// ListTokens List API tokens for a specific user (admin only)

@@ -130,6 +130,43 @@ func TestResolveGlobalChainSpecs_ExplicitRateLimiterOverride(t *testing.T) {
 	}
 }
 
+func TestEffectiveCORSConfig_PerEntryOverrideWinsOverManagementCORS(t *testing.T) {
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.CORS = config.CORSConfig{AllowedOrigins: []string{"https://management.example.com"}}
+	override := config.CORSConfig{AllowedOrigins: []string{"https://override.example.com"}}
+	gatewayConfig.Middleware.Global = []config.MiddlewareEntryConfig{
+		{Name: config.MiddlewareNameCORS, CORS: &override},
+	}
+
+	got := EffectiveCORSConfig(gatewayConfig)
+	if len(got.AllowedOrigins) != 1 || got.AllowedOrigins[0] != "https://override.example.com" {
+		t.Fatalf("expected per-entry override to win over management.cors, got %+v", got)
+	}
+}
+
+func TestEffectiveCORSConfig_FallsBackToManagementCORSWithNoOverride(t *testing.T) {
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.CORS = config.CORSConfig{AllowedOrigins: []string{"https://management.example.com"}}
+	gatewayConfig.Middleware.Global = []config.MiddlewareEntryConfig{
+		{Name: config.MiddlewareNameCORS}, // no per-entry override
+	}
+
+	got := EffectiveCORSConfig(gatewayConfig)
+	if len(got.AllowedOrigins) != 1 || got.AllowedOrigins[0] != "https://management.example.com" {
+		t.Fatalf("expected fallback to management.cors, got %+v", got)
+	}
+}
+
+func TestEffectiveCORSConfig_NoMiddlewareSectionUsesManagementCORS(t *testing.T) {
+	gatewayConfig := &config.GatewayConfig{}
+	gatewayConfig.Management.CORS = config.CORSConfig{AllowedOrigins: []string{"https://management.example.com"}}
+
+	got := EffectiveCORSConfig(gatewayConfig)
+	if len(got.AllowedOrigins) != 1 || got.AllowedOrigins[0] != "https://management.example.com" {
+		t.Fatalf("expected management.cors with no middleware: section, got %+v", got)
+	}
+}
+
 // --- ResolveGlobalChainSpecs: traffic_metrics / excludeStaticAssets ---
 
 func TestResolveGlobalChainSpecs_LegacyExcludeStaticAssetsFlowsIntoTrafficMetricsConfig(t *testing.T) {

@@ -303,6 +303,45 @@ func EffectiveRateLimiterConfig(gatewayConfig *config.GatewayConfig) config.Rate
 	return gatewayConfig.Management.RateLimiter
 }
 
+// EffectiveCORSConfig returns the config.CORSConfig that resolving the
+// global chain (ResolveGlobalChainSpecs) would actually use to build the
+// cors middleware: a per-entry override from an explicit `middleware.global`
+// cors entry if one is present, otherwise management.cors (which is also
+// what an explicit entry with no override falls back to, and what's used
+// when there's no explicit `middleware:` section at all).
+//
+// This exists for the same reason EffectiveRateLimiterConfig does: a
+// validator that only ever reads gatewayConfig.Management.CORS directly
+// silently misses a per-entry override in the `middleware:` section — which
+// is exactly what let a config combining a wildcard origin with
+// allowCredentials pass ValidateCORSMiddleware and then serve
+// Access-Control-Allow-Credentials: true while reflecting any Origin back
+// verbatim, completely defeating the one thing that check exists to
+// prevent. Callers validating (or otherwise needing to know) the CORS
+// config that will actually take effect at runtime must resolve it with
+// this function first, not by reading gatewayConfig.Management.CORS
+// directly.
+//
+// If gatewayConfig.Middleware.Global is invalid (e.g. an unknown middleware
+// name), this returns gatewayConfig.Management.CORS rather than an error;
+// the real error will surface when BuildGlobalChainFromConfigV2 is called
+// against the same config.
+func EffectiveCORSConfig(gatewayConfig *config.GatewayConfig) config.CORSConfig {
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		return gatewayConfig.Management.CORS
+	}
+	for _, spec := range specs {
+		if spec.Name != config.MiddlewareNameCORS {
+			continue
+		}
+		if cfg, ok := spec.Config.(config.CORSConfig); ok {
+			return cfg
+		}
+	}
+	return gatewayConfig.Management.CORS
+}
+
 // specsFromMiddlewareSection builds specs from an explicit
 // gatewayConfig.Middleware.Global list.
 func specsFromMiddlewareSection(gatewayConfig *config.GatewayConfig) ([]MiddlewareSpec, error) {

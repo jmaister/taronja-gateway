@@ -131,12 +131,8 @@ func TestTrafficMetricMiddleware_ExcludeStaticAssets(t *testing.T) {
 
 		wrappedHandler.ServeHTTP(w, req)
 
-		// Wait a bit for the async operation to complete
-		time.Sleep(10 * time.Millisecond)
-
 		// Verify statistics were recorded
-		stats, err := statsRepo.FindByPath("/api/users", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/api/users")
 		assert.Len(t, stats, 1)
 	})
 
@@ -149,10 +145,7 @@ func TestTrafficMetricMiddleware_ExcludeStaticAssets(t *testing.T) {
 
 		wrappedHandler.ServeHTTP(w, req)
 
-		time.Sleep(10 * time.Millisecond)
-
-		stats, err := statsRepo.FindByPath("/_/static/app.js", 10)
-		require.NoError(t, err)
+		stats := waitForTrafficMetric(t, statsRepo, "/_/static/app.js")
 		require.Len(t, stats, 1)
 		assert.True(t, stats[0].IsStaticAsset)
 	})

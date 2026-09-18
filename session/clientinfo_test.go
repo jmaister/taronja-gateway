@@ -137,12 +137,18 @@ func TestGetClientIP_TrustedProxyBehavior(t *testing.T) {
 		assert.Equal(t, "203.0.113.9", GetClientIP(req), "none of the spoofed headers should be trusted")
 	})
 
-	t.Run("loopback peer honors X-Forwarded-For, first entry wins", func(t *testing.T) {
+	t.Run("loopback peer honors X-Forwarded-For, rightmost untrusted entry wins", func(t *testing.T) {
+		// Not "first entry wins": see rightmostUntrustedForwardedFor's own
+		// doc comment for why the leftmost entry is the wrong one to trust
+		// when a proxy appends rather than replaces this header — both
+		// entries here are equally "untrusted" (public) addresses, so this
+		// only pins down which end of the list wins, matching the real
+		// spoofing scenario in TestGetClientIP_ForwardedForSpoofing below.
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 		req.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.1")
 
-		assert.Equal(t, "203.0.113.1", GetClientIP(req))
+		assert.Equal(t, "198.51.100.1", GetClientIP(req))
 	})
 
 	t.Run("private-range peer honors X-Real-IP", func(t *testing.T) {
@@ -170,4 +176,45 @@ func TestGetClientIP_TrustedProxyBehavior(t *testing.T) {
 
 		assert.Equal(t, "2001:db8::1", GetClientIP(req))
 	})
+
+	t.Run("a chain of trusted proxies is peeled to find the real client", func(t *testing.T) {
+		// Two hops between the client and this gateway, both private —
+		// e.g. an internal load balancer, then nginx, both in the same
+		// Docker network — each appending its own observed peer per RFC
+		// 7239. The real client (rightmost untrusted entry) is neither
+		// the leftmost entry nor simply "the last one," but the first one
+		// walking from the right that isn't itself another trusted hop.
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.2:12345" // nginx, the immediate (trusted) peer
+		req.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+
+		assert.Equal(t, "203.0.113.7", GetClientIP(req))
+	})
+
+	t.Run("an all-trusted chain falls through to X-Real-IP", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.2:12345"
+		req.Header.Set("X-Forwarded-For", "10.0.0.1, 127.0.0.1")
+		req.Header.Set("X-Real-IP", "203.0.113.8")
+
+		assert.Equal(t, "203.0.113.8", GetClientIP(req), "an X-Forwarded-For with no untrusted entry at all must not be treated as the answer")
+	})
+}
+
+// TestGetClientIP_ForwardedForSpoofing is the regression test for the
+// vulnerability rightmostUntrustedForwardedFor fixes: a client sending its
+// own X-Forwarded-For to a proxy that *appends* rather than replaces
+// (nginx without a real_ip module, Traefik's default passthrough, and
+// others — a common, not universal, topology) previously got its own fake
+// leading entry trusted outright, letting it rotate a fresh "identity" per
+// request to defeat IP-based rate limiting/blocklisting and poison
+// recorded IP addresses. The gateway's own immediate peer here is the
+// proxy (trusted); the proxy appended the real client's address as the
+// last entry, exactly as an append-style proxy would.
+func TestGetClientIP_ForwardedForSpoofing(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:12345" // the trusted proxy sitting in front of this gateway
+	req.Header.Set("X-Forwarded-For", "6.6.6.6, 198.51.100.42")
+
+	assert.Equal(t, "198.51.100.42", GetClientIP(req), "the real client (appended by the trusted proxy) must win over the attacker's own spoofed leading entry")
 }

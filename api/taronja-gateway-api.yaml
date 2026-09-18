@@ -136,7 +136,7 @@ paths:
 
   /api/users:
     get:
-      summary: List all users
+      summary: List all users (admin only)
       operationId: listUsers
       tags:
         - User
@@ -164,14 +164,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      summary: Create a new user
+      summary: Create a new user (admin only)
       operationId: createUser
       tags:
         - User
-      # No security for user creation, as it's typically a public endpoint
-      # If registration requires admin privileges or similar, add:
-      # security:
-      #   - cookieAuth: []
+      security:
+        - cookieAuth: []
       requestBody:
         required: true
         content:
@@ -191,6 +189,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (no valid session, or not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: Conflict (e.g., username or email already exists)
           content:
@@ -206,7 +210,7 @@ paths:
 
   /api/users/{userId}:
     get:
-      summary: Get a user by ID
+      summary: Get a user by ID (admin only)
       operationId: getUserById
       tags:
         - User

@@ -153,6 +153,73 @@ func TestGetGeoDataFromIP_CachedSuccessIsFast(t *testing.T) {
 	}
 }
 
+// TestCacheGeoResult_DropsNewEntriesOnceCacheIsFull is the regression test
+// for the unbounded-growth vulnerability: before ipCacheMaxEntries existed,
+// a remote, unauthenticated flood of distinct "client IP" values (trivial
+// over IPv6, or via a spoofed X-Forwarded-For entry) could grow ipCache.cache
+// without limit. This fills the cache to capacity with synthetic entries
+// (cheap map writes — no network calls, since cacheGeoResult never makes
+// one), then confirms a brand-new key is silently not retained, while an
+// already-cached key can still be refreshed even at capacity.
+func TestCacheGeoResult_DropsNewEntriesOnceCacheIsFull(t *testing.T) {
+	ipCache.mutex.Lock()
+	original := ipCache.cache
+	ipCache.cache = make(map[string]geoCacheEntry, ipCacheMaxEntries)
+	for i := 0; i < ipCacheMaxEntries; i++ {
+		ipCache.cache[fmt.Sprintf("198.51.100.%d.filler-%d", i, i)] = geoCacheEntry{at: time.Now()}
+	}
+	ipCache.mutex.Unlock()
+	t.Cleanup(func() {
+		ipCache.mutex.Lock()
+		ipCache.cache = original
+		ipCache.mutex.Unlock()
+	})
+
+	const existingKey = "203.0.113.90"
+	ipCache.mutex.Lock()
+	ipCache.cache[existingKey] = geoCacheEntry{data: GeoData{City: "Stale"}, at: time.Now().Add(-time.Hour)}
+	sizeAtCapacity := len(ipCache.cache)
+	ipCache.mutex.Unlock()
+	require.Greater(t, sizeAtCapacity, ipCacheMaxEntries, "test setup should have pushed the cache past the cap before exercising it")
+
+	cacheGeoResult("203.0.113.91", GeoData{City: "NewButDropped"}, nil)
+	ipCache.mutex.RLock()
+	_, gotNewEntry := ipCache.cache["203.0.113.91"]
+	sizeAfterNewEntry := len(ipCache.cache)
+	ipCache.mutex.RUnlock()
+	assert.False(t, gotNewEntry, "a brand-new key must not be cached once the cache is at capacity")
+	assert.Equal(t, sizeAtCapacity, sizeAfterNewEntry, "cache size must not grow past what it already was")
+
+	cacheGeoResult(existingKey, GeoData{City: "Refreshed"}, nil)
+	ipCache.mutex.RLock()
+	refreshed := ipCache.cache[existingKey]
+	ipCache.mutex.RUnlock()
+	assert.Equal(t, "Refreshed", refreshed.data.City, "refreshing an already-cached key must still work at capacity")
+}
+
+// TestSweepExpiredGeoCacheEntries_RemovesOnlyExpiredEntries is the
+// regression test for the other half of the same vulnerability: before this
+// sweep existed, nothing ever removed an entry from ipCache.cache at all, so
+// even entries long past their own success/failure TTL sat in memory
+// forever. This seeds one expired and one fresh entry and confirms the sweep
+// removes exactly the expired one.
+func TestSweepExpiredGeoCacheEntries_RemovesOnlyExpiredEntries(t *testing.T) {
+	const expiredIP = "203.0.113.92"
+	const freshIP = "203.0.113.93"
+	seedGeoCache(t, expiredIP, geoCacheEntry{err: fmt.Errorf("boom"), at: time.Now().Add(-2 * geoFailureTTL)})
+	seedGeoCache(t, freshIP, geoCacheEntry{data: GeoData{City: "StillGood"}, at: time.Now()})
+
+	sweepExpiredGeoCacheEntries(time.Now())
+
+	ipCache.mutex.RLock()
+	_, expiredStillPresent := ipCache.cache[expiredIP]
+	freshEntry, freshStillPresent := ipCache.cache[freshIP]
+	ipCache.mutex.RUnlock()
+	assert.False(t, expiredStillPresent, "an expired entry must be removed by the sweep, not just treated as a miss on read")
+	assert.True(t, freshStillPresent, "the sweep must not remove an entry that hasn't expired yet")
+	assert.Equal(t, "StillGood", freshEntry.data.City)
+}
+
 func TestGeoCacheEntry_Expired(t *testing.T) {
 	now := time.Now()
 

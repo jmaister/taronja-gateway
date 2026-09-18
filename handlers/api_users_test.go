@@ -41,7 +41,35 @@ func TestCreateUser(t *testing.T) {
 	s := setupTestServer()
 	defer db.ResetConnection()
 
-	ctx := context.Background()
+	ctx := sessionContext("admin-id", true)
+
+	t.Run("rejects a non-admin caller", func(t *testing.T) {
+		userRequest := api.CreateUserJSONRequestBody{
+			Username: "shouldnotexist",
+			Email:    openapi_types.Email("shouldnotexist@example.com"),
+			Password: "password123",
+		}
+		resp, err := s.CreateUser(sessionContext("regular-user", false), api.CreateUserRequestObject{Body: &userRequest})
+		require.NoError(t, err)
+		errResp, ok := resp.(api.CreateUser401JSONResponse)
+		require.True(t, ok, "Expected CreateUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+
+		_, dbErr := s.userRepo.FindUserByIdOrUsername("", "shouldnotexist", "")
+		assert.Error(t, dbErr, "a rejected call must not create the user")
+	})
+
+	t.Run("rejects an unauthenticated caller", func(t *testing.T) {
+		userRequest := api.CreateUserJSONRequestBody{
+			Username: "alsoshouldnotexist",
+			Email:    openapi_types.Email("alsoshouldnotexist@example.com"),
+			Password: "password123",
+		}
+		resp, err := s.CreateUser(context.Background(), api.CreateUserRequestObject{Body: &userRequest})
+		require.NoError(t, err)
+		_, ok := resp.(api.CreateUser401JSONResponse)
+		assert.True(t, ok, "Expected CreateUser401JSONResponse")
+	})
 
 	t.Run("Success", func(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
@@ -182,7 +210,14 @@ func TestListUsers(t *testing.T) {
 	s := setupTestServer()
 	defer db.ResetConnection()
 
-	ctx := context.Background()
+	ctx := sessionContext("admin-id", true)
+
+	t.Run("rejects a non-admin caller", func(t *testing.T) {
+		resp, err := s.ListUsers(sessionContext("regular-user", false), api.ListUsersRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.ListUsers401JSONResponse)
+		assert.True(t, ok, "Expected ListUsers401JSONResponse")
+	})
 
 	t.Run("NoUsers", func(t *testing.T) {
 		req := api.ListUsersRequestObject{}
@@ -217,7 +252,7 @@ func TestGetUserById(t *testing.T) {
 	s := setupTestServer()
 	defer db.ResetConnection()
 
-	ctx := context.Background()
+	ctx := sessionContext("admin-id", true)
 
 	// Create a user to be fetched
 	userRequest := api.CreateUserJSONRequestBody{
@@ -280,5 +315,13 @@ func TestGetUserById(t *testing.T) {
 		require.True(t, ok, "Expected GetUserById400JSONResponse")
 		assert.Equal(t, http.StatusBadRequest, errResp.Code)
 		assert.Equal(t, "User ID path parameter is required", errResp.Message)
+	})
+
+	t.Run("rejects a non-admin caller", func(t *testing.T) {
+		req := api.GetUserByIdRequestObject{UserId: userID}
+		resp, err := s.GetUserById(sessionContext("regular-user", false), req)
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserById401JSONResponse)
+		assert.True(t, ok, "Expected GetUserById401JSONResponse")
 	})
 }

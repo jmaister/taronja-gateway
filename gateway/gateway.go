@@ -734,6 +734,24 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 
 	// Return the handler function
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Discard any client-supplied copy of these two headers
+		// unconditionally, before anything else — including on a route
+		// with authentication.enabled: false, which never reaches the
+		// block below that would otherwise overwrite them from a real
+		// session. Without this, a direct client could set its own
+		// X-User-Id/X-User-Data (a full session JSON dump, including
+		// IsAdmin) on any such route and have it forwarded to the backend
+		// completely unmodified, indistinguishable from a real
+		// gateway-asserted identity to a backend that follows this
+		// gateway's own documented contract of trusting these headers
+		// instead of reimplementing auth itself (see README.md's
+		// "Authentication on the APIs" section). The block below still
+		// re-sets both from a validated session on a route that does
+		// require it, so this only ever removes a forged value, never a
+		// legitimate one.
+		r.Header.Del(session.UserIdHeader)
+		r.Header.Del(session.UserDataHeader)
+
 		// For authenticated routes, extract user ID and set header
 		if routeConfig.Authentication.Enabled {
 

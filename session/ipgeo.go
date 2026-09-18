@@ -65,6 +65,81 @@ type IPGeoCache struct {
 	mutex sync.RWMutex
 }
 
+// ipCacheMaxEntries bounds ipCache.cache's size. Before this, nothing ever
+// removed an entry from the map at read or write time — every distinct
+// value GetGeoDataFromIP was ever called with stayed cached forever — so a
+// remote, unauthenticated client could grow it without limit simply by
+// presenting many distinct "client IP" values: trivial over IPv6, or via a
+// spoofed X-Forwarded-For entry in the common reverse-proxy topology this
+// gateway documents as normal (see GetClientIP's own doc comment). 50,000
+// entries is generous for any real deployment's distinct-visitor diversity
+// — a few tens of MB at worst, not unbounded — while giving an attacker
+// nothing to gain by exceeding it: once full, a genuinely new value simply
+// isn't cached rather than displacing something else, and
+// ipCacheCleanupInterval's periodic sweep reclaims room from real, expired
+// traffic on an ordinary schedule.
+const ipCacheMaxEntries = 50_000
+
+// ipCacheCleanupInterval is how often the background sweep (see
+// startIPCacheCleanup) removes entries geoCacheEntry.expired considers
+// stale — independent of geoSuccessTTL/geoFailureTTL, which only ever
+// governed whether a *read* treats a cached entry as a miss, never whether
+// it gets removed. Paired with ipCacheMaxEntries: the cap bounds growth
+// within one interval, the sweep bounds it thereafter.
+const ipCacheCleanupInterval = 10 * time.Minute
+
+var ipCacheCleanupOnce sync.Once
+
+// startIPCacheCleanup lazily starts ipCache's background sweep on first
+// use, not at package init — a process that imports this package without
+// ever calling GetGeoDataFromIP (most tests) never spins up a goroutine it
+// has no way to stop. This is deliberately a forever-running,
+// process-lifetime goroutine rather than one with a Close() method like
+// middleware.RateLimiter's: ipCache is a package-level singleton rebuilt
+// only when the process restarts, with no equivalent per-instance/
+// per-reload lifecycle to leak against.
+func startIPCacheCleanup() {
+	ipCacheCleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(ipCacheCleanupInterval)
+			defer ticker.Stop()
+			for now := range ticker.C {
+				sweepExpiredGeoCacheEntries(now)
+			}
+		}()
+	})
+}
+
+// sweepExpiredGeoCacheEntries removes every ipCache entry geoCacheEntry.expired
+// considers stale as of now. Split out from startIPCacheCleanup's ticker loop
+// so a test can exercise one sweep pass directly, without waiting on
+// ipCacheCleanupInterval or depending on the background goroutine at all.
+func sweepExpiredGeoCacheEntries(now time.Time) {
+	ipCache.mutex.Lock()
+	defer ipCache.mutex.Unlock()
+	for ip, entry := range ipCache.cache {
+		if entry.expired(now) {
+			delete(ipCache.cache, ip)
+		}
+	}
+}
+
+// cacheGeoResult records the outcome of looking up ip — success or failure
+// alike, see geoSuccessTTL/geoFailureTTL — unless ip is a genuinely new key
+// and the cache is already at ipCacheMaxEntries, in which case the result is
+// still returned to this one caller but not retained for the next. See that
+// constant's doc comment for why a full cache drops new entries instead of
+// evicting an old one to make room. Split out from GetGeoDataFromIP so a
+// test can exercise the capping behavior directly, without needing a real
+// network call to produce a genuine cache miss.
+func cacheGeoResult(ip string, geoData GeoData, err error) {
+	ipCache.mutex.Lock()
+	defer ipCache.mutex.Unlock()
+	if _, exists := ipCache.cache[ip]; exists || len(ipCache.cache) < ipCacheMaxEntries {
+		ipCache.cache[ip] = geoCacheEntry{data: geoData, err: err, at: time.Now()}
+	}
+}
+
 // GeoData holds the geolocation data for an IP
 type GeoData struct {
 	Latitude     float64
@@ -118,6 +193,8 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 		return GeoData{}, nil // nothing a public geo API could ever answer for
 	}
 
+	startIPCacheCleanup()
+
 	// First check the cache — a hit, success or failure, is returned as-is
 	// without calling the API again. See geoSuccessTTL/geoFailureTTL for
 	// why a failure is cached too, just briefly.
@@ -139,14 +216,7 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 		geoData, err = getGeoDataFromFreeIPAPI(ip)
 	}
 
-	// Cache the outcome either way (see geoSuccessTTL/geoFailureTTL) — a
-	// failed lookup used to never be cached at all, so every request from
-	// an IP the geolocation API couldn't be reached for paid its full
-	// network timeout, forever, for as long as that IP kept sending
-	// requests.
-	ipCache.mutex.Lock()
-	ipCache.cache[ip] = geoCacheEntry{data: geoData, err: err, at: time.Now()}
-	ipCache.mutex.Unlock()
+	cacheGeoResult(ip, geoData, err)
 
 	if err != nil {
 		return GeoData{}, err

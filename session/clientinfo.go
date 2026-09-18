@@ -99,9 +99,8 @@ func GetClientIP(r *http.Request) string {
 
 	if isTrustedProxy(remoteIP) {
 		if xForwardedFor := r.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
-			// X-Forwarded-For can contain multiple IPs, take the first one
-			if ips := strings.Split(xForwardedFor, ","); len(ips) > 0 {
-				return stripPort(strings.TrimSpace(ips[0]))
+			if ip := rightmostUntrustedForwardedFor(xForwardedFor); ip != "" {
+				return ip
 			}
 		}
 		if xRealIP := r.Header.Get("X-Real-IP"); xRealIP != "" {
@@ -113,6 +112,46 @@ func GetClientIP(r *http.Request) string {
 	}
 
 	return remoteIP
+}
+
+// rightmostUntrustedForwardedFor walks an X-Forwarded-For header's
+// comma-separated address list from the right — the end a well-behaved
+// proxy appends its own observed peer to (RFC 7239's "for", added by "each
+// successive proxy") — skipping past any entry that is itself a
+// loopback/private address (another trusted hop between the client and
+// this gateway) until it finds the first entry that isn't. That first
+// untrusted entry is the real client's address; every entry to its left
+// was supplied by the client itself (or an untrusted intermediary) and is
+// not proof of anything.
+//
+// Reading the leftmost entry instead, as this used to, assumes the header
+// is only ever written by proxies and never seeded by the client — true
+// only when the front-end proxy replaces any client-supplied
+// X-Forwarded-For rather than appending to it. Several common proxies
+// (plain nginx without a real_ip module, Traefik's default passthrough,
+// a number of load balancers) append instead, which is exactly what RFC
+// 7239 describes: under that topology — common, not universal — a client
+// sending its own fake leading entry got it trusted outright, letting it
+// rotate a fresh "identity" per request to defeat IP-based rate limiting
+// and blocklisting (middleware/ratelimiter.go), and to poison the IP
+// address recorded against every session/traffic-metric row.
+//
+// Returns "" if every entry is itself trusted (an all-internal chain, e.g.
+// two chained proxies both on the private network) or the header has no
+// usable entries at all, so the caller can fall through to its other
+// signals — same as an empty header would have before.
+func rightmostUntrustedForwardedFor(xForwardedFor string) string {
+	entries := strings.Split(xForwardedFor, ",")
+	for i := len(entries) - 1; i >= 0; i-- {
+		candidate := stripPort(strings.TrimSpace(entries[i]))
+		if candidate == "" {
+			continue
+		}
+		if !isTrustedProxy(candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // NewClientInfo creates a ClientInfo instance from an HTTP request and geolocation data

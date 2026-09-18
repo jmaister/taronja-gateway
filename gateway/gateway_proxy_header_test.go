@@ -138,3 +138,69 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 	// Assert that the backend received the correct X-User-Id header
 	assert.Equal(t, testUser.ID, receivedUserId, "backend should receive correct X-User-Id header from gateway")
 }
+
+// TestGatewayStripsForgedUserHeadersOnNoAuthRoute is the regression test for
+// a real gap: createProxyHandlerFunc only ever set X-User-Id/X-User-Data
+// from a validated session inside its `if routeConfig.Authentication.Enabled`
+// branch — on a route that doesn't require gateway auth, the original,
+// client-supplied request (headers included) was forwarded to the backend
+// completely unmodified, so a direct client could set its own X-User-Id/
+// X-User-Data (a full session JSON dump, including IsAdmin) and have it
+// reach the backend indistinguishable from a real gateway-asserted identity,
+// for any backend that follows this gateway's own documented contract of
+// trusting these headers. This sends both, forged, on a no-auth route with
+// no session at all, and asserts neither reaches the backend.
+func TestGatewayStripsForgedUserHeadersOnNoAuthRoute(t *testing.T) {
+	var receivedHeaders http.Header
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	}))
+	defer backend.Close()
+
+	gwConfig := &config.GatewayConfig{
+		Server:     config.ServerConfig{Host: "localhost", Port: 0},
+		Management: config.ManagementConfig{Prefix: "/admin"},
+		Routes: []config.RouteConfig{
+			{
+				Name:           "PublicProxy",
+				From:           "/public",
+				To:             []string{backend.URL},
+				Authentication: config.AuthenticationConfig{Enabled: false},
+			},
+		},
+	}
+
+	gw, err := NewGatewayWithDependencies(gwConfig, nil, deps.NewTest())
+	require.NoError(t, err)
+
+	listener, err := net.Listen("tcp", gw.Server.Addr)
+	require.NoError(t, err)
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	serverURL := fmt.Sprintf("http://localhost:%d", port)
+
+	go func() { _ = gw.Server.Serve(listener) }()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = gw.Server.Shutdown(ctx)
+	})
+	time.Sleep(50 * time.Millisecond)
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	proxyReq, _ := http.NewRequest("GET", serverURL+"/public", nil)
+	// No session cookie at all — this client is completely anonymous, and
+	// yet claims to be an admin via forged headers.
+	proxyReq.Header.Set(session.UserIdHeader, "attacker-forged-id")
+	proxyReq.Header.Set(session.UserDataHeader, `{"userId":"attacker-forged-id","isAdmin":true}`)
+
+	resp, err := client.Do(proxyReq)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	_, _ = io.ReadAll(resp.Body)
+
+	assert.Empty(t, receivedHeaders.Get(session.UserIdHeader), "a forged X-User-Id must never reach the backend on a no-auth route")
+	assert.Empty(t, receivedHeaders.Get(session.UserDataHeader), "a forged X-User-Data must never reach the backend on a no-auth route")
+}

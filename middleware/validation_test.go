@@ -47,6 +47,25 @@ func TestValidateCORSMiddleware_NegativeMaxAgeRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "maxAgeSeconds")
 }
 
+// TestValidateCORSMiddleware_WildcardWithCredentialsRejectedViaMiddlewareSection
+// is the regression test for the actual vulnerability: management.cors is
+// left disabled here (as an operator using the explicit `middleware:`
+// section exclusively would leave it), so a validator reading
+// config.Management.CORS directly — as this one used to — would see CORS
+// as disabled entirely and let the per-entry override's dangerous
+// wildcard+credentials combination straight through to a live chain build.
+func TestValidateCORSMiddleware_WildcardWithCredentialsRejectedViaMiddlewareSection(t *testing.T) {
+	cfg := &config.GatewayConfig{}
+	override := config.CORSConfig{AllowedOrigins: []string{"*"}, AllowCredentials: true}
+	cfg.Middleware.Global = []config.MiddlewareEntryConfig{
+		{Name: config.MiddlewareNameCORS, CORS: &override},
+	}
+
+	err := ValidateCORSMiddleware(nil, cfg)
+	require.Error(t, err, "a middleware.global cors override must be validated, not silently skipped because management.cors looks disabled")
+	assert.Contains(t, err.Error(), "allowCredentials")
+}
+
 func TestValidateConfigOnly_ValidConfigPasses(t *testing.T) {
 	cfg := &config.GatewayConfig{}
 	cfg.Management.Prefix = "/_"

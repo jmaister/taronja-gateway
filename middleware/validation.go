@@ -180,8 +180,18 @@ func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.Gatew
 }
 
 // ValidateCORSMiddleware validates the CORS configuration.
+//
+// This reads EffectiveCORSConfig rather than config.Management.CORS
+// directly, so an explicit `middleware: global` cors entry's own override
+// (see specsFromMiddlewareSection) gets validated too — otherwise a config
+// combining a wildcard origin with allowCredentials via that path would
+// sail through startup validation untouched (Management.CORS itself would
+// look disabled, since the operator configured CORS the other way) and
+// only defeat the credentialed-request protection once the chain actually
+// builds and starts serving traffic. See EffectiveRateLimiterConfig's own
+// doc comment for the identical class of gap this mirrors.
 func ValidateCORSMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	cors := config.Management.CORS
+	cors := EffectiveCORSConfig(config)
 	if !cors.IsEnabled() {
 		return nil
 	}
