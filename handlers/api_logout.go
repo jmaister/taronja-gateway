@@ -21,11 +21,14 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 		}
 	}
 
-	// Redirect URL from query parameters, default to "/"
-	redirectURL := request.Params.Redirect
-	if redirectURL == nil || *redirectURL == "" {
-		redirectURL = new(string)
-		*redirectURL = "/"
+	// Redirect URL from query parameters, sanitized to a same-origin path —
+	// see session.SanitizeRedirectPath's doc comment for why this endpoint
+	// (reachable with no session at all) can't just trust it.
+	redirectURL := new(string)
+	if request.Params.Redirect != nil {
+		*redirectURL = session.SanitizeRedirectPath(*request.Params.Redirect)
+	} else {
+		*redirectURL = session.SanitizeRedirectPath("")
 	}
 
 	// Create the Set-Cookie header value for clearing the session

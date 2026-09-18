@@ -7,10 +7,17 @@ before:
     # You may remove this if you don't use go modules.
     - go mod tidy
     # Build the webapp before building the Go binary
-    - npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
     - bash -c "cd sdk && npm install"
     - bash -c "cd sdk && npm run build"
     - bash -c "cd webapp && npm install"
+    # Runs from inside webapp/, after the npm install just above — see
+    # ci.yml's "Generate Go API code and TypeScript client" step for why:
+    # a bare `npx --yes @hey-api/openapi-ts` from the repo root resolves
+    # its own isolated `typescript` dependency, which can land on a
+    # version incompatible with @hey-api/openapi-ts's own codegen. Running
+    # it from webapp/ makes npm resolve the `@hey-api/openapi-ts`
+    # devDependency already pinned in webapp/package.json instead.
+    - bash -c "cd webapp && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch"
     - bash -c "cd webapp && npm run build"
 
 builds:

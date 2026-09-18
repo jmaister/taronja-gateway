@@ -67,6 +67,52 @@ func TestBatchingTrafficMetricRepository_CloseFlushesRemaining(t *testing.T) {
 	assert.Equal(t, int64(2), count)
 }
 
+// blockingBatchRepo wraps a real TrafficMetricRepository and makes
+// CreateBatch block until unblock is closed — used to hold
+// BatchingTrafficMetricRepository's flush goroutine stuck "mid-write" so a
+// test can reliably drive pending past maxPending without racing a fast
+// in-memory database that would otherwise drain it as quickly as it fills.
+type blockingBatchRepo struct {
+	db.TrafficMetricRepository
+	unblock chan struct{}
+}
+
+func (r *blockingBatchRepo) CreateBatch(stats []*db.TrafficMetric) error {
+	<-r.unblock
+	return r.TrafficMetricRepository.CreateBatch(stats)
+}
+
+// TestBatchingTrafficMetricRepository_DropsWhenBufferFull is the
+// regression test for Finding 13: pending had no ceiling at all, so a
+// flush goroutine falling behind (here, simulated by blockingBatchRepo)
+// let Create grow it without bound. This asserts Create starts rejecting
+// new records — rather than buffering them forever — once maxPending
+// (maxBatchSize * 20, see that constant) is reached, and that flushing
+// still succeeds normally once the wrapped repository is unblocked.
+func TestBatchingTrafficMetricRepository_DropsWhenBufferFull(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	inner := db.NewTrafficMetricRepository(db.GetConnection())
+	unblock := make(chan struct{})
+	blocking := &blockingBatchRepo{TrafficMetricRepository: inner, unblock: unblock}
+
+	const maxBatchSize = 3
+	const maxPending = maxBatchSize * 20 // mirrors the unexported maxPendingMultiplier
+	batched := db.NewBatchingTrafficMetricRepository(blocking, maxBatchSize, time.Hour)
+	defer batched.Close() // Close's own final flush also needs unblock closed, done below before this runs
+
+	var rejected error
+	for i := 0; i < maxPending*3 && rejected == nil; i++ {
+		rejected = batched.Create(newTestMetric(fmt.Sprintf("/overflow/%d", i)))
+	}
+	require.Error(t, rejected, "Create should start rejecting records once maxPending is reached, rather than buffering without bound")
+
+	close(unblock)
+	require.Eventually(t, func() bool {
+		count, err := inner.GetTotalRequestCount(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		return err == nil && count > 0
+	}, time.Second, 5*time.Millisecond, "records buffered before the ceiling was hit should still flush normally once unblocked")
+}
+
 func TestBatchingTrafficMetricRepository_ReadsDelegateToInner(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	inner := db.NewTrafficMetricRepository(db.GetConnection())

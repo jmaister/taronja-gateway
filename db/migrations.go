@@ -47,6 +47,7 @@ type dbMigration struct {
 var dbMigrations = []dbMigration{
 	{1, "normalize existing timestamps to UTC", migrateTimestampsToUTC},
 	{2, "backfill Fingerprint/FingerprintType from the old three-column scheme", migrateLegacyFingerprintColumns},
+	{3, "backfill sessions.token_hash from the old plaintext token column", migrateSessionTokensToHashed},
 }
 
 // applyDBMigrations runs every dbMigrations entry newer than the database's
@@ -113,12 +114,18 @@ var utcTimestampColumns = []utcTimestampColumn{
 	{"traffic_metrics", "updated_at", "id"},
 	{"traffic_metrics", "deleted_at", "id"},
 
-	{"sessions", "valid_until", "token"},
-	{"sessions", "last_activity", "token"},
-	{"sessions", "closed_on", "token"},
-	{"sessions", "created_at", "token"},
-	{"sessions", "updated_at", "token"},
-	{"sessions", "deleted_at", "token"},
+	// "id", not "token": Session's primary key used to be its (plaintext)
+	// token column, but security/session-token-hashing made that column
+	// gorm:"-" (never persisted) and moved the real primary key to
+	// token_hash — see db.Session.TokenHash's doc comment. gorm.Model's
+	// own "id" column was always present and stable regardless, so it's
+	// the identifier this backfill's per-row UPDATE targets now.
+	{"sessions", "valid_until", "id"},
+	{"sessions", "last_activity", "id"},
+	{"sessions", "closed_on", "id"},
+	{"sessions", "created_at", "id"},
+	{"sessions", "updated_at", "id"},
+	{"sessions", "deleted_at", "id"},
 
 	{"users", "password_reset_expires", "id"},
 	{"users", "email_confirmation_expires", "id"},
@@ -316,6 +323,54 @@ func backfillLegacyFingerprintColumn(gdb *gorm.DB, table string) error {
 	err := gdb.Exec(updateSQL).Error
 	if err != nil {
 		return fmt.Errorf("backfilling fingerprint/fingerprint_type on %s from legacy columns: %w", table, err)
+	}
+	return nil
+}
+
+// migrateSessionTokensToHashed backfills token_hash for every session row
+// that still needs it — see db.Session.TokenHash's doc comment for why
+// session tokens are looked up by hash now, instead of stored and matched
+// against verbatim as they used to be. AutoMigrate only ever adds the new
+// token_hash column; it never populates it or drops the pre-existing raw
+// token column, so without this, every session created before this upgrade
+// would simply become unfindable the moment FindSessionByToken starts
+// looking up by token_hash (NULL for every such row) — forcing every
+// currently-logged-in user of an upgraded deployment to log in again, an
+// avoidable cost for a schema change that has a perfectly deterministic
+// backfill (the raw token this codebase already has on hand for each row
+// hashes to exactly one value).
+//
+// Guarded with Migrator().HasColumn, same as backfillLegacyFingerprintColumn
+// above: a database that never had the pre-hashing schema at all — every
+// one created fresh by this or a later version — never had a `token`
+// column to read from in the first place, so this is a correct no-op for
+// it rather than a raw-SQL error over a column that was never there.
+func migrateSessionTokensToHashed(gdb *gorm.DB) error {
+	if !gdb.Migrator().HasColumn(&Session{}, "token") {
+		return nil // fresh schema, no legacy plaintext column to backfill from
+	}
+
+	type scannedRow struct {
+		ID    uint
+		Token sql.NullString
+	}
+	var rows []scannedRow
+	// Selected via raw SQL, not the model: db.Session no longer declares a
+	// Go field mapped to the "token" column (it's gorm:"-" now), so GORM
+	// itself has no way to read it.
+	err := gdb.Raw(`SELECT id, token FROM sessions WHERE token IS NOT NULL AND token != '' AND (token_hash IS NULL OR token_hash = '')`).Scan(&rows).Error
+	if err != nil {
+		return fmt.Errorf("reading sessions.token for token_hash backfill: %w", err)
+	}
+
+	for _, row := range rows {
+		if !row.Token.Valid || row.Token.String == "" {
+			continue
+		}
+		err = gdb.Exec(`UPDATE sessions SET token_hash = ? WHERE id = ?`, hashSessionToken(row.Token.String), row.ID).Error
+		if err != nil {
+			return fmt.Errorf("backfilling sessions.token_hash for id=%d: %w", row.ID, err)
+		}
 	}
 	return nil
 }

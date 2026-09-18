@@ -357,7 +357,7 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L358-L370>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L370-L382>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -378,7 +378,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L373>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L385>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -387,7 +387,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L590>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L602>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -396,7 +396,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L351-L353>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L363-L365>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -495,7 +495,7 @@ type NotificationConfig struct {
 ```
 
 <a name="RateLimiterConfig"></a>
-## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L335-L341>)
+## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L335-L353>)
 
 RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address.
 
@@ -504,13 +504,25 @@ type RateLimiterConfig struct {
     RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
     MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
     BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
+    // BlockedClientRetentionDays bounds how long a persisted block event
+    // (db.BlockedClient — the admin-visible history behind the in-memory
+    // limiter's own short-lived state) is kept before middleware.RateLimiter
+    // prunes it. Unlike the in-memory entries cleanupLoop discards once a
+    // block expires, nothing else ever removes these rows, so left
+    // unbounded this table grows forever on any gateway that stays up and
+    // under attack (or scanner traffic) long enough. 0 (the default) means
+    // "use the built-in default" (see
+    // middleware.defaultBlockedClientRetentionDays), not "keep forever" —
+    // an operator who genuinely wants unbounded history can still get it by
+    // setting this to a very large number.
+    BlockedClientRetentionDays int `yaml:"blockedClientRetentionDays"`
 
     VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
 }
 ```
 
 <a name="RateLimiterConfig.IsEnabled"></a>
-### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L344>)
+### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L356>)
 
 ```go
 func (r RateLimiterConfig) IsEnabled() bool
@@ -567,7 +579,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L664>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L676>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -576,7 +588,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L672>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L684>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool

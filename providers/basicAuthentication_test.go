@@ -210,6 +210,48 @@ func TestRegisterBasicAuth(t *testing.T) {
 		assert.Equal(t, username, sessionObj.Username)
 	})
 
+	// TestRegisterBasicAuth/successful_authentication_rejects_an_open_redirect
+	// is the regression test for the vulnerability: a real, successful
+	// login (this is not a rejected-credentials case) used to redirect to
+	// whatever the "redirect" query parameter said, with no validation —
+	// a link to this gateway's own trusted domain with
+	// ?redirect=https://evil.example completed a real login, then bounced
+	// the browser to an attacker-controlled page.
+	t.Run("successful authentication rejects an open redirect", func(t *testing.T) {
+		mux := http.NewServeMux()
+		testDBName := "basicAuth_openredirect_" + fmt.Sprintf("%d", time.Now().UnixNano())
+		sessionRepo, userRepo := setupTestBasicAuth(testDBName)
+		realSessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
+		rnd := fmt.Sprintf("%d", time.Now().UnixNano())
+		username := "admin" + rnd
+		email := "admin" + rnd + "@example.com"
+		testUser := &db.User{
+			Username: username,
+			Email:    email,
+			Password: testPassword,
+		}
+		err := userRepo.CreateUser(testUser)
+		require.NoError(t, err, "User creation should succeed")
+		testConfig := createTestConfig()
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+
+		formData := url.Values{
+			"username": {username},
+			"password": {testPassword},
+		}
+		formBody := formData.Encode()
+
+		req := httptest.NewRequest("POST", "/_/auth/basic/login?redirect=https://evil.example/phish", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Content-Length", strconv.Itoa(len(formBody)))
+		w := httptest.NewRecorder()
+
+		mux.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/", w.Header().Get("Location"), "an absolute-URL redirect target must be rejected, not forwarded to the client")
+	})
+
 	t.Run("successful admin authentication from config", func(t *testing.T) {
 		// Per-test setup
 		mux := http.NewServeMux()

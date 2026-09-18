@@ -445,8 +445,14 @@ func (g *Gateway) registerLoginRoutes() {
 		// Populate data from config and request. Reads the *live* config
 		// (not the cfg captured above at route-registration time) since this
 		// closure keeps running against whichever generation is current —
-		// see currentConfig's doc comment.
-		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.currentConfig())
+		// see currentConfig's doc comment. The redirect value is sanitized
+		// here too, not just by the login/logout handlers it eventually
+		// reaches (see session.SanitizeRedirectPath's doc comment) — this
+		// keeps .RedirectURL itself always a safe same-origin path
+		// wherever the template embeds it (the per-provider login links,
+		// the hidden form field), rather than relying on every downstream
+		// consumer to have remembered to sanitize it independently.
+		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.currentConfig())
 
 		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
 		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root

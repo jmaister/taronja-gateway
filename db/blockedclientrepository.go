@@ -1,6 +1,10 @@
 package db
 
-import "gorm.io/gorm"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // BlockedClientRepository defines the interface for persisting and querying
 // the rate-limiter's block-event history — see BlockedClient's doc comment
@@ -17,6 +21,12 @@ type BlockedClientRepository interface {
 	// total count matching that filter (ignoring limit/offset) for
 	// pagination.
 	List(ip string, limit, offset int) ([]BlockedClient, int64, error)
+	// DeleteOlderThan permanently removes every block event whose
+	// BlockedAt is before cutoff, returning how many rows were removed.
+	// Called periodically by middleware.RateLimiter (see its
+	// pruneBlockedClientsLoop) so this table doesn't grow without bound —
+	// see config.RateLimiterConfig.BlockedClientRetentionDays.
+	DeleteOlderThan(cutoff time.Time) (int64, error)
 }
 
 // BlockedClientRepositoryDB is the GORM-backed implementation.
@@ -61,4 +71,14 @@ func (r *BlockedClientRepositoryDB) List(ip string, limit, offset int) ([]Blocke
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+func (r *BlockedClientRepositoryDB) DeleteOlderThan(cutoff time.Time) (int64, error) {
+	// Unscoped(): BlockedClient embeds gorm.Model, so a plain Delete would
+	// only soft-delete (set deleted_at) — the row, and the unbounded
+	// growth this exists to bound, would still be sitting in the table.
+	// This is a retention prune, not a user-facing removal, so an actual
+	// hard DELETE is what's wanted here.
+	result := r.db.Unscoped().Where("blocked_at < ?", cutoff).Delete(&BlockedClient{})
+	return result.RowsAffected, result.Error
 }

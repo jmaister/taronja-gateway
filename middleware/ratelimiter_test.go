@@ -491,6 +491,54 @@ func TestRateLimiter_RecordsVulnerabilityScanBlockToRegistry(t *testing.T) {
 	assert.Equal(t, 2, items[0].TriggerCount)
 }
 
+// TestRateLimiter_PrunesBlockedClientsOlderThanRetention is the regression
+// test for the persisted blocked_clients table having no retention/prune
+// mechanism: recordBlock writes a row for every single block and, before
+// this, nothing ever removed one — a gateway under sustained scanner
+// traffic (or just left running for years) would grow that table without
+// bound. pruneBlockedClients must delete rows past the configured
+// retention window and leave everything still inside it alone.
+func TestRateLimiter_PrunesBlockedClientsOlderThanRetention(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+
+	cfg := config.RateLimiterConfig{BlockedClientRetentionDays: 30}
+	rl := NewRateLimiter(cfg, repo)
+	t.Cleanup(rl.Close)
+	require.Equal(t, 30*24*time.Hour, rl.blockedClientRetention)
+
+	now := time.Now().UTC()
+	oldRow := &db.BlockedClient{
+		Reason:       db.BlockReasonRateLimit,
+		TriggerCount: 5,
+		BlockedAt:    now.Add(-31 * 24 * time.Hour), // just past the 30-day window
+		BlockedUntil: now.Add(-31*24*time.Hour + time.Minute),
+	}
+	oldRow.IPAddress = "127.0.0.21"
+	require.NoError(t, repo.Create(oldRow))
+
+	recentRow := &db.BlockedClient{
+		Reason:       db.BlockReasonRateLimit,
+		TriggerCount: 5,
+		BlockedAt:    now.Add(-29 * 24 * time.Hour), // still inside the window
+		BlockedUntil: now.Add(-29*24*time.Hour + time.Minute),
+	}
+	recentRow.IPAddress = "127.0.0.22"
+	require.NoError(t, repo.Create(recentRow))
+
+	_, total, err := repo.List("", 10, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total, "sanity check: both rows should exist before pruning")
+
+	rl.pruneBlockedClients(now)
+
+	items, total, err := repo.List("", 10, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total, "only the row past retention should have been pruned")
+	require.Len(t, items, 1)
+	assert.Equal(t, "127.0.0.22", items[0].IPAddress, "the still-within-retention row must survive")
+}
+
 func TestRateLimiter_NilRepoDoesNotPanicOnBlock(t *testing.T) {
 	// The default for RateLimiterMiddleware's standalone constructor —
 	// blocking must still work with nothing to persist to.

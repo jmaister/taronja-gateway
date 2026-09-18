@@ -37,6 +37,43 @@ func TestGetGeoDataFromIP_EmptyIP(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestGetGeoDataFromIP_RejectsMalformedIP is the regression test for
+// Finding 11: getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate build their
+// outbound request URL with fmt.Sprintf, embedding the ip argument
+// verbatim, so before this check a value that wasn't a real IP address at
+// all — one containing "/", "?", or "#" — was sent straight into that URL
+// rather than being rejected. This asserts such a value is rejected
+// immediately (a clear error, no attempted network call), not merely
+// eventually failing at the remote API.
+func TestGetGeoDataFromIP_RejectsMalformedIP(t *testing.T) {
+	malformed := []string{
+		"not-an-ip",
+		"1.2.3.4/../../admin",
+		"1.2.3.4?x=1",
+		"1.2.3.4#fragment",
+		"1.2.3.4\nX-Injected: true",
+	}
+	for _, ip := range malformed {
+		t.Run(ip, func(t *testing.T) {
+			done := make(chan struct{})
+			var data GeoData
+			var err error
+			go func() {
+				data, err = GetGeoDataFromIP(ip)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+				assert.Error(t, err, "a malformed IP address must be rejected, not sent to the geolocation API")
+				assert.Equal(t, GeoData{}, data)
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("GetGeoDataFromIP did not return immediately — it likely attempted a real network call with a malformed IP")
+			}
+		})
+	}
+}
+
 func TestGetGeoDataFromIP_Localhost(t *testing.T) {
 	data, err := GetGeoDataFromIP("127.0.0.1")
 	assert.NoError(t, err)

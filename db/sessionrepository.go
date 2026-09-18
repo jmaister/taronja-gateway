@@ -57,13 +57,23 @@ func (s *SessionStoreDB) CreateSession(token string, sessionData *Session) error
 // Returns nil, nil if not found. Returns error for closed sessions.
 func (s *SessionStoreDB) FindSessionByToken(token string) (*Session, error) {
 	var sessionData Session // Changed type to db.Session
-	result := s.dbConn.Where("token = ?", token).First(&sessionData)
+	result := s.dbConn.Where("token_hash = ?", hashSessionToken(token)).First(&sessionData)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, nil // Not found
 		}
 		return nil, result.Error // Other DB error
 	}
+
+	// Token itself is never persisted (see Session.Token's doc comment),
+	// so GORM has nothing to populate it from — set it from the caller's
+	// own already-known raw value instead. Every downstream consumer of a
+	// *Session this returns (ValidateSession's own CloseSession-on-expiry
+	// call, middleware/session.go's admin-denied auto-logout,
+	// middleware/trafficmetric.go's recorded SessionID, X-User-Data's
+	// "token" field) reads it expecting the real session token, not an
+	// empty string.
+	sessionData.Token = token
 
 	// Check if the session has been closed
 	if sessionData.ClosedOn != nil && !sessionData.ClosedOn.IsZero() {
@@ -104,7 +114,8 @@ func (s *SessionStoreDB) CloseSession(token string) error {
 	// &Session{} model, so Session.BeforeSave never sees this value —
 	// normalize it here instead, to match this schema's UTC convention.
 	now := time.Now().UTC()
-	result := s.dbConn.Model(&Session{}).Where("token = ? AND closed_on IS NULL", token).Update("closed_on", now) // Changed type to db.Session
+	tokenHash := hashSessionToken(token)
+	result := s.dbConn.Model(&Session{}).Where("token_hash = ? AND closed_on IS NULL", tokenHash).Update("closed_on", now)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -112,7 +123,7 @@ func (s *SessionStoreDB) CloseSession(token string) error {
 		// Could be because token not found, or already closed.
 		// Check if it exists at all to differentiate.
 		var tempSession Session // Changed type to db.Session
-		err := s.dbConn.Where("token = ?", token).First(&tempSession).Error
+		err := s.dbConn.Where("token_hash = ?", tokenHash).First(&tempSession).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("session not found")
 		}

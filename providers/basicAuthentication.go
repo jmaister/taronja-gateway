@@ -36,7 +36,9 @@ func parseLoginCredentials(r *http.Request) (username, password string) {
 	return username, password
 }
 
-// getRedirectURL extracts the redirect URL from various sources in the request
+// getRedirectURL extracts the redirect URL from various sources in the
+// request, sanitized to a same-origin path — see
+// session.SanitizeRedirectPath's doc comment for why.
 func getRedirectURL(r *http.Request) string {
 	redirectURL := r.Form.Get("redirect")
 	if redirectURL == "" && r.MultipartForm != nil && r.MultipartForm.Value != nil {
@@ -47,10 +49,7 @@ func getRedirectURL(r *http.Request) string {
 	if redirectURL == "" {
 		redirectURL = r.URL.Query().Get("redirect")
 	}
-	if redirectURL == "" {
-		redirectURL = "/" // Default redirect
-	}
-	return redirectURL
+	return session.SanitizeRedirectPath(redirectURL)
 }
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
@@ -82,10 +81,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 	checkSessionAndRedirect := func(w http.ResponseWriter, r *http.Request) bool {
 		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from db.SessionRepository
 		if isValid {
-			redirectURL := r.URL.Query().Get("redirect")
-			if redirectURL == "" {
-				redirectURL = "/"
-			}
+			redirectURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return true
 		}

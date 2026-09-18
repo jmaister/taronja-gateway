@@ -626,6 +626,32 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		assert.True(t, createdUser.EmailConfirmed)
 	})
 
+	// TestCallbackWithMockedOAuthFlow/successful_OAuth_callback_flow_rejects_an_open_redirect_cookie
+	// is the regression test for the vulnerability: Callback used to read
+	// the RedirectUrlCookieName cookie and redirect to its value with no
+	// validation at all — and since cookies aren't signed, nothing stops a
+	// client from setting an absolute-URL value in it before completing a
+	// real OAuth round trip, bouncing the browser to an attacker-controlled
+	// page right after a genuine successful login.
+	t.Run("successful OAuth callback flow rejects an open redirect cookie", func(t *testing.T) {
+		state := "test-state-value-openredirect"
+		redirectURL := "https://evil.example/phish"
+		code := "test-auth-code-openredirect"
+
+		mockFetcher.userInfo.Email = "openredirect-user@example.com"
+		mockFetcher.userInfo.Username = "openredirectuser"
+
+		req := httptest.NewRequest("GET", "/_/auth/test/callback?state="+state+"&code="+code, nil)
+		req.AddCookie(&http.Cookie{Name: StateCookieName, Value: state})
+		req.AddCookie(&http.Cookie{Name: RedirectUrlCookieName, Value: redirectURL})
+
+		w := httptest.NewRecorder()
+		authProvider.Callback(w, req)
+
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/", w.Header().Get("Location"), "an absolute-URL redirect cookie must be rejected, not forwarded to the client")
+	})
+
 	t.Run("successful OAuth callback flow without redirect URL cookie", func(t *testing.T) {
 		state := "test-state-value-2"
 		code := "test-auth-code-2"

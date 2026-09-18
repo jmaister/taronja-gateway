@@ -254,4 +254,30 @@ func TestLogoutUser(t *testing.T) {
 		// Check redirect location defaults to "/" when empty
 		assert.Equal(t, "/", *logoutResp.Headers.Location)
 	})
+
+	// TestLogoutUser/RejectsOpenRedirect is the regression test for the
+	// vulnerability: LogoutUser is reachable with no session at all (see
+	// LogoutWithNoSession above), and used to pass request.Params.Redirect
+	// straight into the 302 Location header — a link to this gateway's own
+	// trusted domain with ?redirect=https://evil.example completed a real
+	// logout, then bounced the browser to an attacker-controlled page.
+	t.Run("RejectsOpenRedirect", func(t *testing.T) {
+		s, _ := setupLogoutTestServer()
+		ctx := context.Background()
+
+		evilRedirect := "https://evil.example/phish"
+		req := api.LogoutUserRequestObject{
+			Params: api.LogoutUserParams{
+				TgSessionToken: nil,
+				Redirect:       &evilRedirect,
+			},
+		}
+
+		resp, err := s.LogoutUser(ctx, req)
+		require.NoError(t, err)
+
+		logoutResp, ok := resp.(api.LogoutUser302Response)
+		require.True(t, ok, "Response should be LogoutUser302Response")
+		assert.Equal(t, "/", *logoutResp.Headers.Location, "an absolute-URL redirect target must be rejected, not forwarded to the client")
+	})
 }

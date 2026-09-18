@@ -194,11 +194,12 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 	}
 	authCodeURL := ap.OAuthConfig.AuthCodeURL(state, opts...)
 
-	// Get redirect URL from query parameters, default to "/"
-	originalURL := r.URL.Query().Get("redirect")
-	if originalURL == "" {
-		originalURL = "/"
-	}
+	// Get redirect URL from query parameters, sanitized to a same-origin
+	// path before it's ever stored — see session.SanitizeRedirectPath's
+	// doc comment for why: this cookie survives a real round trip through
+	// the OAuth provider and back, so Callback below must be able to trust
+	// whatever it finds in it.
+	originalURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 
 	// Set cookie for the redirect URL
 	http.SetCookie(w, &http.Cookie{
@@ -368,7 +369,10 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	redirectURL := "/"
 	redirectCookie, err := r.Cookie(RedirectUrlCookieName)
 	if err == nil && redirectCookie.Value != "" {
-		redirectURL = redirectCookie.Value
+		// Sanitized again here, not just when Login first set the cookie:
+		// cookies aren't signed, so nothing stops a client from editing its
+		// own before completing the OAuth round trip.
+		redirectURL = session.SanitizeRedirectPath(redirectCookie.Value)
 		// Clear the redirect cookie
 		http.SetCookie(w, &http.Cookie{Name: RedirectUrlCookieName, Value: "", Path: "/", MaxAge: -1})
 	}

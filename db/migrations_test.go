@@ -61,8 +61,11 @@ func TestMigrateTimestampsToUTC_BackfillsLegacyRows(t *testing.T) {
 
 	session := &Session{Token: "legacy-session", UserID: user.ID, ValidUntil: time.Now().Add(time.Hour)}
 	require.NoError(t, NewSessionRepositoryDB(GetConnection()).CreateSession("legacy-session", session))
+	sessionID := strconv.FormatUint(uint64(session.ID), 10)
 	legacyValidUntil := time.Date(2026, 6, 2, 9, 30, 0, 0, migrationsNonUTC)
-	seedLegacyTimestampColumn(t, "sessions", "valid_until", "token", "legacy-session", legacyValidUntil)
+	// "id", not "token": Session.Token is gorm:"-" (never a real column, see
+	// db.Session's doc comment) — gorm.Model's own "id" is used here instead.
+	seedLegacyTimestampColumn(t, "sessions", "valid_until", "id", sessionID, legacyValidUntil)
 
 	metric := &TrafficMetric{HttpMethod: "GET", Path: "/legacy", HttpStatus: 200}
 	require.NoError(t, GetConnection().Create(metric).Error)
@@ -88,7 +91,7 @@ func TestMigrateTimestampsToUTC_BackfillsLegacyRows(t *testing.T) {
 		want                             time.Time
 	}{
 		{"users", "password_reset_expires", "id", user.ID, legacyResetExpires},
-		{"sessions", "valid_until", "token", "legacy-session", legacyValidUntil},
+		{"sessions", "valid_until", "id", sessionID, legacyValidUntil},
 		{"traffic_metrics", "timestamp", "id", metricID, legacyTimestamp},
 		{"tokens", "expires_at", "id", token.ID, legacyExpiresAt},
 	} {
@@ -136,18 +139,24 @@ func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
 	gdb := GetConnection()
 	addLegacyFingerprintColumns(t, "sessions")
 
+	// "id", not "token": Session.Token is gorm:"-" (never a real column, see
+	// db.Session's doc comment) — gorm.Model's own "id" is used here
+	// instead, keyed by the same token strings for readability.
 	repo := NewSessionRepositoryDB(gdb)
+	ids := map[string]string{}
 	for _, token := range []string{"all-three-present", "stable-and-ja4h", "ja4h-only", "none-present"} {
-		require.NoError(t, repo.CreateSession(token, &Session{UserID: "test-user", ValidUntil: time.Now().Add(time.Hour)}))
+		session := &Session{UserID: "test-user", ValidUntil: time.Now().Add(time.Hour)}
+		require.NoError(t, repo.CreateSession(token, session))
+		ids[token] = strconv.FormatUint(uint64(session.ID), 10)
 	}
 
-	seedLegacyFingerprintColumns(t, "sessions", "token", "all-three-present", "ja4h-value", "ja4tls-value", "stable-value")
-	seedLegacyFingerprintColumns(t, "sessions", "token", "stable-and-ja4h", "ja4h-value-2", "", "stable-value-2")
-	seedLegacyFingerprintColumns(t, "sessions", "token", "ja4h-only", "ja4h-value-3", "", "")
-	seedLegacyFingerprintColumns(t, "sessions", "token", "none-present", "should-not-win", "", "")
+	seedLegacyFingerprintColumns(t, "sessions", "id", ids["all-three-present"], "ja4h-value", "ja4tls-value", "stable-value")
+	seedLegacyFingerprintColumns(t, "sessions", "id", ids["stable-and-ja4h"], "ja4h-value-2", "", "stable-value-2")
+	seedLegacyFingerprintColumns(t, "sessions", "id", ids["ja4h-only"], "ja4h-value-3", "", "")
+	seedLegacyFingerprintColumns(t, "sessions", "id", ids["none-present"], "should-not-win", "", "")
 	require.NoError(t, gdb.Exec(
-		`UPDATE sessions SET fingerprint = ?, fingerprint_type = ? WHERE token = ?`,
-		"already-set-value", "ja4h", "none-present",
+		`UPDATE sessions SET fingerprint = ?, fingerprint_type = ? WHERE id = ?`,
+		"already-set-value", "ja4h", ids["none-present"],
 	).Error)
 
 	require.NoError(t, migrateLegacyFingerprintColumns(gdb))
@@ -158,7 +167,7 @@ func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
 	}
 	get := func(token string) result {
 		var r result
-		require.NoError(t, gdb.Raw("SELECT fingerprint, fingerprint_type FROM sessions WHERE token = ?", token).Row().Scan(&r.Fingerprint, &r.FingerprintType))
+		require.NoError(t, gdb.Raw("SELECT fingerprint, fingerprint_type FROM sessions WHERE id = ?", ids[token]).Row().Scan(&r.Fingerprint, &r.FingerprintType))
 		return r
 	}
 

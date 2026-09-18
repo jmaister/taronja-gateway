@@ -45,6 +45,27 @@ const (
 	MaxListLimit     = 100
 )
 
+// MaxRecipientsPerCreate bounds CreateInput.UserIDs — see Create's doc
+// comment for why: each recipient can fan out into several delivery
+// goroutines (one per channel), so a caller supplying an unbounded UserIDs
+// list would let a single request spawn an unbounded number of them.
+// 1,000 recipients comfortably covers any real notification this gateway
+// sends (an operational alert, an announcement to a team) while keeping a
+// single Create call's worst-case resource use bounded; a caller needing
+// to notify more people than that should split it into multiple calls.
+const MaxRecipientsPerCreate = 1000
+
+// maxConcurrentDeliveries bounds how many of Create's per-recipient/channel
+// goroutines are actually sending (deliver's SMTP/webhook/Telegram call) at
+// once, process-wide, across every Create call in flight — deliverySem is
+// acquired around that call, not around the goroutine's whole lifetime, so
+// a goroutine waiting for a slot costs only its (cheap) stack, never an
+// open outbound connection. Independent of MaxRecipientsPerCreate: that
+// bounds one call's total goroutine count outright, this bounds how many
+// of them do real work simultaneously, including across concurrent Create
+// calls from different requests.
+const maxConcurrentDeliveries = 25
+
 // retryBackoffSchedule bounds how many times a failed delivery is retried
 // and how long after each failure the next attempt waits. Not
 // user-configurable (the same reasoning as gateway/deps' trafficMetrics
@@ -107,6 +128,9 @@ type Service struct {
 	// waitForPendingDeliveries (service_test.go) instead of sleeping or
 	// polling.
 	pendingDeliveries sync.WaitGroup
+	// deliverySem bounds how many deliveries run concurrently — see
+	// maxConcurrentDeliveries.
+	deliverySem chan struct{}
 }
 
 // NewService builds a Service from configuration, registering a Provider
@@ -135,6 +159,7 @@ func NewService(cfg config.NotificationConfig, repo db.NotificationRepository, u
 		providers:      providers,
 		telegram:       telegram,
 		respondBaseURL: respondBaseURL,
+		deliverySem:    make(chan struct{}, maxConcurrentDeliveries),
 	}
 }
 
@@ -171,17 +196,22 @@ type CreateInput struct {
 // generated batchID — even a single-recipient call gets one, a "batch of
 // one" (see db.Notification.BatchID's doc comment) — and kicks off delivery
 // on each recipient's own resolved channels (see resolveChannelsForUser) in
-// the background, one goroutine per recipient/channel pair. Create itself
-// returns as soon as the in-app records are written, without waiting for
-// any of those deliveries to finish: handlers.CreateNotification calls this
-// directly from an HTTP handler, and a caller notifying many recipients
-// over a slow channel (an SMTP server with a slow greeting, a flaky
-// webhook) would otherwise hold that request open for as long as every
-// send takes, combined. Each delivery uses a context detached from ctx
-// (context.WithoutCancel) for exactly this reason — ctx is usually an
-// *http.Request's, which is canceled the moment the handler returns, and a
-// canceled context would abort an in-flight send that Create no longer
-// waits for anyway.
+// the background, one goroutine per recipient/channel pair, up to
+// MaxRecipientsPerCreate recipients (rejected outright above that, before
+// any database write, so an oversized request can't itself become the
+// resource exhaustion it's meant to prevent). Actual concurrent sends are
+// further bounded by deliverySem — see maxConcurrentDeliveries — so even a
+// call at the recipient cap can't open an unbounded number of simultaneous
+// SMTP/webhook/Telegram connections. Create itself returns as soon as the
+// in-app records are written, without waiting for any of those deliveries
+// to finish: handlers.CreateNotification calls this directly from an HTTP
+// handler, and a caller notifying many recipients over a slow channel (an
+// SMTP server with a slow greeting, a flaky webhook) would otherwise hold
+// that request open for as long as every send takes, combined. Each
+// delivery uses a context detached from ctx (context.WithoutCancel) for
+// exactly this reason — ctx is usually an *http.Request's, which is
+// canceled the moment the handler returns, and a canceled context would
+// abort an in-flight send that Create no longer waits for anyway.
 //
 // Delivery failures never fail Create itself — the in-app record is the
 // source of truth and always succeeds if its database write does; each
@@ -201,6 +231,9 @@ type CreateInput struct {
 // per-recipient errors, if any — a caller notifying five people shouldn't
 // lose the other four over one bad row.
 func (s *Service) Create(ctx context.Context, in CreateInput) (notifications []*db.Notification, batchID string, err error) {
+	if len(in.UserIDs) > MaxRecipientsPerCreate {
+		return nil, "", fmt.Errorf("too many recipients: %d exceeds the limit of %d per Create call", len(in.UserIDs), MaxRecipientsPerCreate)
+	}
 	metadataJSON, err := EncodeMetadata(in.Metadata)
 	if err != nil {
 		return nil, "", fmt.Errorf("encoding metadata: %w", err)
@@ -238,6 +271,12 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (notifications []*
 			s.pendingDeliveries.Add(1)
 			go func(n *db.Notification, channel string) {
 				defer s.pendingDeliveries.Done()
+				// Acquired here, around the actual send, not around this
+				// whole goroutine's lifetime — see maxConcurrentDeliveries.
+				// A goroutine parked on this send costs only its stack,
+				// never an open SMTP/webhook/Telegram connection.
+				s.deliverySem <- struct{}{}
+				defer func() { <-s.deliverySem }()
 				s.deliver(deliverCtx, n, in.Actions, channel)
 			}(n, channel)
 		}

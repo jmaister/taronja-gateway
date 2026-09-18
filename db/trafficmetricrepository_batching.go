@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -39,15 +40,38 @@ type BatchingTrafficMetricRepository struct {
 
 	maxBatchSize  int
 	flushInterval time.Duration
+	// maxPending hard-caps len(pending) — see Create's doc comment for
+	// why: without a ceiling, a sustained burst of requests arriving
+	// faster than the flush goroutine can drain them (a slow disk, a
+	// wrapped repository whose CreateBatch is failing and being retried,
+	// or just genuinely more traffic than the database can absorb) grows
+	// this slice without bound, all in memory, for data this package's
+	// own doc comment already treats as droppable on a hard crash — so
+	// dropping the newest record once the buffer is this full is a
+	// smaller loss than letting the process run out of memory over it.
+	maxPending int
 
 	mu      sync.Mutex
 	pending []*TrafficMetric
+	// dropped counts records Create has discarded because maxPending was
+	// reached — read/reset only by flush's periodic log line, never by
+	// Create itself, so incrementing it needs no separate lock beyond the
+	// one already held for pending.
+	dropped int
 
 	flushNow chan struct{}
 	stopOnce sync.Once
 	stop     chan struct{}
 	done     chan struct{}
 }
+
+// maxPendingMultiplier bounds pending at this many multiples of
+// maxBatchSize — generous enough that an ordinary flushInterval-sized
+// delay (the flush goroutine briefly losing the CPU, a slightly slow
+// CreateBatch) never drops anything, while still bounding worst-case
+// memory to a small, fixed multiple of one batch instead of nothing at
+// all.
+const maxPendingMultiplier = 20
 
 // NewBatchingTrafficMetricRepository wraps inner, batching up to
 // maxBatchSize records or flushInterval of elapsed time (whichever comes
@@ -59,6 +83,7 @@ func NewBatchingTrafficMetricRepository(inner TrafficMetricRepository, maxBatchS
 		TrafficMetricRepository: inner,
 		maxBatchSize:            maxBatchSize,
 		flushInterval:           flushInterval,
+		maxPending:              maxBatchSize * maxPendingMultiplier,
 		flushNow:                make(chan struct{}, 1),
 		stop:                    make(chan struct{}),
 		done:                    make(chan struct{}),
@@ -71,8 +96,20 @@ func NewBatchingTrafficMetricRepository(inner TrafficMetricRepository, maxBatchS
 // access happens on this call. It's flushed later, along with whatever
 // else has accumulated, by the background goroutine started in
 // NewBatchingTrafficMetricRepository.
+//
+// If pending is already at maxPending — the flush goroutine falling
+// behind whatever's calling Create, for however long — stat is dropped
+// instead of appended, and Create returns an error so the caller's own
+// logging (see middleware/trafficmetric.go) surfaces that this happened,
+// rather than growing the buffer without bound. See maxPending's doc
+// comment for why dropping is the right trade-off for this specific data.
 func (b *BatchingTrafficMetricRepository) Create(stat *TrafficMetric) error {
 	b.mu.Lock()
+	if len(b.pending) >= b.maxPending {
+		b.dropped++
+		b.mu.Unlock()
+		return fmt.Errorf("buffer full (%d pending records already), dropping this one", b.maxPending)
+	}
 	b.pending = append(b.pending, stat)
 	full := len(b.pending) >= b.maxBatchSize
 	b.mu.Unlock()
@@ -109,7 +146,17 @@ func (b *BatchingTrafficMetricRepository) flush() {
 	b.mu.Lock()
 	batch := b.pending
 	b.pending = nil
+	dropped := b.dropped
+	b.dropped = 0
 	b.mu.Unlock()
+
+	// One summary line per flush interval rather than one per dropped
+	// record — sustained overload severe enough to hit maxPending would
+	// otherwise mean one log line per dropped request, adding its own
+	// load right when the system is already struggling.
+	if dropped > 0 {
+		log.Printf("BatchingTrafficMetricRepository: dropped %d request statistics since the last flush — buffer was full (maxPending=%d)", dropped, b.maxPending)
+	}
 
 	if len(batch) == 0 {
 		return

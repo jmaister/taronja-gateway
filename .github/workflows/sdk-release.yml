@@ -34,11 +34,16 @@ jobs:
 
       - name: Derive release version
         id: release_version
+        # See clients.yml's identical step for why these are passed via
+        # env rather than interpolated directly into the script.
+        env:
+          RAW_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          RAW_INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if [[ "${{ github.event_name }}" == 'release' ]]; then
-            TAG_NAME="${{ github.event.release.tag_name }}"
+            TAG_NAME="$RAW_RELEASE_TAG_NAME"
           else
-            TAG_NAME="${{ inputs.release_tag }}"
+            TAG_NAME="$RAW_INPUT_RELEASE_TAG"
           fi
 
           VERSION="${TAG_NAME#v}"
@@ -62,7 +67,9 @@ jobs:
 
       - name: Stamp package version from release tag
         working-directory: ./sdk
-        run: npm version "${{ steps.release_version.outputs.version }}" --no-git-tag-version
+        env:
+          RELEASE_VERSION: ${{ steps.release_version.outputs.version }}
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version
 
       - name: Test and build package
         working-directory: ./sdk
@@ -80,6 +87,8 @@ jobs:
 
       - name: Report dry run result
         if: ${{ github.event_name != 'release' }}
+        env:
+          RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
         run: |
-          echo "Dry run completed for ${{ steps.release_version.outputs.tag }}"
+          echo "Dry run completed for $RELEASE_TAG"
           echo "npm publish was skipped because this was a manual workflow run"

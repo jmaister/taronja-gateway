@@ -39,7 +39,28 @@ type RateLimiter struct {
 	// no database to write to), in which case blocks are still enforced
 	// exactly as before, just never recorded to the persistent registry.
 	blockedClientRepo db.BlockedClientRepository
+	// blockedClientRetention bounds how long a row recordBlock wrote stays
+	// in the database before pruneBlockedClientsLoop deletes it — see
+	// config.RateLimiterConfig.BlockedClientRetentionDays and
+	// defaultBlockedClientRetentionDays. Unused when blockedClientRepo is
+	// nil.
+	blockedClientRetention time.Duration
 }
+
+// defaultBlockedClientRetentionDays is how long a persisted block event is
+// kept when config.RateLimiterConfig.BlockedClientRetentionDays isn't set
+// (0). 90 days comfortably covers the kind of incident review or abuse
+// pattern analysis this history exists for, without keeping every scanner's
+// visit forever on a gateway that's been up for years.
+const defaultBlockedClientRetentionDays = 90
+
+// blockedClientPruneInterval is how often pruneBlockedClientsLoop checks
+// for rows past their retention window. Independent of cleanupInterval
+// (which can be as short as one minute, driven by BlockMinutes) — pruning
+// old history doesn't need anywhere near that frequency, and running it on
+// a fixed, coarser cadence keeps it from adding a DELETE query to a busy
+// gateway's tightest cleanup loop.
+const blockedClientPruneInterval = time.Hour
 
 // scanPattern holds the precomputed forms of one
 // config.VulnerabilityScanConfig.URLs entry that matches actually needs:
@@ -134,14 +155,23 @@ func NewRateLimiter(cfg config.RateLimiterConfig, blockedClientRepo db.BlockedCl
 		scanPatterns[i] = newScanPattern(url)
 	}
 
+	retentionDays := cfg.BlockedClientRetentionDays
+	if retentionDays <= 0 {
+		retentionDays = defaultBlockedClientRetentionDays
+	}
+
 	rl := &RateLimiter{
-		cfg:               cfg,
-		cleanupInterval:   interval,
-		scanPatterns:      scanPatterns,
-		blockedClientRepo: blockedClientRepo,
-		stop:              make(chan struct{}),
+		cfg:                    cfg,
+		cleanupInterval:        interval,
+		scanPatterns:           scanPatterns,
+		blockedClientRepo:      blockedClientRepo,
+		blockedClientRetention: time.Duration(retentionDays) * 24 * time.Hour,
+		stop:                   make(chan struct{}),
 	}
 	go rl.cleanupLoop()
+	if blockedClientRepo != nil {
+		go rl.pruneBlockedClientsLoop()
+	}
 	return rl
 }
 
@@ -431,5 +461,36 @@ func (rl *RateLimiter) cleanupLoop() {
 				return true
 			})
 		}
+	}
+}
+
+// pruneBlockedClientsLoop periodically deletes db.BlockedClient rows past
+// rl.blockedClientRetention, until Close is called — the persisted
+// counterpart to cleanupLoop's in-memory pruning. Without this, every block
+// event recordBlock ever wrote stays in the database forever: unlike the
+// in-memory rateEntry a block expires out of, nothing else ever removes
+// these rows, so a gateway that stays up (or under scanner/attack traffic)
+// long enough grows this table without bound. Only started when
+// blockedClientRepo is non-nil (see NewRateLimiter).
+func (rl *RateLimiter) pruneBlockedClientsLoop() {
+	ticker := time.NewTicker(blockedClientPruneInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-rl.stop:
+			return
+		case now := <-ticker.C:
+			rl.pruneBlockedClients(now)
+		}
+	}
+}
+
+// pruneBlockedClients does the actual delete for pruneBlockedClientsLoop,
+// split out so tests can trigger a prune deterministically instead of
+// waiting on blockedClientPruneInterval's real-time ticker.
+func (rl *RateLimiter) pruneBlockedClients(now time.Time) {
+	cutoff := now.Add(-rl.blockedClientRetention)
+	if _, err := rl.blockedClientRepo.DeleteOlderThan(cutoff); err != nil {
+		log.Printf("rate limiter: failed to prune blocked_clients older than %s: %v", cutoff, err)
 	}
 }

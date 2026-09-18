@@ -336,6 +336,18 @@ type RateLimiterConfig struct {
 	RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
 	MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
 	BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
+	// BlockedClientRetentionDays bounds how long a persisted block event
+	// (db.BlockedClient — the admin-visible history behind the in-memory
+	// limiter's own short-lived state) is kept before middleware.RateLimiter
+	// prunes it. Unlike the in-memory entries cleanupLoop discards once a
+	// block expires, nothing else ever removes these rows, so left
+	// unbounded this table grows forever on any gateway that stays up and
+	// under attack (or scanner traffic) long enough. 0 (the default) means
+	// "use the built-in default" (see
+	// middleware.defaultBlockedClientRetentionDays), not "keep forever" —
+	// an operator who genuinely wants unbounded history can still get it by
+	// setting this to a very large number.
+	BlockedClientRetentionDays int `yaml:"blockedClientRetentionDays"`
 
 	VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
 }

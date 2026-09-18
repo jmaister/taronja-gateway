@@ -90,6 +90,19 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	}
 	var session Session
 	require.NoError(t, gdb.First(&session).Error)
+
+	// token_hash backfill (Finding 7's session-token-hashing migration):
+	// v0.0.24 stored the session token verbatim in the now-gorm:"-" "token"
+	// column, which survives untouched (AutoMigrate never drops columns) —
+	// migrateSessionTokensToHashed must have derived token_hash from it, so
+	// the plaintext session captured by this fixture stays valid across the
+	// upgrade instead of forcing every existing user to re-login.
+	var rawToken string
+	require.NoError(t, gdb.Raw("SELECT token FROM sessions LIMIT 1").Row().Scan(&rawToken))
+	require.NotEmpty(t, rawToken, "fixture's legacy plaintext token column should still be readable")
+	assert.Equal(t, hashSessionToken(rawToken), session.TokenHash,
+		"token_hash should be backfilled from the legacy plaintext token column")
+
 	_, sessionOffset := session.ValidUntil.Zone()
 	assert.Equal(t, 0, sessionOffset, "sessions.valid_until should be normalized to UTC, got %v", session.ValidUntil)
 	// The instant itself must be preserved, not just the zone: the fixture's

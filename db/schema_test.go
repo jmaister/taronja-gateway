@@ -1,6 +1,7 @@
 package db_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -59,11 +60,15 @@ func TestSessionBeforeSave_NormalizesToUTC(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateSession("test-token-utc", session))
 
-	assertStoredUTC(t, "sessions", "valid_until", "token", "test-token-utc")
-	assertStoredUTC(t, "sessions", "last_activity", "token", "test-token-utc")
-	assertStoredUTC(t, "sessions", "closed_on", "token", "test-token-utc")
-	assertStoredUTC(t, "sessions", "created_at", "token", "test-token-utc")
-	assertStoredUTC(t, "sessions", "updated_at", "token", "test-token-utc")
+	// Token is gorm:"-" (never persisted, see Session.Token's doc comment),
+	// so it can't be used as the lookup column here anymore — gorm.Model's
+	// own "id" (populated on session by Create) is used instead.
+	idVal := fmt.Sprintf("%d", session.ID)
+	assertStoredUTC(t, "sessions", "valid_until", "id", idVal)
+	assertStoredUTC(t, "sessions", "last_activity", "id", idVal)
+	assertStoredUTC(t, "sessions", "closed_on", "id", idVal)
+	assertStoredUTC(t, "sessions", "created_at", "id", idVal)
+	assertStoredUTC(t, "sessions", "updated_at", "id", idVal)
 
 	// The in-memory struct GORM handed back should agree too.
 	assert.Equal(t, time.UTC, session.ValidUntil.Location())
@@ -88,7 +93,7 @@ func TestSessionCloseSession_NormalizesToUTC(t *testing.T) {
 	require.NoError(t, repo.CreateSession("test-token-close", session))
 	require.NoError(t, repo.CloseSession("test-token-close"))
 
-	assertStoredUTC(t, "sessions", "closed_on", "token", "test-token-close")
+	assertStoredUTC(t, "sessions", "closed_on", "id", fmt.Sprintf("%d", session.ID))
 }
 
 // TestTokenBeforeSave_NormalizesToUTC covers Token.BeforeSave. ExpiresAt in

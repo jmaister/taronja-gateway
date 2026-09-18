@@ -2,6 +2,8 @@ package notification
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -207,6 +209,103 @@ func TestService_Create(t *testing.T) {
 		assert.NotEmpty(t, fetched.RespondTokenHash)
 		require.NotNil(t, fetched.RespondTokenExpiresAt)
 	})
+}
+
+// TestService_Create_RejectsTooManyRecipients is the regression test for
+// half of Finding 12 (unbounded goroutine spawning): before
+// MaxRecipientsPerCreate existed, a UserIDs list of any size was accepted
+// and fanned out into one delivery goroutine per recipient/channel pair —
+// a caller (or a compromised/careless admin script, CreateNotification
+// being admin-only) supplying an enormous list could spawn an unbounded
+// number of them. This asserts an over-limit call is rejected outright,
+// before any notification is written, rather than accepted and only
+// throttled at delivery time.
+func TestService_Create_RejectsTooManyRecipients(t *testing.T) {
+	service, _, _ := newTestService(t, config.NotificationConfig{})
+
+	userIDs := make([]string, MaxRecipientsPerCreate+1)
+	for i := range userIDs {
+		userIDs[i] = fmt.Sprintf("nonexistent-user-%d", i)
+	}
+
+	notifications, _, err := service.Create(context.Background(), CreateInput{
+		UserIDs: userIDs, Type: "t", Title: "T", Body: "B",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), fmt.Sprintf("%d", MaxRecipientsPerCreate))
+	assert.Empty(t, notifications, "nothing should be written once the cap is exceeded")
+
+	all, err := service.List(userIDs[0], false, 10, nil)
+	require.NoError(t, err)
+	assert.Empty(t, all, "Create must reject before it ever calls CreateNotification")
+}
+
+// concurrencyTrackingProvider is a test-only Provider that records the
+// highest number of concurrent Send calls it ever saw — used by
+// TestService_Create_BoundsConcurrentDeliveries to verify
+// maxConcurrentDeliveries actually caps concurrent sends, not just
+// concurrent goroutines.
+type concurrencyTrackingProvider struct {
+	channel string
+	delay   time.Duration
+
+	mu      sync.Mutex
+	current int
+	maxSeen int
+}
+
+func (p *concurrencyTrackingProvider) Channel() string { return p.channel }
+
+func (p *concurrencyTrackingProvider) Send(ctx context.Context, req SendRequest) (string, error) {
+	p.mu.Lock()
+	p.current++
+	if p.current > p.maxSeen {
+		p.maxSeen = p.current
+	}
+	p.mu.Unlock()
+
+	time.Sleep(p.delay)
+
+	p.mu.Lock()
+	p.current--
+	p.mu.Unlock()
+	return "", nil
+}
+
+// TestService_Create_BoundsConcurrentDeliveries is the regression test for
+// the other half of Finding 12: even within MaxRecipientsPerCreate, every
+// recipient's delivery used to run fully concurrently, with nothing
+// limiting how many SMTP/webhook/Telegram connections were open to an
+// external provider at once. This swaps in a fake provider that records
+// the peak number of simultaneous Send calls and asserts it never exceeds
+// maxConcurrentDeliveries, despite comfortably more recipients than that
+// being notified at once.
+func TestService_Create_BoundsConcurrentDeliveries(t *testing.T) {
+	service, _, userRepo := newTestService(t, config.NotificationConfig{})
+	fake := &concurrencyTrackingProvider{channel: db.NotificationChannelEmail, delay: 20 * time.Millisecond}
+	service.providers[db.NotificationChannelEmail] = fake
+
+	recipientCount := maxConcurrentDeliveries * 2
+	userIDs := make([]string, recipientCount)
+	for i := 0; i < recipientCount; i++ {
+		user := &db.User{Username: fmt.Sprintf("concurrency-%d", i), Email: fmt.Sprintf("concurrency-%d@example.com", i)}
+		require.NoError(t, userRepo.CreateUser(user))
+		userIDs[i] = user.ID
+	}
+
+	notifications, _, err := service.Create(context.Background(), CreateInput{
+		UserIDs: userIDs, Type: "t", Title: "T", Body: "B",
+		Channels: []string{db.NotificationChannelEmail},
+	})
+	require.NoError(t, err)
+	require.Len(t, notifications, recipientCount)
+	waitForPendingDeliveries(service)
+
+	fake.mu.Lock()
+	maxSeen := fake.maxSeen
+	fake.mu.Unlock()
+	assert.LessOrEqual(t, maxSeen, maxConcurrentDeliveries, "concurrent sends must never exceed maxConcurrentDeliveries")
+	assert.Greater(t, maxSeen, 1, "sanity check: deliveries should actually run concurrently, not be fully serialized")
 }
 
 func TestService_PreferredChannel(t *testing.T) {

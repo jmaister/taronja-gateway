@@ -170,8 +170,11 @@ var ipCache = &IPGeoCache{
 // which naturally has no idea what to do with a non-routable address and
 // returned an error for every single one of them, logged on every request.
 // A malformed value (not a real IP at all) falls through to a real lookup
-// attempt rather than being silently treated as non-routable here — that
-// case surfaces as its own clear API error instead.
+// attempt rather than being silently treated as non-routable here — in
+// practice GetGeoDataFromIP, this function's only caller, already rejects
+// a malformed value itself before ever reaching this check (see its own
+// net.ParseIP validation), so this only matters to a caller that skips
+// that validation and calls isNonRoutable directly.
 func isNonRoutable(ip string) bool {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
@@ -188,6 +191,19 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 	// Check if IP is empty
 	if ip == "" {
 		return GeoData{}, fmt.Errorf("IP address is empty")
+	}
+	// getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate build their request
+	// URL with fmt.Sprintf, embedding ip verbatim — without this check, a
+	// caller-supplied value that isn't a real IP address at all (e.g.
+	// containing "/", "?", or "#") would be sent straight into that URL
+	// instead of being rejected up front, letting whatever produced it
+	// redirect this gateway's own outbound request to an unintended path
+	// or host on the geolocation API's domain. Validating it's a
+	// syntactically real IP address first closes that off regardless of
+	// where ip originated (GetClientIP's XFF handling, a caller passing
+	// one through directly, etc.).
+	if net.ParseIP(ip) == nil {
+		return GeoData{}, fmt.Errorf("invalid IP address: %q", ip)
 	}
 	if isNonRoutable(ip) {
 		return GeoData{}, nil // nothing a public geo API could ever answer for

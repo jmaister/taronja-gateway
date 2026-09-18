@@ -2,6 +2,8 @@ package db
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"fmt"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/encryption"
@@ -138,7 +140,29 @@ func (u *User) BeforeSave(tx *gorm.DB) error {
 // entirely, a larger change than what was asked for here.
 type Session struct {
 	gorm.Model
-	Token           string     `gorm:"primaryKey;column:token;type:varchar(255);not null" json:"token"`
+	// Token is the raw, bearer-usable session value — the exact string
+	// that lives in the browser's tg_session_token cookie and (per
+	// README.md's X-User-Data field reference) the "token" field backend
+	// routes see. It is deliberately never persisted (gorm:"-"): only its
+	// hash is. Every session-repository method that takes or returns a
+	// raw token is responsible for setting this field itself — see
+	// db/sessionrepository.go and BeforeSave below — since GORM has
+	// nothing to populate it from on a read.
+	Token string `gorm:"-" json:"token"`
+	// TokenHash is SHA-256(Token), hex-encoded, and the column actually
+	// used as the primary key / lookup and comparison target. Session
+	// tokens used to be stored verbatim — the one bearer credential in
+	// this codebase that broke the pattern auth/token_service.go's API
+	// tokens and notification/service.go's respond-tokens already
+	// followed. A session defaults to a 24-hour lifetime and can be
+	// configured much longer, so unlike this project's one deliberately
+	// plaintext-stored token (NotificationLinkCode, single-use and
+	// live for minutes), there's no comparable rationale for a session
+	// token to be recoverable from a database dump, a leaked backup, or
+	// an unrelated SQL-injection read: hashing it costs nothing (a SHA-256
+	// hash of 256 bits of crypto/rand entropy is not meaningfully
+	// crackable) and closes that off entirely.
+	TokenHash       string     `gorm:"primaryKey;column:token_hash;type:varchar(64);not null;default:''" json:"-"`
 	UserID          string     `gorm:"column:user_id;type:varchar(255)" json:"userId"`
 	Username        string     `json:"username"`
 	Email           string     `json:"email"`
@@ -155,17 +179,39 @@ type Session struct {
 	ClientInfo
 }
 
-// BeforeSave normalizes ValidUntil, LastActivity, and ClosedOn to UTC
+// hashSessionToken returns the hex-encoded SHA-256 hash of a raw session
+// token — the value actually stored in and looked up from TokenHash. Used
+// by BeforeSave (whenever a full *Session goes through Create/Save) and
+// directly by SessionRepository's lookup/mutation methods (which only ever
+// see the raw token, never a *Session to hook into).
+func hashSessionToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", sum)
+}
+
+// BeforeSave computes TokenHash from Token whenever a fresh raw token is
+// present, and normalizes ValidUntil, LastActivity, and ClosedOn to UTC
 // before they're persisted — see TrafficMetric.BeforeCreate's comment for
-// the same reasoning applied here: every one of these is set from a plain
-// time.Now() somewhere (session/session.go), which carries the server
-// process's local zone, and this makes the schema's UTC convention hold
-// regardless of what any given call site remembers to do. Only reaches the
-// paths that pass a full *Session through GORM's Create/Save — the one
-// raw-column update in this codebase (SessionRepository.CloseSession's
-// Update("closed_on", ...)) normalizes its own value at the call site
-// instead, since a hook on an empty *Session{} model can't see it.
+// the same UTC reasoning applied here: every one of these is set from a
+// plain time.Now() somewhere (session/session.go), which carries the
+// server process's local zone, and this makes the schema's UTC convention
+// hold regardless of what any given call site remembers to do. Only
+// reaches the paths that pass a full *Session through GORM's Create/Save —
+// the one raw-column update in this codebase (SessionRepository.
+// CloseSession's Update("closed_on", ...)) normalizes its own value at the
+// call site instead, since a hook on an empty *Session{} model can't see
+// it.
+//
+// Leaving TokenHash untouched when Token is empty matters: a *Session just
+// loaded from the database (see FindSessionByToken) never has Token
+// re-populated from anywhere but its caller's own already-known raw value
+// (TokenHash isn't reversible), so a Save call that doesn't happen to set
+// Token — bumping LastActivity is the one real case — must keep whatever
+// TokenHash the read already carried, not blank it out.
 func (s *Session) BeforeSave(tx *gorm.DB) error {
+	if s.Token != "" {
+		s.TokenHash = hashSessionToken(s.Token)
+	}
 	if !s.ValidUntil.IsZero() {
 		s.ValidUntil = s.ValidUntil.UTC()
 	}
