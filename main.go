@@ -681,15 +681,28 @@ func migrateConfigFile(configFilePath string) {
 	// nil when the file has no version: field at all — that's no longer a
 	// no-op case (see config.legacyConfigVersion's doc comment), so it falls
 	// through to the "migrated" case below like any other outdated version.
+	// The comparison itself goes through config.CompareConfigVersions rather
+	// than a bare string >= — these are MAJOR.MINOR version strings, and
+	// e.g. "10.0" sorts before "9.0" lexicographically. A parse failure here
+	// shouldn't happen (fromVersion, when non-nil, is exactly what
+	// MigrateConfigContent already parsed successfully to produce content
+	// at all) but falls through to the "migrated" case rather than crashing
+	// on a message that's purely informational anyway.
+	alreadyCurrent := fromVersion != nil
+	if alreadyCurrent {
+		if cmp, err := config.CompareConfigVersions(*fromVersion, config.CurrentConfigVersion); err != nil || cmp < 0 {
+			alreadyCurrent = false
+		}
+	}
 	switch {
-	case fromVersion != nil && *fromVersion >= config.CurrentConfigVersion:
-		fmt.Fprintf(os.Stderr, "Note: '%s' is already version %d (current: %d) — printing it unchanged.\n",
+	case alreadyCurrent:
+		fmt.Fprintf(os.Stderr, "Note: '%s' is already version %s (current: %s) — printing it unchanged.\n",
 			configFilePath, *fromVersion, config.CurrentConfigVersion)
 	case fromVersion == nil:
-		fmt.Fprintf(os.Stderr, "'%s' had no declared version (treated as pre-v1.0.0) — migrated to version %d.\n",
+		fmt.Fprintf(os.Stderr, "'%s' had no declared version (treated as pre-v1.0.0) — migrated to version %s.\n",
 			configFilePath, config.CurrentConfigVersion)
 	default:
-		fmt.Fprintf(os.Stderr, "'%s' migrated from version %d to %d.\n",
+		fmt.Fprintf(os.Stderr, "'%s' migrated from version %s to %s.\n",
 			configFilePath, *fromVersion, config.CurrentConfigVersion)
 	}
 
@@ -719,7 +732,7 @@ func validateConfigFile(configFilePath string) {
 
 	versionDesc := "no declared version"
 	if cfg.Version != nil {
-		versionDesc = fmt.Sprintf("version %d", *cfg.Version)
+		versionDesc = fmt.Sprintf("version %s", *cfg.Version)
 	}
 	fmt.Printf("'%s' is valid (%s): %d route(s), management prefix %q.\n",
 		configFilePath, versionDesc, len(cfg.Routes), cfg.Management.Prefix)

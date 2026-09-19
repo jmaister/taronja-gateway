@@ -10,8 +10,9 @@ import "github.com/jmaister/taronja-gateway/config"
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [func CompareConfigVersions\(a, b string\) \(int, error\)](<#CompareConfigVersions>)
 - [func IsMiddlewareNameKnown\(name string\) bool](<#IsMiddlewareNameKnown>)
-- [func MigrateConfigContent\(path string\) \(content \[\]byte, fromVersion \*int, err error\)](<#MigrateConfigContent>)
+- [func MigrateConfigContent\(path string\) \(content \[\]byte, fromVersion \*string, err error\)](<#MigrateConfigContent>)
 - [type ACMEConfig](<#ACMEConfig>)
 - [type AdminConfig](<#AdminConfig>)
 - [type AppleAuthProviderCredentials](<#AppleAuthProviderCredentials>)
@@ -76,12 +77,12 @@ const (
 )
 ```
 
-<a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build of the gateway expects a config file to declare via its top\-level \`version:\` field. Bump it, and add a corresponding entry to configMigrations, whenever a config schema change should be reflected in the version a config file declares.
+<a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build of the gateway expects a config file to declare via its top\-level \`version:\` field, in MAJOR.MINOR format \(see parseConfigVersion\) — e.g. "1.0", not "1.0.0": a config file's schema doesn't need a third, patch\-level component, since every actual change to it is either "the structure changed, bump MAJOR and add a migration" or "a field was added/removed with no migration needed, bump MINOR" — see configVersionSequence and configMigrations for how those two cases are told apart. Bump this, add the new version to the END of configVersionSequence, and add a corresponding entry to configMigrations if \(and only if\) the change needs real content transformed, not just the version line stamped forward.
 
-This is 1 — not 2 — as of the gateway's v1.0.0 release: the \`version:\` field itself was built and tested ahead of ever shipping, so no released config file ever declared an explicit "version: 1" to migrate away from. That does NOT mean an undeclared version is already current, though — see legacyConfigVersion, which is what an absent field actually means.
+This is "1.0" — not "0.1" or "2.0" — as of the gateway's v1.0.0 release: the \`version:\` field itself was built and tested ahead of ever shipping, so no released config file ever declared an explicit version to migrate away from. That does NOT mean an undeclared version is already current, though — see legacyConfigVersion, which is what an absent field actually means.
 
 ```go
-const CurrentConfigVersion = 1
+const CurrentConfigVersion = "1.0"
 ```
 
 ## Variables
@@ -101,6 +102,15 @@ var KnownMiddlewareNames = []string{
 }
 ```
 
+<a name="CompareConfigVersions"></a>
+## func [CompareConfigVersions](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L134>)
+
+```go
+func CompareConfigVersions(a, b string) (int, error)
+```
+
+CompareConfigVersions compares two config schema version strings \(MAJOR or MAJOR.MINOR, see parseConfigVersion\), returning \-1, 0, or 1 as a is less than, equal to, or greater than b, or an error if either fails to parse. Exported for main.go's \`tg migrate\` command, which needs to tell whether a file's declared version is already at or past CurrentConfigVersion without duplicating this package's version\-parsing rules.
+
 <a name="IsMiddlewareNameKnown"></a>
 ## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L34>)
 
@@ -111,15 +121,15 @@ func IsMiddlewareNameKnown(name string) bool
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
 
 <a name="MigrateConfigContent"></a>
-## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L295>)
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L449>)
 
 ```go
-func MigrateConfigContent(path string) (content []byte, fromVersion *int, err error)
+func MigrateConfigContent(path string) (content []byte, fromVersion *string, err error)
 ```
 
 MigrateConfigContent reads the config file at path and returns its content migrated up to CurrentConfigVersion \(migrateConfigToCurrent\) — unchanged only if it's already at CurrentConfigVersion or newer. It never writes anything: this is what \`tg migrate\` calls to produce the output it prints to stdout, leaving it up to the caller \(a shell redirect, in the CLI's case\) to decide whether and where to save it. See checkConfigVersion for why the gateway doesn't migrate a config file automatically or write one on its own anymore.
 
-fromVersion is the file's declared version exactly as read from it — nil if it has no \`version:\` field. That's still migrated \(from legacyConfigVersion, internally\), it's just reported to the caller as nil rather than 0, so a caller distinguishing "this file predates versioning entirely" from "this file explicitly declared some old number" \(main.go's migrateConfigFile does, for its own message\) can tell them apart.
+fromVersion is the file's declared version exactly as read from it — nil if it has no \`version:\` field. That's still migrated \(from legacyConfigVersion, internally\), it's just reported to the caller as nil rather than "0.0", so a caller distinguishing "this file predates versioning entirely" from "this file explicitly declared some old version" \(main.go's migrateConfigFile does, for its own message\) can tell them apart.
 
 <a name="ACMEConfig"></a>
 ## type [ACMEConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/tls.go#L76-L100>)
@@ -363,7 +373,7 @@ GatewayConfig is the root configuration structure for Taronja Gateway. It contai
 
 ```go
 type GatewayConfig struct {
-    Version                 *int                    `yaml:"version,omitempty"`       // Config schema version. Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1" explicitly, not the same thing spelled two ways. See CurrentConfigVersion and LoadConfig's version-check behavior in version.go.
+    Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR or MAJOR.MINOR (e.g. "1.0" — see CurrentConfigVersion). Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1.0" explicitly, not the same thing spelled two ways. See LoadConfig's version-check behavior in version.go.
     Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
     Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
     Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.

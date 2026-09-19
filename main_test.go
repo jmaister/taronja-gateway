@@ -68,7 +68,7 @@ func TestMigrateConfigFile_AbsentVersion_ActuallyMigrates(t *testing.T) {
 		migrateConfigFile(path)
 	})
 
-	assert.Contains(t, stdout, fmt.Sprintf("version: %d", config.CurrentConfigVersion), "stdout must contain the migrated, now-versioned content")
+	assert.Contains(t, stdout, fmt.Sprintf("version: %s", config.CurrentConfigVersion), "stdout must contain the migrated, now-versioned content")
 	assert.Contains(t, stdout, "name: Test", "the rest of the file's content must survive")
 	assert.Contains(t, stderr, "no declared version", "a real migration still gets an informational note, distinct from the no-op notes below")
 }
@@ -80,7 +80,7 @@ func TestMigrateConfigFile_AbsentVersion_ActuallyMigrates(t *testing.T) {
 func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	raw := fmt.Sprintf("version: %d\nname: Test\nserver:\n  port: 8080\n", config.CurrentConfigVersion)
+	raw := fmt.Sprintf("version: %s\nname: Test\nserver:\n  port: 8080\n", config.CurrentConfigVersion)
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
 	stdout, stderr := captureOutput(t, func() {
@@ -88,7 +88,7 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 	})
 
 	assert.Equal(t, raw, stdout, "stdout must be exactly the unchanged config content, nothing else mixed in")
-	assert.Contains(t, stderr, fmt.Sprintf("already version %d", config.CurrentConfigVersion))
+	assert.Contains(t, stderr, fmt.Sprintf("already version %s", config.CurrentConfigVersion))
 }
 
 // TestValidateConfigFile_ValidConfig_PrintsSuccess covers validateConfigFile's
@@ -100,7 +100,7 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 func TestValidateConfigFile_ValidConfig_PrintsSuccess(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	raw := fmt.Sprintf("version: %d\n", config.CurrentConfigVersion) + `name: Test Gateway
+	raw := fmt.Sprintf("version: %s\n", config.CurrentConfigVersion) + `name: Test Gateway
 server:
   host: 127.0.0.1
   port: 8080
@@ -119,7 +119,7 @@ routes:
 	})
 
 	assert.Contains(t, stdout, "is valid")
-	assert.Contains(t, stdout, fmt.Sprintf("version %d", config.CurrentConfigVersion))
+	assert.Contains(t, stdout, fmt.Sprintf("version %s", config.CurrentConfigVersion))
 	assert.Contains(t, stdout, "1 route")
 	assert.Empty(t, stderr)
 }
@@ -133,7 +133,7 @@ func TestWatchConfigFile_ReloadsOnWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	write := func(name string) {
-		raw := fmt.Sprintf("version: %d\nname: %s\nserver:\n  host: 127.0.0.1\n  port: 8080\n", config.CurrentConfigVersion, name) +
+		raw := fmt.Sprintf("version: %s\nname: %s\nserver:\n  host: 127.0.0.1\n  port: 8080\n", config.CurrentConfigVersion, name) +
 			"management:\n  admin:\n    enabled: false\nroutes: []\n"
 		require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 	}

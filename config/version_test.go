@@ -11,18 +11,101 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
+// --- parseConfigVersion / compare ---
+
+func TestParseConfigVersion_ParsesMajorMinor(t *testing.T) {
+	v, err := parseConfigVersion("1.2")
+	require.NoError(t, err)
+	assert.Equal(t, configVersion{major: 1, minor: 2}, v)
+}
+
+// TestParseConfigVersion_BareMajorMeansDotZero covers backward compatibility
+// with every config migrated under this project's original single-integer
+// scheme: those already declare e.g. "version: 1", not "version: 1.0", and
+// must keep comparing exactly equal to "1.0" — not "older", which would
+// wrongly demand a re-migration nothing actually changed for.
+func TestParseConfigVersion_BareMajorMeansDotZero(t *testing.T) {
+	v, err := parseConfigVersion("1")
+	require.NoError(t, err)
+	assert.Equal(t, configVersion{major: 1, minor: 0}, v)
+}
+
+func TestParseConfigVersion_RejectsThreeComponents(t *testing.T) {
+	_, err := parseConfigVersion("1.0.0")
+	assert.Error(t, err)
+}
+
+func TestParseConfigVersion_RejectsNonNumeric(t *testing.T) {
+	_, err := parseConfigVersion("abc")
+	assert.Error(t, err)
+
+	_, err = parseConfigVersion("1.abc")
+	assert.Error(t, err)
+}
+
+func TestParseConfigVersion_RejectsNegative(t *testing.T) {
+	_, err := parseConfigVersion("-1")
+	assert.Error(t, err)
+}
+
+func TestConfigVersion_Compare(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{"1.0", "1.0", 0},
+		{"1", "1.0", 0}, // bare major == MAJOR.0
+		{"0.9", "1.0", -1},
+		{"1.0", "0.9", 1},
+		{"1.1", "1.2", -1},
+		{"2.0", "1.9", 1}, // major dominates minor
+		{"9.0", "10.0", -1},
+		{"10.0", "9.0", 1}, // must not sort lexicographically ("10.0" < "9.0" as strings, but not as versions)
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s vs %s", tt.a, tt.b), func(t *testing.T) {
+			a, err := parseConfigVersion(tt.a)
+			require.NoError(t, err)
+			b, err := parseConfigVersion(tt.b)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, a.compare(b))
+		})
+	}
+}
+
+func TestCompareConfigVersions(t *testing.T) {
+	cmp, err := CompareConfigVersions("1.0", "2.0")
+	require.NoError(t, err)
+	assert.Equal(t, -1, cmp)
+
+	_, err = CompareConfigVersions("not-a-version", "1.0")
+	assert.Error(t, err)
+}
+
+// TestConfigVersionSequence_EndsAtCurrent guards the invariant
+// configVersionSequence's own doc comment promises: its last entry must
+// always equal CurrentConfigVersion, or migrateConfigToCurrent could never
+// actually reach CurrentConfigVersion by walking the sequence.
+func TestConfigVersionSequence_EndsAtCurrent(t *testing.T) {
+	require.NotEmpty(t, configVersionSequence)
+	last := configVersionSequence[len(configVersionSequence)-1]
+	cmp, err := CompareConfigVersions(last, CurrentConfigVersion)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cmp, "the last entry of configVersionSequence must equal CurrentConfigVersion")
+}
+
 // --- setTopLevelVersionField ---
 
 func TestSetTopLevelVersionField_InsertsWhenAbsent(t *testing.T) {
 	raw := []byte("name: Test\nserver:\n  port: 8080\n")
-	got := setTopLevelVersionField(raw, 2)
-	assert.Equal(t, "version: 2\nname: Test\nserver:\n  port: 8080\n", string(got))
+	got := setTopLevelVersionField(raw, "2.0")
+	assert.Equal(t, "version: 2.0\nname: Test\nserver:\n  port: 8080\n", string(got))
 }
 
 func TestSetTopLevelVersionField_ReplacesWhenPresent(t *testing.T) {
-	raw := []byte("version: 1\nname: Test\n")
-	got := setTopLevelVersionField(raw, 2)
-	assert.Equal(t, "version: 2\nname: Test\n", string(got))
+	raw := []byte("version: 1.0\nname: Test\n")
+	got := setTopLevelVersionField(raw, "2.0")
+	assert.Equal(t, "version: 2.0\nname: Test\n", string(got))
 }
 
 func TestSetTopLevelVersionField_DoesNotMatchNestedVersionKey(t *testing.T) {
@@ -30,13 +113,13 @@ func TestSetTopLevelVersionField_DoesNotMatchNestedVersionKey(t *testing.T) {
 	// as the top-level field — only a literal, unindented "version:" at
 	// column 0 counts.
 	raw := []byte("name: Test\nsomeSection:\n  version: 99\n")
-	got := setTopLevelVersionField(raw, 2)
-	assert.Equal(t, "version: 2\nname: Test\nsomeSection:\n  version: 99\n", string(got))
+	got := setTopLevelVersionField(raw, "2.0")
+	assert.Equal(t, "version: 2.0\nname: Test\nsomeSection:\n  version: 99\n", string(got))
 }
 
 func TestSetTopLevelVersionField_PreservesComments(t *testing.T) {
 	raw := []byte("# a helpful comment\nname: Test\nserver:\n  port: 8080 # inline comment\n")
-	got := setTopLevelVersionField(raw, 2)
+	got := setTopLevelVersionField(raw, "2.0")
 	assert.Contains(t, string(got), "# a helpful comment")
 	assert.Contains(t, string(got), "# inline comment")
 }
@@ -47,14 +130,14 @@ func TestVersionedConfigPath(t *testing.T) {
 	tests := []struct {
 		name     string
 		original string
-		version  int
+		version  string
 		expected string
 	}{
-		{"simple yaml", "config.yaml", 2, "config-v2.yaml"},
-		{"yml extension", "/etc/gateway/prod.yml", 2, "/etc/gateway/prod-v2.yml"},
-		{"relative path", "./sample/config.yaml", 2, "sample/config-v2.yaml"},
-		{"no extension", "config", 2, "config-v2"},
-		{"higher version", "config.yaml", 3, "config-v3.yaml"},
+		{"simple yaml", "config.yaml", "2.0", "config-v2.0.yaml"},
+		{"yml extension", "/etc/gateway/prod.yml", "2.0", "/etc/gateway/prod-v2.0.yml"},
+		{"relative path", "./sample/config.yaml", "2.0", "sample/config-v2.0.yaml"},
+		{"no extension", "config", "2.0", "config-v2.0"},
+		{"higher version", "config.yaml", "3.0", "config-v3.0.yaml"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,7 +246,7 @@ notification:
 `)
 	got := migrateLegacyToV1(raw)
 	gotStr := string(got)
-	assert.Contains(t, gotStr, "version: 1")
+	assert.Contains(t, gotStr, "version: 1.0")
 	assert.NotContains(t, gotStr, "smtp:")
 	assert.Contains(t, gotStr, "host: smtp.example.com")
 }
@@ -171,62 +254,83 @@ notification:
 func TestMigrateLegacyToV1_StampsVersionEvenWithoutSMTPBlock(t *testing.T) {
 	raw := []byte("name: Test\nserver:\n  port: 8080\n")
 	got := migrateLegacyToV1(raw)
-	assert.Contains(t, string(got), "version: 1")
+	assert.Contains(t, string(got), "version: 1.0")
 }
 
 // --- migrateConfigToCurrent ---
 //
-// toVersion is a parameter specifically so these can exercise the
-// step-through-multiple-versions logic with synthetic version numbers,
-// independent of configMigrations' real (one entry today, keyed
-// legacyConfigVersion — see its doc comment) content.
+// Both configMigrations and configVersionSequence are swapped out together
+// so these can exercise the step-through-multiple-versions logic with
+// synthetic version numbers, independent of the real (one real step,
+// keyed legacyConfigVersion — see that map's doc comment) content.
+
+func withSyntheticVersionSequence(t *testing.T, sequence []string, migrations map[string]configMigration) {
+	t.Helper()
+	originalSeq, originalMig := configVersionSequence, configMigrations
+	t.Cleanup(func() {
+		configVersionSequence = originalSeq
+		configMigrations = originalMig
+	})
+	configVersionSequence = sequence
+	configMigrations = migrations
+}
 
 func TestMigrateConfigToCurrent_AppliesOneRegisteredStep(t *testing.T) {
-	original := configMigrations
-	defer func() { configMigrations = original }()
-	configMigrations = map[int]configMigration{
-		5: func(raw []byte) []byte { return setTopLevelVersionField(raw, 6) },
-	}
+	withSyntheticVersionSequence(t, []string{"5.0", "6.0"}, map[string]configMigration{
+		"5.0": func(raw []byte) []byte { return setTopLevelVersionField(raw, "6.0") },
+	})
 
-	got := migrateConfigToCurrent([]byte("name: Test\n"), 5, 6)
-	assert.Equal(t, "version: 6\nname: Test\n", string(got))
+	got, err := migrateConfigToCurrent([]byte("name: Test\n"), "5.0", "6.0")
+	require.NoError(t, err)
+	assert.Equal(t, "version: 6.0\nname: Test\n", string(got))
 }
 
 func TestMigrateConfigToCurrent_ChainsMultipleRegisteredSteps(t *testing.T) {
-	original := configMigrations
-	defer func() { configMigrations = original }()
-	configMigrations = map[int]configMigration{
-		5: func(raw []byte) []byte { return append(raw, []byte("step5-to-6\n")...) },
-		6: func(raw []byte) []byte { return append(raw, []byte("step6-to-7\n")...) },
-	}
+	withSyntheticVersionSequence(t, []string{"5.0", "6.0", "7.0"}, map[string]configMigration{
+		"5.0": func(raw []byte) []byte { return append(raw, []byte("step5-to-6\n")...) },
+		"6.0": func(raw []byte) []byte { return append(raw, []byte("step6-to-7\n")...) },
+	})
 
-	got := migrateConfigToCurrent([]byte("name: Test\n"), 5, 7)
+	got, err := migrateConfigToCurrent([]byte("name: Test\n"), "5.0", "7.0")
+	require.NoError(t, err)
 	assert.Equal(t, "name: Test\nstep5-to-6\nstep6-to-7\n", string(got), "each intervening version's migration must run in order")
 }
 
-func TestMigrateConfigToCurrent_MissingStepStampsVersionForwardAsSafetyNet(t *testing.T) {
-	original := configMigrations
-	defer func() { configMigrations = original }()
-	configMigrations = map[int]configMigration{} // no entry for version 5
+// TestMigrateConfigToCurrent_UnregisteredStepJustStampsVersion covers the
+// normal, expected case configMigrations' doc comment describes: a version
+// bump with no actual content change (a new optional field, say) needs no
+// migration function at all — the step must still advance the file's
+// declared version, with nothing else touched.
+func TestMigrateConfigToCurrent_UnregisteredStepJustStampsVersion(t *testing.T) {
+	withSyntheticVersionSequence(t, []string{"5.0", "6.0"}, map[string]configMigration{}) // no entry for 5.0
 
-	got := migrateConfigToCurrent([]byte("name: Test\n"), 5, 6)
-	assert.Equal(t, "version: 6\nname: Test\n", string(got), "a missing migration step must still stamp the version forward, not leave the file unchanged")
+	got, err := migrateConfigToCurrent([]byte("name: Test\n"), "5.0", "6.0")
+	require.NoError(t, err)
+	assert.Equal(t, "version: 6.0\nname: Test\n", string(got), "a step with no registered migration must still stamp the version forward")
 }
 
 func TestMigrateConfigToCurrent_NoOpWhenFromVersionAtOrPastToVersion(t *testing.T) {
-	raw := []byte(fmt.Sprintf("version: %d\nname: Test\n", CurrentConfigVersion))
-	got := migrateConfigToCurrent(raw, CurrentConfigVersion, CurrentConfigVersion)
+	raw := []byte(fmt.Sprintf("version: %s\nname: Test\n", CurrentConfigVersion))
+	got, err := migrateConfigToCurrent(raw, CurrentConfigVersion, CurrentConfigVersion)
+	require.NoError(t, err)
 	assert.Equal(t, string(raw), string(got))
 }
 
 // TestMigrateConfigToCurrent_RealLegacyStep is the production case, not a
-// synthetic one: migrating from legacyConfigVersion (0) to
-// CurrentConfigVersion (1) today runs the one real registered step,
+// synthetic one: migrating from legacyConfigVersion (0.0) to
+// CurrentConfigVersion (1.0) today runs the one real registered step,
 // migrateLegacyToV1.
 func TestMigrateConfigToCurrent_RealLegacyStep(t *testing.T) {
 	raw := []byte("name: Test\n")
-	got := migrateConfigToCurrent(raw, legacyConfigVersion, CurrentConfigVersion)
-	assert.Contains(t, string(got), "version: 1")
+	got, err := migrateConfigToCurrent(raw, legacyConfigVersion, CurrentConfigVersion)
+	require.NoError(t, err)
+	assert.Contains(t, string(got), "version: 1.0")
+}
+
+func TestMigrateConfigToCurrent_UnrecognizedVersionErrors(t *testing.T) {
+	_, err := migrateConfigToCurrent([]byte("name: Test\n"), "0.5", CurrentConfigVersion)
+	require.Error(t, err, "a version between two known steps was never a real release and must be reported, not silently ignored")
+	assert.Contains(t, err.Error(), "unrecognized config schema version")
 }
 
 // --- LoadConfig integration ---
@@ -250,7 +354,7 @@ func TestLoadConfig_AbsentVersionFile_Fails(t *testing.T) {
 }
 
 func TestLoadConfig_CurrentVersionFile_Succeeds(t *testing.T) {
-	raw := fmt.Sprintf("version: %d\n", CurrentConfigVersion) + minimalTestConfigYAML
+	raw := fmt.Sprintf("version: %s\n", CurrentConfigVersion) + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
@@ -261,6 +365,22 @@ func TestLoadConfig_CurrentVersionFile_Succeeds(t *testing.T) {
 	assert.Equal(t, CurrentConfigVersion, *cfg.Version)
 }
 
+// TestLoadConfig_BareMajorVersionFile_Succeeds covers backward
+// compatibility with every config already migrated under this project's
+// original single-integer scheme (declares "version: 1", not "version:
+// 1.0") — it must still load as current, not be treated as outdated.
+func TestLoadConfig_BareMajorVersionFile_Succeeds(t *testing.T) {
+	raw := "version: 1\n" + minimalTestConfigYAML
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Version)
+	assert.Equal(t, "1", *cfg.Version, "the declared value is preserved verbatim, comparison treats it as 1.0")
+}
+
 // TestLoadConfig_NewerVersionThanSupported_Fails covers the same "refuse
 // to start" policy as the too-old direction: an older gateway binary has
 // no way to know it actually honors every field a newer config relies on,
@@ -268,15 +388,26 @@ func TestLoadConfig_CurrentVersionFile_Succeeds(t *testing.T) {
 // run anyway, which is exactly the failure mode a declared schema version
 // exists to prevent.
 func TestLoadConfig_NewerVersionThanSupported_Fails(t *testing.T) {
-	raw := "version: 99\n" + minimalTestConfigYAML
+	raw := "version: 99.0\n" + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
 	_, err := LoadConfig(path)
 	require.Error(t, err, "a newer-than-supported version must refuse to start, not silently proceed")
-	assert.Contains(t, err.Error(), "declares version 99")
+	assert.Contains(t, err.Error(), "declares version 99.0")
 	assert.Contains(t, err.Error(), "Upgrade the gateway binary", "the remedy for this direction is upgrading the binary, not tg migrate")
+}
+
+func TestLoadConfig_InvalidVersionFormat_Fails(t *testing.T) {
+	raw := "version: not-a-version\n" + minimalTestConfigYAML
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid version")
 }
 
 // TestLoadConfig_NeverWritesFiles is the direct regression test for
@@ -293,8 +424,8 @@ func TestLoadConfig_NewerVersionThanSupported_Fails(t *testing.T) {
 func TestLoadConfig_NeverWritesFiles(t *testing.T) {
 	versionLines := map[string]string{
 		"absent version: field":            "", // no version: line at all -> refused, but must still not write anything
-		"current, explicit version: field": fmt.Sprintf("version: %d\n", CurrentConfigVersion),
-		"newer than supported":             "version: 99\n",
+		"current, explicit version: field": fmt.Sprintf("version: %s\n", CurrentConfigVersion),
+		"newer than supported":             "version: 99.0\n",
 	}
 
 	for name, versionLine := range versionLines {
@@ -367,10 +498,10 @@ routes:
 
 	content, fromVersion, err := MigrateConfigContent(path)
 	require.NoError(t, err)
-	assert.Nil(t, fromVersion, "a file with no version: field must report fromVersion as nil, not 0")
+	assert.Nil(t, fromVersion, "a file with no version: field must report fromVersion as nil, not \"0.0\"")
 
 	contentStr := string(content)
-	assert.Contains(t, contentStr, "version: 1")
+	assert.Contains(t, contentStr, "version: 1.0")
 	assert.NotContains(t, contentStr, "smtp:", "the smtp: nesting must be flattened away")
 	assert.Contains(t, contentStr, "host: smtp.example.com")
 	assert.Contains(t, contentStr, "${TEST_VERSION_MIGRATION_SECRET}", "content must keep the env var placeholder, not resolve it")
@@ -425,14 +556,14 @@ routes:
 	assert.Nil(t, fromVersion)
 
 	contentStr := string(content)
-	assert.Equal(t, "version: 1\n"+raw, contentStr, "with nothing to restructure, only the version: line should be added")
+	assert.Equal(t, "version: 1.0\n"+raw, contentStr, "with nothing to restructure, only the version: line should be added")
 	assert.Contains(t, contentStr, "# a comment that must survive")
 	assert.Contains(t, contentStr, "${TEST_VERSION_MIGRATION_SECRET}")
 	assert.NotContains(t, contentStr, "super-secret-value")
 }
 
 func TestMigrateConfigContent_AlreadyCurrent_ReturnsUnchanged(t *testing.T) {
-	raw := fmt.Sprintf("version: %d\n", CurrentConfigVersion) + minimalTestConfigYAML
+	raw := fmt.Sprintf("version: %s\n", CurrentConfigVersion) + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
@@ -444,8 +575,13 @@ func TestMigrateConfigContent_AlreadyCurrent_ReturnsUnchanged(t *testing.T) {
 	assert.Equal(t, raw, string(content), "an already-current file's content should be returned unchanged")
 }
 
-func TestMigrateConfigContent_NewerThanSupported_ReturnsUnchanged(t *testing.T) {
-	raw := "version: 99\n" + minimalTestConfigYAML
+// TestMigrateConfigContent_BareMajorVersion_ReturnsUnchanged covers the
+// same backward-compatibility case as TestLoadConfig_BareMajorVersionFile_Succeeds,
+// from tg migrate's side: a config already declaring the old bare "1"
+// (equivalent to "1.0") must be recognized as already current, not
+// migrated again.
+func TestMigrateConfigContent_BareMajorVersion_ReturnsUnchanged(t *testing.T) {
+	raw := "version: 1\n" + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
@@ -453,7 +589,20 @@ func TestMigrateConfigContent_NewerThanSupported_ReturnsUnchanged(t *testing.T) 
 	content, fromVersion, err := MigrateConfigContent(path)
 	require.NoError(t, err)
 	require.NotNil(t, fromVersion)
-	assert.Equal(t, 99, *fromVersion)
+	assert.Equal(t, "1", *fromVersion)
+	assert.Equal(t, raw, string(content))
+}
+
+func TestMigrateConfigContent_NewerThanSupported_ReturnsUnchanged(t *testing.T) {
+	raw := "version: 99.0\n" + minimalTestConfigYAML
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	content, fromVersion, err := MigrateConfigContent(path)
+	require.NoError(t, err)
+	require.NotNil(t, fromVersion)
+	assert.Equal(t, "99.0", *fromVersion)
 	assert.Equal(t, raw, string(content), "a newer-than-supported file's content should be returned unchanged, not downgraded")
 }
 
@@ -472,6 +621,17 @@ func TestMigrateConfigContent_InvalidYAML_Errors(t *testing.T) {
 	_, _, err := MigrateConfigContent(path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse config file")
+}
+
+func TestMigrateConfigContent_InvalidVersionFormat_Errors(t *testing.T) {
+	raw := "version: not-a-version\n" + minimalTestConfigYAML
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	_, _, err := MigrateConfigContent(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid version")
 }
 
 const minimalTestConfigYAML = `name: Test Gateway
