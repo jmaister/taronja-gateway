@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/jmaister/taronja-gateway/config"
 )
@@ -29,7 +30,24 @@ type MiddlewareStatus struct {
 // lists. Factories must be registered before BuildChain is called; BuildChain
 // validates that every spec's dependencies were already satisfied earlier in
 // the same chain and returns a ready-to-use ChainBuilder.
+//
+// Every method takes mu — currently, in this codebase's actual gateway/
+// reload.go, a registry is always fresh-built (NewGlobalMiddlewareRegistry),
+// have BuildChain called on it once, and only then published where a
+// concurrent GetStatus/GetMetrics/GetAllMetrics call (the admin dashboard's
+// middleware-status/metrics endpoints) could ever reach it — so no two
+// goroutines actually touch factories/built/metrics at once today. But
+// BuildChain's own doc comment documents calling it again on an
+// already-published, already-live registry (e.g. hot-reloading one chain's
+// specs in place, rather than replacing the whole registry) as supported,
+// legitimate reuse — a future caller relying on that documented contract
+// while requests are concurrently hitting the admin endpoints above would
+// hit Go's classic unsynchronized-concurrent-map-access crash
+// ("fatal error: concurrent map read and map write"), not a data race
+// subtle enough to go unnoticed. Guarding every access is the difference
+// between a documented capability and a landmine sitting behind it.
 type MiddlewareRegistryV2 struct {
+	mu        sync.RWMutex
 	factories map[string]MiddlewareFactory
 	built     map[string]bool
 	metrics   map[string]*middlewareMetricsCounter
@@ -47,6 +65,8 @@ func NewMiddlewareRegistryV2() *MiddlewareRegistryV2 {
 // RegisterFactory registers a middleware factory under its own name. Returns
 // an error if a factory with the same name is already registered.
 func (r *MiddlewareRegistryV2) RegisterFactory(factory MiddlewareFactory) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	name := factory.GetName()
 	if _, exists := r.factories[name]; exists {
 		return fmt.Errorf("middleware factory '%s' already registered", name)
@@ -69,6 +89,9 @@ func (r *MiddlewareRegistryV2) RegisterFactory(factory MiddlewareFactory) error 
 // and GetMetrics/GetAllMetrics always reflect only the most recently built
 // chain rather than accumulating "active" middleware across calls.
 func (r *MiddlewareRegistryV2) BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.built = make(map[string]bool)
 	r.metrics = make(map[string]*middlewareMetricsCounter)
 
@@ -118,6 +141,9 @@ func (r *MiddlewareRegistryV2) BuildChain(specs []MiddlewareSpec) (*ChainBuilder
 // GetStatus returns the status of every registered factory: "active" if it
 // was included in the most recent BuildChain call, "available" otherwise.
 func (r *MiddlewareRegistryV2) GetStatus() map[string]MiddlewareStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	status := make(map[string]MiddlewareStatus, len(r.factories))
 
 	for name, factory := range r.factories {
@@ -161,6 +187,9 @@ func (r *MiddlewareRegistryV2) GetStatus() map[string]MiddlewareStatus {
 // NewGlobalMiddlewareRegistry's real factory list instead of hand-duplicating
 // it a second time.
 func (r *MiddlewareRegistryV2) Factories() []MiddlewareFactory {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	out := make([]MiddlewareFactory, 0, len(r.factories))
 	for _, f := range r.factories {
 		out = append(out, f)
@@ -176,6 +205,9 @@ func (r *MiddlewareRegistryV2) Factories() []MiddlewareFactory {
 // repositories, rate limiter instance, ...) are available to actually build
 // the chain.
 func (r *MiddlewareRegistryV2) ValidateSpecs(specs []MiddlewareSpec) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	built := make(map[string]bool)
 	for _, spec := range specs {
 		factory, exists := r.factories[spec.Name]

@@ -441,6 +441,7 @@ func TestCallbackWithStateCookieAndRedirectUrlCookie(t *testing.T) {
 		assert.Equal(t, -1, stateCookie.MaxAge, "State cookie should be set to expire immediately")
 		assert.True(t, stateCookie.HttpOnly, "State cookie should be HttpOnly")
 		assert.Equal(t, "/", stateCookie.Path, "State cookie path should be /")
+		assert.Equal(t, http.SameSiteLaxMode, stateCookie.SameSite, "Lax, not Strict — this cookie must survive the OAuth provider's own cross-site redirect back here")
 	})
 
 	t.Run("callback with redirect URL cookie", func(t *testing.T) {
@@ -644,11 +645,19 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		assert.Equal(t, "/", sessionCookie.Path)
 		assert.True(t, sessionCookie.HttpOnly)
 		assert.Equal(t, 86400, sessionCookie.MaxAge) // 24 hours
+		// SameSite=Lax (not Strict): this response is itself the arrival
+		// leg of a cross-site top-level navigation (the OAuth provider
+		// redirecting back here), and Lax — unlike Strict — still lets a
+		// cookie set here be sent on the very next same-site request, which
+		// is all a session cookie actually needs going forward.
+		assert.Equal(t, http.SameSiteLaxMode, sessionCookie.SameSite)
 
 		// Check that redirect cookie is cleared
 		assert.NotNil(t, redirectCookie, "Redirect cookie should be cleared")
 		assert.Equal(t, "", redirectCookie.Value)
 		assert.Equal(t, -1, redirectCookie.MaxAge)
+		assert.True(t, redirectCookie.HttpOnly, "the clearing Set-Cookie must match the original's attributes to reliably overwrite it")
+		assert.Equal(t, http.SameSiteLaxMode, redirectCookie.SameSite)
 
 		// Verify user was created in repository
 		createdUser, err := testUserRepo.FindUserByIdOrUsername("", "", "newuser@example.com")

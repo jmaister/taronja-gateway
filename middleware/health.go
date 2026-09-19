@@ -22,6 +22,9 @@ type HealthChecker interface {
 // that doesn't implement HealthChecker still returns true, with
 // MiddlewareHealth{Status: "unknown"}.
 func (r *MiddlewareRegistryV2) GetHealth(name string) (MiddlewareHealth, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	factory, exists := r.factories[name]
 	if !exists {
 		return MiddlewareHealth{}, false

@@ -106,6 +106,9 @@ func instrumentMiddleware(mw Middleware, counter *middlewareMetricsCounter) Midd
 // middleware that has never been built into a chain (or has been built but
 // not yet seen a request) returns a zero-valued snapshot, not an error.
 func (r *MiddlewareRegistryV2) GetMetrics(name string) (MiddlewareMetricsSnapshot, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if _, exists := r.factories[name]; !exists {
 		return MiddlewareMetricsSnapshot{}, fmt.Errorf("unknown middleware: %s", name)
 	}
@@ -119,6 +122,9 @@ func (r *MiddlewareRegistryV2) GetMetrics(name string) (MiddlewareMetricsSnapsho
 // GetAllMetrics returns a snapshot of every middleware that has been built
 // into a chain at least once (see BuildChain), keyed by name.
 func (r *MiddlewareRegistryV2) GetAllMetrics() map[string]MiddlewareMetricsSnapshot {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	result := make(map[string]MiddlewareMetricsSnapshot, len(r.metrics))
 	for name, counter := range r.metrics {
 		result[name] = counter.snapshot(name)

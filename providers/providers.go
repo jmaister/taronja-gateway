@@ -202,12 +202,24 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 	originalURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 
 	// Set cookie for the redirect URL
+	//
+	// SameSite=Lax, not Strict, deliberately: both this cookie and the
+	// state cookie below must still be sent when the browser lands back
+	// on Callback, and that arrival is itself a cross-site top-level
+	// navigation — the OAuth provider's own redirect back to this
+	// gateway. Strict would drop the cookie on exactly that request,
+	// breaking every OAuth login. Lax permits a cross-site top-level GET
+	// navigation while still blocking the cross-site POST/embedded cases
+	// SameSite exists to stop — the same trade-off already made for the
+	// session cookie itself (see providers/basicAuthentication.go and
+	// middleware/session.go).
 	http.SetCookie(w, &http.Cookie{
 		Name:     RedirectUrlCookieName,
 		Value:    originalURL,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   300, // 5 minutes
 	})
 
@@ -218,6 +230,7 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   300, // 5 minutes
 	})
 
@@ -255,6 +268,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1, // Delete immediately
 	})
 
@@ -383,6 +397,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(ap.GatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
@@ -393,8 +408,20 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		// cookies aren't signed, so nothing stops a client from editing its
 		// own before completing the OAuth round trip.
 		redirectURL = session.SanitizeRedirectPath(redirectCookie.Value)
-		// Clear the redirect cookie
-		http.SetCookie(w, &http.Cookie{Name: RedirectUrlCookieName, Value: "", Path: "/", MaxAge: -1})
+		// Clear the redirect cookie — same HttpOnly/Secure/SameSite as when
+		// Login first set it, not just Name/Path/MaxAge: a Set-Cookie
+		// clearing one out needs matching attributes to reliably overwrite
+		// the original in every browser, not risk leaving a stale duplicate
+		// behind under a different attribute combination.
+		http.SetCookie(w, &http.Cookie{
+			Name:     RedirectUrlCookieName,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   session.RequestIsSecure(r),
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   -1,
+		})
 	}
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -412,6 +439,7 @@ func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request)
 			Path:     "/",
 			HttpOnly: true,
 			Secure:   session.RequestIsSecure(r),
+			SameSite: http.SameSiteLaxMode,
 			MaxAge:   -1,
 		})
 	}

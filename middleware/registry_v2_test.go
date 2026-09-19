@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/config"
@@ -235,4 +236,55 @@ func TestBuildGlobalChainV2ProducesWorkingChain(t *testing.T) {
 	if !called {
 		t.Fatal("Expected wrapped handler to be called")
 	}
+}
+
+// TestRegistry_ConcurrentBuildChainAndReads is the regression test for the
+// registry's own documented contract: BuildChain's doc comment describes
+// calling it again on an already-live registry (e.g. re-building one
+// chain's specs in place) as supported, legitimate reuse — which means a
+// concurrent GetStatus/GetMetrics/GetAllMetrics/GetHealth/Factories call
+// (the admin dashboard's middleware-status/metrics endpoints) can
+// genuinely race a BuildChain call on the very same registry, in
+// production, not just in a synthetic test. Before factories/built/metrics
+// were guarded by a mutex, this raced on Go's own unsynchronized
+// concurrent-map-access detector — run with -race, this is exactly the
+// scenario that would trip it; even without -race, concurrent map writes
+// can panic outright ("fatal error: concurrent map read and map write").
+func TestRegistry_ConcurrentBuildChainAndReads(t *testing.T) {
+	registry := NewMiddlewareRegistryV2()
+	if err := registry.RegisterFactory(NewRateLimiterFactory(nil)); err != nil {
+		t.Fatalf("Failed to register rate_limiter factory: %v", err)
+	}
+	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+		t.Fatalf("Failed to register logging factory: %v", err)
+	}
+	specs := []MiddlewareSpec{
+		{Name: "rate_limiter", Config: config.RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 10, BlockMinutes: 5}},
+		{Name: "logging"},
+	}
+
+	const goroutinesPerOp = 10
+	var wg sync.WaitGroup
+	start := func(fn func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fn()
+		}()
+	}
+
+	for i := 0; i < goroutinesPerOp; i++ {
+		start(func() {
+			if _, err := registry.BuildChain(specs); err != nil {
+				t.Errorf("BuildChain: %v", err)
+			}
+		})
+		start(func() { registry.GetStatus() })
+		start(func() { registry.GetAllMetrics() })
+		start(func() { _, _ = registry.GetMetrics("logging") })
+		start(func() { _, _ = registry.GetHealth("rate_limiter") })
+		start(func() { registry.Factories() })
+		start(func() { _ = registry.ValidateSpecs(specs) })
+	}
+	wg.Wait()
 }
