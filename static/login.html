@@ -2,6 +2,33 @@
 <html lang="en">
 <head>
     <script>
+    // sanitizeRedirectPath mirrors session.SanitizeRedirectPath (Go side,
+    // session/redirect.go) — declared here, outside the IIFE below, so the
+    // second <script> block further down the page (the login form's submit
+    // handler) can reuse it too; both are the client-side half of the same
+    // fix, since a `redirect` query/form value reaching either
+    // window.location sink unsanitized is exactly the open-redirect this
+    // closes on the server side.
+    function sanitizeRedirectPath(raw) {
+        if (!raw) return '/';
+        if (raw.charAt(0) !== '/' || raw.indexOf('//') === 0 || raw.indexOf('/\\') === 0) {
+            return '/';
+        }
+        try {
+            // A same-origin relative path resolves to this page's own
+            // origin; a protocol-relative or otherwise absolute value
+            // resolves somewhere else, which the prefix checks above
+            // should already have caught — this is a defense-in-depth
+            // backstop for anything they didn't.
+            if (new URL(raw, window.location.origin).origin !== window.location.origin) {
+                return '/';
+            }
+        } catch (e) {
+            return '/';
+        }
+        return raw;
+    }
+
     // Early check: if already logged in, redirect immediately (avoid redirect loop)
     (function() {
         function getQueryParam(name) {
@@ -19,12 +46,7 @@
             })
             .then(function(data) {
                 if (data && data.authenticated) {
-                    var redirect = getQueryParam('redirect');
-                    if (redirect && redirect !== '') {
-                        window.location.replace(redirect);
-                    } else {
-                        window.location.replace('/');
-                    }
+                    window.location.replace(sanitizeRedirectPath(getQueryParam('redirect')));
                 }
             })
             .catch(function() { /* ignore errors, show login */ });
@@ -146,6 +168,21 @@
         .oauth-github img {
             filter: brightness(0) invert(1); /* Make black SVG logo white */
         }
+        .oauth-microsoft {
+            background-color: #2f2f2f; /* Microsoft's own dark button background */
+            color: #ffffff; /* White text */
+            border: none;
+        }
+        .oauth-facebook {
+            background-color: #1877F2; /* Facebook blue */
+            color: #ffffff; /* White text */
+            border: none;
+        }
+        .oauth-apple {
+            background-color: #000000; /* Apple's own black button background */
+            color: #ffffff; /* White text */
+            border: none;
+        }
         .oauth-other {
             background-color: #6c757d; /* Ensure this rule is not empty */
         }
@@ -212,10 +249,28 @@
                 Login with GitHub
             </a>
             {{end}}
+            {{if .AuthenticationProviders.Microsoft.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/microsoft/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-microsoft">
+                <img src="{{.ManagementPrefix}}/static/microsoft_logo.svg" alt="Microsoft logo">
+                Login with Microsoft
+            </a>
+            {{end}}
+            {{if .AuthenticationProviders.Facebook.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/facebook/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-facebook">
+                <img src="{{.ManagementPrefix}}/static/facebook_logo.svg" alt="Facebook logo">
+                Login with Facebook
+            </a>
+            {{end}}
+            {{if .AuthenticationProviders.Apple.Enabled}}
+            <a href="{{.ManagementPrefix}}/auth/apple/login{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}" class="oauth-provider oauth-apple">
+                <img src="{{.ManagementPrefix}}/static/apple_logo.svg" alt="Apple logo">
+                Login with Apple
+            </a>
+            {{end}}
         </div>
 
         {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled)}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.Microsoft.Enabled .AuthenticationProviders.Facebook.Enabled .AuthenticationProviders.Apple.Enabled)}}
         <div class="separator">
             <span>or</span>
         </div>
@@ -295,13 +350,7 @@
                     })
                     .then(data => {
                         // If we get here and it's not a redirect, check if we have a redirect URL
-                        const redirectUrl = urlEncodedData.get('redirect');
-                        if (redirectUrl && redirectUrl !== '') {
-                            window.location.href = redirectUrl;
-                        } else {
-                            // Default redirect after successful login
-                            window.location.href = '/';
-                        }
+                        window.location.href = sanitizeRedirectPath(urlEncodedData.get('redirect'));
                     })
                     .catch(error => {
                         // Show error message

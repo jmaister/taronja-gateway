@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Test basic request rate limiting behavior
@@ -18,7 +20,7 @@ func TestRateLimiter_RequestLimit(t *testing.T) {
 		MaxErrors:         0,
 		BlockMinutes:      1,
 	}
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
@@ -71,7 +73,7 @@ func TestRateLimiter_ErrorLimit(t *testing.T) {
 		MaxErrors:         2,
 		BlockMinutes:      1,
 	}
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound) // simulate missing resource
@@ -109,7 +111,7 @@ func TestRateLimiter_Disabled(t *testing.T) {
 	cfg := config.RateLimiterConfig{} // zero values
 	assert.False(t, cfg.IsEnabled(), "empty config should report disabled")
 
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("passed"))
@@ -140,7 +142,7 @@ func TestRateLimiter_Combined(t *testing.T) {
 		MaxErrors:         1,
 		BlockMinutes:      1,
 	}
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// alternate between OK and unauthorized
@@ -189,7 +191,7 @@ func TestRateLimiter_VulnerabilityScan(t *testing.T) {
 			BlockMinutes: 1,
 		},
 	}
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -358,7 +360,7 @@ func TestRateLimiter_VulnerabilityScanWildcardMatchesNestedPaths(t *testing.T) {
 			BlockMinutes: 1,
 		},
 	}
-	rl := NewRateLimiter(cfg)
+	rl := NewRateLimiter(cfg, nil)
 
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -386,5 +388,170 @@ func TestRateLimiter_VulnerabilityScanWildcardMatchesNestedPaths(t *testing.T) {
 	req.RemoteAddr = "12.12.12.12:1212"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+}
+
+// --- Persisting blocks to the registry (db.BlockedClientRepository) -------
+
+func TestRateLimiter_RecordsRequestLimitBlockToRegistry(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+
+	cfg := config.RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
+	rl := NewRateLimiter(cfg, repo)
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/foo", nil)
+	req.RemoteAddr = "127.0.0.11:1234"
+
+	// First request passes; the second exceeds RequestsPerMinute and blocks.
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+
+	require.Eventually(t, func() bool {
+		items, total, err := repo.List("", 10, 0)
+		return err == nil && total == 1 && len(items) == 1
+	}, time.Second, 5*time.Millisecond, "expected the block to be recorded to the registry")
+
+	items, _, err := repo.List("", 10, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	bc := items[0]
+	assert.Equal(t, db.BlockReasonRateLimit, bc.Reason)
+	assert.Equal(t, "127.0.0.11", bc.IPAddress)
+	assert.Equal(t, 2, bc.TriggerCount) // the 2nd request is what tripped it
+	assert.Empty(t, bc.Path, "rate_limit trips on an aggregate count, not one specific path")
+	assert.True(t, bc.BlockedUntil.After(bc.BlockedAt))
+}
+
+func TestRateLimiter_RecordsMaxErrorsBlockToRegistry(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+
+	cfg := config.RateLimiterConfig{MaxErrors: 1, BlockMinutes: 1}
+	rl := NewRateLimiter(cfg, repo)
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	req := httptest.NewRequest("GET", "/missing", nil)
+	req.RemoteAddr = "127.0.0.12:1234"
+
+	handler.ServeHTTP(httptest.NewRecorder(), req) // 1st 404, not over MaxErrors yet
+	handler.ServeHTTP(httptest.NewRecorder(), req) // 2nd 404 exceeds MaxErrors=1
+
+	require.Eventually(t, func() bool {
+		items, total, err := repo.List("127.0.0.12", 10, 0)
+		return err == nil && total == 1 && len(items) == 1
+	}, time.Second, 5*time.Millisecond, "expected the block to be recorded to the registry")
+
+	items, _, err := repo.List("127.0.0.12", 10, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, db.BlockReasonMaxErrors, items[0].Reason)
+	assert.Equal(t, 2, items[0].TriggerCount)
+}
+
+func TestRateLimiter_RecordsVulnerabilityScanBlockToRegistry(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+
+	cfg := config.RateLimiterConfig{
+		VulnerabilityScan: config.VulnerabilityScanConfig{
+			URLs:         []string{"/*.php"},
+			Max404:       1,
+			BlockMinutes: 1,
+		},
+	}
+	rl := NewRateLimiter(cfg, repo)
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	req := httptest.NewRequest("GET", "/admin.php", nil)
+	req.RemoteAddr = "127.0.0.13:1234"
+
+	handler.ServeHTTP(httptest.NewRecorder(), req) // 1st scan 404
+	handler.ServeHTTP(httptest.NewRecorder(), req) // 2nd exceeds Max404=1
+
+	require.Eventually(t, func() bool {
+		items, total, err := repo.List("127.0.0.13", 10, 0)
+		return err == nil && total == 1 && len(items) == 1
+	}, time.Second, 5*time.Millisecond, "expected the block to be recorded to the registry")
+
+	items, _, err := repo.List("127.0.0.13", 10, 0)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, db.BlockReasonVulnerabilityScan, items[0].Reason)
+	assert.Equal(t, "/admin.php", items[0].Path)
+	assert.Equal(t, 2, items[0].TriggerCount)
+}
+
+// TestRateLimiter_PrunesBlockedClientsOlderThanRetention is the regression
+// test for the persisted blocked_clients table having no retention/prune
+// mechanism: recordBlock writes a row for every single block and, before
+// this, nothing ever removed one — a gateway under sustained scanner
+// traffic (or just left running for years) would grow that table without
+// bound. pruneBlockedClients must delete rows past the configured
+// retention window and leave everything still inside it alone.
+func TestRateLimiter_PrunesBlockedClientsOlderThanRetention(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+
+	cfg := config.RateLimiterConfig{BlockedClientRetentionDays: 30}
+	rl := NewRateLimiter(cfg, repo)
+	t.Cleanup(rl.Close)
+	require.Equal(t, 30*24*time.Hour, rl.blockedClientRetention)
+
+	now := time.Now().UTC()
+	oldRow := &db.BlockedClient{
+		Reason:       db.BlockReasonRateLimit,
+		TriggerCount: 5,
+		BlockedAt:    now.Add(-31 * 24 * time.Hour), // just past the 30-day window
+		BlockedUntil: now.Add(-31*24*time.Hour + time.Minute),
+	}
+	oldRow.IPAddress = "127.0.0.21"
+	require.NoError(t, repo.Create(oldRow))
+
+	recentRow := &db.BlockedClient{
+		Reason:       db.BlockReasonRateLimit,
+		TriggerCount: 5,
+		BlockedAt:    now.Add(-29 * 24 * time.Hour), // still inside the window
+		BlockedUntil: now.Add(-29*24*time.Hour + time.Minute),
+	}
+	recentRow.IPAddress = "127.0.0.22"
+	require.NoError(t, repo.Create(recentRow))
+
+	_, total, err := repo.List("", 10, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total, "sanity check: both rows should exist before pruning")
+
+	rl.pruneBlockedClients(now)
+
+	items, total, err := repo.List("", 10, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total, "only the row past retention should have been pruned")
+	require.Len(t, items, 1)
+	assert.Equal(t, "127.0.0.22", items[0].IPAddress, "the still-within-retention row must survive")
+}
+
+func TestRateLimiter_NilRepoDoesNotPanicOnBlock(t *testing.T) {
+	// The default for RateLimiterMiddleware's standalone constructor —
+	// blocking must still work with nothing to persist to.
+	cfg := config.RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
+	rl := NewRateLimiter(cfg, nil)
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/foo", nil)
+	req.RemoteAddr = "127.0.0.14:1234"
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	w := httptest.NewRecorder()
+	assert.NotPanics(t, func() { handler.ServeHTTP(w, req) })
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 }

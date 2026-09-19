@@ -10,6 +10,12 @@ import (
 // TrafficMetricRepository interface defines methods for managing request statistics.
 type TrafficMetricRepository interface {
 	Create(stat *TrafficMetric) error
+	// CreateBatch stores multiple request statistic records in a single
+	// database transaction. Used directly by callers that already have a
+	// batch on hand, and by BatchingTrafficMetricRepository to flush what
+	// it has coalesced from many individual Create calls. A nil or empty
+	// slice is a no-op.
+	CreateBatch(stats []*TrafficMetric) error
 	FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error)
 	FindByPath(path string, limit int) ([]TrafficMetric, error)
 	GetAverageResponseTime(startDate, endDate time.Time) (float64, error)
@@ -21,8 +27,21 @@ type TrafficMetricRepository interface {
 	GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error)
 	GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) // NEW
-	GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error)
-	ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error)
+	// GetRequestCountByFingerprint groups by ClientInfo.Fingerprint — the
+	// single, consolidated fingerprint value (see
+	// fingerprint.SelectFingerprint), which may have come from any of the
+	// three algorithms per row. Pair with GetRequestCountByFingerprintType
+	// if the algorithm breakdown matters.
+	GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error)
+	// GetRequestCountByFingerprintType groups by ClientInfo.FingerprintType
+	// ("ja4_tls"/"stable"/"ja4h") — how many recorded requests got each
+	// algorithm, independent of the specific fingerprint values.
+	GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error)
+	ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error)
+	// GetTimeSeries returns request/visitor counts bucketed over time — see
+	// db/timeseries.go for the full doc comment, granularity options, and
+	// range validation (ValidateTimeSeriesRange).
+	GetTimeSeries(startDate, endDate time.Time, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error)
 }
 
 // TrafficMetricRepositoryDB implements TrafficMetricRepository using GORM.
@@ -44,8 +63,62 @@ func (r *TrafficMetricRepositoryDB) Create(stat *TrafficMetric) error {
 	return nil
 }
 
+// createBatchChunkSize bounds how many TrafficMetric rows CreateBatch puts
+// in a single INSERT statement. TrafficMetric has ~30 columns (it embeds
+// ClientInfo), and SQLite rejects a statement with more than a fixed number
+// of bound parameters — 32766 on recent builds, as low as 999 on older
+// ones (modernc.org/sqlite, this project's driver, uses the low default).
+// Above that limit the whole INSERT fails, not just the rows past the
+// limit, so this needs to stay comfortably under it regardless of which
+// limit is in effect: 30 columns × 100 rows = 3000 parameters.
+const createBatchChunkSize = 100
+
+// CreateBatch stores multiple request statistic records in as few
+// INSERT/transactions as fit under SQLite's bound-parameter limit (see
+// createBatchChunkSize) — GORM's CreateInBatches chunks the slice and
+// wraps each chunk in its own transaction — rather than one round trip per
+// record. This is what BatchingTrafficMetricRepository relies on for its
+// whole benefit: on SQLite in particular, every write transaction takes a
+// single process-wide writer lock and (outside WAL mode) an fsync, so N
+// records committed together cost close to one of those instead of N.
+//
+// A batch larger than createBatchChunkSize is valid input, not a caller
+// error: BatchingTrafficMetricRepository buffers Create calls and flushes
+// whatever accumulated, and under a burst the background flush goroutine
+// can fall behind Create's callers (Create itself is just an in-memory
+// append, so a caller never blocks or gets backpressure). CreateInBatches
+// handles that gracefully — several chunked INSERTs — where a single
+// unchunked Create(&stats) would either fail outright ("too many SQL
+// variables") or, on a build with a higher limit, still hold the writer
+// lock for one very large transaction.
+func (r *TrafficMetricRepositoryDB) CreateBatch(stats []*TrafficMetric) error {
+	if len(stats) == 0 {
+		return nil
+	}
+	if err := r.DB.CreateInBatches(&stats, createBatchChunkSize).Error; err != nil {
+		log.Printf("Error creating batch of %d request statistics: %v", len(stats), err)
+		return err
+	}
+	return nil
+}
+
 // FindByDateRange retrieves statistics within a date range.
 func (r *TrafficMetricRepositoryDB) FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error) {
+	// .UTC() here, and at the top of every other method in this file that
+	// takes a date range: `timestamp BETWEEN ? AND ?` compares the stored
+	// value's text representation against these bound parameters' own text
+	// representation (modernc.org/sqlite's driver binds a time.Time as its
+	// default .String() form, and the `timestamp` column has TEXT affinity
+	// — there's no numeric/chronological comparison happening underneath).
+	// TrafficMetric.BeforeCreate always normalizes what gets *stored* to
+	// UTC; without normalizing the query bounds the same way, a caller
+	// passing a non-UTC time.Time (e.g. plain time.Now(), which carries the
+	// server's local zone) would compare "2026-...+0000 UTC" stored values
+	// against "2026-...+0100 BST" bounds — different strings for the same
+	// instant, silently matching the wrong rows (confirmed by hand: this
+	// caused three existing tests to fail the moment BeforeCreate started
+	// normalizing storage without this normalizing the read side too).
+	startDate, endDate = startDate.UTC(), endDate.UTC()
 	var stats []TrafficMetric
 	err := r.DB.Where("timestamp BETWEEN ? AND ?", startDate, endDate).Find(&stats).Error
 	if err != nil {
@@ -68,6 +141,7 @@ func (r *TrafficMetricRepositoryDB) FindByPath(path string, limit int) ([]Traffi
 
 // GetAverageResponseTime calculates the average response time within a date range.
 func (r *TrafficMetricRepositoryDB) GetAverageResponseTime(startDate, endDate time.Time) (float64, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var result struct {
 		Average float64
 	}
@@ -87,6 +161,7 @@ func (r *TrafficMetricRepositoryDB) GetAverageResponseTime(startDate, endDate ti
 
 // GetRequestCountByStatus returns request counts grouped by status code within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByStatus(startDate, endDate time.Time) (map[int]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		HttpStatus int
 		Count      int
@@ -113,6 +188,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByStatus(startDate, endDate t
 
 // GetTotalRequestCount returns the total number of requests within a date range.
 func (r *TrafficMetricRepositoryDB) GetTotalRequestCount(startDate, endDate time.Time) (int64, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var count int64
 	err := r.DB.Model(&TrafficMetric{}).
 		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
@@ -128,6 +204,7 @@ func (r *TrafficMetricRepositoryDB) GetTotalRequestCount(startDate, endDate time
 
 // GetAverageResponseSize calculates the average response size within a date range.
 func (r *TrafficMetricRepositoryDB) GetAverageResponseSize(startDate, endDate time.Time) (float64, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var result struct {
 		Average float64
 	}
@@ -147,6 +224,7 @@ func (r *TrafficMetricRepositoryDB) GetAverageResponseSize(startDate, endDate ti
 
 // GetRequestCountByCountry returns request counts grouped by country within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByCountry(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		Country string
 		Count   int
@@ -173,6 +251,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByCountry(startDate, endDate 
 
 // GetRequestCountByDeviceType returns request counts grouped by device type within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByDeviceType(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		DeviceFamily string
 		Count        int
@@ -199,6 +278,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByDeviceType(startDate, endDa
 
 // GetRequestCountByPlatform returns request counts grouped by platform within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		OSFamily string
 		Count    int
@@ -225,6 +305,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByPlatform(startDate, endDate
 
 // GetRequestCountByBrowser returns request counts grouped by browser within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		BrowserFamily string
 		Count         int
@@ -251,6 +332,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByBrowser(startDate, endDate 
 
 // GetRequestCountByUser returns request counts grouped by user within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
 		Username string
 		Count    int
@@ -277,34 +359,82 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate tim
 	return userCounts, nil
 }
 
-// GetRequestCountByJA4Fingerprint returns request counts grouped by JA4 fingerprint within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByJA4Fingerprint(startDate, endDate time.Time) (map[string]int, error) {
+// GetRequestCountByFingerprint returns request counts grouped by the
+// consolidated client fingerprint (ClientInfo.Fingerprint) within a date
+// range. A given key may be a JA4H, TLS JA4, or stable-fingerprint value
+// depending on what was available per request — see
+// fingerprint.SelectFingerprint and GetRequestCountByFingerprintType if the
+// algorithm breakdown matters.
+func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
 	var results []struct {
-		JA4Fingerprint string
-		Count          int
+		Fingerprint string
+		Count       int
 	}
 
 	err := r.DB.Model(&TrafficMetric{}).
-		Select("ja4_fingerprint, COUNT(*) as count").
+		Select("fingerprint, COUNT(*) as count").
 		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("ja4_fingerprint").
+		Group("fingerprint").
 		Scan(&results).Error
 
 	if err != nil {
-		log.Printf("Error getting request count by JA4 fingerprint: %v", err)
+		log.Printf("Error getting request count by fingerprint: %v", err)
 		return nil, err
 	}
 
-	ja4Counts := make(map[string]int)
+	counts := make(map[string]int)
 	for _, result := range results {
-		ja4Counts[result.JA4Fingerprint] = result.Count
+		counts[result.Fingerprint] = result.Count
 	}
 
-	return ja4Counts, nil
+	return counts, nil
 }
 
-// ListRequestDetails returns all request details in a date range (or all if nil)
-func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time) ([]TrafficMetricWithUser, error) {
+// GetRequestCountByFingerprintType returns request counts grouped by which
+// fingerprinting algorithm actually produced a value
+// (ClientInfo.FingerprintType — fingerprint.TypeJA4TLS/TypeStable/TypeJA4H)
+// within a date range.
+func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error) {
+	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
+	var results []struct {
+		FingerprintType string
+		Count           int
+	}
+
+	err := r.DB.Model(&TrafficMetric{}).
+		Select("fingerprint_type, COUNT(*) as count").
+		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
+		Group("fingerprint_type").
+		Scan(&results).Error
+
+	if err != nil {
+		log.Printf("Error getting request count by fingerprint type: %v", err)
+		return nil, err
+	}
+
+	counts := make(map[string]int)
+	for _, result := range results {
+		counts[result.FingerprintType] = result.Count
+	}
+
+	return counts, nil
+}
+
+// ListRequestDetails returns request details in a date range (or all if nil),
+// optionally filtered to only static-asset requests (isStatic true), only
+// non-static requests (isStatic false), or both (isStatic nil).
+func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error) {
+	// see FindByDateRange's comment for why
+	if start != nil {
+		utcStart := start.UTC()
+		start = &utcStart
+	}
+	if end != nil {
+		utcEnd := end.UTC()
+		end = &utcEnd
+	}
+
 	var stats []TrafficMetricWithUser
 	query := r.DB.Model(&TrafficMetric{}).Preload("User")
 	if start != nil && end != nil {
@@ -313,6 +443,9 @@ func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time) ([
 		query = query.Where("timestamp >= ?", *start)
 	} else if end != nil {
 		query = query.Where("timestamp <= ?", *end)
+	}
+	if isStatic != nil {
+		query = query.Where("is_static_asset = ?", *isStatic)
 	}
 	err := query.Order("timestamp DESC").Find(&stats).Error
 	if err != nil {

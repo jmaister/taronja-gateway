@@ -19,6 +19,21 @@ func TestMain(m *testing.M) {
 	db.SetupTestDB("TestSession")
 	testSessionRepo = db.NewSessionRepositoryDB(db.GetConnection())
 	testSessionStore = NewSessionStore(testSessionRepo, 24*time.Hour)
+
+	// httptest.NewRequest defaults every request's RemoteAddr to
+	// "192.0.2.1:1234", and NewSession (via NewClientInfo) looks up geo
+	// data for whatever IP it's given. Seeding one permanent, successful
+	// cache entry here — for the whole package's test binary, one
+	// TestMain covers every _test.go file in it — means no test in this
+	// package ever makes a real network call for it: slow even when the
+	// geolocation API is reachable, and, as found fixing
+	// GetGeoDataFromIP's missing negative-caching, capable of hanging for
+	// over an hour when it isn't (see geoSuccessTTL/geoFailureTTL in
+	// ipgeo.go).
+	ipCache.mutex.Lock()
+	ipCache.cache["192.0.2.1"] = geoCacheEntry{data: GeoData{Country: "Testland"}, at: time.Now()}
+	ipCache.mutex.Unlock()
+
 	exitVal := m.Run()
 	os.Exit(exitVal)
 }
@@ -31,6 +46,9 @@ func TestGenerateToken(t *testing.T) {
 }
 
 func TestNewAndValidateSession(t *testing.T) {
+	// The assert.WithinDuration below used to race NewSession's real,
+	// synchronous geo lookup — see TestMain's ipCache seed for why that
+	// no longer happens.
 	user := &db.User{ID: "test-user-id", Username: "testuser", Email: "test@example.com"}
 	req := httptest.NewRequest("GET", "/", nil) // Mock request for NewSession
 
@@ -227,20 +245,27 @@ func TestFindSessionsByUserID(t *testing.T) {
 	// as per the SessionStore interface and SessionStoreDB implementation.
 	assert.Len(t, userSessions, 4, "Should retrieve all sessions (active, expired, closed) for the user")
 
-	tokensFound := map[string]bool{
-		s1.Token:      false,
-		s2.Token:      false,
-		sExp.Token:    false,
-		sClosed.Token: false,
+	// Session.Token is gorm:"-" (never persisted, see db.Session's doc
+	// comment) and its hash is one-way, so a bulk fetch like
+	// GetSessionsByUserID — unlike FindSessionByToken, which has the raw
+	// token as an input to set it from — has no raw token to populate
+	// .Token with. Match returned rows by gorm.Model's own "ID" column
+	// instead, which is a real, always-persisted column.
+	idsFound := map[uint]bool{
+		s1.ID:      false,
+		s2.ID:      false,
+		sExp.ID:    false,
+		sClosed.ID: false,
 	}
 
 	for _, s := range userSessions {
 		assert.Equal(t, userID, s.UserID)
-		tokensFound[s.Token] = true
+		assert.Empty(t, s.Token, "bulk-fetched sessions cannot recover the raw token from its one-way hash")
+		idsFound[s.ID] = true
 		// Optionally, check session state based on what FindSessionsByUserID is expected to return
-		if s.Token == sClosed.Token {
+		if s.ID == sClosed.ID {
 			assert.NotNil(t, s.ClosedOn, "Closed session should have ClosedOn set")
-		} else if s.Token == sExp.Token {
+		} else if s.ID == sExp.ID {
 			// After ValidateSession on an expired token, it should be marked as closed.
 			assert.NotNil(t, s.ClosedOn, "Expired session (after validation attempt) should have ClosedOn set")
 			assert.True(t, s.ValidUntil.Before(time.Now()), "Expired session should have ValidUntil in the past")
@@ -249,7 +274,7 @@ func TestFindSessionsByUserID(t *testing.T) {
 			assert.True(t, s.ValidUntil.After(time.Now()), "Active session should have ValidUntil in the future")
 		}
 	}
-	for token, found := range tokensFound {
-		assert.True(t, found, "Session with token %s not found", token)
+	for id, found := range idsFound {
+		assert.True(t, found, "Session with id %d not found", id)
 	}
 }

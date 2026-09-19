@@ -89,23 +89,9 @@ type userCounterScan struct {
 
 // toUserCounterSummary converts userCounterScan to UserCounterSummary
 func (u *userCounterScan) toUserCounterSummary() (*UserCounterSummary, error) {
-	// Try parsing with RFC3339 first (SQLite default), then fallback to Go format
-	var lastUpdated time.Time
-	var err error
-	layouts := []string{
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02 15:04:05.999999 -0700 MST",
-		"2006-01-02 15:04:05.999999-07:00",
-		"2006-01-02 15:04:05-07:00",
-		"2006-01-02 15:04:05",
-	}
-	for _, layout := range layouts {
-		lastUpdated, err = time.Parse(layout, u.LastUpdated)
-		if err == nil {
-			break
-		}
-	}
+	// See parseStoredTimestamp's comment for why this shares its layout
+	// list rather than keeping its own.
+	lastUpdated, err := parseStoredTimestamp(u.LastUpdated)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse LastUpdated for user %s: %w", u.UserID, err)
 	}
@@ -140,8 +126,8 @@ func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*Counte
 			UserID:      userID,
 			CounterID:   counterID,
 			Balance:     0,
-			LastUpdated: time.Now(), // Use current time for users with no history
-			HasHistory:  false,      // User has no transaction history
+			LastUpdated: time.Now().UTC(), // Use current time (UTC, matching the CreatedAt this stands in for) for users with no history
+			HasHistory:  false,            // User has no transaction history
 		}, nil
 	}
 

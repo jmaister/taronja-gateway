@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useLocation } from 'react-router-dom';
@@ -17,6 +17,7 @@ const getPageTitleFromPath = (path: string): string => {
   if (path.startsWith('/statistics/requests-details')) return 'Request Details';
   if (path.startsWith('/statistics/rate-limiter')) return 'Rate Limiter Stats';
   if (path.startsWith('/statistics')) return 'Statistics';
+  if (path.startsWith('/middleware')) return 'Middleware';
   if (path.startsWith('/profile')) return 'Profile Settings';
   if (path.startsWith('/home')) return 'Home';
   // Add more specific titles as needed
@@ -28,11 +29,11 @@ const MainLayout = ({ children }: MainLayoutProps) => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
-  const [pageTitle, setPageTitle] = useState(getPageTitleFromPath(location.pathname));
-
-  useEffect(() => {
-    setPageTitle(getPageTitleFromPath(location.pathname));
-  }, [location.pathname]);
+  // Derived entirely from location.pathname — no need to also hold it in
+  // state and sync it via an effect (that pattern causes an extra render
+  // on every route change, and is exactly what eslint-plugin-react-hooks'
+  // set-state-in-effect rule flags).
+  const pageTitle = getPageTitleFromPath(location.pathname);
 
   const toggleMobileSidebar = () => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);

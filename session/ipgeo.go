@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,11 +21,123 @@ func SetGeolocationConfig(geoConfig *config.GeolocationConfig) {
 	globalGeoConfig = geoConfig
 }
 
+// geoSuccessTTL and geoFailureTTL are how long GetGeoDataFromIP trusts a
+// cached result before calling the geolocation API again. A successful
+// lookup is cached for a long time — an IP's location essentially never
+// changes. A *failed* lookup — the API unreachable, rate-limiting, timing
+// out — is cached too, but only briefly: long enough that repeated
+// requests from the same client during an outage don't each pay the full
+// network timeout (5s, see getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate),
+// short enough that service recovers within a minute of the API coming
+// back. Before this, a failure was never cached at all, so every single
+// request from an IP the API couldn't be reached for paid that 5s penalty
+// — confirmed directly: 1,000 requests from the same test IP, with the
+// free API unreachable from the sandbox this was found in, turned
+// gateway/performance_test.go's TestMemoryUsage into an 80+ minute hang
+// instead of a sub-second test.
+const (
+	geoSuccessTTL = 7 * 24 * time.Hour
+	geoFailureTTL = time.Minute
+)
+
+// geoCacheEntry holds one cached GetGeoDataFromIP result — either outcome,
+// not just success (see geoSuccessTTL/geoFailureTTL above).
+type geoCacheEntry struct {
+	data GeoData
+	err  error
+	at   time.Time
+}
+
+// expired reports whether e should be treated as a cache miss as of t —
+// geoFailureTTL after it was recorded if it was a failure, geoSuccessTTL
+// after if it was a success.
+func (e geoCacheEntry) expired(t time.Time) bool {
+	ttl := geoSuccessTTL
+	if e.err != nil {
+		ttl = geoFailureTTL
+	}
+	return t.Sub(e.at) >= ttl
+}
+
 // IPGeoCache provides caching to avoid excessive API calls for the same IP
 type IPGeoCache struct {
-	cache map[string]GeoData
+	cache map[string]geoCacheEntry
 	mutex sync.RWMutex
-	ttl   time.Duration
+}
+
+// ipCacheMaxEntries bounds ipCache.cache's size. Before this, nothing ever
+// removed an entry from the map at read or write time — every distinct
+// value GetGeoDataFromIP was ever called with stayed cached forever — so a
+// remote, unauthenticated client could grow it without limit simply by
+// presenting many distinct "client IP" values: trivial over IPv6, or via a
+// spoofed X-Forwarded-For entry in the common reverse-proxy topology this
+// gateway documents as normal (see GetClientIP's own doc comment). 50,000
+// entries is generous for any real deployment's distinct-visitor diversity
+// — a few tens of MB at worst, not unbounded — while giving an attacker
+// nothing to gain by exceeding it: once full, a genuinely new value simply
+// isn't cached rather than displacing something else, and
+// ipCacheCleanupInterval's periodic sweep reclaims room from real, expired
+// traffic on an ordinary schedule.
+const ipCacheMaxEntries = 50_000
+
+// ipCacheCleanupInterval is how often the background sweep (see
+// startIPCacheCleanup) removes entries geoCacheEntry.expired considers
+// stale — independent of geoSuccessTTL/geoFailureTTL, which only ever
+// governed whether a *read* treats a cached entry as a miss, never whether
+// it gets removed. Paired with ipCacheMaxEntries: the cap bounds growth
+// within one interval, the sweep bounds it thereafter.
+const ipCacheCleanupInterval = 10 * time.Minute
+
+var ipCacheCleanupOnce sync.Once
+
+// startIPCacheCleanup lazily starts ipCache's background sweep on first
+// use, not at package init — a process that imports this package without
+// ever calling GetGeoDataFromIP (most tests) never spins up a goroutine it
+// has no way to stop. This is deliberately a forever-running,
+// process-lifetime goroutine rather than one with a Close() method like
+// middleware.RateLimiter's: ipCache is a package-level singleton rebuilt
+// only when the process restarts, with no equivalent per-instance/
+// per-reload lifecycle to leak against.
+func startIPCacheCleanup() {
+	ipCacheCleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(ipCacheCleanupInterval)
+			defer ticker.Stop()
+			for now := range ticker.C {
+				sweepExpiredGeoCacheEntries(now)
+			}
+		}()
+	})
+}
+
+// sweepExpiredGeoCacheEntries removes every ipCache entry geoCacheEntry.expired
+// considers stale as of now. Split out from startIPCacheCleanup's ticker loop
+// so a test can exercise one sweep pass directly, without waiting on
+// ipCacheCleanupInterval or depending on the background goroutine at all.
+func sweepExpiredGeoCacheEntries(now time.Time) {
+	ipCache.mutex.Lock()
+	defer ipCache.mutex.Unlock()
+	for ip, entry := range ipCache.cache {
+		if entry.expired(now) {
+			delete(ipCache.cache, ip)
+		}
+	}
+}
+
+// cacheGeoResult records the outcome of looking up ip — success or failure
+// alike, see geoSuccessTTL/geoFailureTTL — unless ip is a genuinely new key
+// and the cache is already at ipCacheMaxEntries, in which case the result is
+// still returned to this one caller but not retained for the next. See that
+// constant's doc comment for why a full cache drops new entries instead of
+// evicting an old one to make room. Split out from GetGeoDataFromIP so a
+// test can exercise the capping behavior directly, without needing a real
+// network call to produce a genuine cache miss.
+func cacheGeoResult(ip string, geoData GeoData, err error) {
+	ipCache.mutex.Lock()
+	defer ipCache.mutex.Unlock()
+	if _, exists := ipCache.cache[ip]; exists || len(ipCache.cache) < ipCacheMaxEntries {
+		ipCache.cache[ip] = geoCacheEntry{data: geoData, err: err, at: time.Now()}
+	}
 }
 
 // GeoData holds the geolocation data for an IP
@@ -38,13 +151,36 @@ type GeoData struct {
 	Continent    string
 	ZipCode      string
 	FormattedLoc string // Formatted location string for display
-	Timestamp    time.Time
 }
 
-// Global cache instance with 7-day TTL
+// Global cache instance
 var ipCache = &IPGeoCache{
-	cache: make(map[string]GeoData),
-	ttl:   7 * 24 * time.Hour,
+	cache: make(map[string]geoCacheEntry),
+}
+
+// isNonRoutable reports whether ip is loopback, private (RFC 1918 /
+// RFC 4193), link-local, or unspecified ("0.0.0.0"/"::") — none of which a
+// public geolocation API can meaningfully answer for, and none of which
+// should ever be sent to one. Parses the address with net.ParseIP rather
+// than matching a string prefix: the "127."/"localhost" check this
+// replaced only ever caught IPv4 loopback, so a deployment behind a
+// reverse proxy on the same private network — a normal, common shape for
+// this gateway — sent every internal client's real RFC 1918 address
+// (192.168.x.x, 10.x.x.x, 172.16-31.x.x) straight to the geolocation API,
+// which naturally has no idea what to do with a non-routable address and
+// returned an error for every single one of them, logged on every request.
+// A malformed value (not a real IP at all) falls through to a real lookup
+// attempt rather than being silently treated as non-routable here — in
+// practice GetGeoDataFromIP, this function's only caller, already rejects
+// a malformed value itself before ever reaching this check (see its own
+// net.ParseIP validation), so this only matters to a caller that skips
+// that validation and calls isNonRoutable directly.
+func isNonRoutable(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast() || parsed.IsUnspecified()
 }
 
 // GetGeoDataFromIP attempts to get comprehensive geolocation data for an IP address
@@ -56,19 +192,34 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 	if ip == "" {
 		return GeoData{}, fmt.Errorf("IP address is empty")
 	}
-	// Check if IP is localhost or 127.x.x.x
-	if strings.Index(ip, "127.") == 0 || strings.Index(ip, "localhost") == 0 {
-		return GeoData{}, nil // Return empty GeoData for localhost or 127.x.x.x
+	// getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate build their request
+	// URL with fmt.Sprintf, embedding ip verbatim — without this check, a
+	// caller-supplied value that isn't a real IP address at all (e.g.
+	// containing "/", "?", or "#") would be sent straight into that URL
+	// instead of being rejected up front, letting whatever produced it
+	// redirect this gateway's own outbound request to an unintended path
+	// or host on the geolocation API's domain. Validating it's a
+	// syntactically real IP address first closes that off regardless of
+	// where ip originated (GetClientIP's XFF handling, a caller passing
+	// one through directly, etc.).
+	if net.ParseIP(ip) == nil {
+		return GeoData{}, fmt.Errorf("invalid IP address: %q", ip)
+	}
+	if isNonRoutable(ip) {
+		return GeoData{}, nil // nothing a public geo API could ever answer for
 	}
 
-	// First check the cache
+	startIPCacheCleanup()
+
+	// First check the cache — a hit, success or failure, is returned as-is
+	// without calling the API again. See geoSuccessTTL/geoFailureTTL for
+	// why a failure is cached too, just briefly.
 	ipCache.mutex.RLock()
-	cachedData, found := ipCache.cache[ip]
+	entry, found := ipCache.cache[ip]
 	ipCache.mutex.RUnlock()
 
-	// If found in cache and not expired, use the cached data
-	if found && time.Since(cachedData.Timestamp) < ipCache.ttl {
-		return cachedData, nil
+	if found && !entry.expired(time.Now()) {
+		return entry.data, entry.err
 	}
 
 	// Check if we have an API key for iplocate.io
@@ -81,15 +232,11 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 		geoData, err = getGeoDataFromFreeIPAPI(ip)
 	}
 
+	cacheGeoResult(ip, geoData, err)
+
 	if err != nil {
 		return GeoData{}, err
 	}
-
-	// Update the cache
-	ipCache.mutex.Lock()
-	ipCache.cache[ip] = geoData
-	ipCache.mutex.Unlock()
-
 	return geoData, nil
 }
 
@@ -134,7 +281,6 @@ func getGeoDataFromFreeIPAPI(ip string) (GeoData, error) {
 		Region:      result.RegionName,
 		Continent:   result.Continent,
 		ZipCode:     result.ZipCode,
-		Timestamp:   time.Now(),
 	}
 
 	formatGeoLocation(&geoData)
@@ -190,7 +336,6 @@ func getGeoDataFromIPLocate(ip, apiKey string) (GeoData, error) {
 		Region:      result.Subdivision,
 		Continent:   result.Continent,
 		ZipCode:     result.PostalCode,
-		Timestamp:   time.Now(),
 	}
 
 	formatGeoLocation(&geoData)

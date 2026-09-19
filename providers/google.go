@@ -23,9 +23,9 @@ type GoogleUserDataFetcher struct {
 	OAuthConfig *oauth2.Config
 }
 
-func (f *GoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (f *GoogleUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	// Make a request to the Google userinfo API using the access token
-	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
+	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
 	if err != nil {
 		return nil, err
 	}

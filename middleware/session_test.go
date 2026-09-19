@@ -643,6 +643,7 @@ func TestOperationWithNoSecurity(t *testing.T) {
 			"LogoutUser",
 			"HealthCheck",
 			"GetOpenApiYaml",
+			"RespondToNotificationByToken",
 		}
 
 		assert.Equal(t, expectedOperations, OperationWithNoSecurity)
