@@ -228,9 +228,14 @@ current schema (the `notification.email.smtp.*` block became
 `notification.email.*` directly — see below). Add `version: 1` once you've
 migrated to declare your config current going forward.
 
-**The gateway refuses to start against an outdated (or undeclared) config
-file.** `tg run` (and `tg middleware list`) fail immediately with an error
-telling you what to do:
+**The gateway refuses to start unless the config file's version exactly
+matches what the binary supports** — outdated, undeclared, *and* newer than
+supported all fail the same way: a version mismatch means this binary can't
+be sure it understands the file correctly, in either direction. `tg run`
+(and `tg middleware list`) fail immediately with an error telling you what
+to do.
+
+An outdated or undeclared file:
 
 ```
 FATAL: Failed to load configuration: config file 'config.yaml' has no declared version (treated as pre-v1.0.0), but this gateway requires version 1
@@ -241,6 +246,21 @@ Run this to upgrade it (it prints the migrated config; redirect it to a file):
 
 Then point --config at the new file.
 ```
+
+A config newer than this binary supports (e.g. after a rollback to an older
+gateway version):
+
+```
+FATAL: Failed to load configuration: config file 'config.yaml' declares version 2, newer than this gateway version supports (1)
+
+This gateway binary predates that config schema version and can't guarantee it
+honors every setting the file relies on. Upgrade the gateway binary to one that
+supports config schema version 2 or newer, then try again.
+```
+
+There's no `tg migrate`-style fix for that second case — a migration only
+ever moves a config forward, so nothing can downgrade one back down. The
+only real remedy is upgrading the gateway binary itself.
 
 `tg migrate` **prints** the migrated config to stdout — it never writes a
 file itself, and never touches the original. Redirect the output to save

@@ -261,16 +261,22 @@ func TestLoadConfig_CurrentVersionFile_Succeeds(t *testing.T) {
 	assert.Equal(t, CurrentConfigVersion, *cfg.Version)
 }
 
-func TestLoadConfig_NewerVersionThanSupported_ProceedsWithWarning(t *testing.T) {
+// TestLoadConfig_NewerVersionThanSupported_Fails covers the same "refuse
+// to start" policy as the too-old direction: an older gateway binary has
+// no way to know it actually honors every field a newer config relies on,
+// so it must not proceed silently — this used to just log a warning and
+// run anyway, which is exactly the failure mode a declared schema version
+// exists to prevent.
+func TestLoadConfig_NewerVersionThanSupported_Fails(t *testing.T) {
 	raw := "version: 99\n" + minimalTestConfigYAML
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
 
-	cfg, err := LoadConfig(path)
-	require.NoError(t, err, "a newer-than-supported version should log a warning, not fail")
-	require.NotNil(t, cfg.Version)
-	assert.Equal(t, 99, *cfg.Version, "an unsupported newer version should be left as declared, not overwritten")
+	_, err := LoadConfig(path)
+	require.Error(t, err, "a newer-than-supported version must refuse to start, not silently proceed")
+	assert.Contains(t, err.Error(), "declares version 99")
+	assert.Contains(t, err.Error(), "Upgrade the gateway binary", "the remedy for this direction is upgrading the binary, not tg migrate")
 }
 
 // TestLoadConfig_NeverWritesFiles is the direct regression test for

@@ -217,12 +217,11 @@ func setTopLevelVersionField(raw []byte, version int) []byte {
 
 // checkConfigVersion logs cfg's declared config schema version — or that
 // none was declared, in which case it's treated as legacyConfigVersion, not
-// ignored — and returns an error if that's older than CurrentConfigVersion:
-// the gateway must not run against an outdated config file (see
-// doc/refactor01.md's config versioning section — this used to migrate the
-// file automatically instead of refusing to start, but a silently-rewritten
-// config someone might not notice was the wrong tradeoff). The error
-// message tells the user to run `tg migrate` rather than leaving them to
+// ignored — and returns an error if that doesn't exactly match
+// CurrentConfigVersion, in either direction: the gateway must not run
+// against a config file it can't be sure it fully understands. The error
+// message tells the user what to do — run `tg migrate` for an older file,
+// upgrade the gateway binary for a newer one — rather than leaving them to
 // guess.
 //
 // An undeclared version is NOT accepted as "already fine": every config
@@ -236,9 +235,15 @@ func setTopLevelVersionField(raw []byte, version int) []byte {
 // comment for why nil and an explicit "version: 1" are still tracked as
 // distinct states even though both compare the same way here.
 //
-// A version *newer* than this build supports is logged as a warning, not an
-// error — there's no way to downgrade a config, and refusing to start over a
-// merely-unrecognized newer field would be more disruptive than useful.
+// A version *newer* than this build supports refuses to start too, not
+// just a warning: an older binary has no way to know it actually honors
+// every field a newer config relies on, so proceeding risks silently
+// ignoring a setting the config author expected to take effect — exactly
+// the failure mode a declared schema version exists to catch. There's no
+// `tg migrate`-style fix for this direction, though — a migration only
+// ever moves a config forward, so nothing can downgrade one — the only
+// real remedy is upgrading the gateway binary itself to one that
+// recognizes the file's version.
 func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 	fileVersion := declaredOrLegacyVersion(cfg.Version)
 	if cfg.Version == nil {
@@ -248,9 +253,13 @@ func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 	}
 
 	if fileVersion > CurrentConfigVersion {
-		log.Printf("Warning: config file '%s' declares version %d, newer than this gateway version supports (%d). Proceeding, but some settings may not be recognized.",
-			configPath, fileVersion, CurrentConfigVersion)
-		return nil
+		return fmt.Errorf(
+			"config file '%s' declares version %d, newer than this gateway version supports (%d)\n\n"+
+				"This gateway binary predates that config schema version and can't guarantee it\n"+
+				"honors every setting the file relies on. Upgrade the gateway binary to one that\n"+
+				"supports config schema version %d or newer, then try again.",
+			configPath, fileVersion, CurrentConfigVersion, fileVersion,
+		)
 	}
 	if fileVersion < CurrentConfigVersion {
 		declared := fmt.Sprintf("is version %d", fileVersion)
