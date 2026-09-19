@@ -133,6 +133,34 @@ func allowedRedirectHosts(cfg *config.GatewayConfig) map[string]bool {
 	return hosts
 }
 
+// trustedForwardedHost returns r.Host for use as the outbound
+// X-Forwarded-Host value the reverse-proxy director sends to a backend, or
+// "" if it shouldn't be forwarded at all.
+//
+// Nothing about routing in this gateway depends on the incoming Host
+// header — every route matches purely on request path — so before this,
+// a direct client's own, entirely unverified Host header was forwarded to
+// the backend as fact. A backend that (reasonably) trusts its own
+// gateway's X-Forwarded-Host to build absolute URLs (a password-reset
+// link, an OAuth redirect, a cache key) had no way to tell that value
+// apart from one the gateway operator actually configured.
+//
+// allowedHosts is allowedRedirectHosts(cfg) — the same known-good set
+// httpsRedirectHandler already validates a forged Host header against for
+// exactly this reason. An empty allowedHosts (nothing configured to
+// validate against — see that function) falls back to forwarding r.Host
+// unchanged, matching today's existing behavior, rather than dropping the
+// header for every deployment that hasn't set server.url/ACME domains.
+func trustedForwardedHost(r *http.Request, allowedHosts map[string]bool) string {
+	if len(allowedHosts) == 0 {
+		return r.Host
+	}
+	if allowedHosts[strings.ToLower(requestHost(r))] {
+		return r.Host
+	}
+	return ""
+}
+
 // requestHost returns r.Host with any port stripped, tolerant of a bare
 // host with no port at all (the common case for r.Host on a plain HTTP
 // request without an explicit port) — net.SplitHostPort itself errors on

@@ -263,3 +263,71 @@ func TestGatewayForwardedProto(t *testing.T) {
 		})
 	}
 }
+
+// TestGatewayForwardedHost is the regression test for the needs-validation
+// item this closes: nothing about routing in this gateway depends on the
+// incoming Host header (every route matches purely on path), so a direct
+// client's own, entirely unverified Host header used to be forwarded to
+// the backend as X-Forwarded-Host unchanged — a live Host-header-poisoning
+// path into any backend that builds absolute URLs (a password-reset link,
+// an OAuth redirect, a cache key) from it. Also covers a request that
+// already carries a client-supplied X-Forwarded-Host of its own: a plain
+// req.Header.Set from a bare Set-Header-if-trusted implementation wouldn't
+// have cleared it in the untrusted case, since httputil.ReverseProxy
+// clones the incoming request's headers verbatim before the director ever
+// runs.
+func TestGatewayForwardedHost(t *testing.T) {
+	tests := []struct {
+		name        string
+		serverURL   string // configured server.url — "" means nothing configured
+		requestHost string
+		want        string // expected X-Forwarded-Host at the backend; "" means absent
+	}{
+		{"no server.url configured: forwarded unchanged (today's permissive default)", "", "whatever-host-a-client-sent.example", "whatever-host-a-client-sent.example"},
+		{"matching host is forwarded", "https://gw.example.com", "gw.example.com", "gw.example.com"},
+		{"non-matching host is dropped, not forwarded", "https://gw.example.com", "evil.example", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var receivedHost string
+			var receivedHeaderPresent bool
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedHost = r.Header.Get("X-Forwarded-Host")
+				_, receivedHeaderPresent = r.Header["X-Forwarded-Host"]
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer backend.Close()
+
+			gwConfig := &config.GatewayConfig{
+				Server:     config.ServerConfig{Host: "localhost", Port: 0, URL: tt.serverURL},
+				Management: config.ManagementConfig{Prefix: "/admin"},
+				Routes: []config.RouteConfig{
+					{
+						Name:           "HostTest",
+						From:           "/host",
+						To:             []string{backend.URL},
+						Authentication: config.AuthenticationConfig{Enabled: false},
+					},
+				},
+			}
+			gw, err := NewGatewayWithDependencies(gwConfig, nil, deps.NewTest())
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, "/host/", nil)
+			req.Host = tt.requestHost
+			// A client-supplied X-Forwarded-Host of its own, to prove the
+			// untrusted case actually clears it rather than letting
+			// ReverseProxy's own header-cloning pass it through unchanged.
+			req.Header.Set("X-Forwarded-Host", "client-supplied-value.example")
+			rw := httptest.NewRecorder()
+			gw.handler.ServeHTTP(rw, req)
+
+			require.Equal(t, http.StatusOK, rw.Code)
+			if tt.want == "" {
+				assert.False(t, receivedHeaderPresent, "X-Forwarded-Host must be absent, not just empty, for an untrusted host")
+			} else {
+				assert.Equal(t, tt.want, receivedHost)
+			}
+		})
+	}
+}

@@ -608,6 +608,12 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	}
 	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name, transport)
 
+	// Read once here, same as transport above — routes are re-registered on
+	// every config reload, so this reflects each reload's own config rather
+	// than going stale. See trustedForwardedHost's doc comment for what
+	// this actually gates.
+	allowedHosts := allowedRedirectHosts(g.currentConfig())
+
 	// Store the original director
 	originalDirector := proxy.Director
 
@@ -641,7 +647,22 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 
 		// Set forwarded headers
-		req.Header.Set("X-Forwarded-Host", req.Host)
+		//
+		// trustedForwardedHost only forwards req.Host when it's a hostname
+		// this gateway is actually configured to be reached by — otherwise
+		// the header is dropped rather than forwarding whatever a direct
+		// client's own Host header claimed. Without this, any client could
+		// set an arbitrary Host on their request (nothing about routing in
+		// this gateway depends on it — every route matches purely on path)
+		// and have it forwarded to the backend as X-Forwarded-Host
+		// unverified, a live Host-header-poisoning path into any backend
+		// that builds absolute URLs (password-reset links, OAuth
+		// redirects, cache keys) from it.
+		if forwardedHost := trustedForwardedHost(req, allowedHosts); forwardedHost != "" {
+			req.Header.Set("X-Forwarded-Host", forwardedHost)
+		} else {
+			req.Header.Del("X-Forwarded-Host")
+		}
 		// session.RequestIsSecure applies the same trusted-proxy boundary
 		// here as GetClientIP already applies to X-Forwarded-For/
 		// X-Real-IP/X-Client-IP — see its doc comment for why a bare

@@ -12,10 +12,18 @@ on:
         type: string
 
 jobs:
-  generate-and-push-clients:
+  # Runs unconditionally (release or workflow_dispatch dry run), with no
+  # access to CLIENTS_REPO_TOKEN — generating the clients and, for a dry
+  # run, reporting on them locally is safe for anyone who can trigger this
+  # workflow to see run. Only the real repo (checkout-with-token, commit,
+  # push, tag) is gated behind the publish-clients job below.
+  generate-clients:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      tag: ${{ steps.release_version.outputs.tag }}
+      version: ${{ steps.release_version.outputs.version }}
     defaults:
       run:
         shell: bash
@@ -65,7 +73,7 @@ jobs:
       - name: Ensure temp and repo folders exist
         run: |
           mkdir -p ./clients-temp/go/
-      
+
       # Set up environments for code generation
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -97,28 +105,112 @@ jobs:
       - name: Generate all clients
         run: |
           go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_client.yaml api/taronja-gateway-api.yaml
-      
-      # Step 2: Checkout the separate clients repository
+
+      - name: Prepare local clients mirror for dry run
+        run: |
+          mkdir -p ./clients-repo/go/
+          mkdir -p ./clients-repo/react/
+
+      # Copied here too (not just in publish-clients below) so a dry run
+      # actually demonstrates what would be synced, not just that codegen
+      # ran without error. See publish-clients' identical step for why
+      # session.go is excluded.
+      - name: Copy generated code to local clients mirror
+        run: |
+          rsync -av --delete --exclude='go.mod' --exclude='go.sum' --exclude='session.go' --exclude='session_test.go' ./clients-temp/go/ ./clients-repo/go/
+          rsync -av --delete \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.git' \
+            --exclude='.github' \
+            ./sdk/ ./clients-repo/react/
+
+      - name: Report dry run result
+        if: ${{ github.event_name != 'release' }}
+        env:
+          RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
+        run: |
+          echo "Dry run completed for $RELEASE_TAG"
+          echo "Generated clients were copied into ./clients-repo without pushing changes"
+
+  # Separate job, not just a conditional step in generate-clients, because
+  # GitHub Environment protection rules (required reviewers) only ever
+  # gate at the job level. Rebuilds the clients from scratch rather than
+  # sharing generate-clients' workspace (a fresh runner starts with
+  # nothing) — simpler and more robust than passing the generated
+  # directories between jobs via actions/upload-artifact for a generation
+  # step this fast and fully deterministic from the tagged commit alone.
+  #
+  # environment: clients-repo-publish only actually gates anything once a
+  # required reviewer is configured for that environment name in this
+  # repo's Settings -> Environments -> clients-repo-publish -> "Required
+  # reviewers". Until that one-time setup happens, referencing an
+  # environment with no protection rules has no effect and this job runs
+  # immediately, same as before this existed — see the needs-validation
+  # item this closes in the security audit for why Write-level repo access
+  # (not just Admin) can trigger this today, and why that setup is worth
+  # doing, along with confirming CLIENTS_REPO_TOKEN itself is scoped to
+  # just the one mirror repo.
+  publish-clients:
+    needs: generate-clients
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    environment: clients-repo-publish
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Ensure temp folder exists
+        run: |
+          mkdir -p ./clients-temp/go/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            sdk/package-lock.json
+            webapp/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Build React SDK
+        working-directory: ./sdk
+        env:
+          RELEASE_VERSION: ${{ needs.generate-clients.outputs.version }}
+        run: |
+          npm install
+          npm version "$RELEASE_VERSION" --no-git-tag-version
+          npm run build
+
+      - name: Generate all clients
+        run: |
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg_client.yaml api/taronja-gateway-api.yaml
+
       - name: Checkout clients repository
-        if: ${{ github.event_name == 'release' }}
         uses: actions/checkout@v6
         with:
           repository: jmaister/taronja-gateway-clients
           path: ./clients-repo
           token: ${{ secrets.CLIENTS_REPO_TOKEN }}
 
-      - name: Prepare local clients mirror for dry run
-        if: ${{ github.event_name != 'release' }}
-        run: |
-          mkdir -p ./clients-repo
-
       - name: Ensure clients repository folders exist
         run: |
           mkdir -p ./clients-repo/go/
           mkdir -p ./clients-repo/react/
-      
-      # Step 3: Copy generated code into the clients repository
-      #
+
       # --exclude='session.go': hand-written, not generated (see that
       # file's own top-of-file comment) — Session is never a
       # request/response body in api/taronja-gateway-api.yaml (it only
@@ -136,12 +228,10 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             ./sdk/ ./clients-repo/react/
-      
-      # Step 4: Commit and push changes (only on push, not on PR)
+
       - name: Commit and push changes
-        if: ${{ github.event_name == 'release' }}
         env:
-          RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
+          RELEASE_TAG: ${{ needs.generate-clients.outputs.tag }}
         run: |
           cd ./clients-repo
           git config --global user.name "github-actions[bot]"
@@ -167,11 +257,3 @@ jobs:
             git tag "$tag_name"
             git push origin "$tag_name"
           done
-
-      - name: Report dry run result
-        if: ${{ github.event_name != 'release' }}
-        env:
-          RELEASE_TAG: ${{ steps.release_version.outputs.tag }}
-        run: |
-          echo "Dry run completed for $RELEASE_TAG"
-          echo "Generated clients were copied into ./clients-repo without pushing changes"
