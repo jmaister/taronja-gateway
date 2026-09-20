@@ -45,6 +45,14 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Captured before migration runs: the plaintext "token" column this
+	// fixture still has (v0.0.24 predates hashing it) is dropped by
+	// migrateSessionTokensToHashed as part of the upgrade — see below —
+	// so this is the only point at which it's still readable at all.
+	var rawTokenBeforeMigration string
+	require.NoError(t, gdb.Raw("SELECT token FROM sessions LIMIT 1").Row().Scan(&rawTokenBeforeMigration))
+	require.NotEmpty(t, rawTokenBeforeMigration, "fixture's legacy plaintext token column should be readable before migration")
+
 	// The core regression check: AutoMigrate must not error against a real
 	// pre-v1 database. In particular, TrafficMetric.IsStaticAsset (`not
 	// null`, added after v0.0.24, on a table this fixture already has rows
@@ -92,16 +100,30 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	require.NoError(t, gdb.First(&session).Error)
 
 	// token_hash backfill (Finding 7's session-token-hashing migration):
-	// v0.0.24 stored the session token verbatim in the now-gorm:"-" "token"
-	// column, which survives untouched (AutoMigrate never drops columns) —
-	// migrateSessionTokensToHashed must have derived token_hash from it, so
-	// the plaintext session captured by this fixture stays valid across the
-	// upgrade instead of forcing every existing user to re-login.
-	var rawToken string
-	require.NoError(t, gdb.Raw("SELECT token FROM sessions LIMIT 1").Row().Scan(&rawToken))
-	require.NotEmpty(t, rawToken, "fixture's legacy plaintext token column should still be readable")
-	assert.Equal(t, hashSessionToken(rawToken), session.TokenHash,
+	// v0.0.24 stored the session token verbatim in the "token" column —
+	// migrateSessionTokensToHashed must have derived token_hash from it
+	// (using the value captured above, before migration dropped the
+	// column — see below), so the plaintext session captured by this
+	// fixture stays valid across the upgrade instead of forcing every
+	// existing user to re-login.
+	assert.Equal(t, hashSessionToken(rawTokenBeforeMigration), session.TokenHash,
 		"token_hash should be backfilled from the legacy plaintext token column")
+
+	// migrateSessionTokensToHashed must actually drop the legacy "token"
+	// column once backfilled, not just leave it behind unused — this is
+	// the regression check for a real bug that reached production: the
+	// column's own NOT NULL constraint (from when it was the primary key)
+	// survives AutoMigrate (which never drops a column), and Session.Token
+	// is gorm:"-" so no INSERT ever supplies it any more. Every session
+	// created after migrating a real, pre-existing database in place —
+	// i.e. every login — failed outright with "NOT NULL constraint failed:
+	// sessions.token" until the column was actually dropped, not just
+	// backfilled from.
+	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"),
+		"the legacy token column must be dropped, not just backfilled from — its surviving NOT NULL constraint breaks every session created afterward")
+	newSession := &Session{UserID: user.ID, ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-post-migration-token", newSession),
+		"creating a new session against an in-place-migrated database must succeed")
 
 	_, sessionOffset := session.ValidUntil.Zone()
 	assert.Equal(t, 0, sessionOffset, "sessions.valid_until should be normalized to UTC, got %v", session.ValidUntil)

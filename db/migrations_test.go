@@ -9,6 +9,9 @@ import (
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // migrationsNonUTC is a fixed +01:00 zone standing in for "whatever the
@@ -185,6 +188,104 @@ func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
 func TestMigrateLegacyFingerprintColumns_NoOpWhenColumnsNeverExisted(t *testing.T) {
 	SetupTestDB(t.Name())
 	require.NoError(t, migrateLegacyFingerprintColumns(GetConnection()))
+}
+
+// TestMigrateSessionTokensToHashed_DropsLegacyColumn is the regression test
+// for a real bug that reached production: migrateSessionTokensToHashed
+// backfilled token_hash from the legacy plaintext "token" column but never
+// dropped that column afterward. AutoMigrate never drops a column, so the
+// column's own NOT NULL constraint (from when it was the primary key — see
+// Session.TokenHash's doc comment) silently survived Session.Token
+// becoming gorm:"-" (never supplied by an INSERT any more). Every session
+// created after migrating a real, pre-existing database in place — i.e.
+// every login — failed outright with "NOT NULL constraint failed:
+// sessions.token" as a result. Builds a synthetic pre-hashing-schema table
+// directly (real token NOT NULL, no token_hash) rather than depending on
+// the checked-in v0.0.24 fixture (see TestMigrateRealV0024Database for
+// that end-to-end version), so this isolates the one function actually
+// responsible.
+func TestMigrateSessionTokensToHashed_DropsLegacyColumn(t *testing.T) {
+	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
+		Logger:  logger.Default.LogMode(logger.Silent),
+		NowFunc: utcNowFunc,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, gdb.Exec(`CREATE TABLE sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at DATETIME, updated_at DATETIME, deleted_at DATETIME,
+		token VARCHAR(255) NOT NULL,
+		user_id VARCHAR(255),
+		valid_until DATETIME
+	)`).Error)
+	require.NoError(t, gdb.Exec(`INSERT INTO sessions (token, user_id, valid_until) VALUES (?, ?, ?)`,
+		"legacy-plaintext-token", "legacy-user", time.Now().Add(time.Hour)).Error)
+
+	require.NoError(t, gdb.AutoMigrate(autoMigrateModels...))
+	require.NoError(t, migrateSessionTokensToHashed(gdb))
+
+	// The existing row's token_hash was actually backfilled...
+	var gotHash string
+	require.NoError(t, gdb.Raw(`SELECT token_hash FROM sessions WHERE user_id = ?`, "legacy-user").Row().Scan(&gotHash))
+	assert.Equal(t, hashSessionToken("legacy-plaintext-token"), gotHash)
+
+	// ...and the legacy column is actually gone, not just backfilled from.
+	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"))
+
+	// The actual regression: a brand new session must be creatable
+	// against this now-migrated table.
+	newSession := &Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession))
+}
+
+// TestApplyDBMigrations_HealsAlreadyRecordedBuggyMigration3 is the
+// regression test for real, already-deployed databases, not just a fresh
+// migration run: a shipped version of migration 3 backfilled token_hash
+// but never dropped the legacy token column, and PRAGMA user_version was
+// still bumped to 3 when that (successful, from applyDBMigrations' own
+// point of view) run finished. Simply fixing migrateSessionTokensToHashed
+// does nothing for a database already in that state — applyDBMigrations
+// skips every migration at or below the recorded user_version, so
+// migration 3 itself never runs again for one. Migration 4 exists
+// specifically to reach those databases: this builds one in exactly that
+// stuck state (token_hash already correct, token column still present,
+// user_version already at 3) and confirms a single applyDBMigrations call
+// heals it — the column actually dropped, and a new session created
+// against it succeeding — without needing any manual intervention.
+func TestApplyDBMigrations_HealsAlreadyRecordedBuggyMigration3(t *testing.T) {
+	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
+		Logger:  logger.Default.LogMode(logger.Silent),
+		NowFunc: utcNowFunc,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, gdb.Exec(`CREATE TABLE sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at DATETIME, updated_at DATETIME, deleted_at DATETIME,
+		token VARCHAR(255) NOT NULL,
+		user_id VARCHAR(255),
+		valid_until DATETIME
+	)`).Error)
+	require.NoError(t, gdb.Exec(`INSERT INTO sessions (token, user_id, valid_until) VALUES (?, ?, ?)`,
+		"legacy-plaintext-token", "legacy-user", time.Now().Add(time.Hour)).Error)
+	require.NoError(t, gdb.AutoMigrate(autoMigrateModels...))
+
+	// Simulate the buggy version of migration 3 having already run and
+	// been recorded: token_hash backfilled correctly, token column left
+	// behind, user_version already at 3.
+	require.NoError(t, gdb.Exec(`UPDATE sessions SET token_hash = ?`, hashSessionToken("legacy-plaintext-token")).Error)
+	sqlDB, err := gdb.DB()
+	require.NoError(t, err)
+	_, err = sqlDB.Exec("PRAGMA user_version = 3")
+	require.NoError(t, err)
+
+	require.NoError(t, applyDBMigrations(gdb))
+
+	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"),
+		"migration 4 must drop the column a database already stuck at user_version=3 never got dropped for")
+	newSession := &Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession),
+		"a previously-stuck database must accept new sessions after applyDBMigrations")
 }
 
 // TestApplyDBMigrations_IsIdempotent covers the PRAGMA user_version

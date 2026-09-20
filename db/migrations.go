@@ -48,6 +48,22 @@ var dbMigrations = []dbMigration{
 	{1, "normalize existing timestamps to UTC", migrateTimestampsToUTC},
 	{2, "backfill Fingerprint/FingerprintType from the old three-column scheme", migrateLegacyFingerprintColumns},
 	{3, "backfill sessions.token_hash from the old plaintext token column", migrateSessionTokensToHashed},
+	// Same function as migration 3, run again. A shipped version of that
+	// migration backfilled token_hash but never actually dropped the
+	// legacy token column afterward — its own surviving NOT NULL
+	// constraint (from when it was the primary key) then broke every
+	// subsequent CreateSession outright, i.e. every login, on any
+	// database that had already recorded migration 3 as applied under
+	// that version. Since PRAGMA user_version already reads 3 for those
+	// databases, migration 3 itself never runs again for them — this
+	// entry exists purely so they still get the column actually dropped,
+	// on the very next startup, without needing manual intervention. A
+	// database that never hit the bug (migrated fresh under the already-
+	// fixed function, or never had a legacy token column at all) finds
+	// the column already gone and every row's token_hash already
+	// populated, so this is a correct no-op for it — see
+	// migrateSessionTokensToHashed's own HasColumn guard.
+	{4, "drop the legacy sessions.token column left behind by a buggy version of migration 3", migrateSessionTokensToHashed},
 }
 
 // applyDBMigrations runs every dbMigrations entry newer than the database's
@@ -371,6 +387,32 @@ func migrateSessionTokensToHashed(gdb *gorm.DB) error {
 		if err != nil {
 			return fmt.Errorf("backfilling sessions.token_hash for id=%d: %w", row.ID, err)
 		}
+	}
+
+	// Drop the legacy column outright — this is not optional cleanup.
+	// AutoMigrate never drops a column, so this table's real, physical
+	// "token" column — NOT NULL at the SQLite level, from when it was the
+	// primary key (see Session.TokenHash's doc comment) — silently
+	// survived Session.Token becoming gorm:"-" (never written by
+	// Create/Save). Every session created after that point on an
+	// in-place-migrated database therefore omitted "token" from its
+	// INSERT entirely, which SQLite rejected outright as a NOT NULL
+	// violation: a real regression that made login fail on any database
+	// that carried this migration, caught only by an actual login attempt
+	// against one, not by TestMigrateRealV0024Database — that test reads
+	// the migrated row back, it never writes a new one afterward.
+	// Raw SQL, not gdb.Migrator().DropColumn(&Session{}, "token"): that
+	// silently no-ops here rather than dropping anything — presumably
+	// because GORM's migrator resolves the target column from the
+	// model's own parsed schema, and Session.Token no longer maps to any
+	// column at all (gorm:"-"), so it has nothing to resolve "token" to.
+	// Confirmed directly: DropColumn returns a nil error while
+	// PRAGMA table_info(sessions) still lists the column afterward.
+	// SQLite has supported ALTER TABLE DROP COLUMN natively since 3.35.0
+	// (2021); modernc.org/sqlite, this project's driver, bundles a far
+	// newer version.
+	if err := gdb.Exec(`ALTER TABLE sessions DROP COLUMN token`).Error; err != nil {
+		return fmt.Errorf("dropping legacy sessions.token column: %w", err)
 	}
 	return nil
 }
