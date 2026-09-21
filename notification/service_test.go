@@ -119,6 +119,7 @@ func TestService_Create(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, db.NotificationDeliveryStatusSkipped, delivery.Status)
 		assert.Contains(t, delivery.Error, "not configured")
+		assert.Nil(t, delivery.SentAt, "a skipped delivery never sent anything, so must have no SentAt")
 	})
 
 	t.Run("with no Channels specified and no preference set, attempts every configured channel", func(t *testing.T) {
@@ -137,6 +138,9 @@ func TestService_Create(t *testing.T) {
 		delivery, err := repo.FindLatestDelivery(n.ID, db.NotificationChannelEmail)
 		require.NoError(t, err)
 		assert.Equal(t, db.NotificationDeliveryStatusSent, delivery.Status)
+		require.NotNil(t, delivery.SentAt, "a successful delivery must record when it actually sent")
+		assert.WithinDuration(t, time.Now(), *delivery.SentAt, 5*time.Second)
+		assert.Equal(t, time.UTC, delivery.SentAt.Location())
 	})
 
 	t.Run("with no Channels specified, a user's own preference wins over the configured-channels default", func(t *testing.T) {

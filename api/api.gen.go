@@ -527,6 +527,9 @@ type NotificationDelivery struct {
 	// NextRetryAt When the next automatic retry is scheduled. Absent/null once sent, skipped, or once the retry schedule is exhausted.
 	NextRetryAt *time.Time `json:"nextRetryAt,omitempty"`
 
+	// SentAt When this attempt actually succeeded. Null for a failed or skipped attempt.
+	SentAt *time.Time `json:"sentAt,omitempty"`
+
 	// Status One of "sent", "failed", "skipped".
 	//
 	// Example: sent

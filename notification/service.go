@@ -400,8 +400,12 @@ func (s *Service) recordDelivery(notificationID, channel, status, errMsg, extern
 		ExternalRef:    externalRef,
 		AttemptNumber:  attemptNumber,
 	}
-	if status == db.NotificationDeliveryStatusFailed {
+	switch status {
+	case db.NotificationDeliveryStatusFailed:
 		delivery.NextRetryAt = nextRetryAt(attemptNumber, time.Now())
+	case db.NotificationDeliveryStatusSent:
+		sentAt := time.Now()
+		delivery.SentAt = &sentAt
 	}
 	_ = s.repo.CreateDelivery(delivery)
 }

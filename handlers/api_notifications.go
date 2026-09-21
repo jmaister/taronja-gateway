@@ -340,6 +340,7 @@ func toAPIDelivery(d *db.NotificationDelivery) api.NotificationDelivery {
 		Status:        d.Status,
 		AttemptNumber: d.AttemptNumber,
 		CreatedAt:     d.CreatedAt,
+		SentAt:        d.SentAt,
 		NextRetryAt:   d.NextRetryAt,
 	}
 	if d.Error != "" {

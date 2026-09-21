@@ -582,7 +582,18 @@ type NotificationDelivery struct {
 	ExternalRef    string     `gorm:"type:text"`
 	AttemptNumber  int        `gorm:"not null;default:1"`
 	NextRetryAt    *time.Time `gorm:"index"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime"`
+	// SentAt is when this attempt actually succeeded — set only when
+	// Status is NotificationDeliveryStatusSent, nil for a failed or
+	// skipped attempt (which never sent anything to have a time for).
+	// Distinct from CreatedAt, which is when this row was recorded
+	// regardless of outcome: for a "sent" row the two are set from the
+	// same time.Now() call at the same call site (see
+	// notification.Service.recordDelivery) and so are always equal in
+	// practice, but CreatedAt exists on every row (including failed/
+	// skipped ones) while SentAt only ever means "delivery succeeded at
+	// this instant."
+	SentAt    *time.Time
+	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
 // BeforeCreate will set a CUID rather than numeric ID.
@@ -595,14 +606,18 @@ func (d *NotificationDelivery) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// BeforeSave normalizes NextRetryAt to UTC before it's persisted — it's
-// set via time.Now().Add(...) at the call site (notification.Service), not
-// GORM's own autoCreateTime/autoUpdateTime clock, the same reasoning as
-// Notification.BeforeSave.
+// BeforeSave normalizes NextRetryAt/SentAt to UTC before they're
+// persisted — both are set via time.Now() at the call site
+// (notification.Service), not GORM's own autoCreateTime/autoUpdateTime
+// clock, the same reasoning as Notification.BeforeSave.
 func (d *NotificationDelivery) BeforeSave(tx *gorm.DB) error {
 	if d.NextRetryAt != nil {
 		utcNextRetryAt := d.NextRetryAt.UTC()
 		d.NextRetryAt = &utcNextRetryAt
+	}
+	if d.SentAt != nil {
+		utcSentAt := d.SentAt.UTC()
+		d.SentAt = &utcSentAt
 	}
 	return nil
 }

@@ -2584,6 +2584,11 @@ components:
         createdAt:
           type: string
           format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this attempt actually succeeded. Null for a failed or skipped attempt.
         nextRetryAt:
           type: string
           format: date-time
