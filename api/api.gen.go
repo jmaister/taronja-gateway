@@ -1038,9 +1038,15 @@ type ServerInterface interface {
 	// RespondToNotificationByToken Answer one of a notification's actions, from an email link
 	// (GET /api/notifications/respond)
 	RespondToNotificationByToken(w http.ResponseWriter, r *http.Request, params RespondToNotificationByTokenParams)
+	// UnlinkTelegramChat Disconnect the current user's linked Telegram chat
+	// (DELETE /api/notifications/telegram/link)
+	UnlinkTelegramChat(w http.ResponseWriter, r *http.Request)
 	// GetTelegramLinkCode Get a Telegram deep link to connect the current user's account
 	// (GET /api/notifications/telegram/link)
 	GetTelegramLinkCode(w http.ResponseWriter, r *http.Request)
+	// GetTelegramLinkStatus Get the current user's Telegram connection status
+	// (GET /api/notifications/telegram/status)
+	GetTelegramLinkStatus(w http.ResponseWriter, r *http.Request)
 	// GetUnreadNotificationCount Get the current user's unread notification count (for a bell-icon badge)
 	// (GET /api/notifications/unread-count)
 	GetUnreadNotificationCount(w http.ResponseWriter, r *http.Request)
@@ -1573,11 +1579,39 @@ func (siw *ServerInterfaceWrapper) RespondToNotificationByToken(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// UnlinkTelegramChat operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkTelegramChat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkTelegramChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTelegramLinkCode operation middleware
 func (siw *ServerInterfaceWrapper) GetTelegramLinkCode(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTelegramLinkCode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTelegramLinkStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetTelegramLinkStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTelegramLinkStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2328,7 +2362,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/{notificationId}/read", wrapper.MarkNotificationRead)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/{notificationId}/respond", wrapper.RespondToNotification)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/respond", wrapper.RespondToNotificationByToken)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.UnlinkTelegramChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.GetTelegramLinkCode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/status", wrapper.GetTelegramLinkStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/preferences", wrapper.GetNotificationPreference)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications/preferences", wrapper.SetNotificationPreference)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/{notificationId}/deliveries", wrapper.ListNotificationDeliveries)
@@ -3180,6 +3216,63 @@ func (response RespondToNotificationByToken200TexthtmlResponse) VisitRespondToNo
 	return err
 }
 
+type UnlinkTelegramChatRequestObject struct {
+}
+
+type UnlinkTelegramChatResponseObject interface {
+	VisitUnlinkTelegramChatResponse(w http.ResponseWriter) error
+}
+
+type UnlinkTelegramChat204Response struct {
+}
+
+func (response UnlinkTelegramChat204Response) VisitUnlinkTelegramChatResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnlinkTelegramChat401JSONResponse Error
+
+func (response UnlinkTelegramChat401JSONResponse) VisitUnlinkTelegramChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnlinkTelegramChat404JSONResponse Error
+
+func (response UnlinkTelegramChat404JSONResponse) VisitUnlinkTelegramChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnlinkTelegramChat503JSONResponse Error
+
+func (response UnlinkTelegramChat503JSONResponse) VisitUnlinkTelegramChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTelegramLinkCodeRequestObject struct {
 }
 
@@ -3221,6 +3314,60 @@ func (response GetTelegramLinkCode401JSONResponse) VisitGetTelegramLinkCodeRespo
 type GetTelegramLinkCode503JSONResponse Error
 
 func (response GetTelegramLinkCode503JSONResponse) VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramLinkStatusRequestObject struct {
+}
+
+type GetTelegramLinkStatusResponseObject interface {
+	VisitGetTelegramLinkStatusResponse(w http.ResponseWriter) error
+}
+
+type GetTelegramLinkStatus200JSONResponse struct {
+	Linked bool `json:"linked"`
+
+	// LinkedAt When the link was established. Absent/null when linked is false.
+	LinkedAt *time.Time `json:"linkedAt,omitempty"`
+}
+
+func (response GetTelegramLinkStatus200JSONResponse) VisitGetTelegramLinkStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramLinkStatus401JSONResponse Error
+
+func (response GetTelegramLinkStatus401JSONResponse) VisitGetTelegramLinkStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramLinkStatus503JSONResponse Error
+
+func (response GetTelegramLinkStatus503JSONResponse) VisitGetTelegramLinkStatusResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4436,9 +4583,15 @@ type StrictServerInterface interface {
 	// RespondToNotificationByToken Answer one of a notification's actions, from an email link
 	// (GET /api/notifications/respond)
 	RespondToNotificationByToken(ctx context.Context, request RespondToNotificationByTokenRequestObject) (RespondToNotificationByTokenResponseObject, error)
+	// UnlinkTelegramChat Disconnect the current user's linked Telegram chat
+	// (DELETE /api/notifications/telegram/link)
+	UnlinkTelegramChat(ctx context.Context, request UnlinkTelegramChatRequestObject) (UnlinkTelegramChatResponseObject, error)
 	// GetTelegramLinkCode Get a Telegram deep link to connect the current user's account
 	// (GET /api/notifications/telegram/link)
 	GetTelegramLinkCode(ctx context.Context, request GetTelegramLinkCodeRequestObject) (GetTelegramLinkCodeResponseObject, error)
+	// GetTelegramLinkStatus Get the current user's Telegram connection status
+	// (GET /api/notifications/telegram/status)
+	GetTelegramLinkStatus(ctx context.Context, request GetTelegramLinkStatusRequestObject) (GetTelegramLinkStatusResponseObject, error)
 	// GetUnreadNotificationCount Get the current user's unread notification count (for a bell-icon badge)
 	// (GET /api/notifications/unread-count)
 	GetUnreadNotificationCount(ctx context.Context, request GetUnreadNotificationCountRequestObject) (GetUnreadNotificationCountResponseObject, error)
@@ -4969,6 +5122,30 @@ func (sh *strictHandler) RespondToNotificationByToken(w http.ResponseWriter, r *
 	}
 }
 
+// UnlinkTelegramChat operation middleware
+func (sh *strictHandler) UnlinkTelegramChat(w http.ResponseWriter, r *http.Request) {
+	var request UnlinkTelegramChatRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnlinkTelegramChat(ctx, request.(UnlinkTelegramChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnlinkTelegramChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnlinkTelegramChatResponseObject); ok {
+		if err := validResponse.VisitUnlinkTelegramChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetTelegramLinkCode operation middleware
 func (sh *strictHandler) GetTelegramLinkCode(w http.ResponseWriter, r *http.Request) {
 	var request GetTelegramLinkCodeRequestObject
@@ -4986,6 +5163,30 @@ func (sh *strictHandler) GetTelegramLinkCode(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetTelegramLinkCodeResponseObject); ok {
 		if err := validResponse.VisitGetTelegramLinkCodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTelegramLinkStatus operation middleware
+func (sh *strictHandler) GetTelegramLinkStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetTelegramLinkStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTelegramLinkStatus(ctx, request.(GetTelegramLinkStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTelegramLinkStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTelegramLinkStatusResponseObject); ok {
+		if err := validResponse.VisitGetTelegramLinkStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

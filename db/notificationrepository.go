@@ -91,6 +91,18 @@ type NotificationRepository interface {
 	// authorize a button tap — the tapping chat must resolve to the same
 	// user the notification was sent to.
 	FindChannelLinkByExternalID(channel, externalID string) (*NotificationChannelLink, error)
+	// GetChannelLinkStatus reports whether userID currently has a link on
+	// channel, and if so, when it was established — linked false, zero
+	// time, nil error if there's simply no row, never
+	// gorm.ErrRecordNotFound, the same "no special-casing needed" contract
+	// GetPreferredChannel already follows.
+	GetChannelLinkStatus(userID, channel string) (linked bool, linkedAt time.Time, err error)
+	// DeleteChannelLink removes userID's link on channel, if any, reporting
+	// whether a row actually existed to remove — false, nil error (not
+	// gorm.ErrRecordNotFound) when there was nothing linked to begin with,
+	// so a caller can tell "already disconnected" apart from a real
+	// failure without needing to know about gorm's sentinel itself.
+	DeleteChannelLink(userID, channel string) (deleted bool, err error)
 
 	CreateLinkCode(l *NotificationLinkCode) error
 	// ConsumeLinkCode looks up code and deletes it in the same operation
@@ -285,6 +297,33 @@ func (r *NotificationRepositoryDB) FindChannelLinkByExternalID(channel, external
 		return nil, err
 	}
 	return &l, nil
+}
+
+func (r *NotificationRepositoryDB) GetChannelLinkStatus(userID, channel string) (linked bool, linkedAt time.Time, err error) {
+	var l NotificationChannelLink
+	err = r.db.Where("user_id = ? AND channel = ?", userID, channel).First(&l).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, time.Time{}, nil
+	}
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	return true, l.CreatedAt, nil
+}
+
+func (r *NotificationRepositoryDB) DeleteChannelLink(userID, channel string) (deleted bool, err error) {
+	// Unscoped(): NotificationChannelLink has no soft-delete column of its
+	// own (no gorm.Model, just a plain ID/UserID/Channel/ExternalID/
+	// CreatedAt), so Unscoped is a no-op safety measure here, not
+	// something actually overriding soft-delete behavior — kept for
+	// consistency with every other hard-delete in this codebase (see e.g.
+	// BlockedClientRepositoryDB.DeleteOlderThan) rather than relying on
+	// "this model happens not to have deleted_at" staying true forever.
+	result := r.db.Unscoped().Where("user_id = ? AND channel = ?", userID, channel).Delete(&NotificationChannelLink{})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func (r *NotificationRepositoryDB) CreateLinkCode(l *NotificationLinkCode) error {

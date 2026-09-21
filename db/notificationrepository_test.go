@@ -284,6 +284,41 @@ func TestNotificationRepository(t *testing.T) {
 		assert.Error(t, err, "the old external ID must no longer resolve after re-linking")
 	})
 
+	t.Run("Channel link status and deletion", func(t *testing.T) {
+		SetupTestDB(t.Name())
+		u := User{Username: "status-user", Email: "status@example.com"}
+		require.NoError(t, dbConn.Create(&u).Error)
+
+		linked, linkedAt, err := repo.GetChannelLinkStatus(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.False(t, linked, "no gorm.ErrRecordNotFound leaking out — just false")
+		assert.True(t, linkedAt.IsZero())
+
+		deleted, err := repo.DeleteChannelLink(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.False(t, deleted, "nothing to delete yet")
+
+		before := time.Now()
+		require.NoError(t, repo.UpsertChannelLink(u.ID, NotificationChannelTelegram, "chat-status"))
+
+		linked, linkedAt, err = repo.GetChannelLinkStatus(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.True(t, linked)
+		assert.WithinDuration(t, before, linkedAt, 5*time.Second)
+
+		deleted, err = repo.DeleteChannelLink(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.True(t, deleted)
+
+		linked, _, err = repo.GetChannelLinkStatus(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.False(t, linked, "must actually be gone after deletion, not just marked")
+
+		deletedAgain, err := repo.DeleteChannelLink(u.ID, NotificationChannelTelegram)
+		require.NoError(t, err)
+		assert.False(t, deletedAgain, "deleting an already-gone link is a no-op, not an error")
+	})
+
 	t.Run("Link code is single-use and expiry is enforced", func(t *testing.T) {
 		SetupTestDB(t.Name())
 		u := User{Username: "code-user", Email: "code@example.com"}

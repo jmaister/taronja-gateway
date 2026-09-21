@@ -279,5 +279,43 @@ func TestTelegramPoller(t *testing.T) {
 			require.NoError(t, err)
 			assert.Nil(t, n.RespondedAt, "an unauthorized chat must not be able to record a response")
 		})
+
+		// Last: `user` is still linked to chat 555 from the first subtest
+		// above, and this one unlinks them — every earlier subtest that
+		// depends on that link still being in place must run before this.
+		t.Run("link status and unlink", func(t *testing.T) {
+			linked, linkedAt, err := service.GetTelegramLinkStatus(user.ID)
+			require.NoError(t, err)
+			assert.True(t, linked)
+			assert.False(t, linkedAt.IsZero())
+
+			require.NoError(t, service.UnlinkTelegramChat(user.ID))
+
+			linked, _, err = service.GetTelegramLinkStatus(user.ID)
+			require.NoError(t, err)
+			assert.False(t, linked, "must actually be unlinked, not just report success")
+
+			err = service.UnlinkTelegramChat(user.ID)
+			assert.ErrorIs(t, err, ErrNotFound, "unlinking an already-unlinked user must be distinguishable from a real failure")
+		})
 	})
+}
+
+// TestTelegramLinkStatus_ChannelNotConfigured covers both
+// GetTelegramLinkStatus and UnlinkTelegramChat when this gateway has no
+// Telegram provider at all — the same ErrChannelNotConfigured
+// GetTelegramLinkCode already returns in that case, rather than a
+// misleading "not linked"/"nothing to unlink" that implies Telegram is
+// available but this user just hasn't connected.
+func TestTelegramLinkStatus_ChannelNotConfigured(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := db.NewNotificationRepositoryDB(db.GetConnection())
+	userRepo := db.NewDBUserRepository(db.GetConnection())
+	service := NewService(config.NotificationConfig{}, repo, userRepo, "https://gw.example.com/_/notifications/respond")
+
+	_, _, err := service.GetTelegramLinkStatus("some-user-id")
+	assert.ErrorIs(t, err, ErrChannelNotConfigured)
+
+	err = service.UnlinkTelegramChat("some-user-id")
+	assert.ErrorIs(t, err, ErrChannelNotConfigured)
 }

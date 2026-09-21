@@ -728,6 +728,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    delete:
+      summary: Disconnect the current user's linked Telegram chat
+      description: >
+        Removes the link established by following a getTelegramLinkCode
+        deep link. Future notifications on this channel for this user are
+        recorded as skipped (no recipient) until they link again.
+      operationId: unlinkTelegramChat
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Disconnected
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Nothing was linked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Telegram delivery isn't configured on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications/telegram/status:
+    get:
+      summary: Get the current user's Telegram connection status
+      description: >
+        Whether the current user currently has a linked Telegram chat, and
+        if so, when it was established — what a frontend needs to show
+        "Connected since <date>" plus a disconnect action, versus a
+        "Connect via Telegram" button/deep-link (getTelegramLinkCode)
+        instead.
+      operationId: getTelegramLinkStatus
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The current Telegram link status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  linked:
+                    type: boolean
+                  linkedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: When the link was established. Absent/null when linked is false.
+                required:
+                  - linked
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Telegram delivery isn't configured on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/notifications/preferences:
     get:

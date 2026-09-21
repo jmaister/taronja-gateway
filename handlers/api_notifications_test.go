@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,6 +210,107 @@ func TestGetTelegramLinkCode(t *testing.T) {
 		require.NoError(t, err)
 		_, ok := resp.(api.GetTelegramLinkCode401JSONResponse)
 		assert.True(t, ok)
+	})
+}
+
+// setupTelegramEnabledTestServer is setupNotificationTestServer's Telegram-
+// enabled counterpart: GetTelegramLinkStatus/UnlinkTelegramChat both need
+// s.telegram != nil to do anything but 503, and neither actually calls out
+// to the real Telegram API (unlike GetTelegramLinkCode's Username lookup),
+// so a fake bot token is enough — no network access needed for these two.
+func setupTelegramEnabledTestServer(t *testing.T) (*StrictApiServer, db.NotificationRepository, db.UserRepository) {
+	t.Helper()
+	db.SetupTestDB(t.Name())
+	repo := db.NewNotificationRepositoryDB(db.GetConnection())
+	userRepo := db.NewDBUserRepository(db.GetConnection())
+	service := notification.NewService(config.NotificationConfig{
+		Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "fake-test-token"},
+	}, repo, userRepo, "https://gw.example.com/_/notifications/respond")
+	server := &StrictApiServer{userRepo: userRepo, notificationService: service}
+	return server, repo, userRepo
+}
+
+func TestGetTelegramLinkStatus(t *testing.T) {
+	t.Run("returns 503 when telegram isn't configured", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetTelegramLinkStatus(sessionContext("u1", false), api.GetTelegramLinkStatusRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetTelegramLinkStatus503JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 401 when unauthenticated", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetTelegramLinkStatus(context.Background(), api.GetTelegramLinkStatusRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetTelegramLinkStatus401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("reports not linked, then linked with a timestamp, after a real link", func(t *testing.T) {
+		server, repo, userRepo := setupTelegramEnabledTestServer(t)
+		user := &db.User{Username: "status-handler-user", Email: "status-handler@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		resp, err := server.GetTelegramLinkStatus(sessionContext(user.ID, false), api.GetTelegramLinkStatusRequestObject{})
+		require.NoError(t, err)
+		status, ok := resp.(api.GetTelegramLinkStatus200JSONResponse)
+		require.True(t, ok)
+		assert.False(t, status.Linked)
+		assert.Nil(t, status.LinkedAt)
+
+		require.NoError(t, repo.UpsertChannelLink(user.ID, db.NotificationChannelTelegram, "chat-handler-1"))
+
+		resp, err = server.GetTelegramLinkStatus(sessionContext(user.ID, false), api.GetTelegramLinkStatusRequestObject{})
+		require.NoError(t, err)
+		status, ok = resp.(api.GetTelegramLinkStatus200JSONResponse)
+		require.True(t, ok)
+		assert.True(t, status.Linked)
+		require.NotNil(t, status.LinkedAt)
+	})
+}
+
+func TestUnlinkTelegramChat(t *testing.T) {
+	t.Run("returns 503 when telegram isn't configured", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.UnlinkTelegramChat(sessionContext("u1", false), api.UnlinkTelegramChatRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.UnlinkTelegramChat503JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 401 when unauthenticated", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.UnlinkTelegramChat(context.Background(), api.UnlinkTelegramChatRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.UnlinkTelegramChat401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 404 when nothing is linked", func(t *testing.T) {
+		server, _, userRepo := setupTelegramEnabledTestServer(t)
+		user := &db.User{Username: "unlink-handler-404", Email: "unlink-404@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		resp, err := server.UnlinkTelegramChat(sessionContext(user.ID, false), api.UnlinkTelegramChatRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.UnlinkTelegramChat404JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("204s and actually removes the link", func(t *testing.T) {
+		server, repo, userRepo := setupTelegramEnabledTestServer(t)
+		user := &db.User{Username: "unlink-handler-ok", Email: "unlink-ok@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+		require.NoError(t, repo.UpsertChannelLink(user.ID, db.NotificationChannelTelegram, "chat-handler-2"))
+
+		resp, err := server.UnlinkTelegramChat(sessionContext(user.ID, false), api.UnlinkTelegramChatRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.UnlinkTelegramChat204Response)
+		assert.True(t, ok)
+
+		_, findErr := repo.FindChannelLink(user.ID, db.NotificationChannelTelegram)
+		assert.Error(t, findErr, "the link must actually be gone after a 204")
 	})
 }
 

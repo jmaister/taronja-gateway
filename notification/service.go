@@ -843,3 +843,37 @@ func (s *Service) LinkTelegramChat(code, chatID string) error {
 	}
 	return s.repo.UpsertChannelLink(linkCode.UserID, db.NotificationChannelTelegram, chatID)
 }
+
+// GetTelegramLinkStatus reports whether userID currently has a linked
+// Telegram chat, and if so, when the link was established — what a
+// frontend needs to show "Connected since <date>" vs. a "Connect"
+// button/deep-link (see GetTelegramLinkCode) instead. Returns
+// ErrChannelNotConfigured the same way GetTelegramLinkCode does when
+// Telegram delivery isn't set up on this gateway at all, rather than
+// reporting "not linked" for a channel that was never available to link
+// in the first place.
+func (s *Service) GetTelegramLinkStatus(userID string) (linked bool, linkedAt time.Time, err error) {
+	if s.telegram == nil {
+		return false, time.Time{}, ErrChannelNotConfigured
+	}
+	return s.repo.GetChannelLinkStatus(userID, db.NotificationChannelTelegram)
+}
+
+// UnlinkTelegramChat disconnects userID's linked Telegram chat, if any —
+// future notifications on this channel for them are recorded as skipped
+// (no recipient) until they link again via a fresh GetTelegramLinkCode.
+// Returns ErrNotFound if nothing was linked to begin with, so a caller
+// can tell "already disconnected" apart from a real failure.
+func (s *Service) UnlinkTelegramChat(userID string) error {
+	if s.telegram == nil {
+		return ErrChannelNotConfigured
+	}
+	deleted, err := s.repo.DeleteChannelLink(userID, db.NotificationChannelTelegram)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrNotFound
+	}
+	return nil
+}

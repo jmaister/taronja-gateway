@@ -329,6 +329,52 @@ func (s *StrictApiServer) GetTelegramLinkCode(ctx context.Context, request api.G
 	return api.GetTelegramLinkCode200JSONResponse{DeepLink: deepLink, ExpiresAt: expiresAt}, nil
 }
 
+// GetTelegramLinkStatus handles GET /api/notifications/telegram/status.
+func (s *StrictApiServer) GetTelegramLinkStatus(ctx context.Context, request api.GetTelegramLinkStatusRequestObject) (api.GetTelegramLinkStatusResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.GetTelegramLinkStatus401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetTelegramLinkStatus503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Telegram delivery isn't configured on this gateway"}, nil
+	}
+	linked, linkedAt, err := s.notificationService.GetTelegramLinkStatus(sessionObj.UserID)
+	if err != nil {
+		if errors.Is(err, notification.ErrChannelNotConfigured) {
+			return api.GetTelegramLinkStatus503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Telegram delivery isn't configured on this gateway"}, nil
+		}
+		return nil, err
+	}
+	result := api.GetTelegramLinkStatus200JSONResponse{Linked: linked}
+	if linked {
+		result.LinkedAt = &linkedAt
+	}
+	return result, nil
+}
+
+// UnlinkTelegramChat handles DELETE /api/notifications/telegram/link.
+func (s *StrictApiServer) UnlinkTelegramChat(ctx context.Context, request api.UnlinkTelegramChatRequestObject) (api.UnlinkTelegramChatResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.UnlinkTelegramChat401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.UnlinkTelegramChat503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Telegram delivery isn't configured on this gateway"}, nil
+	}
+	err := s.notificationService.UnlinkTelegramChat(sessionObj.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, notification.ErrChannelNotConfigured):
+			return api.UnlinkTelegramChat503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Telegram delivery isn't configured on this gateway"}, nil
+		case errors.Is(err, notification.ErrNotFound):
+			return api.UnlinkTelegramChat404JSONResponse{Code: http.StatusNotFound, Message: "Nothing was linked"}, nil
+		default:
+			return nil, err
+		}
+	}
+	return api.UnlinkTelegramChat204Response{}, nil
+}
+
 // toAPIDelivery converts one stored db.NotificationDelivery into the
 // OpenAPI-generated shape. ExternalRef is deliberately not exposed — it's
 // internal delivery plumbing (e.g. a Telegram "chatID:messageID" pair),
