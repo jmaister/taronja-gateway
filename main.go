@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway"
@@ -205,6 +206,7 @@ func init() {
 	rootCmd.AddCommand(middlewareCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(validateCmd)
+	rootCmd.AddCommand(openapiCmd)
 }
 
 func main() {
@@ -212,6 +214,27 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+var openapiCmd = &cobra.Command{
+	Use:   "openapi",
+	Short: "Print the OpenAPI specification file",
+	Long: `Prints the OpenAPI specification embedded in this binary (the same
+YAML served at GET <prefix>/openapi.yaml). Does not start the server or
+need a config file — redirect stdout to save it:
+
+    tg openapi > taronja-gateway-api.yaml`,
+	Run: func(cmd *cobra.Command, args []string) {
+		printOpenAPISpec()
+	},
+}
+
+// printOpenAPISpec writes the embedded OpenAPI YAML to stdout and nothing
+// else. Same split as migrateConfigFile: informational notes would go to
+// stderr if we ever had any; stdout must stay a clean YAML document so
+// `tg openapi > file.yaml` is a valid spec.
+func printOpenAPISpec() {
+	fmt.Print(string(api.OpenApiSpecYaml))
 }
 
 // dotEnvLoadIsFatal reports whether an error from godotenv.Load() should

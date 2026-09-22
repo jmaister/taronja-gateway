@@ -7,9 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
@@ -35,16 +37,28 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 
 	os.Stdout, os.Stderr = outW, errW
 
+	// Drain both pipes while fn writes. A sequential write-then-read
+	// deadlocks on Windows (and anywhere the write exceeds the pipe
+	// buffer) — `tg openapi` prints ~85KB of YAML, which is past that
+	// limit. The migrate/validate tests only ever printed a few hundred
+	// bytes, so they never hit it.
+	var outBuf, errBuf bytes.Buffer
+	done := make(chan error, 2)
+	go func() {
+		_, copyErr := io.Copy(&outBuf, outR)
+		done <- copyErr
+	}()
+	go func() {
+		_, copyErr := io.Copy(&errBuf, errR)
+		done <- copyErr
+	}()
+
 	fn()
 
 	require.NoError(t, outW.Close())
 	require.NoError(t, errW.Close())
-
-	var outBuf, errBuf bytes.Buffer
-	_, err = io.Copy(&outBuf, outR)
-	require.NoError(t, err)
-	_, err = io.Copy(&errBuf, errR)
-	require.NoError(t, err)
+	require.NoError(t, <-done)
+	require.NoError(t, <-done)
 
 	return outBuf.String(), errBuf.String()
 }
@@ -166,6 +180,35 @@ func TestWatchConfigFile_ReloadsOnWrite(t *testing.T) {
 // tests: main.go otherwise has no existing test coverage in this repo (it's
 // a thin Cobra wrapper, manually verified against the built binary), and
 // that's unchanged here except for these specific properties.
+
+// TestPrintOpenAPISpec_WritesEmbeddedYamlToStdout is `tg openapi`: stdout
+// must be exactly the embedded spec (nothing mixed in), so redirecting it
+// produces a valid OpenAPI file. Uses api.OpenApiSpecYaml — the same bytes
+// GET <prefix>/openapi.yaml serves — rather than a second copy in main.
+func TestPrintOpenAPISpec_WritesEmbeddedYamlToStdout(t *testing.T) {
+	stdout, stderr := captureOutput(t, printOpenAPISpec)
+
+	assert.Empty(t, stderr)
+	assert.Equal(t, string(api.OpenApiSpecYaml), stdout)
+	assert.True(t, strings.HasPrefix(stdout, "openapi:"), "stdout must be a YAML OpenAPI document, not a log line")
+	assert.Contains(t, stdout, "\n  /openapi.yaml:")
+}
+
+// TestRunCommandOwnsConfigFlag is the regression test for a real bug that
+// made `tg openapi` (and every other subcommand, including `version` and
+// `help`) die in init(): MarkFlagRequired("config") was called on rootCmd,
+// which has no such flag, so cobra fatals "no such flag -config" before
+// Execute ever runs. --config belongs on run/migrate/validate/middleware
+// list, not on the root.
+func TestRunCommandOwnsConfigFlag(t *testing.T) {
+	assert.Nil(t, rootCmd.Flags().Lookup("config"), "root must not own --config")
+	require.NotNil(t, runCmd.Flags().Lookup("config"))
+
+	cmd, _, err := rootCmd.Find([]string{"openapi"})
+	require.NoError(t, err)
+	assert.Equal(t, "openapi", cmd.Name())
+	assert.Nil(t, cmd.Flags().Lookup("config"), "openapi must not require --config")
+}
 
 // TestDotEnvLoadIsFatal is the regression test for a real bug found while
 // building examples/docker-demo: runGateway used to call log.Fatal on *any*
