@@ -31,6 +31,20 @@ var telegramAPIBaseURL = "https://api.telegram.org"
 type TelegramProvider struct {
 	botToken   string
 	httpClient *http.Client
+	// pollHTTPClient is used only for getUpdates' own long-poll request
+	// (see TelegramPoller.Run), which deliberately asks Telegram to hold
+	// the connection open for up to 30s waiting for a new update to
+	// arrive — unlike every other call this provider makes (sendMessage,
+	// answerCallbackQuery, ...), which httpClient's own 10s Timeout is
+	// sized for. Sharing httpClient for getUpdates too meant every single
+	// long-poll was guaranteed to hit that 10s client-level timeout well
+	// before Telegram could ever actually respond, regardless of the 35s
+	// deadline Run's own per-request context already gave it — the call
+	// never had a real chance to succeed. Caught live: getUpdates failing
+	// with "context deadline exceeded (Client.Timeout exceeded while
+	// awaiting headers)" on every single attempt, logged every ~15s
+	// forever (10s client timeout + Run's own 5s retry delay).
+	pollHTTPClient *http.Client
 
 	usernameMu sync.Mutex
 	username   string // cached result of Username, fetched at most once
@@ -43,7 +57,13 @@ func NewTelegramProvider(cfg config.TelegramNotificationConfig) *TelegramProvide
 	if !cfg.IsConfigured() {
 		return nil
 	}
-	return &TelegramProvider{botToken: cfg.BotToken, httpClient: &http.Client{Timeout: 10 * time.Second}}
+	return &TelegramProvider{
+		botToken:   cfg.BotToken,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+		// Comfortably above Run's own 35s per-request context deadline —
+		// see pollHTTPClient's own doc comment above.
+		pollHTTPClient: &http.Client{Timeout: 40 * time.Second},
+	}
 }
 
 func (p *TelegramProvider) Channel() string { return "telegram" }
@@ -94,7 +114,18 @@ func (p *TelegramProvider) apiURL(method string) string {
 	return fmt.Sprintf("%s/bot%s/%s", telegramAPIBaseURL, p.botToken, method)
 }
 
+// call sends every request except getUpdates' own long-poll — see
+// callWithClient's doc comment.
 func (p *TelegramProvider) call(ctx context.Context, method string, payload interface{}, out interface{}) error {
+	return p.callWithClient(ctx, p.httpClient, method, payload, out)
+}
+
+// callWithClient is call's actual implementation, parameterized on which
+// *http.Client to use — every caller goes through call and its own
+// general-purpose httpClient, except TelegramPoller.Run, which calls this
+// directly with pollHTTPClient for its own much longer-lived getUpdates
+// request (see pollHTTPClient's own doc comment).
+func (p *TelegramProvider) callWithClient(ctx context.Context, client *http.Client, method string, payload interface{}, out interface{}) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -104,7 +135,7 @@ func (p *TelegramProvider) call(ctx context.Context, method string, payload inte
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := p.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -280,7 +311,7 @@ func (p *TelegramPoller) Run(ctx context.Context) {
 
 		var result telegramGetUpdatesResult
 		reqCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
-		err := p.provider.call(reqCtx, "getUpdates", map[string]interface{}{
+		err := p.provider.callWithClient(reqCtx, p.provider.pollHTTPClient, "getUpdates", map[string]interface{}{
 			"offset":  offset,
 			"timeout": 30, // seconds Telegram itself long-polls for before returning an empty result
 		}, &result)
