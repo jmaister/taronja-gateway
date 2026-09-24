@@ -807,6 +807,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/notifications/channels/status:
+    get:
+      summary: Get the current user's status on every configured notification channel
+      description: >
+        One entry per channel this gateway has configured. A channel that
+        works for every user the moment it's configured (e.g. email) is
+        reported "active"; a channel that additionally requires this user
+        to individually connect their account first (e.g. telegram, via
+        getTelegramLinkCode) is reported "connected" or "not_connected"
+        instead, with linkedAt set when connected. Lets a settings screen
+        list every channel's status without hardcoding which channels
+        exist or which of them need connecting — a channel this gateway
+        hasn't configured at all is simply absent from the list.
+      operationId: getChannelStatuses
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: This user's status on every configured channel
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChannelStatus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/notifications/preferences:
     get:
       summary: Get the current user's preferred notification channel
@@ -2799,6 +2834,31 @@ components:
             (or omitted, on the PUT request) means no preference — every
             configured channel is used instead.
           example: "telegram"
+
+    ChannelStatus:
+      type: object
+      properties:
+        channel:
+          type: string
+          description: e.g. "email" or "telegram".
+          example: "telegram"
+        status:
+          type: string
+          enum: [active, connected, not_connected]
+          description: >
+            "active" for a channel that works for every user already
+            (e.g. email); "connected"/"not_connected" for a channel that
+            also requires this user to individually link their account
+            first (e.g. telegram — see getTelegramLinkCode).
+          example: "connected"
+        linkedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this user connected this channel. Only set when status is "connected".
+      required:
+        - channel
+        - status
 
   securitySchemes:
     cookieAuth:

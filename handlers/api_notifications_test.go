@@ -314,6 +314,67 @@ func TestUnlinkTelegramChat(t *testing.T) {
 	})
 }
 
+func TestGetChannelStatuses(t *testing.T) {
+	t.Run("returns 401 when unauthenticated", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetChannelStatuses(context.Background(), api.GetChannelStatusesRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetChannelStatuses401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns an empty list, not an error, when nothing is configured", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetChannelStatuses(sessionContext("u1", false), api.GetChannelStatusesRequestObject{})
+		require.NoError(t, err)
+		statuses, ok := resp.(api.GetChannelStatuses200JSONResponse)
+		require.True(t, ok)
+		assert.Empty(t, statuses)
+	})
+
+	t.Run("reports email active and telegram connected/not_connected", func(t *testing.T) {
+		db.SetupTestDB(t.Name())
+		repo := db.NewNotificationRepositoryDB(db.GetConnection())
+		userRepo := db.NewDBUserRepository(db.GetConnection())
+		service := notification.NewService(config.NotificationConfig{
+			Email:    config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: 25, From: "gw@example.com"},
+			Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "fake-test-token"},
+		}, repo, userRepo, "https://gw.example.com/_/notifications/respond")
+		server := &StrictApiServer{userRepo: userRepo, notificationService: service}
+
+		user := &db.User{Username: "chanstatus-handler-user", Email: "chanstatus-handler@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		resp, err := server.GetChannelStatuses(sessionContext(user.ID, false), api.GetChannelStatusesRequestObject{})
+		require.NoError(t, err)
+		statuses, ok := resp.(api.GetChannelStatuses200JSONResponse)
+		require.True(t, ok)
+		require.Len(t, statuses, 2)
+
+		byChannel := map[string]api.ChannelStatus{}
+		for _, cs := range statuses {
+			byChannel[cs.Channel] = cs
+		}
+		require.Contains(t, byChannel, db.NotificationChannelEmail)
+		assert.Equal(t, api.ChannelStatusStatusActive, byChannel[db.NotificationChannelEmail].Status)
+		require.Contains(t, byChannel, db.NotificationChannelTelegram)
+		assert.Equal(t, api.ChannelStatusStatusNotConnected, byChannel[db.NotificationChannelTelegram].Status)
+
+		require.NoError(t, repo.UpsertChannelLink(user.ID, db.NotificationChannelTelegram, "chat-handler-3"))
+
+		resp, err = server.GetChannelStatuses(sessionContext(user.ID, false), api.GetChannelStatusesRequestObject{})
+		require.NoError(t, err)
+		statuses, ok = resp.(api.GetChannelStatuses200JSONResponse)
+		require.True(t, ok)
+		for _, cs := range statuses {
+			if cs.Channel == db.NotificationChannelTelegram {
+				assert.Equal(t, api.ChannelStatusStatusConnected, cs.Status)
+				require.NotNil(t, cs.LinkedAt)
+			}
+		}
+	})
+}
+
 func TestNotificationPreference(t *testing.T) {
 	server, dependencies := setupNotificationTestServer(t)
 	user := &db.User{Username: "pref-handler-user", Email: "pref-handler@example.com"}

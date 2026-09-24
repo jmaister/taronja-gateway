@@ -375,6 +375,34 @@ func (s *StrictApiServer) UnlinkTelegramChat(ctx context.Context, request api.Un
 	return api.UnlinkTelegramChat204Response{}, nil
 }
 
+// GetChannelStatuses handles GET /api/notifications/channels/status.
+// Degrades to an empty list (not a 503) when the notification system
+// itself is disabled, the same "nothing configured" convention
+// GetNotificationPreference follows — there's no channel to report a
+// status for, which isn't an error.
+func (s *StrictApiServer) GetChannelStatuses(ctx context.Context, request api.GetChannelStatusesRequestObject) (api.GetChannelStatusesResponseObject, error) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
+		return api.GetChannelStatuses401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetChannelStatuses200JSONResponse{}, nil
+	}
+	statuses, err := s.notificationService.ChannelStatuses(sessionObj.UserID)
+	if err != nil {
+		return nil, err
+	}
+	result := make(api.GetChannelStatuses200JSONResponse, 0, len(statuses))
+	for _, cs := range statuses {
+		result = append(result, api.ChannelStatus{
+			Channel:  cs.Channel,
+			Status:   api.ChannelStatusStatus(cs.Status),
+			LinkedAt: cs.LinkedAt,
+		})
+	}
+	return result, nil
+}
+
 // toAPIDelivery converts one stored db.NotificationDelivery into the
 // OpenAPI-generated shape. ExternalRef is deliberately not exposed — it's
 // internal delivery plumbing (e.g. a Telegram "chatID:messageID" pair),

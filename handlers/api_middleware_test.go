@@ -72,13 +72,13 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 	logging, ok := byName[config.MiddlewareNameLogging]
 	require.True(t, ok)
 	assert.True(t, logging.Enabled)
-	assert.Equal(t, api.Active, logging.Status)
+	assert.Equal(t, api.MiddlewareStatusItemStatusActive, logging.Status)
 	assert.Nil(t, logging.Health, "logging has no HealthChecker implementation")
 
 	rateLimiter, ok := byName[config.MiddlewareNameRateLimiter]
 	require.True(t, ok)
 	assert.False(t, rateLimiter.Enabled, "rate limiter was not enabled in the test config")
-	assert.Equal(t, api.Available, rateLimiter.Status)
+	assert.Equal(t, api.MiddlewareStatusItemStatusAvailable, rateLimiter.Status)
 	require.NotNil(t, rateLimiter.Health, "rate limiter always implements HealthChecker")
 
 	sessionExtraction, ok := byName[config.MiddlewareNameSessionExtraction]
@@ -88,12 +88,12 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 	compression, ok := byName[config.MiddlewareNameCompression]
 	require.True(t, ok)
 	assert.False(t, compression.Enabled, "compression was not enabled in the test config")
-	assert.Equal(t, api.Available, compression.Status)
+	assert.Equal(t, api.MiddlewareStatusItemStatusAvailable, compression.Status)
 
 	tracing, ok := byName[config.MiddlewareNameTracing]
 	require.True(t, ok)
 	assert.False(t, tracing.Enabled, "tracing was not enabled in the test config")
-	assert.Equal(t, api.Available, tracing.Status)
+	assert.Equal(t, api.MiddlewareStatusItemStatusAvailable, tracing.Status)
 }
 
 func TestGetMiddlewareMetrics_Unauthorized(t *testing.T) {

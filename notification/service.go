@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -876,4 +877,70 @@ func (s *Service) UnlinkTelegramChat(userID string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Channel status values — see ChannelStatus.
+const (
+	// ChannelStatusActive means this channel is configured and works for
+	// every user already, with nothing further for them to set up (e.g.
+	// email).
+	ChannelStatusActive = "active"
+	// ChannelStatusConnected means this channel is a ConnectableProvider
+	// and userID has already linked their account to it (e.g. Telegram).
+	ChannelStatusConnected = "connected"
+	// ChannelStatusNotConnected means this channel is a
+	// ConnectableProvider but userID hasn't linked their account yet.
+	ChannelStatusNotConnected = "not_connected"
+)
+
+// ChannelStatus is one configured channel's delivery status for a
+// specific user — see ChannelStatuses.
+type ChannelStatus struct {
+	Channel string
+	Status  string // one of the ChannelStatus* constants above
+	// LinkedAt is when userID connected this channel — only set when
+	// Status == ChannelStatusConnected.
+	LinkedAt *time.Time
+}
+
+// ChannelStatuses reports, for every channel this gateway has configured,
+// whether userID can currently be reached on it: ChannelStatusActive for
+// a channel that works the moment the gateway itself is configured (e.g.
+// email), or ChannelStatusConnected/ChannelStatusNotConnected for a
+// channel implementing ConnectableProvider (e.g. Telegram), where
+// delivery also depends on this specific user having linked their
+// account. This is the generic form of GetTelegramLinkStatus — a frontend
+// wanting one settings screen listing every channel's status doesn't need
+// to hardcode which channels exist or which of them need connecting;
+// adding a new ConnectableProvider (WhatsApp, Slack, ...) shows up here
+// automatically. response_webhook is deliberately excluded: it isn't a
+// channel a notification is ever delivered *to* (see
+// resolveChannelsForUser's identical exclusion), so it has no per-user
+// status to report. The result is sorted by channel name for a stable,
+// deterministic order — s.providers is a map, so iteration order alone
+// isn't.
+func (s *Service) ChannelStatuses(userID string) ([]ChannelStatus, error) {
+	statuses := make([]ChannelStatus, 0, len(s.providers))
+	for channel, p := range s.providers {
+		if channel == db.NotificationChannelResponseWebhook {
+			continue
+		}
+		if connectable, ok := p.(ConnectableProvider); ok && connectable.RequiresConnection() {
+			linked, linkedAt, err := s.repo.GetChannelLinkStatus(userID, channel)
+			if err != nil {
+				return nil, err
+			}
+			cs := ChannelStatus{Channel: channel, Status: ChannelStatusNotConnected}
+			if linked {
+				cs.Status = ChannelStatusConnected
+				t := linkedAt
+				cs.LinkedAt = &t
+			}
+			statuses = append(statuses, cs)
+			continue
+		}
+		statuses = append(statuses, ChannelStatus{Channel: channel, Status: ChannelStatusActive})
+	}
+	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Channel < statuses[j].Channel })
+	return statuses, nil
 }

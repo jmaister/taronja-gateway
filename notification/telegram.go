@@ -48,6 +48,11 @@ func NewTelegramProvider(cfg config.TelegramNotificationConfig) *TelegramProvide
 
 func (p *TelegramProvider) Channel() string { return "telegram" }
 
+// RequiresConnection implements ConnectableProvider — a user must connect
+// their Telegram chat (see GetTelegramLinkCode) before Telegram delivery
+// can reach them, unlike email.
+func (p *TelegramProvider) RequiresConnection() bool { return true }
+
 // telegramInlineKeyboardButton and the wrapping types mirror just enough
 // of Telegram's Bot API JSON shape for sendMessage's reply_markup — see
 // https://core.telegram.org/bots/api#inlinekeyboardmarkup.

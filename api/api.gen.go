@@ -40,6 +40,27 @@ func (e BlockedClientReason) Valid() bool {
 	}
 }
 
+// Defines values for ChannelStatusStatus.
+const (
+	ChannelStatusStatusActive       ChannelStatusStatus = "active"
+	ChannelStatusStatusConnected    ChannelStatusStatus = "connected"
+	ChannelStatusStatusNotConnected ChannelStatusStatus = "not_connected"
+)
+
+// Valid indicates whether the value is a known member of the ChannelStatusStatus enum.
+func (e ChannelStatusStatus) Valid() bool {
+	switch e {
+	case ChannelStatusStatusActive:
+		return true
+	case ChannelStatusStatusConnected:
+		return true
+	case ChannelStatusStatusNotConnected:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MiddlewareHealthStatus.
 const (
 	Degraded  MiddlewareHealthStatus = "degraded"
@@ -66,16 +87,16 @@ func (e MiddlewareHealthStatus) Valid() bool {
 
 // Defines values for MiddlewareStatusItemStatus.
 const (
-	Active    MiddlewareStatusItemStatus = "active"
-	Available MiddlewareStatusItemStatus = "available"
+	MiddlewareStatusItemStatusActive    MiddlewareStatusItemStatus = "active"
+	MiddlewareStatusItemStatusAvailable MiddlewareStatusItemStatus = "available"
 )
 
 // Valid indicates whether the value is a known member of the MiddlewareStatusItemStatus enum.
 func (e MiddlewareStatusItemStatus) Valid() bool {
 	switch e {
-	case Active:
+	case MiddlewareStatusItemStatusActive:
 		return true
-	case Available:
+	case MiddlewareStatusItemStatusAvailable:
 		return true
 	default:
 		return false
@@ -239,6 +260,28 @@ type BlockedClientsResponse struct {
 	// Example: 37
 	TotalCount int `json:"totalCount"`
 }
+
+// ChannelStatus defines model for ChannelStatus.
+type ChannelStatus struct {
+	// Channel e.g. "email" or "telegram".
+	//
+	// Example: telegram
+	Channel string `json:"channel"`
+
+	// LinkedAt When this user connected this channel. Only set when status is "connected".
+	LinkedAt *time.Time `json:"linkedAt,omitempty"`
+
+	// Status "active" for a channel that works for every user already (e.g. email); "connected"/"not_connected" for a channel that also requires this user to individually link their account first (e.g. telegram — see getTelegramLinkCode).
+	//
+	//
+	// Example: connected
+	Status ChannelStatusStatus `json:"status"`
+}
+
+// ChannelStatusStatus "active" for a channel that works for every user already (e.g. email); "connected"/"not_connected" for a channel that also requires this user to individually link their account first (e.g. telegram — see getTelegramLinkCode).
+//
+// Example: connected
+type ChannelStatusStatus string
 
 // CounterAdjustmentRequest defines model for CounterAdjustmentRequest.
 type CounterAdjustmentRequest struct {
@@ -1026,6 +1069,9 @@ type ServerInterface interface {
 	// GetNotificationBatchStatus Get a rolled-up status count across every recipient of one create call (admin only)
 	// (GET /api/notifications/batches/{batchId}/status)
 	GetNotificationBatchStatus(w http.ResponseWriter, r *http.Request, batchId string)
+	// GetChannelStatuses Get the current user's status on every configured notification channel
+	// (GET /api/notifications/channels/status)
+	GetChannelStatuses(w http.ResponseWriter, r *http.Request)
 	// GetNotificationPreference Get the current user's preferred notification channel
 	// (GET /api/notifications/preferences)
 	GetNotificationPreference(w http.ResponseWriter, r *http.Request)
@@ -1482,6 +1528,20 @@ func (siw *ServerInterfaceWrapper) GetNotificationBatchStatus(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetNotificationBatchStatus(w, r, batchId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetChannelStatuses operation middleware
+func (siw *ServerInterfaceWrapper) GetChannelStatuses(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetChannelStatuses(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2365,6 +2425,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.UnlinkTelegramChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/link", wrapper.GetTelegramLinkCode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/telegram/status", wrapper.GetTelegramLinkStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/channels/status", wrapper.GetChannelStatuses)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/preferences", wrapper.GetNotificationPreference)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications/preferences", wrapper.SetNotificationPreference)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications/{notificationId}/deliveries", wrapper.ListNotificationDeliveries)
@@ -3084,6 +3145,41 @@ func (response GetNotificationBatchStatus404JSONResponse) VisitGetNotificationBa
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChannelStatusesRequestObject struct {
+}
+
+type GetChannelStatusesResponseObject interface {
+	VisitGetChannelStatusesResponse(w http.ResponseWriter) error
+}
+
+type GetChannelStatuses200JSONResponse []ChannelStatus
+
+func (response GetChannelStatuses200JSONResponse) VisitGetChannelStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChannelStatuses401JSONResponse Error
+
+func (response GetChannelStatuses401JSONResponse) VisitGetChannelStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4571,6 +4667,9 @@ type StrictServerInterface interface {
 	// GetNotificationBatchStatus Get a rolled-up status count across every recipient of one create call (admin only)
 	// (GET /api/notifications/batches/{batchId}/status)
 	GetNotificationBatchStatus(ctx context.Context, request GetNotificationBatchStatusRequestObject) (GetNotificationBatchStatusResponseObject, error)
+	// GetChannelStatuses Get the current user's status on every configured notification channel
+	// (GET /api/notifications/channels/status)
+	GetChannelStatuses(ctx context.Context, request GetChannelStatusesRequestObject) (GetChannelStatusesResponseObject, error)
 	// GetNotificationPreference Get the current user's preferred notification channel
 	// (GET /api/notifications/preferences)
 	GetNotificationPreference(ctx context.Context, request GetNotificationPreferenceRequestObject) (GetNotificationPreferenceResponseObject, error)
@@ -5010,6 +5109,30 @@ func (sh *strictHandler) GetNotificationBatchStatus(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetNotificationBatchStatusResponseObject); ok {
 		if err := validResponse.VisitGetNotificationBatchStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetChannelStatuses operation middleware
+func (sh *strictHandler) GetChannelStatuses(w http.ResponseWriter, r *http.Request) {
+	var request GetChannelStatusesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChannelStatuses(ctx, request.(GetChannelStatusesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChannelStatuses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetChannelStatusesResponseObject); ok {
+		if err := validResponse.VisitGetChannelStatusesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

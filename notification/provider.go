@@ -52,6 +52,29 @@ type Provider interface {
 	Send(ctx context.Context, req SendRequest) (externalRef string, err error)
 }
 
+// ConnectableProvider is an optional interface a Provider can implement to
+// declare that it needs each user to individually link their account to
+// it (e.g. Telegram, via its /start deep link) before delivery can reach
+// them — unlike a provider such as email, which works for every user the
+// moment the gateway itself is configured, with nothing further to set up
+// per-recipient. Service.ChannelStatuses type-asserts each configured
+// Provider against this interface to decide whether a channel's status is
+// per-user ("connected"/"not_connected") or gateway-wide ("active"),
+// without hardcoding which channel name is which — implementing it is how
+// a future per-user-connection channel (WhatsApp, Slack, ...) opts into
+// the same generic status reporting Telegram gets today, and db's
+// NotificationChannelLink table already stores such a link generically by
+// (userID, channel), so no new storage is needed either.
+type ConnectableProvider interface {
+	Provider
+	// RequiresConnection always returns true. It exists as a method
+	// (rather than making ConnectableProvider a bare marker interface
+	// with no methods beyond Provider) so implementing it is a visible,
+	// deliberate opt-in in the provider's own source, not an accidental
+	// match against a structurally-identical interface.
+	RequiresConnection() bool
+}
+
 // generateOpaqueToken returns a random, URL-safe token and the sha256 hex
 // hash of it, following the same random-bytes-then-hash pattern
 // auth.TokenService.GenerateToken uses for API tokens: the raw token is

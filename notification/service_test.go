@@ -332,6 +332,49 @@ func TestService_PreferredChannel(t *testing.T) {
 	assert.Empty(t, channel, "an empty channel clears the preference")
 }
 
+// TestService_ChannelStatuses configures every kind of provider at once —
+// email (plain "active"), Telegram (a ConnectableProvider) and the
+// response webhook (excluded outright) — to prove ChannelStatuses reports
+// each correctly without hardcoding which channel is which, and updates
+// once the user actually links Telegram.
+func TestService_ChannelStatuses(t *testing.T) {
+	service, repo, userRepo := newTestService(t, config.NotificationConfig{
+		Email:           config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: 25, From: "gw@example.com"},
+		Telegram:        config.TelegramNotificationConfig{Enabled: true, BotToken: "test-token"},
+		ResponseWebhook: config.ResponseWebhookConfig{Enabled: true, URL: "https://app.example.com/webhook"},
+	})
+	user := &db.User{Username: "chanstatus-user", Email: "chanstatus@example.com"}
+	require.NoError(t, userRepo.CreateUser(user))
+
+	statuses, err := service.ChannelStatuses(user.ID)
+	require.NoError(t, err)
+	require.Len(t, statuses, 2, "response_webhook must be excluded — it's never a channel a notification is delivered to")
+
+	byChannel := map[string]ChannelStatus{}
+	for _, cs := range statuses {
+		byChannel[cs.Channel] = cs
+	}
+
+	require.Contains(t, byChannel, db.NotificationChannelEmail)
+	assert.Equal(t, ChannelStatusActive, byChannel[db.NotificationChannelEmail].Status)
+	assert.Nil(t, byChannel[db.NotificationChannelEmail].LinkedAt)
+
+	require.Contains(t, byChannel, db.NotificationChannelTelegram)
+	assert.Equal(t, ChannelStatusNotConnected, byChannel[db.NotificationChannelTelegram].Status)
+	assert.Nil(t, byChannel[db.NotificationChannelTelegram].LinkedAt)
+
+	require.NoError(t, repo.UpsertChannelLink(user.ID, db.NotificationChannelTelegram, "555"))
+
+	statuses, err = service.ChannelStatuses(user.ID)
+	require.NoError(t, err)
+	byChannel = map[string]ChannelStatus{}
+	for _, cs := range statuses {
+		byChannel[cs.Channel] = cs
+	}
+	assert.Equal(t, ChannelStatusConnected, byChannel[db.NotificationChannelTelegram].Status)
+	require.NotNil(t, byChannel[db.NotificationChannelTelegram].LinkedAt)
+}
+
 func TestService_ListAndReadState(t *testing.T) {
 	service, _, userRepo := newTestService(t, config.NotificationConfig{})
 	user := &db.User{Username: "list-u", Email: "list-u@example.com"}
