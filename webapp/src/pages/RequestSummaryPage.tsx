@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { subDays, subHours, subMonths } from 'date-fns';
+import { useState } from 'react';
 import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
 import { useRequestStatistics, useRequestTimeSeries } from '../services/statistics';
 import { Button } from '../components/ui/Button';
@@ -105,51 +104,29 @@ function DataTable({ title, data, accent = 'primary' }: DataTableProps) {
     );
 }
 
-interface TimeSeriesPreset {
-    label: string;
-    granularity: TimeSeriesGranularity;
-    getRange: () => { start: Date; end: Date };
+// granularityForRange picks the time-series bucket size that suits a
+// date range's span, the same "get a sensible default for free" idea
+// Grafana/Cloudflare/Vercel Analytics presets follow, but derived from
+// whatever range the page's one date-range selector is set to rather
+// than needing a second, independent selector of its own: an hour-wide
+// bucket is fine to look at over a single day, but unreadable stretched
+// across a year.
+function granularityForRange(start: Date, end: Date): TimeSeriesGranularity {
+    const spanDays = (end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000);
+    if (spanDays <= 1) return 'hour';
+    if (spanDays <= 31) return 'day';
+    if (spanDays <= 366) return 'week';
+    return 'month';
 }
 
-// Quick-range presets, the same pattern Grafana/Cloudflare/Vercel Analytics
-// use: pick a window, get the granularity that suits it for free, rather
-// than making every viewer independently reason about "which bucket size
-// makes sense for a 12-month range" themselves.
-const timeSeriesPresets: TimeSeriesPreset[] = [
-    { label: 'Last hour', granularity: 'minute', getRange: () => ({ start: subHours(new Date(), 1), end: new Date() }) },
-    { label: 'Last 24 hours', granularity: 'hour', getRange: () => ({ start: subHours(new Date(), 24), end: new Date() }) },
-    { label: 'Last 7 days', granularity: 'day', getRange: () => ({ start: subDays(new Date(), 7), end: new Date() }) },
-    { label: 'Last 30 days', granularity: 'day', getRange: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
-    { label: 'Last 12 months', granularity: 'month', getRange: () => ({ start: subMonths(new Date(), 12), end: new Date() }) },
-];
-
-function TrafficOverTimeSection() {
-    const [presetIndex, setPresetIndex] = useState(1); // "Last 24 hours" by default
-
-    const preset = timeSeriesPresets[presetIndex];
-    // Recompute the range only when the preset changes, not on every
-    // render — "Last hour" et al. are relative to "now", so this still
-    // drifts forward on refetch/refresh, just not on every keystroke
-    // elsewhere on the page.
-    const { start, end } = useMemo(() => preset.getRange(), [preset]);
-
-    const { data, isLoading, error } = useRequestTimeSeries(start.toISOString(), end.toISOString(), preset.granularity);
+function TrafficOverTimeSection({ start, end }: { start: Date; end: Date }) {
+    const granularity = granularityForRange(start, end);
+    const { data, isLoading, error } = useRequestTimeSeries(start.toISOString(), end.toISOString(), granularity);
 
     return (
         <Card>
-            <CardHeader className="flex items-center justify-between">
+            <CardHeader>
                 <h3 className="text-base font-semibold">Traffic Over Time</h3>
-                <select
-                    className="tg-input py-1.5"
-                    value={presetIndex}
-                    onChange={(e) => setPresetIndex(Number(e.target.value))}
-                >
-                    {timeSeriesPresets.map((p, i) => (
-                        <option key={p.label} value={i}>
-                            {p.label}
-                        </option>
-                    ))}
-                </select>
             </CardHeader>
             <CardContent>
                 {isLoading && <p className="py-8 text-center text-sm text-muted-fg">Loading…</p>}
@@ -293,7 +270,7 @@ export function RequestSummaryPage() {
                     accent="success"
                 />
             </div>
-            <TrafficOverTimeSection />
+            <TrafficOverTimeSection start={new Date(startDateStr)} end={new Date(endDateStr)} />
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <DataTable title="Requests by Status Code" data={statistics.requestsByStatus} accent="primary" />
                 <DataTable title="Requests by Country" data={statistics.requestsByCountry} accent="primary" />
