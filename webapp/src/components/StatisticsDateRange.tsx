@@ -14,6 +14,20 @@ export type TimePeriod = {
 const todayDate = new Date();
 todayDate.setHours(0, 0, 0, 0);
 
+// startOfWeek returns the Monday on or before date, as a new Date — it
+// never mutates its argument, unlike the old "This Week" calculation this
+// replaces, which wrote through to the module-level todayDate singleton
+// (start.setDate(...) on `const start = todayDate`) and so permanently
+// shifted every period's idea of "today" after "This Week" was picked
+// once. getDay() treats Sunday as day 0, so it's the one case rolled back
+// 6 days rather than forward.
+function startOfWeek(date: Date): Date {
+    const start = new Date(date);
+    const day = start.getDay();
+    start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day));
+    return start;
+}
+
 export const timePeriods: TimePeriod[] = [
     {
         label: "Today",
@@ -37,10 +51,24 @@ export const timePeriods: TimePeriod[] = [
         label: "This Week",
         value: "thisWeek",
         getDateRange: () => {
-            const start = todayDate;
-            start.setDate(todayDate.getDate() - todayDate.getDay() + 1);
+            const start = startOfWeek(todayDate);
             const end = new Date(start);
             end.setDate(start.getDate() + 6);
+            return {
+                startDate: format(start, "yyyy-MM-dd"),
+                endDate: format(end, "yyyy-MM-dd"),
+            };
+        },
+    },
+    {
+        label: "Last Week",
+        value: "lastWeek",
+        getDateRange: () => {
+            const thisWeekStart = startOfWeek(todayDate);
+            const start = new Date(thisWeekStart);
+            start.setDate(thisWeekStart.getDate() - 7);
+            const end = new Date(thisWeekStart);
+            end.setDate(thisWeekStart.getDate() - 1);
             return {
                 startDate: format(start, "yyyy-MM-dd"),
                 endDate: format(end, "yyyy-MM-dd"),
@@ -53,6 +81,18 @@ export const timePeriods: TimePeriod[] = [
         getDateRange: () => {
             const start = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
             const end = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0);
+            return {
+                startDate: format(start, "yyyy-MM-dd"),
+                endDate: format(end, "yyyy-MM-dd"),
+            };
+        },
+    },
+    {
+        label: "Last Month",
+        value: "lastMonth",
+        getDateRange: () => {
+            const start = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+            const end = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
             return {
                 startDate: format(start, "yyyy-MM-dd"),
                 endDate: format(end, "yyyy-MM-dd"),
