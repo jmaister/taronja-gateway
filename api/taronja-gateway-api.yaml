@@ -255,6 +255,89 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   
+  /api/users/{userId}/notifications/channels/status:
+    get:
+      summary: Get a user's status on every configured notification channel (admin only)
+      description: >
+        The admin-facing counterpart to getChannelStatuses — same shape,
+        but for a user given by ID rather than the caller's own session,
+        for a user detail page to show alongside their notification
+        preference.
+      operationId: getUserChannelStatuses
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user whose channel statuses to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: This user's status on every configured channel
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChannelStatus'
+        '401':
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{userId}/notifications/preferences:
+    get:
+      summary: Get a user's preferred notification channel (admin only)
+      description: >
+        The admin-facing counterpart to getNotificationPreference — same
+        shape, but for a user given by ID rather than the caller's own
+        session.
+      operationId: getUserNotificationPreference
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user whose preference to retrieve
+          schema:
+            type: string
+      responses:
+        '200':
+          description: This user's preference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreference'
+        '401':
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/users/{userId}/tokens:
     get:
       summary: List API tokens for a specific user (admin only)

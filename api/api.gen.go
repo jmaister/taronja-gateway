@@ -1138,6 +1138,12 @@ type ServerInterface interface {
 	// GetUserById Get a user by ID (admin only)
 	// (GET /api/users/{userId})
 	GetUserById(w http.ResponseWriter, r *http.Request, userId string)
+	// GetUserChannelStatuses Get a user's status on every configured notification channel (admin only)
+	// (GET /api/users/{userId}/notifications/channels/status)
+	GetUserChannelStatuses(w http.ResponseWriter, r *http.Request, userId string)
+	// GetUserNotificationPreference Get a user's preferred notification channel (admin only)
+	// (GET /api/users/{userId}/notifications/preferences)
+	GetUserNotificationPreference(w http.ResponseWriter, r *http.Request, userId string)
 	// ListTokens List API tokens for a specific user (admin only)
 	// (GET /api/users/{userId}/tokens)
 	ListTokens(w http.ResponseWriter, r *http.Request, userId string)
@@ -2142,6 +2148,58 @@ func (siw *ServerInterfaceWrapper) GetUserById(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetUserChannelStatuses operation middleware
+func (siw *ServerInterfaceWrapper) GetUserChannelStatuses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserChannelStatuses(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUserNotificationPreference operation middleware
+func (siw *ServerInterfaceWrapper) GetUserNotificationPreference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserNotificationPreference(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTokens operation middleware
 func (siw *ServerInterfaceWrapper) ListTokens(w http.ResponseWriter, r *http.Request) {
 
@@ -2411,6 +2469,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users", wrapper.ListUsers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/users", wrapper.CreateUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}", wrapper.GetUserById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/channels/status", wrapper.GetUserChannelStatuses)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/preferences", wrapper.GetUserNotificationPreference)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.ListTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.CreateToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
@@ -4341,6 +4401,106 @@ func (response GetUserById500JSONResponse) VisitGetUserByIdResponse(w http.Respo
 	return err
 }
 
+type GetUserChannelStatusesRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type GetUserChannelStatusesResponseObject interface {
+	VisitGetUserChannelStatusesResponse(w http.ResponseWriter) error
+}
+
+type GetUserChannelStatuses200JSONResponse []ChannelStatus
+
+func (response GetUserChannelStatuses200JSONResponse) VisitGetUserChannelStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserChannelStatuses401JSONResponse Error
+
+func (response GetUserChannelStatuses401JSONResponse) VisitGetUserChannelStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserChannelStatuses404JSONResponse Error
+
+func (response GetUserChannelStatuses404JSONResponse) VisitGetUserChannelStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserNotificationPreferenceRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type GetUserNotificationPreferenceResponseObject interface {
+	VisitGetUserNotificationPreferenceResponse(w http.ResponseWriter) error
+}
+
+type GetUserNotificationPreference200JSONResponse NotificationPreference
+
+func (response GetUserNotificationPreference200JSONResponse) VisitGetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserNotificationPreference401JSONResponse Error
+
+func (response GetUserNotificationPreference401JSONResponse) VisitGetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserNotificationPreference404JSONResponse Error
+
+func (response GetUserNotificationPreference404JSONResponse) VisitGetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTokensRequestObject struct {
 	UserId string `json:"userId"`
 }
@@ -4736,6 +4896,12 @@ type StrictServerInterface interface {
 	// GetUserById Get a user by ID (admin only)
 	// (GET /api/users/{userId})
 	GetUserById(ctx context.Context, request GetUserByIdRequestObject) (GetUserByIdResponseObject, error)
+	// GetUserChannelStatuses Get a user's status on every configured notification channel (admin only)
+	// (GET /api/users/{userId}/notifications/channels/status)
+	GetUserChannelStatuses(ctx context.Context, request GetUserChannelStatusesRequestObject) (GetUserChannelStatusesResponseObject, error)
+	// GetUserNotificationPreference Get a user's preferred notification channel (admin only)
+	// (GET /api/users/{userId}/notifications/preferences)
+	GetUserNotificationPreference(ctx context.Context, request GetUserNotificationPreferenceRequestObject) (GetUserNotificationPreferenceResponseObject, error)
 	// ListTokens List API tokens for a specific user (admin only)
 	// (GET /api/users/{userId}/tokens)
 	ListTokens(ctx context.Context, request ListTokensRequestObject) (ListTokensResponseObject, error)
@@ -5706,6 +5872,58 @@ func (sh *strictHandler) GetUserById(w http.ResponseWriter, r *http.Request, use
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserByIdResponseObject); ok {
 		if err := validResponse.VisitGetUserByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUserChannelStatuses operation middleware
+func (sh *strictHandler) GetUserChannelStatuses(w http.ResponseWriter, r *http.Request, userId string) {
+	var request GetUserChannelStatusesRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserChannelStatuses(ctx, request.(GetUserChannelStatusesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserChannelStatuses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserChannelStatusesResponseObject); ok {
+		if err := validResponse.VisitGetUserChannelStatusesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUserNotificationPreference operation middleware
+func (sh *strictHandler) GetUserNotificationPreference(w http.ResponseWriter, r *http.Request, userId string) {
+	var request GetUserNotificationPreferenceRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserNotificationPreference(ctx, request.(GetUserNotificationPreferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserNotificationPreference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserNotificationPreferenceResponseObject); ok {
+		if err := validResponse.VisitGetUserNotificationPreferenceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

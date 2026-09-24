@@ -392,7 +392,14 @@ func (s *StrictApiServer) GetChannelStatuses(ctx context.Context, request api.Ge
 	if err != nil {
 		return nil, err
 	}
-	result := make(api.GetChannelStatuses200JSONResponse, 0, len(statuses))
+	return api.GetChannelStatuses200JSONResponse(toAPIChannelStatuses(statuses)), nil
+}
+
+// toAPIChannelStatuses converts Service.ChannelStatuses' result into the
+// OpenAPI-generated shape — shared by GetChannelStatuses (the caller's own
+// status) and GetUserChannelStatuses (an admin looking up someone else's).
+func toAPIChannelStatuses(statuses []notification.ChannelStatus) []api.ChannelStatus {
+	result := make([]api.ChannelStatus, 0, len(statuses))
 	for _, cs := range statuses {
 		result = append(result, api.ChannelStatus{
 			Channel:  cs.Channel,
@@ -400,7 +407,48 @@ func (s *StrictApiServer) GetChannelStatuses(ctx context.Context, request api.Ge
 			LinkedAt: cs.LinkedAt,
 		})
 	}
-	return result, nil
+	return result
+}
+
+// GetUserChannelStatuses handles GET
+// /api/users/{userId}/notifications/channels/status — the admin-facing
+// counterpart to GetChannelStatuses, for a user detail page to show
+// someone else's channel connections rather than the caller's own.
+func (s *StrictApiServer) GetUserChannelStatuses(ctx context.Context, request api.GetUserChannelStatusesRequestObject) (api.GetUserChannelStatusesResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		return api.GetUserChannelStatuses401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized: Admin access required"}, nil
+	}
+	if _, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", ""); err != nil {
+		return api.GetUserChannelStatuses404JSONResponse{Code: http.StatusNotFound, Message: "User not found"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetUserChannelStatuses200JSONResponse{}, nil
+	}
+	statuses, err := s.notificationService.ChannelStatuses(request.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetUserChannelStatuses200JSONResponse(toAPIChannelStatuses(statuses)), nil
+}
+
+// GetUserNotificationPreference handles GET
+// /api/users/{userId}/notifications/preferences — the admin-facing
+// counterpart to GetNotificationPreference.
+func (s *StrictApiServer) GetUserNotificationPreference(ctx context.Context, request api.GetUserNotificationPreferenceRequestObject) (api.GetUserNotificationPreferenceResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		return api.GetUserNotificationPreference401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized: Admin access required"}, nil
+	}
+	if _, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", ""); err != nil {
+		return api.GetUserNotificationPreference404JSONResponse{Code: http.StatusNotFound, Message: "User not found"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetUserNotificationPreference200JSONResponse{}, nil
+	}
+	channel, err := s.notificationService.GetPreferredChannel(request.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetUserNotificationPreference200JSONResponse{PreferredChannel: emptyToNil(channel)}, nil
 }
 
 // toAPIDelivery converts one stored db.NotificationDelivery into the

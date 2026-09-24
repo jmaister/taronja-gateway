@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom'; 
-import { UserTokensSection } from '../components/UserTokensSection'; 
+import { UserTokensSection } from '../components/UserTokensSection';
+import { UserNotificationsSection } from '../components/UserNotificationsSection';
 import { useUser } from '@/services/users';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 
@@ -71,6 +72,9 @@ export function UserInfoPage() {
 
             {/* User Tokens Section */}
             <UserTokensSection userId={user.id} />
+
+            {/* User Notifications Section */}
+            <UserNotificationsSection userId={user.id} />
           </div>
         )}
 

@@ -5,13 +5,14 @@
 // requires this specific user to individually link their account first
 // (e.g. telegram) is "connected"/"not_connected" instead. See
 // notification.Service.ChannelStatuses on the backend, which this exposes.
-import { getChannelStatuses } from '@/apiclient';
-import type { GetChannelStatusesResponse } from '@/apiclient';
+import { getChannelStatuses, getUserChannelStatuses, getUserNotificationPreference } from '@/apiclient';
+import type { GetChannelStatusesResponse, GetUserChannelStatusesResponse, GetUserNotificationPreferenceResponse } from '@/apiclient';
 import { useQuery } from '@tanstack/react-query';
 import { customApiClient, handleResponse } from './client';
 
 export const channelStatusKeys = {
   all: () => ['channels', 'status'] as const,
+  forUser: (userId: string) => ['users', userId, 'channels', 'status'] as const,
 };
 
 export function useChannelStatuses() {
@@ -21,5 +22,40 @@ export function useChannelStatuses() {
       const response = await getChannelStatuses({ client: customApiClient });
       return handleResponse<GetChannelStatusesResponse>(response);
     },
+  });
+}
+
+// useUserChannelStatuses is useChannelStatuses' admin-facing counterpart —
+// same shape, but for a user given by ID (a user detail page) rather than
+// the caller's own session. Requires the caller to be an admin; the
+// backend 401s otherwise.
+export function useUserChannelStatuses(userId: string) {
+  return useQuery({
+    queryKey: channelStatusKeys.forUser(userId),
+    queryFn: async (): Promise<GetUserChannelStatusesResponse> => {
+      const response = await getUserChannelStatuses({ path: { userId }, client: customApiClient });
+      return handleResponse<GetUserChannelStatusesResponse>(response);
+    },
+    enabled: !!userId,
+  });
+}
+
+export const notificationPreferenceKeys = {
+  forUser: (userId: string) => ['users', userId, 'notifications', 'preference'] as const,
+};
+
+// useUserNotificationPreference reads a user's preferred delivery channel
+// (see NotificationPreference) — the admin-facing counterpart to
+// services/... there's no self-service equivalent hook yet since no UI
+// consumes GET/PUT /api/notifications/preferences for the caller's own
+// account either.
+export function useUserNotificationPreference(userId: string) {
+  return useQuery({
+    queryKey: notificationPreferenceKeys.forUser(userId),
+    queryFn: async (): Promise<GetUserNotificationPreferenceResponse> => {
+      const response = await getUserNotificationPreference({ path: { userId }, client: customApiClient });
+      return handleResponse<GetUserNotificationPreferenceResponse>(response);
+    },
+    enabled: !!userId,
   });
 }

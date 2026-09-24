@@ -375,6 +375,94 @@ func TestGetChannelStatuses(t *testing.T) {
 	})
 }
 
+func TestGetUserChannelStatuses(t *testing.T) {
+	t.Run("returns 401 for a non-admin caller", func(t *testing.T) {
+		server, dependencies := setupNotificationTestServer(t)
+		user := &db.User{Username: "chanstatus-nonadmin-target", Email: "chanstatus-nonadmin-target@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(user))
+
+		resp, err := server.GetUserChannelStatuses(sessionContext("someone-else", false), api.GetUserChannelStatusesRequestObject{UserId: user.ID})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserChannelStatuses401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 404 for a nonexistent user", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetUserChannelStatuses(sessionContext("admin-id", true), api.GetUserChannelStatusesRequestObject{UserId: "no-such-user"})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserChannelStatuses404JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("reports the target user's own status, not the admin caller's", func(t *testing.T) {
+		db.SetupTestDB(t.Name())
+		repo := db.NewNotificationRepositoryDB(db.GetConnection())
+		userRepo := db.NewDBUserRepository(db.GetConnection())
+		service := notification.NewService(config.NotificationConfig{
+			Email:    config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: 25, From: "gw@example.com"},
+			Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "fake-test-token"},
+		}, repo, userRepo, "https://gw.example.com/_/notifications/respond")
+		server := &StrictApiServer{userRepo: userRepo, notificationService: service}
+
+		admin := &db.User{Username: "chanstatus-admin", Email: "chanstatus-admin@example.com"}
+		require.NoError(t, userRepo.CreateUser(admin))
+		target := &db.User{Username: "chanstatus-target", Email: "chanstatus-target@example.com"}
+		require.NoError(t, userRepo.CreateUser(target))
+		require.NoError(t, repo.UpsertChannelLink(target.ID, db.NotificationChannelTelegram, "chat-target-1"))
+
+		resp, err := server.GetUserChannelStatuses(sessionContext(admin.ID, true), api.GetUserChannelStatusesRequestObject{UserId: target.ID})
+		require.NoError(t, err)
+		statuses, ok := resp.(api.GetUserChannelStatuses200JSONResponse)
+		require.True(t, ok)
+
+		byChannel := map[string]api.ChannelStatus{}
+		for _, cs := range statuses {
+			byChannel[cs.Channel] = cs
+		}
+		require.Contains(t, byChannel, db.NotificationChannelTelegram)
+		assert.Equal(t, api.ChannelStatusStatusConnected, byChannel[db.NotificationChannelTelegram].Status,
+			"must reflect the target user's link, not the admin caller's (who has none)")
+	})
+}
+
+func TestGetUserNotificationPreference(t *testing.T) {
+	t.Run("returns 401 for a non-admin caller", func(t *testing.T) {
+		server, dependencies := setupNotificationTestServer(t)
+		user := &db.User{Username: "pref-nonadmin-target", Email: "pref-nonadmin-target@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(user))
+
+		resp, err := server.GetUserNotificationPreference(sessionContext("someone-else", false), api.GetUserNotificationPreferenceRequestObject{UserId: user.ID})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserNotificationPreference401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 404 for a nonexistent user", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetUserNotificationPreference(sessionContext("admin-id", true), api.GetUserNotificationPreferenceRequestObject{UserId: "no-such-user"})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserNotificationPreference404JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("reports the target user's own preference", func(t *testing.T) {
+		server, dependencies := setupNotificationTestServer(t)
+		admin := &db.User{Username: "pref-admin", Email: "pref-admin@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(admin))
+		target := &db.User{Username: "pref-target", Email: "pref-target@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(target))
+		require.NoError(t, dependencies.NotificationService.SetPreferredChannel(target.ID, db.NotificationChannelEmail))
+
+		resp, err := server.GetUserNotificationPreference(sessionContext(admin.ID, true), api.GetUserNotificationPreferenceRequestObject{UserId: target.ID})
+		require.NoError(t, err)
+		pref, ok := resp.(api.GetUserNotificationPreference200JSONResponse)
+		require.True(t, ok)
+		require.NotNil(t, pref.PreferredChannel)
+		assert.Equal(t, db.NotificationChannelEmail, *pref.PreferredChannel)
+	})
+}
+
 func TestNotificationPreference(t *testing.T) {
 	server, dependencies := setupNotificationTestServer(t)
 	user := &db.User{Username: "pref-handler-user", Email: "pref-handler@example.com"}
