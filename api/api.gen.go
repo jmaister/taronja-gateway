@@ -757,6 +757,13 @@ type RequestStatistics struct {
 	TotalRequests int `json:"totalRequests"`
 }
 
+// TelegramLinkCode defines model for TelegramLinkCode.
+type TelegramLinkCode struct {
+	// DeepLink A fresh, short-lived "https://t.me/<bot>?start=<code>" link — render as a button or QR code, or hand it directly to whoever needs to connect. Opening it and pressing Start in Telegram connects that chat, so future notifications can be delivered there too.
+	DeepLink  string    `json:"deepLink"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 // TimeSeriesGranularity defines model for TimeSeriesGranularity.
 type TimeSeriesGranularity string
 
@@ -1144,6 +1151,9 @@ type ServerInterface interface {
 	// GetUserNotificationPreference Get a user's preferred notification channel (admin only)
 	// (GET /api/users/{userId}/notifications/preferences)
 	GetUserNotificationPreference(w http.ResponseWriter, r *http.Request, userId string)
+	// GetUserTelegramLinkCode Get a Telegram deep link to connect a user's account (admin only)
+	// (GET /api/users/{userId}/notifications/telegram/link)
+	GetUserTelegramLinkCode(w http.ResponseWriter, r *http.Request, userId string)
 	// ListTokens List API tokens for a specific user (admin only)
 	// (GET /api/users/{userId}/tokens)
 	ListTokens(w http.ResponseWriter, r *http.Request, userId string)
@@ -2200,6 +2210,32 @@ func (siw *ServerInterfaceWrapper) GetUserNotificationPreference(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetUserTelegramLinkCode operation middleware
+func (siw *ServerInterfaceWrapper) GetUserTelegramLinkCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserTelegramLinkCode(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTokens operation middleware
 func (siw *ServerInterfaceWrapper) ListTokens(w http.ResponseWriter, r *http.Request) {
 
@@ -2471,6 +2507,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}", wrapper.GetUserById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/channels/status", wrapper.GetUserChannelStatuses)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/preferences", wrapper.GetUserNotificationPreference)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/telegram/link", wrapper.GetUserTelegramLinkCode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.ListTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.CreateToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tokens/{tokenId}", wrapper.DeleteToken)
@@ -3436,10 +3473,7 @@ type GetTelegramLinkCodeResponseObject interface {
 	VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error
 }
 
-type GetTelegramLinkCode200JSONResponse struct {
-	DeepLink  string    `json:"deepLink"`
-	ExpiresAt time.Time `json:"expiresAt"`
-}
+type GetTelegramLinkCode200JSONResponse TelegramLinkCode
 
 func (response GetTelegramLinkCode200JSONResponse) VisitGetTelegramLinkCodeResponse(w http.ResponseWriter) error {
 
@@ -4501,6 +4535,70 @@ func (response GetUserNotificationPreference404JSONResponse) VisitGetUserNotific
 	return err
 }
 
+type GetUserTelegramLinkCodeRequestObject struct {
+	UserId string `json:"userId"`
+}
+
+type GetUserTelegramLinkCodeResponseObject interface {
+	VisitGetUserTelegramLinkCodeResponse(w http.ResponseWriter) error
+}
+
+type GetUserTelegramLinkCode200JSONResponse TelegramLinkCode
+
+func (response GetUserTelegramLinkCode200JSONResponse) VisitGetUserTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserTelegramLinkCode401JSONResponse Error
+
+func (response GetUserTelegramLinkCode401JSONResponse) VisitGetUserTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserTelegramLinkCode404JSONResponse Error
+
+func (response GetUserTelegramLinkCode404JSONResponse) VisitGetUserTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUserTelegramLinkCode503JSONResponse Error
+
+func (response GetUserTelegramLinkCode503JSONResponse) VisitGetUserTelegramLinkCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTokensRequestObject struct {
 	UserId string `json:"userId"`
 }
@@ -4902,6 +5000,9 @@ type StrictServerInterface interface {
 	// GetUserNotificationPreference Get a user's preferred notification channel (admin only)
 	// (GET /api/users/{userId}/notifications/preferences)
 	GetUserNotificationPreference(ctx context.Context, request GetUserNotificationPreferenceRequestObject) (GetUserNotificationPreferenceResponseObject, error)
+	// GetUserTelegramLinkCode Get a Telegram deep link to connect a user's account (admin only)
+	// (GET /api/users/{userId}/notifications/telegram/link)
+	GetUserTelegramLinkCode(ctx context.Context, request GetUserTelegramLinkCodeRequestObject) (GetUserTelegramLinkCodeResponseObject, error)
 	// ListTokens List API tokens for a specific user (admin only)
 	// (GET /api/users/{userId}/tokens)
 	ListTokens(ctx context.Context, request ListTokensRequestObject) (ListTokensResponseObject, error)
@@ -5924,6 +6025,32 @@ func (sh *strictHandler) GetUserNotificationPreference(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserNotificationPreferenceResponseObject); ok {
 		if err := validResponse.VisitGetUserNotificationPreferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUserTelegramLinkCode operation middleware
+func (sh *strictHandler) GetUserTelegramLinkCode(w http.ResponseWriter, r *http.Request, userId string) {
+	var request GetUserTelegramLinkCodeRequestObject
+
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUserTelegramLinkCode(ctx, request.(GetUserTelegramLinkCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUserTelegramLinkCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUserTelegramLinkCodeResponseObject); ok {
+		if err := validResponse.VisitGetUserTelegramLinkCodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

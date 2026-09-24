@@ -213,6 +213,38 @@ func TestGetTelegramLinkCode(t *testing.T) {
 	})
 }
 
+func TestGetUserTelegramLinkCode(t *testing.T) {
+	t.Run("returns 503 when telegram isn't configured", func(t *testing.T) {
+		server, dependencies := setupNotificationTestServer(t)
+		user := &db.User{Username: "link-target-503", Email: "link-target-503@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(user))
+
+		resp, err := server.GetUserTelegramLinkCode(sessionContext("admin-id", true), api.GetUserTelegramLinkCodeRequestObject{UserId: user.ID})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserTelegramLinkCode503JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 401 for a non-admin caller", func(t *testing.T) {
+		server, dependencies := setupNotificationTestServer(t)
+		user := &db.User{Username: "link-target-401", Email: "link-target-401@example.com"}
+		require.NoError(t, dependencies.UserRepo.CreateUser(user))
+
+		resp, err := server.GetUserTelegramLinkCode(sessionContext("someone-else", false), api.GetUserTelegramLinkCodeRequestObject{UserId: user.ID})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserTelegramLinkCode401JSONResponse)
+		assert.True(t, ok)
+	})
+
+	t.Run("returns 404 for a nonexistent user", func(t *testing.T) {
+		server, _ := setupNotificationTestServer(t)
+		resp, err := server.GetUserTelegramLinkCode(sessionContext("admin-id", true), api.GetUserTelegramLinkCodeRequestObject{UserId: "no-such-user"})
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserTelegramLinkCode404JSONResponse)
+		assert.True(t, ok)
+	})
+}
+
 // setupTelegramEnabledTestServer is setupNotificationTestServer's Telegram-
 // enabled counterpart: GetTelegramLinkStatus/UnlinkTelegramChat both need
 // s.telegram != nil to do anything but 503, and neither actually calls out

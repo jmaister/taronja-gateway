@@ -329,6 +329,31 @@ func (s *StrictApiServer) GetTelegramLinkCode(ctx context.Context, request api.G
 	return api.GetTelegramLinkCode200JSONResponse{DeepLink: deepLink, ExpiresAt: expiresAt}, nil
 }
 
+// GetUserTelegramLinkCode handles GET
+// /api/users/{userId}/notifications/telegram/link — the admin-facing
+// counterpart to GetTelegramLinkCode, generating a deep link for a user
+// given by ID so an admin can hand it to them directly rather than the
+// user generating their own.
+func (s *StrictApiServer) GetUserTelegramLinkCode(ctx context.Context, request api.GetUserTelegramLinkCodeRequestObject) (api.GetUserTelegramLinkCodeResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		return api.GetUserTelegramLinkCode401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized: Admin access required"}, nil
+	}
+	if _, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", ""); err != nil {
+		return api.GetUserTelegramLinkCode404JSONResponse{Code: http.StatusNotFound, Message: "User not found"}, nil
+	}
+	if s.notificationService == nil {
+		return api.GetUserTelegramLinkCode503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Telegram delivery isn't configured on this gateway"}, nil
+	}
+	deepLink, expiresAt, err := s.notificationService.GetTelegramLinkCode(ctx, request.UserId)
+	if err != nil {
+		if errors.Is(err, notification.ErrChannelNotConfigured) {
+			return api.GetUserTelegramLinkCode503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Telegram delivery isn't configured on this gateway"}, nil
+		}
+		return nil, err
+	}
+	return api.GetUserTelegramLinkCode200JSONResponse{DeepLink: deepLink, ExpiresAt: expiresAt}, nil
+}
+
 // GetTelegramLinkStatus handles GET /api/notifications/telegram/status.
 func (s *StrictApiServer) GetTelegramLinkStatus(ctx context.Context, request api.GetTelegramLinkStatusRequestObject) (api.GetTelegramLinkStatusResponseObject, error) {
 	sessionObj, ok := requireSession(ctx)

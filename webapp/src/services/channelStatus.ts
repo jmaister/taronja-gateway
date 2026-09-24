@@ -5,9 +5,14 @@
 // requires this specific user to individually link their account first
 // (e.g. telegram) is "connected"/"not_connected" instead. See
 // notification.Service.ChannelStatuses on the backend, which this exposes.
-import { getChannelStatuses, getUserChannelStatuses, getUserNotificationPreference } from '@/apiclient';
-import type { GetChannelStatusesResponse, GetUserChannelStatusesResponse, GetUserNotificationPreferenceResponse } from '@/apiclient';
-import { useQuery } from '@tanstack/react-query';
+import { getChannelStatuses, getUserChannelStatuses, getUserNotificationPreference, getUserTelegramLinkCode } from '@/apiclient';
+import type {
+  GetChannelStatusesResponse,
+  GetUserChannelStatusesResponse,
+  GetUserNotificationPreferenceResponse,
+  GetUserTelegramLinkCodeResponse,
+} from '@/apiclient';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { customApiClient, handleResponse } from './client';
 
 export const channelStatusKeys = {
@@ -57,5 +62,21 @@ export function useUserNotificationPreference(userId: string) {
       return handleResponse<GetUserNotificationPreferenceResponse>(response);
     },
     enabled: !!userId,
+  });
+}
+
+// useGenerateUserTelegramLinkCode is the admin-facing counterpart to
+// services/telegram.ts's useCreateTelegramLinkCode: generates a fresh
+// Telegram deep link for a user given by ID, so an admin can hand it to
+// that user directly (message, email, ...) instead of the user
+// generating their own from a self-service page. A mutation, not a
+// query, for the same reason as the self-service version — every call
+// issues a fresh, single-use, short-lived code.
+export function useGenerateUserTelegramLinkCode() {
+  return useMutation({
+    mutationFn: async (userId: string): Promise<GetUserTelegramLinkCodeResponse> => {
+      const response = await getUserTelegramLinkCode({ path: { userId }, client: customApiClient });
+      return handleResponse<GetUserTelegramLinkCodeResponse>(response);
+    },
   });
 }
