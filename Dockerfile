@@ -3,16 +3,17 @@
 # build (see .goreleaser.yml: CGO_ENABLED=0, -tags=purego — the project uses
 # modernc.org/sqlite, a pure-Go driver, specifically so this works).
 #
-# Used by examples/docker-demo/docker-compose.yml. Not currently wired into
-# the GitHub release pipeline — .goreleaser.yml's `dockers:` section
-# referencing this file is still commented out ("Docker image builds are
-# disabled due to issues"); this Dockerfile exists for local/demo use.
+# Used by examples/docker-demo/docker-compose.yml, and by
+# .github/workflows/docker-release.yml to publish
+# ghcr.io/jmaister/taronja-gateway on every GitHub Release (see that
+# workflow and .goreleaser.yml's comment for why this is a separate
+# workflow rather than goreleaser's own `dockers:` integration).
 #
 # Build from the repo root (the compose file does this via `context: ../..`):
 #   docker build -t taronja-gateway .
 
 # --- Stage 1: build the admin dashboard (webapp/dist) ---
-FROM node:22-alpine AS webapp-builder
+FROM node:24-alpine AS webapp-builder
 WORKDIR /src
 
 # The TypeScript API client (webapp/src/apiclient) is generated from the

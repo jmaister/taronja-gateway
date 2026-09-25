@@ -95,6 +95,20 @@ The Windows installer places the binary in `%USERPROFILE%\bin`. Add this directo
 
 Prefer to see it running before installing anything? [`examples/docker-demo`](examples/docker-demo/) is a `docker compose up --build` away from a full stack with one of each route type (static, authenticated static, reverse proxy), the admin dashboard, and Google/GitHub OAuth wired up to `.env` — see its README.
 
+### Docker Image
+
+Every [GitHub Release](https://github.com/jmaister/taronja-gateway/releases) publishes `ghcr.io/jmaister/taronja-gateway:<version>` and `:latest` (see `.github/workflows/docker-release.yml`) — pull it directly instead of building the `Dockerfile` yourself:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v $(pwd)/config:/etc/taronja-gateway:ro \
+  -v gateway-db:/data \
+  ghcr.io/jmaister/taronja-gateway:latest \
+  run --config /etc/taronja-gateway/config.yaml
+```
+
+This is the same image `examples/docker-demo` builds locally — useful for deploying behind a platform that runs containers for you (a Docker Compose stack, Dokploy, Coolify, Kubernetes, ...): give it a config file with `routes[].to` pointing at your other services' addresses on that platform's network, and a volume at `/data` so the sqlite DB (admin user, sessions, traffic metrics) survives a redeploy.
+
 # Commands
 
 The Taronja Gateway CLI provides the following commands:

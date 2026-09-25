@@ -77,18 +77,14 @@ release:
   prerelease: auto
   # extra_files: no extra release assets
 
-# Docker image builds are disabled due to issues
-# dockers:
-#   - image_templates:
-#       - "ghcr.io/jmaister/{{.ProjectName}}:{{ .Version }}"
-#       - "ghcr.io/jmaister/{{.ProjectName}}:latest"
-#     dockerfile: Dockerfile
-#     use: buildx
-#     build_flag_templates:
-#       - --label=org.opencontainers.image.created={{.Date}}
-#       - --label=org.opencontainers.image.title={{.ProjectName}}
-#       - --label=org.opencontainers.image.revision={{.FullCommit}}
-#       - --label=org.opencontainers.image.version={{.Version}}
+# The Docker image (ghcr.io/jmaister/taronja-gateway) is built and pushed
+# by .github/workflows/docker-release.yml instead of goreleaser's own
+# `dockers:` integration: that integration expects to hand a
+# goreleaser-built binary to a Dockerfile, but this project's Dockerfile
+# does its own full multi-stage source build (webapp, then the Go
+# binary) — running that as a second, independent build in its own
+# workflow (with GitHub Actions' layer cache) is simpler than trying to
+# thread goreleaser's build artifact into it.
 
 # Optionally use Homebrew for macOS users
 #brews:
