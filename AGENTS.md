@@ -562,7 +562,10 @@ webapp/src/
 - **GitHub Actions** (`.github/workflows/`):
   - `ci.yml` — on push/PR: setup Go 1.27 + Node 22, regenerate API clients, build SDK/webapp, `go build`, `go test -cover`, post coverage table as PR comment, run `goreleaser check`
   - `sdk-release.yml` — publish SDK to npm (triggered on tag or manual workflow dispatch)
-  - `release.yml` — build release binaries and Docker images via GoReleaser (disabled/commented out Docker section)
+  - `clients.yml` — generate and push the OpenAPI-generated clients to a separate repo (triggered on tag or manual workflow dispatch)
+  - `release.yml` — build release binaries via GoReleaser (its own `dockers:` integration is unused — see `.goreleaser.yml`'s comment; the image is built separately, below)
+  - `docker-release.yml` — build and push `ghcr.io/jmaister/taronja-gateway:<version>`/`:latest` on every GitHub Release, with a `workflow_dispatch` build-only dry run
+  - `docker-pr.yml` — build and push `ghcr.io/jmaister/taronja-gateway:pr-<number>` on every push to a same-repo (non-fork) PR, plus a daily job that deletes `pr-*` images older than 5 days (needs a `GHCR_CLEANUP_TOKEN` repo secret — see the workflow's own comment for why `GITHUB_TOKEN` isn't enough for this specific operation)
 
 ---
 

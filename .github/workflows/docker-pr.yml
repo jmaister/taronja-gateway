@@ -1,0 +1,115 @@
+name: PR Docker Image
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
+  # Daily sweep for expired PR images — see cleanup-expired-images below.
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  # Builds and pushes ghcr.io/jmaister/taronja-gateway:pr-<number>, updated
+  # on every push to the PR — lets anyone `docker pull` and try a PR's
+  # actual built image without waiting for a release.
+  #
+  # Only for a PR whose branch lives in this same repo, never a fork: a
+  # fork PR's GITHUB_TOKEN is always read-only regardless of the
+  # `permissions:` declared here (GitHub enforces this itself, it isn't
+  # something this workflow can opt out of) — the push would just fail —
+  # and even if it didn't, letting an external contributor's PR publish a
+  # package under this repo's name is a supply-chain risk not worth
+  # taking for what's a convenience feature.
+  build-and-push:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push PR image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/jmaister/taronja-gateway:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.title=taronja-gateway
+            org.opencontainers.image.revision=${{ github.event.pull_request.head.sha }}
+
+  # Runs daily (and on demand via workflow_dispatch) rather than on PR
+  # close, so a long-open PR's image survives as long as it keeps getting
+  # pushed to, but a PR nobody's touched in 5 days loses its image the
+  # same way a merged/closed one eventually does — "expire", not "delete
+  # the moment the PR closes".
+  #
+  # Needs GHCR_CLEANUP_TOKEN: a classic PAT with the read:packages and
+  # delete:packages scopes, added as a repo secret. This can't use the
+  # default GITHUB_TOKEN the way build-and-push's push above does —
+  # deleting package versions owned by a *user* account (jmaister is a
+  # personal account, not a GitHub org) requires a real PAT belonging to
+  # that account; GITHUB_TOKEN's packages:write only covers publishing
+  # for a personal-owned package, not deleting from it. (Org-owned
+  # packages don't have this restriction, for what it's worth — this
+  # split is a GitHub platform behavior, not a choice made here.)
+  #
+  # This is the one part of this workflow that couldn't be verified
+  # end-to-end while writing it: there was no published pr-* image yet to
+  # test deletion against. Skips instead of failing until the secret
+  # exists, so this doesn't show as a red scheduled run before that
+  # one-time setup happens — but do a manual `workflow_dispatch` run once
+  # it's set to confirm it actually deletes something, rather than
+  # trusting this comment.
+  cleanup-expired-images:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check GHCR_CLEANUP_TOKEN is configured
+        id: check_token
+        run: |
+          if [ -z "${{ secrets.GHCR_CLEANUP_TOKEN }}" ]; then
+            echo "GHCR_CLEANUP_TOKEN isn't set — add a classic PAT with read:packages + delete:packages as a repo secret to enable cleanup. Skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Delete pr-* images older than 5 days
+        if: steps.check_token.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN }}
+        run: |
+          set -euo pipefail
+          OWNER="jmaister"
+          PACKAGE="taronja-gateway"
+          CUTOFF_EPOCH=$(date -u -d '5 days ago' +%s)
+
+          # A version is eligible once it's older than the cutoff and
+          # either untagged (a stale digest left behind when a pr-<N> tag
+          # moved to a newer push) or still tagged pr-<N> itself (a PR
+          # nobody's pushed to in 5+ days) — release/:latest versions
+          # never match the pr- prefix, so this never touches them.
+          gh api "/users/$OWNER/packages/container/$PACKAGE/versions" --paginate \
+            --jq ".[] | select((.created_at | fromdateiso8601) < $CUTOFF_EPOCH) | select((.metadata.container.tags | length == 0) or (.metadata.container.tags | any(startswith(\"pr-\")))) | .id" \
+          | while read -r id; do
+              echo "Deleting package version $id"
+              gh api -X DELETE "/users/$OWNER/packages/container/$PACKAGE/versions/$id"
+            done
