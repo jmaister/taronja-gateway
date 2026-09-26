@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Taronja Gateway — Docker Image Example</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
+    code { background: #f0f0f0; padding: 0.15em 0.4em; border-radius: 4px; }
+    a { color: #d2691e; }
+  </style>
+</head>
+<body>
+  <h1>It's running 🍊</h1>
+  <p>
+    This page is served by <code>ghcr.io/jmaister/taronja-gateway</code> —
+    the gateway container was <strong>pulled</strong> (or built locally
+    and tagged the same way), not built from source, unlike
+    <code>examples/docker-demo</code>.
+  </p>
+  <ul>
+    <li><a href="/web/">/web/</a> — proxied to a second container (<code>web-service</code>)</li>
+    <li><a href="/_/admin/">/_/admin/</a> — the built-in admin dashboard (<code>admin</code> / <code>admin123</code>)</li>
+  </ul>
+</body>
+</html>

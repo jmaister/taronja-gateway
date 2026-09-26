@@ -1,0 +1,44 @@
+# Config for the docker-image example (see ./README.md). Unlike
+# docker-demo's config, there's no OAuth/.env setup here — the point of
+# this example is the image, not the feature tour (see docker-demo for
+# that). "web-service:80" is a Compose service name, resolved by Docker's
+# internal DNS, exactly the way you'd point a route at any other
+# container-per-service platform's internal address (Dokploy, Coolify,
+# Kubernetes, ...).
+version: "1.0"
+name: Taronja Gateway - Docker Image Example
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  url: http://localhost:18199
+
+management:
+  prefix: /_
+  session:
+    secondsDuration: 86400 # 24 hours
+  admin:
+    enabled: true
+    username: admin
+    password: admin123 # hashed automatically on first run — change this for anything but local demo use
+
+authenticationProviders:
+  basic:
+    enabled: true
+
+routes:
+  # --- Static route ---------------------------------------------------
+  - name: Home page
+    from: /
+    toFolder: /srv/static-site
+    static: true
+
+  # --- Proxy route ------------------------------------------------------
+  # The part this example is actually about: a second service, reached by
+  # its Compose service name rather than localhost — the same mechanism
+  # that lets the gateway reach services on any other platform's internal
+  # network once it's deployed there.
+  - name: Web service (proxy)
+    from: /web/*
+    removeFromPath: /web/
+    to: http://web-service:80

@@ -107,7 +107,7 @@ docker run --rm -p 8080:8080 \
   run --config /etc/taronja-gateway/config.yaml
 ```
 
-This is the same image `examples/docker-demo` builds locally — useful for deploying behind a platform that runs containers for you (a Docker Compose stack, Dokploy, Coolify, Kubernetes, ...): give it a config file with `routes[].to` pointing at your other services' addresses on that platform's network, and a volume at `/data` so the sqlite DB (admin user, sessions, traffic metrics) survives a redeploy.
+Useful for deploying behind a platform that runs containers for you (a Docker Compose stack, Dokploy, Coolify, Kubernetes, ...): give it a config file with `routes[].to` pointing at your other services' addresses on that platform's network, and a volume at `/data` so the sqlite DB (admin user, sessions, traffic metrics) survives a redeploy. [`examples/docker-image`](examples/docker-image/) is a runnable Compose version of exactly this — pulling the image rather than building `examples/docker-demo`'s equivalent `Dockerfile` locally.
 
 # Commands
 
