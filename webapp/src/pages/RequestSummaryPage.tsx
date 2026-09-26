@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
-import { useRequestStatistics } from '../services/services';
+import { useRequestStatistics, useRequestTimeSeries } from '../services/statistics';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';
+import { TimeSeriesChart } from '../components/charts/TimeSeriesChart';
+import type { TimeSeriesGranularity } from '@/apiclient';
 
 interface StatCard {
     title: string;
@@ -102,6 +104,78 @@ function DataTable({ title, data, accent = 'primary' }: DataTableProps) {
     );
 }
 
+// granularityForRange picks the time-series bucket size that suits a
+// date range's span, the same "get a sensible default for free" idea
+// Grafana/Cloudflare/Vercel Analytics presets follow, but derived from
+// whatever range the page's one date-range selector is set to rather
+// than needing a second, independent selector of its own: an hour-wide
+// bucket is fine to look at over a single day, but unreadable stretched
+// across a year.
+function granularityForRange(start: Date, end: Date): TimeSeriesGranularity {
+    const spanDays = (end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000);
+    if (spanDays <= 1) return 'hour';
+    if (spanDays <= 31) return 'day';
+    if (spanDays <= 366) return 'week';
+    return 'month';
+}
+
+function TrafficOverTimeSection({ start, end }: { start: Date; end: Date }) {
+    const granularity = granularityForRange(start, end);
+    const { data, isLoading, error } = useRequestTimeSeries(start.toISOString(), end.toISOString(), granularity);
+
+    return (
+        <Card>
+            <CardHeader>
+                <h3 className="text-base font-semibold">Traffic Over Time</h3>
+            </CardHeader>
+            <CardContent>
+                {isLoading && <p className="py-8 text-center text-sm text-muted-fg">Loading…</p>}
+                {error && (
+                    <p className="py-8 text-center text-sm text-danger">
+                        {error instanceof Error ? error.message : 'Failed to load traffic over time'}
+                    </p>
+                )}
+                {data && (
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <TimeSeriesChart
+                            title="Requests & Unique Visitors"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[
+                                { key: 'requestCount', label: 'Requests', color: '#4299E1' },
+                                { key: 'uniqueFingerprints', label: 'Unique Visitors (fingerprint)', color: '#48BB78' },
+                                { key: 'uniqueUsers', label: 'Authenticated Users', color: '#9F7AEA' },
+                            ]}
+                        />
+                        <TimeSeriesChart
+                            title="New vs Returning Visitors"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[
+                                { key: 'newVisitors', label: 'New', color: '#48BB78' },
+                                { key: 'returningVisitors', label: 'Returning', color: '#4299E1' },
+                            ]}
+                        />
+                        <TimeSeriesChart
+                            title="Errors Over Time"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[{ key: 'errorCount', label: 'Errors (4xx/5xx)', color: '#F56565' }]}
+                        />
+                        <TimeSeriesChart
+                            title="Average Response Time"
+                            points={data.points}
+                            granularity={data.granularity}
+                            lines={[{ key: 'averageResponseTime', label: 'Avg Response Time', color: '#ED8936' }]}
+                            unit="ms"
+                        />
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 export function RequestSummaryPage() {
     const [selectedPeriod, setSelectedPeriod] = useState<string>('today');
     const [dateRange, setDateRange] = useState<DateRange>(() => timePeriods[0].getDateRange());
@@ -125,7 +199,7 @@ export function RequestSummaryPage() {
     if (error) {
         return (
             <div className="flex items-center justify-center py-20">
-                <div className="text-center">
+                <div className="text-center" role="alert">
                     <div className="mb-4 text-6xl text-danger">⚠️</div>
                     <h1 className="mb-2 text-2xl font-semibold">Error Loading Request Summary</h1>
                     <p className="mb-4 text-muted-fg">{error instanceof Error ? error.message : 'Unknown error'}</p>
@@ -193,9 +267,10 @@ export function RequestSummaryPage() {
                         100
                     ).toFixed(1)}%`}
                     icon="✅"
-                    accent="danger"
+                    accent="success"
                 />
             </div>
+            <TrafficOverTimeSection start={new Date(startDateStr)} end={new Date(endDateStr)} />
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <DataTable title="Requests by Status Code" data={statistics.requestsByStatus} accent="primary" />
                 <DataTable title="Requests by Country" data={statistics.requestsByCountry} accent="primary" />
@@ -206,8 +281,13 @@ export function RequestSummaryPage() {
                     <DataTable title="Requests by User" data={statistics.requestsByUser} accent="primary" />
                 )}
                 <DataTable
-                    title="Requests by JA4 Fingerprint"
-                    data={statistics.requestsByJA4Fingerprint}
+                    title="Requests by Fingerprint"
+                    data={statistics.requestsByFingerprint}
+                    accent="warning"
+                />
+                <DataTable
+                    title="Requests by Fingerprint Type"
+                    data={statistics.requestsByFingerprintType}
                     accent="warning"
                 />
             </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useCreateUser } from '../services/services';
+import { useCreateUser } from '../services/users';
 import { UserCreateRequest } from '@/apiclient';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
@@ -44,7 +44,7 @@ export function CreateUserPage() {
                     }, 1500);
                 }
             },
-            onError: (err: any) => {
+            onError: (err: Error) => {
                 setMessage(err.message || 'An unexpected error occurred. Please try again.');
                 setMessageType('error');
             },

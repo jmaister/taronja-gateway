@@ -12,6 +12,19 @@ import (
 	// For session.ExtractClientInfo, session.SessionCookieName
 )
 
+// dummyPasswordHash is a fixed, valid argon2id hash of an arbitrary
+// placeholder value nobody's real password will ever be — compared
+// against (and always discarded) when no matching user was found, so a
+// login attempt for a nonexistent username still pays the same
+// argon2id computation as one for a real username with a wrong password.
+// Without this, RegisterBasicAuth's login handler returned "Invalid
+// credentials" for an unknown username immediately, skipping
+// encryption.ComparePassword's hashing work entirely — a real user
+// enumeration side channel: a nonexistent username responds near-
+// instantly, a real one pays argon2id's full ~tens-of-milliseconds cost
+// first, and that gap is trivially measurable over the network.
+const dummyPasswordHash = "$argon2id$v=19$m=19456,t=2,p=1$Kv75i1B3Xx82V25DUgi+ig$PfmOrccHiXOZi6RZ6WOPNuh9Gaab+Fg0fIRe0hOUR4s"
+
 // parseLoginCredentials parses username and password from form data (both URL-encoded and multipart)
 func parseLoginCredentials(r *http.Request) (username, password string) {
 	// First try to parse as URL-encoded form
@@ -36,7 +49,9 @@ func parseLoginCredentials(r *http.Request) (username, password string) {
 	return username, password
 }
 
-// getRedirectURL extracts the redirect URL from various sources in the request
+// getRedirectURL extracts the redirect URL from various sources in the
+// request, sanitized to a same-origin path — see
+// session.SanitizeRedirectPath's doc comment for why.
 func getRedirectURL(r *http.Request) string {
 	redirectURL := r.Form.Get("redirect")
 	if redirectURL == "" && r.MultipartForm != nil && r.MultipartForm.Value != nil {
@@ -47,10 +62,7 @@ func getRedirectURL(r *http.Request) string {
 	if redirectURL == "" {
 		redirectURL = r.URL.Query().Get("redirect")
 	}
-	if redirectURL == "" {
-		redirectURL = "/" // Default redirect
-	}
-	return redirectURL
+	return session.SanitizeRedirectPath(redirectURL)
 }
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
@@ -66,7 +78,8 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 		Value:    sessionObject.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(gatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
@@ -82,10 +95,7 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 	checkSessionAndRedirect := func(w http.ResponseWriter, r *http.Request) bool {
 		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from db.SessionRepository
 		if isValid {
-			redirectURL := r.URL.Query().Get("redirect")
-			if redirectURL == "" {
-				redirectURL = "/"
-			}
+			redirectURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return true
 		}
@@ -117,6 +127,18 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		}
 
 		if user == nil {
+			// Compare against a fixed dummy hash rather than returning
+			// immediately — see dummyPasswordHash's doc comment for why:
+			// this keeps a nonexistent-username response taking as long as
+			// a real-username-wrong-password one, so response time can't
+			// be used to enumerate which usernames exist. The result is
+			// always discarded (comparing against a hash nothing will ever
+			// match by construction); only the error is worth checking,
+			// and even that only to avoid silently swallowing a real bug
+			// in ComparePassword itself.
+			if _, err := encryption.ComparePassword(password, dummyPasswordHash); err != nil {
+				log.Printf("Dummy password comparison failed unexpectedly: %v", err)
+			}
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}

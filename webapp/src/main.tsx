@@ -6,7 +6,8 @@ import { TaronjaAuthProvider } from 'taronja-gateway-react-sdk';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { queryClient } from './services/services';
+import { queryClient } from './services/client';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 
 const rootElement = document.getElementById('root');
@@ -14,14 +15,16 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   createRoot(rootElement).render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <TaronjaAuthProvider>
-            <App />
-          </TaronjaAuthProvider>
-        </ThemeProvider>
-        <ReactQueryDevtools initialIsOpen={false} />
-      </QueryClientProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <TaronjaAuthProvider>
+              <App />
+            </TaronjaAuthProvider>
+          </ThemeProvider>
+          <ReactQueryDevtools initialIsOpen={false} />
+        </QueryClientProvider>
+      </ErrorBoundary>
     </StrictMode>,
   );
 } else {

@@ -42,6 +42,11 @@ var OperationWithNoSecurity = []string{
 	"LogoutUser",
 	"HealthCheck",
 	"GetOpenApiYaml",
+	// RespondToNotificationByToken is the public email answer link — it has
+	// no session cookie to authenticate with, so the opaque `token` query
+	// parameter itself is the credential (checked inside the handler, not
+	// here). See its OpenAPI description in taronja-gateway-api.yaml.
+	"RespondToNotificationByToken",
 	// Add any other operations that should not require authentication (cookie or token)
 }
 

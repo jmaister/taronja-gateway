@@ -1,0 +1,38 @@
+services:
+  gateway:
+    # The point of this example, vs. docker-demo's `build:` — pulls the
+    # image .github/workflows/docker-release.yml publishes on every
+    # GitHub Release instead of compiling the Dockerfile locally. To try
+    # a not-yet-released build instead, build and tag it under this same
+    # name first (see README.md "Run it against a locally built image"),
+    # then `docker compose up` picks up the local tag without needing any
+    # change here — Docker only pulls when the tag isn't already present
+    # locally.
+    image: ghcr.io/jmaister/taronja-gateway:latest
+    ports:
+      - "18199:8080"
+    command: ["run", "--config", "/etc/taronja-gateway/config.yaml"]
+    volumes:
+      # The whole directory, not just config.yaml — see docker-demo's
+      # compose file for why (a single-file bind mount doesn't survive an
+      # editor/tool replacing the file via write-then-rename).
+      - ./config:/etc/taronja-gateway:ro
+      - ./static-site:/srv/static-site:ro
+      # Named volume, not a bind mount: the sqlite DB (admin user,
+      # sessions, traffic metrics) persists across `docker compose down
+      # && up`, but isn't a file you're meant to look at on the host.
+      - gateway-db:/data
+    depends_on:
+      - web-service
+
+  # The target of the "web" proxy route (config/config.yaml's
+  # /web/* -> http://web-service:80) — stands in for "one of your other
+  # services" on whatever platform you deploy this alongside. Same image
+  # docker-demo uses, for the same reason: a ~5MB server that just echoes
+  # back the request it received, so you can actually see what the
+  # gateway forwards.
+  web-service:
+    image: traefik/whoami:latest
+
+volumes:
+  gateway-db:

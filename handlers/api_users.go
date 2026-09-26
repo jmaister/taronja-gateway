@@ -6,20 +6,45 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
+	"github.com/jmaister/taronja-gateway/session"
 	openapi_types "github.com/oapi-codegen/runtime/types" // Added for openapi_types.Email
 	"gorm.io/gorm"                                        // Added for gorm.ErrRecordNotFound
 )
 
+// requireAdminSession reports whether ctx carries a session belonging to an
+// admin. Every operation in this file manages user *accounts* in aggregate —
+// listing everyone, reading anyone by ID, creating a new one — so unlike a
+// route scoped to "the caller's own resource," there's no legitimate
+// non-admin caller to allow through at all. StrictSessionMiddleware only
+// enforces "some valid session exists" globally
+// (gateway.go's adminRequired: false), leaving the actual admin boundary to
+// each handler — the same convention handlers/api_tokens.go already
+// established for exactly this class of endpoint; this file just never
+// picked it up. Every OpenAPI operation gets its own generated 401 response
+// type, so callers build their own from the boolean rather than this
+// function returning one directly.
+func requireAdminSession(ctx context.Context) (*db.Session, bool) {
+	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || sessionObj == nil || !sessionObj.IsAdmin {
+		return nil, false
+	}
+	return sessionObj, true
+}
+
 // dbUserToAPIUserResponse converts a db.User object to an API UserResponse object.
 // It handles the conversion of ID to string and formats timestamps to RFC3339.
-// Nullable fields (Name, Picture, Provider) are converted to pointers to strings.
+// Nullable fields (Name, Picture, Provider, CreatedAt, UpdatedAt) are converted
+// to pointers, omitted (left nil) when the underlying value is unset.
 func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	// ID is already string in db.User and api.UserResponse
-	// CreatedAt and UpdatedAt are time.Time in db.User and api.UserResponse
+	// CreatedAt and UpdatedAt are time.Time in db.User (via the embedded
+	// gorm.Model, populated by GORM on create/update) and *time.Time in
+	// api.UserResponse.
 
 	var namePtr *string
 	if dbUser.Name != "" {
@@ -32,6 +57,14 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	var providerPtr *string
 	if dbUser.Provider != "" {
 		providerPtr = &dbUser.Provider
+	}
+	var createdAtPtr *time.Time
+	if !dbUser.CreatedAt.IsZero() {
+		createdAtPtr = &dbUser.CreatedAt
+	}
+	var updatedAtPtr *time.Time
+	if !dbUser.UpdatedAt.IsZero() {
+		updatedAtPtr = &dbUser.UpdatedAt
 	}
 
 	// Handle email conversion safely - only include if it's a valid email
@@ -46,18 +79,28 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	}
 
 	return api.UserResponse{
-		Id:       dbUser.ID,
-		Username: dbUser.Username,
-		Email:    emailPtr,
-		Name:     namePtr,
-		Picture:  picturePtr,
-		Provider: providerPtr,
+		Id:        dbUser.ID,
+		Username:  dbUser.Username,
+		Email:     emailPtr,
+		Name:      namePtr,
+		Picture:   picturePtr,
+		Provider:  providerPtr,
+		CreatedAt: createdAtPtr,
+		UpdatedAt: updatedAtPtr,
 	}
 }
 
 // CreateUser handles the HTTP request for creating a new user.
 // It implements the createUser operation defined in the OpenAPI specification.
 func (s *StrictApiServer) CreateUser(ctx context.Context, request api.CreateUserRequestObject) (api.CreateUserResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		log.Printf("CreateUser: rejected — caller is not an admin")
+		return api.CreateUser401JSONResponse{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized: Admin access required",
+		}, nil
+	}
+
 	// Validate input (basic check, OpenAPI spec should enforce most of this)
 	if request.Body.Username == "" || string(request.Body.Email) == "" || request.Body.Password == "" {
 		log.Printf("CreateUser: Missing required fields.")
@@ -126,6 +169,14 @@ func (s *StrictApiServer) CreateUser(ctx context.Context, request api.CreateUser
 // ListUsers handles the HTTP request for listing all users.
 // It implements the listUsers operation defined in the OpenAPI specification.
 func (s *StrictApiServer) ListUsers(ctx context.Context, request api.ListUsersRequestObject) (api.ListUsersResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		log.Printf("ListUsers: rejected — caller is not an admin")
+		return api.ListUsers401JSONResponse{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized: Admin access required",
+		}, nil
+	}
+
 	// Corrected: s.userRepo instead of s.UserRepo
 	dbUsers, err := s.userRepo.GetAllUsers()
 	if err != nil {
@@ -148,6 +199,14 @@ func (s *StrictApiServer) ListUsers(ctx context.Context, request api.ListUsersRe
 // GetUserById handles the HTTP request for retrieving a user by their ID.
 // It implements the getUserById operation defined in the OpenAPI specification.
 func (s *StrictApiServer) GetUserById(ctx context.Context, request api.GetUserByIdRequestObject) (api.GetUserByIdResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		log.Printf("GetUserById: rejected — caller is not an admin")
+		return api.GetUserById401JSONResponse{
+			Code:    http.StatusUnauthorized,
+			Message: "Unauthorized: Admin access required",
+		}, nil
+	}
+
 	if request.UserId == "" { // UserId is a string (CUID)
 		log.Printf("GetUserById: User ID is required and was not found in path")
 		return api.GetUserById400JSONResponse{

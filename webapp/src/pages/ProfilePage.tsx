@@ -1,6 +1,7 @@
 import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react-sdk';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
+import { TelegramConnectionSection } from '../components/TelegramConnectionSection';
 
 /**
  * ProfilePage component - Full page view for user profile
@@ -171,6 +172,8 @@ export const ProfilePage = () => {
                     </div>
                 </div>
             </Card>
+
+            <TelegramConnectionSection />
         </div>
     );
 };

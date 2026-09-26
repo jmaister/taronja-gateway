@@ -116,6 +116,12 @@ func TestRegisterBasicAuth(t *testing.T) {
 		assert.Equal(t, "/", sessionCookie.Path)
 		assert.True(t, sessionCookie.HttpOnly)
 		assert.Equal(t, 86400, sessionCookie.MaxAge)
+		// SameSite=Lax, not the browser default (which some browsers still
+		// leave as None), as a CSRF-hardening backstop — this codebase has
+		// no CSRF token anywhere, so the cookie's own SameSite attribute is
+		// the only defense against a cross-site request riding along with
+		// it.
+		assert.Equal(t, http.SameSiteLaxMode, sessionCookie.SameSite)
 
 		sessionObj, err := dependencies.SessionRepo.FindSessionByToken(sessionCookie.Value)
 		require.NoError(t, err)
@@ -168,6 +174,47 @@ func TestRegisterBasicAuth(t *testing.T) {
 		assert.Nil(t, sessionCookie, "No session cookie should be set on failed login")
 	})
 
+	// TestRegisterBasicAuth/failed_authentication_-_nonexistent_username_pays_
+	// the_same_cost_as_a_wrong_password is the regression test for the
+	// user-enumeration timing side channel: a login attempt for a username
+	// that doesn't exist used to return "Invalid credentials" immediately,
+	// skipping encryption.ComparePassword's argon2id computation entirely
+	// (~20ms at this project's configured parameters — see
+	// dummyPasswordHash's doc comment) — while a wrong password for a real
+	// username paid that cost first. That gap is trivially measurable over
+	// the network and lets an attacker enumerate valid usernames one
+	// response-time sample at a time. Asserting against a fixed minimum
+	// duration, not comparing two measured samples against each other,
+	// keeps this from being flaky under CI load while still proving the
+	// dummy-hash computation actually ran.
+	t.Run("failed authentication - nonexistent username pays the same cost as a wrong password", func(t *testing.T) {
+		mux := http.NewServeMux()
+		testDBName := "basicAuth_enum_" + fmt.Sprintf("%d", time.Now().UnixNano())
+		_, userRepo := setupTestBasicAuth(testDBName)
+		realSessionStore := session.NewSessionStore(nil, 24*time.Hour) // never reached — reject happens before any session lookup
+		testConfig := createTestConfig()
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+
+		formData := url.Values{
+			"username": {"no-such-user-" + fmt.Sprintf("%d", time.Now().UnixNano())},
+			"password": {"whatever"},
+		}
+		formBody := formData.Encode()
+		req := httptest.NewRequest("POST", "/_/auth/basic/login", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Content-Length", strconv.Itoa(len(formBody)))
+		w := httptest.NewRecorder()
+
+		start := time.Now()
+		mux.ServeHTTP(w, req)
+		elapsed := time.Since(start)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.Equal(t, "Invalid credentials\n", w.Body.String())
+		assert.GreaterOrEqual(t, elapsed, 5*time.Millisecond,
+			"a nonexistent-username login must still pay the dummy argon2id comparison, not return near-instantly")
+	})
+
 	t.Run("successful authentication with redirect", func(t *testing.T) {
 		mux := http.NewServeMux()
 		testDBName := "basicAuth_redirect_" + fmt.Sprintf("%d", time.Now().UnixNano())
@@ -208,6 +255,48 @@ func TestRegisterBasicAuth(t *testing.T) {
 		sessionObj, err := sessionRepo.FindSessionByToken(sessionCookie.Value)
 		require.NoError(t, err)
 		assert.Equal(t, username, sessionObj.Username)
+	})
+
+	// TestRegisterBasicAuth/successful_authentication_rejects_an_open_redirect
+	// is the regression test for the vulnerability: a real, successful
+	// login (this is not a rejected-credentials case) used to redirect to
+	// whatever the "redirect" query parameter said, with no validation —
+	// a link to this gateway's own trusted domain with
+	// ?redirect=https://evil.example completed a real login, then bounced
+	// the browser to an attacker-controlled page.
+	t.Run("successful authentication rejects an open redirect", func(t *testing.T) {
+		mux := http.NewServeMux()
+		testDBName := "basicAuth_openredirect_" + fmt.Sprintf("%d", time.Now().UnixNano())
+		sessionRepo, userRepo := setupTestBasicAuth(testDBName)
+		realSessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
+		rnd := fmt.Sprintf("%d", time.Now().UnixNano())
+		username := "admin" + rnd
+		email := "admin" + rnd + "@example.com"
+		testUser := &db.User{
+			Username: username,
+			Email:    email,
+			Password: testPassword,
+		}
+		err := userRepo.CreateUser(testUser)
+		require.NoError(t, err, "User creation should succeed")
+		testConfig := createTestConfig()
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+
+		formData := url.Values{
+			"username": {username},
+			"password": {testPassword},
+		}
+		formBody := formData.Encode()
+
+		req := httptest.NewRequest("POST", "/_/auth/basic/login?redirect=https://evil.example/phish", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Content-Length", strconv.Itoa(len(formBody)))
+		w := httptest.NewRecorder()
+
+		mux.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/", w.Header().Get("Location"), "an absolute-URL redirect target must be rejected, not forwarded to the client")
 	})
 
 	t.Run("successful admin authentication from config", func(t *testing.T) {

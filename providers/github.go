@@ -24,7 +24,7 @@ type GithubUserDataFetcher struct {
 	OAuthConfig *oauth2.Config
 }
 
-func (f *GithubUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (f *GithubUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	// Create request to GitHub API
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {
@@ -32,7 +32,7 @@ func (f *GithubUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 	}
 
 	// Set authorization header
-	req.Header.Set("Authorization", "token "+accessToken)
+	req.Header.Set("Authorization", "token "+token.AccessToken)
 	req.Header.Set("Accept", "application/json")
 
 	// Make the request
@@ -68,7 +68,7 @@ func (f *GithubUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 	// GitHub might not expose the user's email directly, so we need to fetch it separately
 	email := githubUser.Email
 	if email == "" {
-		email, err = fetchGitHubEmail(accessToken)
+		email, err = fetchGitHubEmail(token.AccessToken)
 		if err != nil {
 			// Not a critical error, just log it
 			fmt.Printf("Warning: Could not fetch GitHub user email: %v\n", err)
