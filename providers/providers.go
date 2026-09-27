@@ -37,13 +37,14 @@ type UserInfo struct {
 }
 
 // UserDataFetcher turns a completed OAuth2 token exchange into UserInfo.
-// Every provider except Apple does this via one authenticated REST call
-// using the access token (r is unused, kept only so the interface has one
-// shape); Apple has no such REST endpoint at all — its user info comes from
-// decoding+verifying the ID token already present in token (see apple.go),
-// plus, on the user's very first authorization only, a one-time JSON
-// payload Apple includes in the callback request itself (why r is needed
-// here rather than just the token).
+// Every provider currently registered here does this via one authenticated
+// REST call using the access token (r is unused, kept only so the
+// interface has one shape) — but not every OAuth2 provider has such a
+// REST endpoint: Apple's user info instead comes from decoding+verifying
+// the ID token already present in token, plus, on the user's very first
+// authorization only, a one-time JSON payload it includes in the callback
+// request itself (why r is needed here rather than just the token) — see
+// apple.go on the wip/microsoft-apple-facebook-auth branch.
 type UserDataFetcher interface {
 	FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error)
 }
@@ -57,11 +58,13 @@ type AuthProvider interface {
 // It now accepts db.SessionRepository.
 //
 // ctx governs the lifetime of any background goroutine a provider starts
-// during registration — currently just Apple's JWKS refresh loop (see
-// RegisterAppleAuth). Callers that re-run this on every config reload (as
-// gateway.registerLoginRoutes does) must cancel the ctx from the *previous*
-// call once the new one is registered, or each reload leaks one more such
-// goroutine.
+// during registration (e.g. a JWKS refresh loop for a provider that
+// verifies signed ID tokens, the way the Microsoft/Facebook/Apple
+// providers on the wip/microsoft-apple-facebook-auth branch do — none of
+// the providers currently registered here start one). Callers that
+// re-run this on every config reload (as gateway.registerLoginRoutes
+// does) must cancel the ctx from the *previous* call once the new one is
+// registered, or each reload leaks one more such goroutine.
 func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
@@ -86,28 +89,9 @@ func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore ses
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
 
-	if gatewayConfig.AuthenticationProviders.Microsoft.ClientId != "" &&
-		gatewayConfig.AuthenticationProviders.Microsoft.ClientSecret != "" {
-		log.Printf("Registering Microsoft Authentication provider")
-		RegisterMicrosoftAuth(mux, sessionStore, gatewayConfig, userRepo)
-	} else {
-		log.Printf("Microsoft Authentication provider not configured, skipping registration")
-	}
-
-	if gatewayConfig.AuthenticationProviders.Facebook.ClientId != "" &&
-		gatewayConfig.AuthenticationProviders.Facebook.ClientSecret != "" {
-		log.Printf("Registering Facebook Authentication provider")
-		RegisterFacebookAuth(mux, sessionStore, gatewayConfig, userRepo)
-	} else {
-		log.Printf("Facebook Authentication provider not configured, skipping registration")
-	}
-
-	if gatewayConfig.AuthenticationProviders.Apple.IsConfigured() {
-		log.Printf("Registering Apple Authentication provider")
-		RegisterAppleAuth(ctx, mux, sessionStore, gatewayConfig, userRepo)
-	} else {
-		log.Printf("Apple Authentication provider not configured, skipping registration")
-	}
+	// Microsoft, Facebook, and Apple registration lives on the
+	// wip/microsoft-apple-facebook-auth branch — moved out of this branch
+	// untested (see that branch's log for why), to come back to later.
 }
 
 type SimpleAuthProvider struct {
@@ -135,11 +119,12 @@ type AuthenticationProvider struct {
 
 	// ClientSecretFunc, when set, is called to (re)generate
 	// OAuthConfig.ClientSecret immediately before every token exchange.
-	// Every provider but Apple leaves this nil and keeps a static
-	// ClientSecret set once at registration — Apple's "client secret" is
-	// instead a short-lived JWT it signs itself (see apple.go's
-	// buildAppleClientSecret), which would go stale if only ever built
-	// once at gateway startup.
+	// Every provider currently registered leaves this nil and keeps a
+	// static ClientSecret set once at registration — Apple's "client
+	// secret" is instead a short-lived JWT it signs itself (see apple.go's
+	// buildAppleClientSecret on the wip/microsoft-apple-facebook-auth
+	// branch), which would go stale if only ever built once at gateway
+	// startup.
 	ClientSecretFunc func() (string, error)
 
 	// ResponseMode, when set, is sent as the OAuth2 response_mode

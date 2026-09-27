@@ -41,9 +41,9 @@ Features table, shows what is implemented and what is planned.
 | Authentication: OAuth2        | ✅       | v0.0.1 |
 | - OAuth2: GitHub              | ✅       | v0.0.1 |
 | - OAuth2: Google              | ✅       | v0.0.1 |
-| - OAuth2: Microsoft (Entra ID / Azure AD) | ✅ | v1.0.0 |
-| - OAuth2: Facebook            | ✅       | v1.0.0 |
-| - OAuth2: Apple (Sign in with Apple) | ✅ | v1.0.0 |
+| - OAuth2: Microsoft (Entra ID / Azure AD)¹ | 🚧 |        |
+| - OAuth2: Facebook¹           | 🚧       |        |
+| - OAuth2: Apple (Sign in with Apple)¹ | 🚧 |        |
 | Authentication: Token         | ✅       | v0.0.9 |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
@@ -72,6 +72,9 @@ Features table, shows what is implemented and what is planned.
 | - Automatic certificates via ACME / Let's Encrypt | ✅ | v1.0.0 |
 | robots.txt                    | 🚧       |        |
 | more...                       | 🚧       |        |
+
+¹ Implemented in v1.0.0 but untested; moved to the
+`wip/microsoft-apple-facebook-auth` branch to come back to later.
 
 # Installation
 
@@ -737,69 +740,10 @@ authenticationProviders:
     clientSecret: ${GITHUB_CLIENT_SECRET}
 ```
 
-#### Microsoft (Entra ID / Azure AD)
-
-Get credentials: [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**, then **Certificates & secrets → New client secret**.
-
-- **Credentials needed:** Application (client) ID, a client secret **value** (not the secret ID shown next to it)
-- **Optional:** a tenant ID or verified domain, to restrict login to one organization instead of accepting any Microsoft account
-- **Redirect URI** (platform type "Web"): `http://localhost:8080/_/auth/microsoft/callback`
-
-```yaml
-authenticationProviders:
-  microsoft:
-    clientId: ${MICROSOFT_CLIENT_ID}
-    clientSecret: ${MICROSOFT_CLIENT_SECRET}
-    # Optional: restrict login to one Azure AD/Entra ID organization (its
-    # tenant ID or a verified domain). Omit to accept both personal
-    # Microsoft accounts and any organizational account (the "common" endpoint).
-    tenant: contoso.onmicrosoft.com
-```
-
-#### Facebook
-
-Get credentials: [Meta for Developers → My Apps](https://developers.facebook.com/apps/) → **Create App** (type "Consumer" or "Business"), then add the **Facebook Login** product and open its Settings.
-
-- **Credentials needed:** App ID, App Secret
-- **Valid OAuth Redirect URI:** `http://localhost:8080/_/auth/facebook/callback`
-- While the app is in development mode, only accounts added as test users/roles on the app can log in — switch the app to Live for everyone else, which requires Meta's app review for the `email`/`public_profile` permissions used here.
-
-```yaml
-authenticationProviders:
-  facebook:
-    clientId: ${FACEBOOK_CLIENT_ID}
-    clientSecret: ${FACEBOOK_CLIENT_SECRET}
-```
-
-#### Apple ("Sign in with Apple")
-
-Different credential shape than every other provider above — Apple never
-issues a plain client secret string; the gateway signs one itself as a JWT,
-using a private key only Apple ever shows you once.
-
-Get credentials: [Apple Developer → Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/) — three separate things to create, all under the same Apple Developer account:
-1. **Identifiers → Services IDs**: register one (its identifier, e.g. `com.example.service`, is the `clientId` below) and enable "Sign in with Apple" on it, configuring this gateway's domain and the callback URL.
-2. **Keys**: create a new key with "Sign in with Apple" enabled, then download its `.p8` file **immediately** — Apple only lets you download it once, at creation time. The key's ID is `keyId` below.
-3. **Membership** (in your Apple Developer account settings): your 10-character **Team ID**, used as `teamId` below.
-
-- **Credentials needed:** Services ID (as `clientId`), Team ID, Key ID, and the `.p8` private key's contents
-- **Return URL** (under the Services ID's "Sign in with Apple" configuration): `http://localhost:8080/_/auth/apple/callback` — Apple requires this to be `https://` in production; `localhost` is the one exception it allows unencrypted for local development
-- Apple only ever sends the user's name on their **very first** authorization — every later login omits it, so re-authorizing (e.g. after revoking access in the user's Apple ID settings) will show a blank name for a user who already exists on file
-
-```yaml
-authenticationProviders:
-  apple:
-    clientId: com.example.service
-    teamId: ${APPLE_TEAM_ID}
-    keyId: ${APPLE_KEY_ID}
-    # The .p8 file's contents verbatim. A literal block scalar keeps the
-    # PEM's newlines intact — an env var works too, if your environment
-    # preserves literal newlines in its value.
-    privateKey: |
-      -----BEGIN PRIVATE KEY-----
-      MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
-      -----END PRIVATE KEY-----
-```
+Microsoft (Entra ID / Azure AD), Facebook, and Apple ("Sign in with
+Apple") setup instructions moved to the `wip/microsoft-apple-facebook-auth`
+branch along with their implementation — untested, coming back to this
+later (see the Features table's footnote above).
 
 ### Branding
 

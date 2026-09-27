@@ -162,28 +162,9 @@ authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
-  microsoft:
-    clientId: ${MICROSOFT_CLIENT_ID}
-    clientSecret: ${MICROSOFT_CLIENT_SECRET}
-    # Restrict login to one Azure AD/Entra ID organization (tenant ID or
-    # verified domain). Omit to use the "common" endpoint, which accepts
-    # both personal Microsoft accounts and any organizational account.
-    # tenant: contoso.onmicrosoft.com
-  facebook:
-    clientId: ${FACEBOOK_CLIENT_ID}
-    clientSecret: ${FACEBOOK_CLIENT_SECRET}
-  # "Sign in with Apple" — a different credential shape than every other
-  # provider above: Apple never issues a plain client secret string, so
-  # there's no clientSecret field here. See README.md's "Apple" subsection
-  # for where each of these four values comes from.
-  # apple:
-  #   clientId: com.example.service
-  #   teamId: ${APPLE_TEAM_ID}
-  #   keyId: ${APPLE_KEY_ID}
-  #   privateKey: |
-  #     -----BEGIN PRIVATE KEY-----
-  #     MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
-  #     -----END PRIVATE KEY-----
+  # Microsoft, Facebook, and "Sign in with Apple" existed here but moved to
+  # the wip/microsoft-apple-facebook-auth branch, untested — to come back
+  # to later.
 
 branding:
   logoUrl: /static/logo.png

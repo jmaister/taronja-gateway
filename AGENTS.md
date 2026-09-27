@@ -262,18 +262,26 @@ middleware:
 **`providers.go`:**
 - `AuthenticationProvider` interface with Login/Callback/Logout flow
 - OAuth2 lifecycle: state + redirect cookies → provider redirect → code exchange → fetch user info → find-or-create `User` by email → create `Session` → set cookie
-- `UserDataFetcher.FetchUserData(r *http.Request, token *oauth2.Token)` — takes the whole request and token, not just an access-token string, specifically so Apple's implementation can read the token's `id_token` extra field and the callback request's one-time `user` form value; every other provider ignores both extra parameters and just uses `token.AccessToken` as before.
-- Two optional `AuthenticationProvider` fields, both nil/empty for every provider except Apple: `ClientSecretFunc func() (string, error)` — called to (re)generate `OAuthConfig.ClientSecret` immediately before every token exchange, for a provider whose secret isn't a static string; `ResponseMode string` — sent as the OAuth2 `response_mode` authorization parameter when non-empty. `Callback` reads `state`/`code` via `r.FormValue` (populated from the URL query for a GET callback, or a POST body for `response_mode=form_post`), so both callback shapes go through the same code path.
+- `UserDataFetcher.FetchUserData(r *http.Request, token *oauth2.Token)` — takes the whole request and token, not just an access-token string, so a provider without a REST "get current user" endpoint can instead decode/verify an ID token and read a one-time extra form value off the callback request itself; every provider currently registered ignores both extra parameters and just uses `token.AccessToken`.
+- Two optional `AuthenticationProvider` fields, both nil/empty for every provider currently registered: `ClientSecretFunc func() (string, error)` — called to (re)generate `OAuthConfig.ClientSecret` immediately before every token exchange, for a provider whose secret isn't a static string; `ResponseMode string` — sent as the OAuth2 `response_mode` authorization parameter when non-empty. `Callback` reads `state`/`code` via `r.FormValue` (populated from the URL query for a GET callback, or a POST body for `response_mode=form_post`), so both callback shapes go through the same code path.
 
 **Implementations:**
 - `basicAuthentication.go` — username/password against `User.PasswordHash`
 - `google.go` — Google OAuth2 (redirect to Google, callback at `/_/callback`, exchanges auth code for user info)
 - `github.go` — GitHub OAuth2 (similar flow)
-- `microsoft.go` — Microsoft/Entra ID OAuth2 (similar flow; uses `golang.org/x/oauth2/microsoft.AzureADEndpoint(tenant)` — empty tenant means the "common" endpoint, accepting both personal Microsoft accounts and any organizational one)
-- `facebook.go` — Facebook OAuth2 (similar flow; Graph API's `/me` only returns fields explicitly requested, and its `picture` field is a nested `{data: {url}}` object, not a plain string like every other provider here)
-- `apple.go` — "Sign in with Apple", the one provider that doesn't fit the shared shape cleanly: its client secret is a JWT the gateway signs itself (`buildAppleClientSecret`, using `config.AppleAuthProviderCredentials`' TeamId/KeyId/PrivateKey — ES256, regenerated fresh on every login via `ClientSecretFunc` rather than built once, since a long-lived one would eventually expire on a long-running gateway), its callback needs `ResponseMode: "form_post"` (Apple only returns the `name`/`email` scopes it was asked for via POST), and there's no REST "get current user" call at all — `AppleUserDataFetcher.FetchUserData` decodes the ID token already present in the token exchange response instead, verified against Apple's published public keys (`appleIDTokenVerifier`, the real implementation using `github.com/MicahParks/keyfunc/v3` pointed at `https://appleid.apple.com/auth/keys`, abstracted behind an interface so `apple_test.go` can verify the real signature-checking logic against a self-signed key and a fake JWKS server instead of Apple's actual endpoint). Apple also sends the user's name exactly once — in a one-time `user` form field on the very first authorization only — which `FetchUserData` reads directly off the callback `*http.Request`, the reason that parameter exists on `UserDataFetcher` at all.
 
-**Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`microsoft.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape Apple needs, `apple.go`):
+Microsoft, Facebook, and Apple ("Sign in with Apple") providers
+(`microsoft.go`/`facebook.go`/`apple.go`) existed here too, but moved to
+the `wip/microsoft-apple-facebook-auth` branch — implemented but untested,
+to come back to later. That branch's `apple.go` is the worked example for
+a provider needing the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-
+of-REST shape above (its client secret is a JWT the gateway signs itself,
+`ResponseMode: "form_post"`, and no REST "get current user" call at all —
+`FetchUserData` decodes the ID token from the exchange response instead,
+verified against Apple's published public keys); `microsoft.go`/
+`facebook.go` are the "normal-shaped" examples alongside `google.go`.
+
+**Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`github.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape, the wip branch's `apple.go`):
 1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
 2. A `UserDataFetcher` implementation: normally one HTTP call to the provider's own "get current user" API, mapping its response into the shared `UserInfo` struct.
 3. `RegisterXxxAuth(mux, sessionStore, gatewayConfig, userRepo)`: builds the `oauth2.Config` (ClientID/Secret from a new `config.AuthenticationProviders` field, RedirectURL, Scopes, and an `oauth2.Endpoint`) and wires it through `NewAuthenticationProvider`/`RegisterEndpoints`. `golang.org/x/oauth2/endpoints` ships ready-made `AuthURL`/`TokenURL` pairs for 40+ services (Microsoft, GitLab, Discord, Slack, Facebook, LinkedIn, Spotify, ...), and several (Google, GitHub, Microsoft, Slack, GitLab, ...) get their own dedicated subpackage instead — check both before hand-writing an endpoint.
@@ -281,7 +289,7 @@ middleware:
 5. A login button in `static/login.html` (a `{{if .AuthenticationProviders.Xxx.Enabled}}` block, a brand SVG in `static/` — embedded automatically via `static.StaticAssetsFS`'s `//go:embed *`) and a `.oauth-xxx` CSS rule.
 6. Docs: README's "Authentication Providers" section and `sample/config.yaml`.
 
-None of this touches the OAuth2 flow itself for a "normal-shaped" provider — see `microsoft.go`/`config.go`'s Microsoft additions for a complete example of exactly this list. `apple.go`/`config.go`'s Apple additions are the example for a provider that needs the extra hooks instead.
+None of this touches the OAuth2 flow itself for a "normal-shaped" provider — see `google.go`/`github.go` for a complete example of exactly this list.
 
 ### `notification/` — Generic Notification System
 

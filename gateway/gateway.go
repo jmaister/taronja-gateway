@@ -88,8 +88,9 @@ type Gateway struct {
 	// SIGHUP arriving together), so two reloads can never interleave.
 	reloadMu sync.Mutex
 	// providersCancel stops the background goroutine(s) started by the
-	// most recent providers.RegisterProviders call — currently just
-	// Apple's hourly JWKS-refresh loop (see providers.RegisterAppleAuth).
+	// most recent providers.RegisterProviders call — none of the
+	// providers currently registered start one (see RegisterProviders'
+	// own doc comment for the kind of provider that would).
 	// registerLoginRoutes re-registers every provider from scratch on each
 	// config reload, so without cancelling the previous generation's
 	// context first, each reload would leak one more such goroutine. Only

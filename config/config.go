@@ -102,52 +102,6 @@ type AuthProviderCredentials struct {
 	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from provider. Can use environment variables (e.g., ${GOOGLE_CLIENT_SECRET})
 }
 
-// MicrosoftAuthProviderCredentials is AuthProviderCredentials plus the one
-// extra setting Microsoft's own OAuth2 endpoint needs: which Azure AD/Entra
-// ID tenant to authenticate against.
-type MicrosoftAuthProviderCredentials struct {
-	ClientId     string `yaml:"clientId"`     // OAuth2 client ID (Application ID) from the Azure/Entra app registration. Can use environment variables (e.g., ${MICROSOFT_CLIENT_ID})
-	ClientSecret string `yaml:"clientSecret"` // OAuth2 client secret from the app registration. Can use environment variables (e.g., ${MICROSOFT_CLIENT_SECRET})
-	// Tenant restricts login to one Azure AD/Entra ID organization (its
-	// tenant ID or verified domain, e.g. "contoso.onmicrosoft.com").
-	// Empty (default) uses Microsoft's "common" endpoint, which accepts
-	// both personal Microsoft accounts and any organizational account.
-	Tenant string `yaml:"tenant,omitempty"`
-}
-
-// AppleAuthProviderCredentials configures "Sign in with Apple" — a
-// different credential shape than every other OAuth2 provider here. Apple
-// never issues a static client secret string; instead it's a JWT the
-// gateway signs itself (see providers/apple.go's buildAppleClientSecret),
-// using these four values, all from an Apple Developer account:
-// https://developer.apple.com/account/resources/authkeys/list.
-type AppleAuthProviderCredentials struct {
-	// ClientId is Apple's "Services ID" (e.g. "com.example.service") — the
-	// identifier registered for web authentication, not the app's Bundle
-	// ID. Can use environment variables (e.g. ${APPLE_CLIENT_ID}).
-	ClientId string `yaml:"clientId"`
-	// TeamId is the 10-character Apple Developer Team ID, shown on the
-	// "Membership" page of the developer account.
-	TeamId string `yaml:"teamId"`
-	// KeyId is the ID of the private key created for "Sign in with Apple"
-	// under Certificates, Identifiers & Profiles → Keys.
-	KeyId string `yaml:"keyId"`
-	// PrivateKey is the PEM-encoded EC private key content from the .p8
-	// file Apple generates when the key above is created (downloadable
-	// only once, at creation time). Can use environment variables (e.g.
-	// ${APPLE_PRIVATE_KEY}, if the environment supports a multi-line
-	// value) or a YAML literal block scalar (`privateKey: |` followed by
-	// the indented PEM content) for local/file-based configuration.
-	PrivateKey string `yaml:"privateKey"`
-}
-
-// IsConfigured reports whether every credential Apple requires is present —
-// unlike the other providers' plain ClientId/ClientSecret pair, this is
-// four fields, all required for RegisterAppleAuth to do anything.
-func (a AppleAuthProviderCredentials) IsConfigured() bool {
-	return a.ClientId != "" && a.TeamId != "" && a.KeyId != "" && a.PrivateKey != ""
-}
-
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
@@ -155,13 +109,17 @@ type BasicAuthenticationConfig struct {
 
 // AuthenticationProviders defines all available authentication methods.
 // At least one provider should be enabled if authentication is required on any route.
+//
+// Microsoft, Facebook, and Apple ("Sign in with Apple") providers existed
+// here but moved to the wip/microsoft-apple-facebook-auth branch, untested
+// — to come back to later. That branch also has
+// MicrosoftAuthProviderCredentials/AppleAuthProviderCredentials (Apple's
+// credential shape is four fields, none of them a plain client secret
+// string — see that branch's own doc comment) if this is reintroduced.
 type AuthenticationProviders struct {
-	Basic     BasicAuthenticationConfig        `yaml:"basic"`     // Basic username/password authentication
-	Google    AuthProviderCredentials          `yaml:"google"`    // Google OAuth2 authentication. Optional.
-	Github    AuthProviderCredentials          `yaml:"github"`    // GitHub OAuth2 authentication. Optional.
-	Microsoft MicrosoftAuthProviderCredentials `yaml:"microsoft"` // Microsoft (Entra ID / Azure AD) OAuth2 authentication. Optional.
-	Facebook  AuthProviderCredentials          `yaml:"facebook"`  // Facebook OAuth2 authentication. Optional.
-	Apple     AppleAuthProviderCredentials     `yaml:"apple"`     // "Sign in with Apple" authentication. Optional.
+	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
+	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
+	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -175,21 +133,6 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		githubCallback := fmt.Sprintf("%s%s/auth/github/callback", serverURL, managementPrefix)
 		fmt.Println("[OAUTH] GitHub callback URL:")
 		fmt.Println("   ", githubCallback)
-	}
-	if a.Microsoft.ClientId != "" && a.Microsoft.ClientSecret != "" {
-		microsoftCallback := fmt.Sprintf("%s%s/auth/microsoft/callback", serverURL, managementPrefix)
-		fmt.Println("[OAUTH] Microsoft callback URL:")
-		fmt.Println("   ", microsoftCallback)
-	}
-	if a.Facebook.ClientId != "" && a.Facebook.ClientSecret != "" {
-		facebookCallback := fmt.Sprintf("%s%s/auth/facebook/callback", serverURL, managementPrefix)
-		fmt.Println("[OAUTH] Facebook callback URL:")
-		fmt.Println("   ", facebookCallback)
-	}
-	if a.Apple.IsConfigured() {
-		appleCallback := fmt.Sprintf("%s%s/auth/apple/callback", serverURL, managementPrefix)
-		fmt.Println("[OAUTH] Apple callback URL:")
-		fmt.Println("   ", appleCallback)
 	}
 }
 
@@ -603,9 +546,6 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
-		c.AuthenticationProviders.Microsoft.ClientId != "" ||
-		c.AuthenticationProviders.Facebook.ClientId != "" ||
-		c.AuthenticationProviders.Apple.IsConfigured() ||
 		c.Management.Admin.Enabled
 }
 
@@ -619,15 +559,6 @@ type loginPageData struct {
 			Enabled bool
 		}
 		Github struct {
-			Enabled bool
-		}
-		Microsoft struct {
-			Enabled bool
-		}
-		Facebook struct {
-			Enabled bool
-		}
-		Apple struct {
 			Enabled bool
 		}
 	}
@@ -645,9 +576,6 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
-	data.AuthenticationProviders.Microsoft.Enabled = gatewayConfig.AuthenticationProviders.Microsoft.ClientId != ""
-	data.AuthenticationProviders.Facebook.Enabled = gatewayConfig.AuthenticationProviders.Facebook.ClientId != ""
-	data.AuthenticationProviders.Apple.Enabled = gatewayConfig.AuthenticationProviders.Apple.IsConfigured()
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }
