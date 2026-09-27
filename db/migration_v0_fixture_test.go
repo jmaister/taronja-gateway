@@ -18,11 +18,12 @@ import (
 // db/testdata/v0.0.24.db, produced by actually running the v0.0.24 tagged
 // release (the last tag before this project's v1 schema work — the UTC
 // timestamp normalization and the JA4H/TLS-JA4/stable fingerprint
-// consolidation in db/migrations.go were both written after it) and
+// consolidation in db/legacy_migrations.go were both written after it) and
 // generating real traffic against it — see db/testdata/README.md for
 // exactly how and why a real fixture, not just a synthetic reproduction of
-// the old schema, is worth keeping. This runs the exact same sequence
-// db.Init runs on every startup (AutoMigrate, then applyDBMigrations)
+// the old schema, is worth keeping. This runs the exact same bridge
+// db.Init runs the first time it ever opens a pre-golang-migrate database
+// (applyLegacyDataMigrations: AutoMigrate, then the three data repairs)
 // against that file and checks the result, end to end, rather than just
 // exercising one migration function in isolation the way
 // migrations_test.go's other tests do.
@@ -53,15 +54,17 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	require.NoError(t, gdb.Raw("SELECT token FROM sessions LIMIT 1").Row().Scan(&rawTokenBeforeMigration))
 	require.NotEmpty(t, rawTokenBeforeMigration, "fixture's legacy plaintext token column should be readable before migration")
 
-	// The core regression check: AutoMigrate must not error against a real
-	// pre-v1 database. In particular, TrafficMetric.IsStaticAsset (`not
-	// null`, added after v0.0.24, on a table this fixture already has rows
-	// in) needs its `default:false` tag, or SQLite refuses the ALTER TABLE
+	// The core regression check: runMigrations — the exact function
+	// db.Init calls — must not error against a real pre-v1 database. In
+	// particular, TrafficMetric.IsStaticAsset (`not null`, added after
+	// v0.0.24, on a table this fixture already has rows in) needs its
+	// `default:false` tag, or SQLite refuses AutoMigrate's ALTER TABLE
 	// outright — see TestAutoMigrate_AddingNotNullColumnToExistingRows_
 	// NeedsADefault for the synthetic version of this same regression, now
 	// exercised here against genuine historical data instead.
-	require.NoError(t, gdb.AutoMigrate(autoMigrateModels...))
-	require.NoError(t, applyDBMigrations(gdb))
+	sqlDB, err := gdb.DB()
+	require.NoError(t, err)
+	require.NoError(t, runMigrations(sqlDB))
 
 	// Existing data survived, untouched in substance.
 	var userCount, sessionCount, metricCount int64

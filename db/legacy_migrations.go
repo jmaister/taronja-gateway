@@ -7,102 +7,86 @@ import (
 	"strings"
 
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-// dbMigration is one versioned, one-time data-repair step applied after
-// AutoMigrate, tracked via SQLite's built-in PRAGMA user_version (an
-// integer the database file itself carries, defaulting to 0 for both a
-// brand-new database and any database that predates this mechanism — the
-// two are indistinguishable, but that's fine: a migration re-reading an
-// empty/absent table is a correct no-op either way).
-//
-// This exists because AutoMigrate — which runs unconditionally on every
-// startup, in Init and SetupTestDB — only ever adds tables, columns, and
-// indexes; it never renames a column, changes an existing column's stored
-// values, or otherwise transforms data already on disk. Anything beyond
-// "the new schema also has this column, defaulted to zero/NULL for
-// existing rows" needs an explicit migration like this, run once and
-// tracked so it's never repeated. This is this project's answer to "how
-// does an existing database behave when opened by a newer version of the
-// gateway": schema changes apply themselves for free (AutoMigrate), but a
-// changed convention for existing *data* needs a migration entry here —
-// modeled on config/'s own versioned migration convention (see main.go's
-// "migrate" command and doc/CONFIG.md) applied to the database instead of
-// the config file. Add a new entry, at the next version number, when a
-// future change needs one; each step can assume every earlier one has
-// already run.
-type dbMigration struct {
-	version     int
-	description string
-	apply       func(*gorm.DB) error
+// This file holds the one-time bridge db/migrate.go's
+// applyLegacyDataMigrations runs for a database that predates
+// golang-migrate — see that function and runMigrations' own doc comment
+// for why: an AutoMigrate call, then three data-repair steps, none of
+// which a plain SQL migration file can express (AutoMigrate needs to
+// diff live struct tags against whatever's actually in the database; the
+// three repairs depend on runtime schema introspection — does this table
+// still have a column the current release doesn't declare? — that a
+// fixed SQL statement can't perform). This project's answer to "how does
+// a database from before this mechanism existed behave when opened by a
+// newer gateway" used to be AutoMigrate on every single startup forever,
+// plus a hand-rolled, indefinitely-growing PRAGMA-user_version-tracked
+// list of Go migrations; now it's exactly this bridge, run once, and
+// every actual future schema or data change is a numbered SQL file under
+// db/migrations/ instead.
+
+// autoMigrateModels lists every model applyLegacyDataMigrations passes to
+// AutoMigrate — a single source of truth so a test that needs to
+// AutoMigrate a database outside of it (db/migration_v0_fixture_test.go,
+// exercising this same bridge function directly against a real historical
+// fixture) uses the exact same model list rather than a second hand-copied
+// one that could silently drift from the real one.
+var autoMigrateModels = []interface{}{
+	&User{},
+	&Session{},
+	&TrafficMetric{},
+	&Token{},
+	&Counter{},
+	&BlockedClient{},
+	&Notification{},
+	&NotificationDelivery{},
+	&NotificationChannelLink{},
+	&NotificationLinkCode{},
+	&NotificationPreference{},
 }
 
-// dbMigrations lists every migration in order. version numbers must be
-// consecutive starting at 1 and never reused or reordered once released —
-// applyDBMigrations runs every entry whose version is greater than the
-// database's current PRAGMA user_version, so a database migrated under an
-// older gateway version picks up everything it missed, in order, the next
-// time it's opened.
-var dbMigrations = []dbMigration{
-	{1, "normalize existing timestamps to UTC", migrateTimestampsToUTC},
-	{2, "backfill Fingerprint/FingerprintType from the old three-column scheme", migrateLegacyFingerprintColumns},
-	{3, "backfill sessions.token_hash from the old plaintext token column", migrateSessionTokensToHashed},
-	// Same function as migration 3, run again. A shipped version of that
-	// migration backfilled token_hash but never actually dropped the
-	// legacy token column afterward — its own surviving NOT NULL
-	// constraint (from when it was the primary key) then broke every
-	// subsequent CreateSession outright, i.e. every login, on any
-	// database that had already recorded migration 3 as applied under
-	// that version. Since PRAGMA user_version already reads 3 for those
-	// databases, migration 3 itself never runs again for them — this
-	// entry exists purely so they still get the column actually dropped,
-	// on the very next startup, without needing manual intervention. A
-	// database that never hit the bug (migrated fresh under the already-
-	// fixed function, or never had a legacy token column at all) finds
-	// the column already gone and every row's token_hash already
-	// populated, so this is a correct no-op for it — see
-	// migrateSessionTokensToHashed's own HasColumn guard.
-	{4, "drop the legacy sessions.token column left behind by a buggy version of migration 3", migrateSessionTokensToHashed},
-}
+// applyLegacyDataMigrations brings a pre-golang-migrate database's schema
+// and data the rest of the way to current: AutoMigrate first (adds
+// whatever columns/tables/indexes an old, already-existing table is still
+// missing — see runMigrations' ordering note for why this needs to run
+// after db/migrations/0001_initial_schema.up.sql, not before), then the
+// three data-repair steps, in their original order. Called from
+// runMigrations exactly once — the first time it ever runs against a
+// given database (schema_migrations table not found yet) — never on every
+// startup the way AutoMigrate and the old PRAGMA-based applyDBMigrations
+// both used to be. Safe to call against a database that never needed any
+// of this (a brand-new one, whose tables 0001_initial_schema.up.sql just
+// created moments earlier in the same runMigrations call): AutoMigrate
+// finds nothing missing to add, and each data-repair function already
+// guards itself (HasColumn checks, WHERE clauses matching zero rows)
+// rather than assuming there's real legacy data to act on.
+func applyLegacyDataMigrations(sqlDB *sql.DB) error {
+	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", Conn: sqlDB}, &gorm.Config{
+		Logger:  logger.Default.LogMode(logger.Silent),
+		NowFunc: utcNowFunc,
+	})
+	if err != nil {
+		return fmt.Errorf("wrapping connection for legacy data migrations: %w", err)
+	}
 
-// applyDBMigrations runs every dbMigrations entry newer than the database's
-// current PRAGMA user_version, in order, bumping user_version after each
-// one succeeds — so a failure partway through (or a process killed mid-
-// migration) leaves user_version at the last *fully applied* step, and the
-// next startup resumes from there rather than skipping or repeating work.
-// Called from Init, after AutoMigrate (a migration may need columns/tables
-// AutoMigrate only just added) and before the connection is published via
-// conn. Not called from SetupTestDB: a fresh test database never has
-// pre-existing data for a migration to act on, so running these against it
-// would only be wasted work — tests that need to exercise a migration call
-// it directly instead (see migrations_test.go).
-func applyDBMigrations(gdb *gorm.DB) error {
-	sqlDB, err := gdb.DB()
-	if err != nil {
-		return fmt.Errorf("getting underlying sql.DB for migrations: %w", err)
+	log.Printf("db: applying legacy migration: AutoMigrate (adds any columns/tables an old database is still missing)")
+	if err := gdb.AutoMigrate(autoMigrateModels...); err != nil {
+		return fmt.Errorf("legacy migration (AutoMigrate): %w", err)
 	}
-	var current int
-	err = sqlDB.QueryRow("PRAGMA user_version").Scan(&current)
-	if err != nil {
-		return fmt.Errorf("reading PRAGMA user_version: %w", err)
+	log.Printf("db: applying legacy migration: normalize existing timestamps to UTC")
+	if err := migrateTimestampsToUTC(gdb); err != nil {
+		return fmt.Errorf("legacy migration (UTC timestamps): %w", err)
 	}
-	for _, m := range dbMigrations {
-		if m.version <= current {
-			continue
-		}
-		log.Printf("db: applying migration %d: %s", m.version, m.description)
-		err = m.apply(gdb)
-		if err != nil {
-			return fmt.Errorf("db migration %d (%s): %w", m.version, m.description, err)
-		}
-		// PRAGMA doesn't support bound parameters in SQLite — safe here
-		// regardless, since m.version is a compile-time constant from
-		// dbMigrations above, never external input.
-		_, err = sqlDB.Exec(fmt.Sprintf("PRAGMA user_version = %d", m.version))
-		if err != nil {
-			return fmt.Errorf("recording db migration %d as applied: %w", m.version, err)
-		}
+	log.Printf("db: applying legacy migration: backfill Fingerprint/FingerprintType from the old three-column scheme")
+	if err := migrateLegacyFingerprintColumns(gdb); err != nil {
+		return fmt.Errorf("legacy migration (fingerprint backfill): %w", err)
+	}
+	log.Printf("db: applying legacy migration: backfill sessions.token_hash from the old plaintext token column, and drop it")
+	if err := migrateSessionTokensToHashed(gdb); err != nil {
+		return fmt.Errorf("legacy migration (session token hashing): %w", err)
 	}
 	return nil
 }

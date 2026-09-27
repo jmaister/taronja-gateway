@@ -16,13 +16,13 @@ its monotonic clock reading, serialized as
 would have thought to reproduce synthetically — it only turned up by
 actually running an old build against a real database. Fixtures here make
 that kind of discovery repeatable instead of a one-off manual exercise:
-open the real file, run today's `AutoMigrate` + `applyDBMigrations`
-against it, and see what breaks.
+open the real file, run today's `runMigrations` (`db/migrate.go`) against
+it, and see what breaks.
 
 ## v0.0.24.db
 
 Built from the last tagged release before this project's `v1` schema
-work began (everything in `db/migrations.go` — the UTC timestamp
+work began (everything in `db/legacy_migrations.go` — the UTC timestamp
 normalization and the JA4H/TLS-JA4/stable fingerprint consolidation — was
 written after this tag, so this file predates both). Reproduce it like
 this:
@@ -70,9 +70,12 @@ exactly this):
   only here.
 - No `is_static_asset` column on `traffic_metrics` (added after this tag)
   and no `blocked_clients` table at all (added this session) — both must
-  appear after `AutoMigrate`, empty/defaulted, without erroring.
-- `PRAGMA user_version` is `0` — this file predates the migration-tracking
-  mechanism itself, the same as any other pre-upgrade database.
+  appear after `runMigrations`' legacy bridge (AutoMigrate, specifically),
+  empty/defaulted, without erroring.
+- `PRAGMA user_version` is `0` — this file predates both the old
+  PRAGMA-tracked migration scheme and golang-migrate itself, the same as
+  any other pre-upgrade database (see `db/migrate.go`'s
+  `needsLegacyBridge`).
 
 Never overwrite this file casually — `migration_v0_fixture_test.go` pins
 specific IDs, timestamps, and fingerprint values read out of it. If it

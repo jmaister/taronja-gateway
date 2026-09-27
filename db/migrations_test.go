@@ -238,21 +238,19 @@ func TestMigrateSessionTokensToHashed_DropsLegacyColumn(t *testing.T) {
 	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession))
 }
 
-// TestApplyDBMigrations_HealsAlreadyRecordedBuggyMigration3 is the
-// regression test for real, already-deployed databases, not just a fresh
-// migration run: a shipped version of migration 3 backfilled token_hash
-// but never dropped the legacy token column, and PRAGMA user_version was
-// still bumped to 3 when that (successful, from applyDBMigrations' own
-// point of view) run finished. Simply fixing migrateSessionTokensToHashed
-// does nothing for a database already in that state — applyDBMigrations
-// skips every migration at or below the recorded user_version, so
-// migration 3 itself never runs again for one. Migration 4 exists
-// specifically to reach those databases: this builds one in exactly that
-// stuck state (token_hash already correct, token column still present,
-// user_version already at 3) and confirms a single applyDBMigrations call
-// heals it — the column actually dropped, and a new session created
-// against it succeeding — without needing any manual intervention.
-func TestApplyDBMigrations_HealsAlreadyRecordedBuggyMigration3(t *testing.T) {
+// TestRunMigrations_HealsDatabaseStuckMidOldSystem is the regression test
+// for a real, already-deployed database caught partway through the old
+// PRAGMA 1-4 migration scheme — e.g. one that upgraded straight into the
+// version of migrateSessionTokensToHashed that backfilled token_hash but
+// never dropped the legacy token column, recording user_version=3 as a
+// successful run regardless. needsLegacyBridge must treat any value other
+// than legacyBridgeDoneVersion as "still needs the bridge" — including an
+// old, seemingly-progressed value like 3 — not just a bare 0, or a database
+// stuck exactly there would never get healed. Builds one in exactly that
+// stuck state and confirms a single runMigrations call heals it: the
+// column actually dropped, and a new session created against it
+// succeeding, without needing any manual intervention.
+func TestRunMigrations_HealsDatabaseStuckMidOldSystem(t *testing.T) {
 	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent),
 		NowFunc: utcNowFunc,
@@ -270,52 +268,62 @@ func TestApplyDBMigrations_HealsAlreadyRecordedBuggyMigration3(t *testing.T) {
 		"legacy-plaintext-token", "legacy-user", time.Now().Add(time.Hour)).Error)
 	require.NoError(t, gdb.AutoMigrate(autoMigrateModels...))
 
-	// Simulate the buggy version of migration 3 having already run and
-	// been recorded: token_hash backfilled correctly, token column left
-	// behind, user_version already at 3.
+	// Simulate the buggy version of the old migration 3 having already run
+	// and been recorded: token_hash backfilled correctly, token column left
+	// behind, user_version already at 3 (not 0, and not legacyBridgeDoneVersion).
 	require.NoError(t, gdb.Exec(`UPDATE sessions SET token_hash = ?`, hashSessionToken("legacy-plaintext-token")).Error)
 	sqlDB, err := gdb.DB()
 	require.NoError(t, err)
 	_, err = sqlDB.Exec("PRAGMA user_version = 3")
 	require.NoError(t, err)
 
-	require.NoError(t, applyDBMigrations(gdb))
+	require.NoError(t, runMigrations(sqlDB))
 
 	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"),
-		"migration 4 must drop the column a database already stuck at user_version=3 never got dropped for")
+		"the bridge must drop the column a database stuck at the old user_version=3 never got dropped for")
 	newSession := &Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
 	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession),
-		"a previously-stuck database must accept new sessions after applyDBMigrations")
+		"a previously-stuck database must accept new sessions after runMigrations")
 }
 
-// TestApplyDBMigrations_IsIdempotent covers the PRAGMA user_version
-// gating: running applyDBMigrations twice should only do the work once —
-// simulated here by seeding a legacy row, migrating, manually re-seeding
-// the same legacy value, and confirming a second applyDBMigrations call
-// leaves it untouched (proving it short-circuited on user_version, not
-// that migrateTimestampsToUTC is itself a no-op the second time around,
-// which it also would be, just not what this test is isolating).
-func TestApplyDBMigrations_IsIdempotent(t *testing.T) {
+// TestRunMigrations_LegacyBridgeIsIdempotent covers needsLegacyBridge's
+// gating: running runMigrations twice should only apply the legacy bridge
+// once — simulated here by seeding a legacy row, migrating, manually
+// re-seeding the same legacy value, and confirming a second runMigrations
+// call leaves it untouched (proving it short-circuited on
+// legacyBridgeDoneVersion, not that migrateTimestampsToUTC is itself a
+// no-op the second time around, which it also would be, just not what this
+// test is isolating).
+func TestRunMigrations_LegacyBridgeIsIdempotent(t *testing.T) {
 	SetupTestDB(t.Name())
+	sqlDB, err := GetConnection().DB()
+	require.NoError(t, err)
+
+	// SetupTestDB already ran the bridge once (a no-op, since nothing
+	// needed it yet) and recorded it done — reset that marker so this
+	// test's own first runMigrations call below is the one actually being
+	// isolated, the same way it would be for a real database that's never
+	// seen this bridge before.
+	_, err = sqlDB.Exec("PRAGMA user_version = 0")
+	require.NoError(t, err)
 
 	user := &User{Username: "idempotent-user", Email: "idempotent@example.com"}
 	require.NoError(t, GetConnection().Create(user).Error)
 	legacy := time.Date(2026, 6, 1, 8, 0, 0, 0, migrationsNonUTC)
 	seedLegacyTimestampColumn(t, "users", "password_reset_expires", "id", user.ID, legacy)
 
-	require.NoError(t, applyDBMigrations(GetConnection()))
+	require.NoError(t, runMigrations(sqlDB))
 	migrated := readTimestampColumn(t, "users", "password_reset_expires", "id", user.ID)
 	_, offset := migrated.Zone()
 	require.Equal(t, 0, offset)
 
 	// Re-seed the same legacy (non-UTC) value directly, bypassing the
-	// migration, then run applyDBMigrations again. If user_version gating
-	// works, this value is left alone (still non-UTC) — the migration
-	// never re-runs, since the database's user_version already records it
-	// as applied.
+	// migration, then run runMigrations again. If the gate works, this
+	// value is left alone (still non-UTC) — the bridge never re-runs,
+	// since the database's user_version already records it as applied.
 	seedLegacyTimestampColumn(t, "users", "password_reset_expires", "id", user.ID, legacy)
-	require.NoError(t, applyDBMigrations(GetConnection()))
+	require.NoError(t, runMigrations(sqlDB))
 	untouched := readTimestampColumn(t, "users", "password_reset_expires", "id", user.ID)
 	_, untouchedOffset := untouched.Zone()
-	assert.NotEqual(t, 0, untouchedOffset, "second applyDBMigrations call should have skipped the already-applied migration, not re-normalized it")
+	assert.NotEqual(t, 0, untouchedOffset, "second runMigrations call should have skipped the already-applied legacy bridge, not re-normalized it")
 }

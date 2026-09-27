@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"time"
 
 	"gorm.io/driver/sqlite"
@@ -10,26 +11,6 @@ import (
 )
 
 var conn *gorm.DB
-
-// autoMigrateModels lists every model Init and SetupTestDB pass to
-// AutoMigrate — a single source of truth so both stay in sync, and so a
-// test that needs to AutoMigrate a database outside of either of them
-// (db/migration_v0_fixture_test.go, opening a real historical fixture) uses
-// the exact same model list rather than a third hand-copied one that could
-// silently drift from the real two.
-var autoMigrateModels = []interface{}{
-	&User{},
-	&Session{},
-	&TrafficMetric{},
-	&Token{},
-	&Counter{},
-	&BlockedClient{},
-	&Notification{},
-	&NotificationDelivery{},
-	&NotificationChannelLink{},
-	&NotificationLinkCode{},
-	&NotificationPreference{},
-}
 
 // utcNowFunc replaces GORM's default clock (a bare time.Now(), which carries
 // the server process's local zone) so every timestamp GORM sets on our
@@ -61,6 +42,23 @@ func Init() {
 		"_pragma=busy_timeout(30000)&" +
 		"_pragma=temp_store(memory)"
 
+	// Migrated on a short-lived connection of its own, fully closed before
+	// the real, long-lived, pooled serving connection below ever opens —
+	// the gateway never has a connection open against this database for
+	// anything else while runMigrations runs. See runMigrations' own doc
+	// comment for why this project uses golang-migrate here instead of
+	// GORM's AutoMigrate.
+	migrationConn, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		panic("Failed to open database for migrations: " + err.Error())
+	}
+	if err := runMigrations(migrationConn); err != nil {
+		panic("Failed to migrate database: " + err.Error())
+	}
+	if err := migrationConn.Close(); err != nil {
+		panic("Failed to close migration connection: " + err.Error())
+	}
+
 	db, err := gorm.Open(sqlite.Dialector{
 		DriverName: "sqlite",
 		DSN:        dsn,
@@ -81,19 +79,6 @@ func Init() {
 	sqlDB.SetMaxOpenConns(10)
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
-
-	// Migrate the schema
-	err2 := db.AutoMigrate(autoMigrateModels...)
-	if err2 != nil {
-		panic("Failed to migration DB: " + err2.Error())
-	}
-
-	// Data-level migrations AutoMigrate itself can't do (see
-	// applyDBMigrations' comment) — after AutoMigrate, since a migration may
-	// depend on a column/table it only just added.
-	if err := applyDBMigrations(db); err != nil {
-		panic("Failed to apply DB migrations: " + err.Error())
-	}
 
 	conn = db
 }
@@ -129,22 +114,27 @@ func SetupTestDB(testName string) {
 
 	// A "file::memory:" DSN without cache=shared gives every pooled
 	// connection its own independent, empty in-memory database — only the
-	// one connection AutoMigrate happened to run on has the schema. With
-	// MaxOpenConns > 1, any query the pool hands to a different connection
-	// then fails with "no such table: ...", intermittently and only under
-	// enough concurrent load to actually check out a second connection
-	// (e.g. the async traffic-metrics write racing a session lookup). A
-	// single connection makes that impossible: there is only ever one
-	// in-memory database for this test to talk to. (cache=shared would be
-	// the other fix, but is deliberately not used here — see the comment
-	// above on dbName.)
+	// one connection migrations ran on has the schema. With MaxOpenConns >
+	// 1, any query the pool hands to a different connection then fails
+	// with "no such table: ...", intermittently and only under enough
+	// concurrent load to actually check out a second connection (e.g. the
+	// async traffic-metrics write racing a session lookup). A single
+	// connection makes that impossible: there is only ever one in-memory
+	// database for this test to talk to. (cache=shared would be the other
+	// fix, but is deliberately not used here — see the comment above on
+	// dbName.) Set before migrating, not after: the in-memory database
+	// only exists for as long as at least one connection to it stays
+	// open, so this must already be the one and only connection
+	// runMigrations below uses too, not a second, throwaway one that's
+	// closed afterward (fine for Init's real file, where the schema
+	// persists on disk regardless of which connection wrote it, but fatal
+	// here — closing the only connection to a "file::memory:" database
+	// destroys it, schema included).
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
-	// Migrate all schemas
-	err = db.AutoMigrate(autoMigrateModels...)
-	if err != nil {
+	if err := runMigrations(sqlDB); err != nil {
 		panic("Failed to migrate test database: " + err.Error())
 	}
 
