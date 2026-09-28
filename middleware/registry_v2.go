@@ -32,7 +32,7 @@ type MiddlewareStatus struct {
 // the same chain and returns a ready-to-use ChainBuilder.
 //
 // Every method takes mu — currently, in this codebase's actual gateway/
-// reload.go, a registry is always fresh-built (NewGlobalMiddlewareRegistry),
+// setup.go, a registry is always fresh-built (NewGlobalMiddlewareRegistry),
 // have BuildChain called on it once, and only then published where a
 // concurrent GetStatus/GetMetrics/GetAllMetrics call (the admin dashboard's
 // middleware-status/metrics endpoints) could ever reach it — so no two

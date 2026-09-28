@@ -59,7 +59,6 @@ Features table, shows what is implemented and what is planned.
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
 | - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       | v0.0.22 |
 | - Persistent block-event history, with a per-country attacker map | ✅ | v1.0.0 |
-| Hot config reload             | ✅       |        |
 | Feature Flags                 | 🚧       |        |
 | Circuit breaker               | 🚧       |        |
 | Caching                       | 🚧       |        |
@@ -122,11 +121,7 @@ The Taronja Gateway CLI provides the following commands:
     ```
     This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag. On `Ctrl+C` or a `SIGTERM` (e.g. from `docker stop` or a Kubernetes pod eviction), it shuts down gracefully — draining in-flight requests for up to 15 seconds before exiting, instead of dropping them.
 
-    The config file can be reloaded without restarting: save it (auto-reload is on by default; disable with `--watch=false`) or send the process a `SIGHUP` (`kill -HUP <pid>`). Either re-reads the file and, if it's still valid, swaps in the new routes, middleware chain, and rate limiter for requests received from then on — in-flight requests keep running against whatever was already serving them. An invalid edit is logged and ignored; the gateway keeps running its last-good config.
-
-    `.env` is re-read on every reload too (values there win over whatever the process started with), so an edited `${VARIABLE_NAME}` secret takes effect right along with a structural config change — though only for values that go through `.env` itself; a variable exported directly in the shell/process manager can never reach an already-running process, reload or not, since that's fixed for the life of the process at the OS level.
-
-    `server.host`/`port` and the database connection can't be changed this way — those need a real restart. Editing them and reloading anyway isn't silently ignored: the gateway logs a warning naming the port it's still actually listening on vs. the new one from the file.
+    There is no way to change the running configuration without restarting — stop the process and start it again to pick up an edited config file, `.env`, or TLS certificate. `SIGHUP` is explicitly ignored, not left to whatever the OS would otherwise do with it.
 
 *   **Add a new user:**
     ```bash
@@ -464,10 +459,6 @@ server:
 Whichever certificate source you use, enabling TLS also turns on **TLS-level JA4 fingerprinting** automatically — no extra config. Unlike [JA4H](doc/middleware/ja4-fingerprint.md) (computed per HTTP request from header count/order, which varies constantly between a page load and its own subresource/API requests — see that page for why), TLS JA4 is computed once per TLS connection from the client's actual TLS stack (cipher suites, extensions, ALPN, TLS version): a property of the client's OS/browser/TLS library, not of any individual request, so it stays the same across every request on that connection. It's only possible because the gateway itself sees the raw `ClientHello` — this is the concrete meaning of "if we control the TLS certificates" in practice: TLS terminated by something else in front of this gateway (a CDN, a load balancer) means this gateway never sees a `ClientHello` at all.
 
 It's exposed the same way as every other fingerprint signal — via the single `fingerprint`/`fingerprintType` pair on every session/traffic-metric row and in `X-User-Data` (`fingerprintType: "ja4_tls"` when TLS produced it) — see [doc/middleware/ja4-fingerprint.md](doc/middleware/ja4-fingerprint.md#one-consolidated-fingerprint-not-three) for how the three fingerprinting signals get reduced to that single pair, and the [`X-User-Data` field reference](#field-reference) below for the exact JSON shape.
-
-#### Restarting vs. reloading
-
-Enabling or disabling TLS itself, switching between the two certificate sources above, or changing either one's settings (cert/key paths, ACME domains, `redirectPort`) **does** require a full restart — like `server.host`/`port`, that means rebinding the listening socket, which a config reload can't do. Editing these and reloading (`SIGHUP` or `--watch`) anyway isn't silently ignored: the gateway logs a warning and keeps serving on whatever TLS configuration it started with.
 
 ### Tracing
 

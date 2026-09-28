@@ -60,66 +60,29 @@ func writeSelfSignedCert(t *testing.T, dir string, serialNumber int64) (certPath
 	return certPath, keyPath
 }
 
-// --- certReloader ---------------------------------------------------------
+// --- staticCert -------------------------------------------------------------
 
-func TestCertReloader_LoadsAndServesTheCertificate(t *testing.T) {
+func TestStaticCert_LoadsAndServesTheCertificate(t *testing.T) {
 	certPath, keyPath := writeSelfSignedCert(t, t.TempDir(), 1)
 
-	cr, err := newCertReloader(certPath, keyPath)
+	sc, err := newStaticCert(certPath, keyPath)
 	require.NoError(t, err)
 
-	cert, err := cr.GetCertificate(nil)
+	cert, err := sc.GetCertificate(nil)
 	require.NoError(t, err)
 	require.NotNil(t, cert)
 	assert.Equal(t, big.NewInt(1), cert.Leaf.SerialNumber)
 }
 
-func TestCertReloader_New_FailsOnUnparseableFiles(t *testing.T) {
+func TestStaticCert_New_FailsOnUnparseableFiles(t *testing.T) {
 	dir := t.TempDir()
 	badCert := filepath.Join(dir, "bad-cert.pem")
 	badKey := filepath.Join(dir, "bad-key.pem")
 	require.NoError(t, os.WriteFile(badCert, []byte("not a cert"), 0o644))
 	require.NoError(t, os.WriteFile(badKey, []byte("not a key"), 0o600))
 
-	_, err := newCertReloader(badCert, badKey)
+	_, err := newStaticCert(badCert, badKey)
 	assert.Error(t, err)
-}
-
-func TestCertReloader_Reload_SwapsInTheNewCertificate(t *testing.T) {
-	dir := t.TempDir()
-	certPath, keyPath := writeSelfSignedCert(t, dir, 1)
-
-	cr, err := newCertReloader(certPath, keyPath)
-	require.NoError(t, err)
-	cert, err := cr.GetCertificate(nil)
-	require.NoError(t, err)
-	assert.Equal(t, big.NewInt(1), cert.Leaf.SerialNumber)
-
-	// Overwrite with a distinct certificate at the same paths, as a renewal
-	// tool would.
-	writeSelfSignedCert(t, dir, 2)
-	require.NoError(t, cr.Reload())
-
-	cert, err = cr.GetCertificate(nil)
-	require.NoError(t, err)
-	assert.Equal(t, big.NewInt(2), cert.Leaf.SerialNumber, "Reload must swap in the certificate now on disk")
-}
-
-func TestCertReloader_Reload_KeepsOldCertificateOnParseFailure(t *testing.T) {
-	dir := t.TempDir()
-	certPath, keyPath := writeSelfSignedCert(t, dir, 1)
-
-	cr, err := newCertReloader(certPath, keyPath)
-	require.NoError(t, err)
-
-	// Simulate a renewal tool leaving a half-written file mid-copy.
-	require.NoError(t, os.WriteFile(certPath, []byte("garbage"), 0o644))
-	err = cr.Reload()
-	assert.Error(t, err)
-
-	cert, getErr := cr.GetCertificate(nil)
-	require.NoError(t, getErr)
-	assert.Equal(t, big.NewInt(1), cert.Leaf.SerialNumber, "a failed reload must not disturb the certificate already serving")
 }
 
 // --- requestHost / httpsRedirectHandler -----------------------------------
@@ -321,38 +284,6 @@ func TestGatewayTLS_RealHandshakeServesRequests(t *testing.T) {
 	assert.Equal(t, "hello from backend", string(body))
 }
 
-func TestGatewayTLS_CertificateHotReloadsWithoutRestart(t *testing.T) {
-	gw, certPath, _ := newTLSTestGateway(t)
-
-	listener, err := net.Listen("tcp", gw.Server.Addr)
-	require.NoError(t, err)
-	defer listener.Close()
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	go gw.Server.ServeTLS(listener, "", "") //nolint:errcheck
-
-	dial := func() *x509.Certificate {
-		var conn *tls.Conn
-		require.Eventually(t, func() bool {
-			var dialErr error
-			conn, dialErr = tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec
-			return dialErr == nil
-		}, 2*time.Second, 20*time.Millisecond)
-		defer conn.Close()
-		return conn.ConnectionState().PeerCertificates[0]
-	}
-
-	assert.Equal(t, big.NewInt(1), dial().SerialNumber)
-
-	// Overwrite the same paths with a new cert (serial 2), as a renewal tool
-	// would, then reload — the listener/socket must not need to change at
-	// all for the new certificate to take effect.
-	writeSelfSignedCert(t, filepath.Dir(certPath), 2)
-	require.NoError(t, gw.ReloadTLSCertificate())
-
-	assert.Equal(t, big.NewInt(2), dial().SerialNumber, "a new TLS handshake after reload must present the renewed certificate")
-}
-
 func TestGatewayTLS_RedirectServer_RealRequest(t *testing.T) {
 	gw, _, _ := newTLSTestGateway(t)
 	require.NotNil(t, gw.RedirectServer, "TLS enabled with no redirectPort override must build a redirect listener")
@@ -465,7 +396,7 @@ func TestGatewayACME_WiresManagerAndRedirectChallengeHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, gw.acmeManager, "ACME-enabled config must build an autocert.Manager")
-	assert.Nil(t, gw.tlsCertReloader, "ACME mode has no static cert/key file to reload")
+	assert.Nil(t, gw.staticCert, "ACME mode has no static cert/key file")
 	require.NotNil(t, gw.Server.TLSConfig)
 	require.NotNil(t, gw.Server.TLSConfig.GetCertificate)
 

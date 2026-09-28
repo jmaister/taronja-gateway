@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
@@ -16,60 +15,29 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// certReloader holds the gateway's current TLS certificate behind an atomic
-// pointer, so it can be swapped at runtime (see Gateway.ReloadTLSCertificate,
-// driven by main.go's cert-file watcher) without touching the listener a
-// *tls.Config using GetCertificate as its source is already bound to —
-// unlike server.host/port, a certificate's *content* can change without any
-// socket-level consequence.
-type certReloader struct {
-	certFile string
-	keyFile  string
-	current  atomic.Pointer[tls.Certificate]
+// staticCert holds a TLS certificate loaded once, at startup, from a
+// configured certFile/keyFile pair — picking up a renewed certificate (or
+// any other change to server.tls) needs a full restart, the same as any
+// other config change; there is no in-place reload path.
+type staticCert struct {
+	cert *tls.Certificate
 }
 
-// newCertReloader loads certFile/keyFile once up front — a certReloader
-// that failed to load anything would otherwise report a nil certificate on
-// every handshake with no way to tell why — and returns an error rather
-// than a half-usable instance if that fails.
-func newCertReloader(certFile, keyFile string) (*certReloader, error) {
-	cr := &certReloader{certFile: certFile, keyFile: keyFile}
-	if err := cr.Reload(); err != nil {
-		return nil, err
-	}
-	return cr, nil
-}
-
-// Reload re-reads the cert/key files from disk and, if they parse
-// successfully, atomically swaps them in as the certificate future TLS
-// handshakes use. On error, it leaves whatever was already loaded serving
-// unchanged — the same fail-safe behavior as a config reload — since a
-// renewal tool can momentarily leave a half-written file on disk.
-func (cr *certReloader) Reload() error {
-	cert, err := tls.LoadX509KeyPair(cr.certFile, cr.keyFile)
+// newStaticCert loads certFile/keyFile once up front and returns an error
+// if that fails, rather than a half-usable instance that would otherwise
+// report a nil certificate on every handshake with no way to tell why.
+func newStaticCert(certFile, keyFile string) (*staticCert, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return fmt.Errorf("failed to load TLS certificate/key (certFile=%q, keyFile=%q): %w", cr.certFile, cr.keyFile, err)
+		return nil, fmt.Errorf("failed to load TLS certificate/key (certFile=%q, keyFile=%q): %w", certFile, keyFile, err)
 	}
-	cr.current.Store(&cert)
-	return nil
+	return &staticCert{cert: &cert}, nil
 }
 
 // GetCertificate implements the tls.Config.GetCertificate callback
 // signature, called by the runtime on every TLS handshake.
-func (cr *certReloader) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	return cr.current.Load(), nil
-}
-
-// ReloadTLSCertificate re-reads the configured cert/key files from disk and
-// swaps them in for future TLS handshakes, without touching the listening
-// socket — see certReloader.Reload. A no-op returning nil if TLS isn't
-// enabled, so callers (main.go's cert-file watcher) don't need to check
-// first.
-func (g *Gateway) ReloadTLSCertificate() error {
-	if g.tlsCertReloader == nil {
-		return nil
-	}
-	return g.tlsCertReloader.Reload()
+func (sc *staticCert) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	return sc.cert, nil
 }
 
 // httpsRedirectHandler returns a handler that redirects every request to
@@ -174,16 +142,16 @@ func requestHost(r *http.Request) string {
 }
 
 // newTLSConfig builds the *tls.Config for the gateway's main listener from
-// the given reloader — pulled out of NewGatewayWithDependencies mainly so
-// its MinVersion choice has one place to be documented: TLS 1.2 is the
-// floor every major gateway (nginx, Traefik, Envoy) still defaults to for
-// broad client compatibility, with TLS 1.3 preferred automatically whenever
-// both ends support it. Shared with the ACME path (see newACMEManager) so
-// both certificate sources enforce the same minimum.
-func newTLSConfig(reloader *certReloader) *tls.Config {
+// the given static certificate — pulled out of NewGatewayWithDependencies
+// mainly so its MinVersion choice has one place to be documented: TLS 1.2
+// is the floor every major gateway (nginx, Traefik, Envoy) still defaults
+// to for broad client compatibility, with TLS 1.3 preferred automatically
+// whenever both ends support it. Shared with the ACME path (see
+// newACMEManager) so both certificate sources enforce the same minimum.
+func newTLSConfig(cert *staticCert) *tls.Config {
 	return &tls.Config{
 		MinVersion:     tls.VersionTLS12,
-		GetCertificate: reloader.GetCertificate,
+		GetCertificate: cert.GetCertificate,
 	}
 }
 

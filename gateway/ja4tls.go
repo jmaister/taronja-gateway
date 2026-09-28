@@ -59,7 +59,7 @@ func (j *tlsJA4) connStateCallback(conn net.Conn, state http.ConnState) {
 // pattern JA4H already establishes (see middleware/ja4.go), so
 // session.NewClientInfo and any other consumer don't need a second way to
 // access a fingerprint. Must wrap the entire chain (added outside
-// buildRuntime's handler in applyConfig) so the header is set before
+// buildRuntime's handler, in setup) so the header is set before
 // session_extraction/traffic_metrics run.
 func (j *tlsJA4) middleware(next http.Handler) http.Handler {
 	return j.mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

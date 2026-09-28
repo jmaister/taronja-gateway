@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath" // Still needed for user-defined static routes from OS filesystem
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -43,11 +42,13 @@ type Gateway struct {
 	// nil when TLS is disabled or the redirect listener is turned off
 	// (server.tls.redirectPort: 0).
 	RedirectServer *http.Server
-	// tlsCertReloader holds the live TLS certificate when TLS is enabled with
-	// a static certFile/keyFile — see Gateway.ReloadTLSCertificate and
-	// gateway/tls.go's certReloader. nil when TLS is disabled or using ACME
-	// (acmeManager manages its own certificate lifecycle instead).
-	tlsCertReloader *certReloader
+	// staticCert holds the TLS certificate when TLS is enabled with a
+	// static certFile/keyFile — see gateway/tls.go's staticCert. nil when
+	// TLS is disabled or using ACME (acmeManager manages its own
+	// certificate lifecycle instead). Loaded once, at construction; picking
+	// up a renewed certificate needs a full restart, the same as any other
+	// config change.
+	staticCert *staticCert
 	// acmeManager obtains and renews the gateway's certificate automatically
 	// via ACME when TLS is enabled with server.tls.acme — see
 	// gateway/tls.go's newACMEManager. nil when TLS is disabled or using a
@@ -57,7 +58,7 @@ type Gateway struct {
 	// enabled (either certificate source) — see gateway/ja4tls.go. nil when
 	// TLS is disabled, since JA4 needs the ClientHello, only visible at the
 	// TLS layer this gateway itself terminates. Must be set before the
-	// first applyConfig call (which wraps the built handler with
+	// setup call below (which wraps the built handler with
 	// tlsJA4.middleware), independent of gateway.Server's own construction
 	// further below — see the comment at its construction site.
 	tlsJA4 *tlsJA4
@@ -67,7 +68,7 @@ type Gateway struct {
 	RouteChainBuilder   *middleware.RouteChainBuilder
 	// Rate limiter instance (for stats/config APIs)
 	RateLimiter *middleware.RateLimiter
-	// Registry of global middleware factories, built by applyConfig. Kept
+	// Registry of global middleware factories, built by setup. Kept
 	// on the Gateway so the middleware status/health/metrics API (see
 	// doc/refactor01.md Phase 3) can introspect it after startup.
 	MiddlewareRegistry *middleware.MiddlewareRegistryV2
@@ -75,28 +76,11 @@ type Gateway struct {
 	WebappEmbedFS      *embed.FS
 	StartTime          time.Time
 
-	// handler is the http.Server's actual Handler — see reload.go. Every
-	// field above that applyConfig swaps on a config reload (GatewayConfig,
-	// Mux, RateLimiter, MiddlewareRegistry, AuthMiddleware,
-	// HttpCacheMiddleware, RouteChainBuilder) is a snapshot belonging to
-	// whichever generation is currently live in handler.
-	handler *reloadableHandler
-	// configMu guards GatewayConfig specifically — see currentConfig's doc
-	// comment for why only that one field needs it.
-	configMu sync.RWMutex
-	// reloadMu serializes applyConfig calls (e.g. a file-watch event and a
-	// SIGHUP arriving together), so two reloads can never interleave.
-	reloadMu sync.Mutex
-	// providersCancel stops the background goroutine(s) started by the
-	// most recent providers.RegisterProviders call — none of the
-	// providers currently registered start one (see RegisterProviders'
-	// own doc comment for the kind of provider that would).
-	// registerLoginRoutes re-registers every provider from scratch on each
-	// config reload, so without cancelling the previous generation's
-	// context first, each reload would leak one more such goroutine. Only
-	// ever accessed from registerLoginRoutes, itself only ever called
-	// while g.reloadMu is held, so it needs no lock of its own.
-	providersCancel context.CancelFunc
+	// handler is the http.Server's actual Handler, set once by setup and
+	// never changed again — there is no config-reload path that would need
+	// to swap it out from under an already-listening socket; restart the
+	// process to pick up a config change instead.
+	handler http.Handler
 }
 
 // --- NewGatewayWithDependencies Function ---
@@ -114,31 +98,28 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		templates:     templates,
 		WebappEmbedFS: webappEmbedFS,
 		StartTime:     time.Now(),
-		handler:       &reloadableHandler{},
 	}
 
-	// Built before applyConfig (which wraps its built handler with
-	// tlsJA4.middleware — see reload.go) even though the TLS-specific
+	// Built before setup (which wraps its built handler with
+	// tlsJA4.middleware — see setup.go) even though the TLS-specific
 	// *tls.Config/ConnState wiring below needs gateway.Server to already
 	// exist and so has to happen after it. The tlsJA4 value itself doesn't
 	// depend on Server at all — only StoreFingerprintFromClientHello does,
 	// wired in further down — so splitting its construction from that
-	// wiring is what lets applyConfig run in between.
+	// wiring is what lets setup run in between.
 	if cfg.Server.TLS.Enabled {
 		gateway.tlsJA4 = newTLSJA4()
 	}
 
 	// Validates, builds the middleware chain/mux/rate limiter, registers all
-	// routes, and ensures the admin user — the same sequence a later
-	// ReloadConfig runs. See applyConfig's doc comment.
-	if err := gateway.applyConfig(cfg); err != nil {
+	// routes, and ensures the admin user.
+	if err := gateway.setup(cfg); err != nil {
 		return nil, err
 	}
 
 	gateway.Server = &http.Server{
-		// Host/port are fixed at construction: changing them on a reload
-		// would mean rebinding the listening socket, which applyConfig
-		// deliberately doesn't attempt — see ReloadConfig's doc comment.
+		// Host/port, like everything else in cfg, are fixed for the life of
+		// this process — restart the gateway to change them.
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -148,13 +129,11 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 
 	// TLS, like host/port, is fixed at construction — enabling/disabling it,
 	// switching between a static cert/key pair and ACME, or changing either
-	// one's settings on a reload would mean rebinding the listener with a
-	// different protocol/certificate-source entirely, which applyConfig
-	// deliberately doesn't attempt (see warnIfImmutableFieldsChanged). Only
-	// a static certificate's *content* hot-reloads, via
-	// ReloadTLSCertificate, independent of config reload entirely — ACME
-	// manages its own certificate lifecycle instead, with nothing for
-	// ReloadTLSCertificate to do (see its doc comment). See gateway/tls.go.
+	// one's settings all mean rebinding the listener with a different
+	// protocol/certificate-source entirely, and there is no config-reload
+	// path at all now: restart the process for any of this (including
+	// picking up a renewed static certificate) to take effect. See
+	// gateway/tls.go.
 	if cfg.Server.TLS.Enabled {
 		gateway.RedirectServer = buildRedirectServer(cfg)
 
@@ -174,12 +153,12 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 				gateway.RedirectServer.Handler = manager.HTTPHandler(gateway.RedirectServer.Handler)
 			}
 		} else {
-			reloader, err := newCertReloader(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+			cert, err := newStaticCert(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
 			if err != nil {
 				return nil, err
 			}
-			gateway.tlsCertReloader = reloader
-			gateway.Server.TLSConfig = newTLSConfig(reloader)
+			gateway.staticCert = cert
+			gateway.Server.TLSConfig = newTLSConfig(cert)
 		}
 
 		// Wired the same way regardless of which certificate source just
@@ -248,7 +227,7 @@ func parseTemplates(fs embed.FS, templateNames ...string) (map[string]*template.
 
 // configureManagementRoutes sets up internal gateway endpoints
 func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
-	prefix := g.currentConfig().Management.Prefix
+	prefix := g.GatewayConfig.Management.Prefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
 
 	// Login Routes for Basic and OAuth2 Authentication
@@ -338,7 +317,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.currentConfig().Management.Prefix, true)
+	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -362,7 +341,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.currentConfig().Management.Prefix, false)
+	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -422,22 +401,18 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes() {
-	cfg := g.currentConfig()
+	cfg := g.GatewayConfig
 
 	// Register all providers - basic, OAuth, etc.
 	if cfg.HasAnyAuthentication() {
-		// Cancel the previous generation's provider context (if any) before
-		// registering a fresh one, so a config reload replaces rather than
-		// piles onto whatever background goroutine(s) the last registration
-		// started — see providersCancel's doc comment on the Gateway struct.
-		if g.providersCancel != nil {
-			g.providersCancel()
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		g.providersCancel = cancel
-
-		// Register all authentication providers based on configuration
-		providers.RegisterProviders(ctx, g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
+		// context.Background(), not a cancelable context tied to some later
+		// "replace this registration" event: registerLoginRoutes only ever
+		// runs once now, at startup, so there is no next registration a
+		// background goroutine (see RegisterProviders' own doc comment for
+		// the kind of provider that starts one) would ever need cancelling
+		// for — the process exiting is what ends it, same as everything
+		// else this gateway starts at startup.
+		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
 	}
 
 	// Login page handler
@@ -453,7 +428,7 @@ func (g *Gateway) registerLoginRoutes() {
 		// wherever the template embeds it (the per-provider login links,
 		// the hidden form field), rather than relying on every downstream
 		// consumer to have remembered to sanitize it independently.
-		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.currentConfig())
+		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
 
 		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
 		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root
@@ -479,7 +454,7 @@ func (g *Gateway) registerLoginRoutes() {
 // This function continues to serve user-defined static routes from the OS filesystem.
 func (g *Gateway) configureUserRoutes() error {
 	log.Printf("Registering user-defined routes...")
-	for _, routeConfig := range g.currentConfig().Routes {
+	for _, routeConfig := range g.GatewayConfig.Routes {
 		var handler http.HandlerFunc
 
 		// Create the base handler (proxy or static)
@@ -600,20 +575,18 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	// header, which is what actually makes this a *distributed* trace
 	// instead of one isolated span per hop. Read once here, at route
 	// registration time, matching every other config value this function
-	// closes over — tracing is fixed-at-startup, the same as TLS (see
-	// warnIfImmutableFieldsChanged), so this doesn't need to react to a
-	// later config reload.
+	// closes over — tracing is fixed-at-startup, the same as TLS and
+	// everything else in gateway/setup.go, since there's no reload to react
+	// to.
 	var transport http.RoundTripper = http.DefaultTransport
-	if g.currentConfig().Tracing.Enabled {
+	if g.GatewayConfig.Tracing.Enabled {
 		transport = otelhttp.NewTransport(transport)
 	}
 	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name, transport)
 
-	// Read once here, same as transport above — routes are re-registered on
-	// every config reload, so this reflects each reload's own config rather
-	// than going stale. See trustedForwardedHost's doc comment for what
-	// this actually gates.
-	allowedHosts := allowedRedirectHosts(g.currentConfig())
+	// Read once here, same as transport above, at route-registration time.
+	// See trustedForwardedHost's doc comment for what this actually gates.
+	allowedHosts := allowedRedirectHosts(g.GatewayConfig)
 
 	// Store the original director
 	originalDirector := proxy.Director

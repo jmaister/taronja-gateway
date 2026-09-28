@@ -8,14 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
@@ -57,23 +55,15 @@ var runCmd = &cobra.Command{
 	Short: "Run the Taronja API Gateway",
 	Long: `Starts the Taronja API Gateway using the specified configuration file.
 
-The config file can be reloaded without restarting the process: send the
-gateway process SIGHUP, or (unless --watch=false) simply save the file —
-both re-read it and, if it's still valid, swap in the new middleware chain,
-routes, and rate limiter for requests received from then on. An invalid
-edit is logged and ignored; the gateway keeps running its last-good config.`,
+There is no way to change the running configuration without restarting:
+stop the process and start it again to pick up an edited config file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configFilePath, err := cmd.Flags().GetString("config")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
 			os.Exit(1)
 		}
-		watchConfig, err := cmd.Flags().GetBool("watch")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting watch flag: %v\n", err)
-			os.Exit(1)
-		}
-		runGateway(configFilePath, watchConfig)
+		runGateway(configFilePath)
 	},
 }
 
@@ -182,8 +172,6 @@ func init() {
 	if err := runCmd.MarkFlagRequired("config"); err != nil {
 		log.Fatalf("Failed to mark 'config' flag as required for runCmd: %v", err)
 	}
-	runCmd.Flags().Bool("watch", true, "Automatically reload the config file when it changes on disk (in addition to SIGHUP, which always works)")
-
 	middlewareListCmd.Flags().String("config", "", "Path to the configuration file")
 	if err := middlewareListCmd.MarkFlagRequired("config"); err != nil {
 		log.Fatalf("Failed to mark 'config' flag as required for middlewareListCmd: %v", err)
@@ -244,13 +232,12 @@ func dotEnvLoadIsFatal(err error) bool {
 	return err != nil && !os.IsNotExist(err)
 }
 
-func runGateway(configFilePath string, watchConfig bool) {
+func runGateway(configFilePath string) {
 	// A missing .env is fine — plenty of deployments (this project's own
 	// Docker demo among them) rely on real environment variables only and
 	// never have one; only a present-but-unreadable/malformed one is worth
-	// stopping for. Same distinction gateway/reload.go's reloadDotEnv makes
-	// for every later reload, and the one addUser already made below — this
-	// was the one call site treating "no .env" as fatal.
+	// stopping for — same distinction the one addUser already makes below.
+	// This was the one call site treating "no .env" as fatal.
 	if err := godotenv.Load(); dotEnvLoadIsFatal(err) {
 		log.Fatalf("FATAL: failed to load .env: %v", err)
 	}
@@ -321,7 +308,7 @@ func runGateway(configFilePath string, watchConfig bool) {
 		if config.Server.TLS.Enabled {
 			// Empty certFile/keyFile: the cert comes from
 			// gateway.Server.TLSConfig.GetCertificate (see gateway/tls.go's
-			// certReloader), not from files ListenAndServeTLS itself opens.
+			// staticCert), not from files ListenAndServeTLS itself opens.
 			serverErr <- gateway.Server.ListenAndServeTLS("", "")
 		} else {
 			serverErr <- gateway.Server.ListenAndServe()
@@ -344,40 +331,18 @@ func runGateway(configFilePath string, watchConfig bool) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// SIGHUP is the traditional "reload your config" signal (nginx, most
-	// other long-running servers). Unlike stop, it never ends the loop
-	// below — it just triggers a ReloadConfig call and the gateway keeps
-	// running either way.
-	reload := make(chan os.Signal, 1)
-	signal.Notify(reload, syscall.SIGHUP)
-
-	// The complementary, opt-out way to trigger the same reload: watch the
-	// config file itself and reload whenever it's saved, so a local
-	// developer doesn't have to find the process and signal it by hand.
-	// --watch=false (or a watcher setup failure, e.g. an unusual filesystem)
-	// falls back to SIGHUP-only, which always works regardless.
-	if watchConfig {
-		watcherStop := make(chan struct{})
-		defer close(watcherStop)
-		if err := watchConfigFile(configFilePath, gateway, watcherStop); err != nil {
-			log.Printf("Warning: could not watch '%s' for changes (%v) — reload via SIGHUP still works.", configFilePath, err)
-		}
-
-		// The cert/key files' *content* (e.g. a renewal tool replacing them
-		// in place) hot-reloads independently of the config file itself —
-		// see Gateway.ReloadTLSCertificate's doc comment for why this is a
-		// separate concern from config reload entirely, not just another
-		// case watchConfigFile happens to handle. Not applicable to ACME —
-		// there's no static cert/key file to watch, since the gateway's own
-		// autocert.Manager obtains and renews the certificate itself.
-		if config.Server.TLS.Enabled && config.Server.TLS.ACME == nil {
-			certWatcherStop := make(chan struct{})
-			defer close(certWatcherStop)
-			if err := watchCertFiles(config.Server.TLS.CertFile, config.Server.TLS.KeyFile, gateway, certWatcherStop); err != nil {
-				log.Printf("Warning: could not watch TLS cert/key files for changes (%v) — restart the gateway to pick up a renewed certificate.", err)
-			}
-		}
-	}
+	// SIGHUP used to trigger a config reload (see this project's earlier
+	// history); now that there's no such thing, it must still be
+	// explicitly ignored, not just left unhandled — Go's default
+	// disposition for a signal nothing calls signal.Notify for is the
+	// OS's own default action, and SIGHUP's default action is to
+	// terminate the process immediately, with no graceful shutdown at
+	// all (confirmed directly: without this, `kill -HUP <pid>` kills the
+	// gateway outright, no "shutting down gracefully" log line, no drain
+	// of in-flight requests — silently, the first time anything sends it
+	// for any reason). SIGINT/SIGTERM above remain the only two signals
+	// that end this process on purpose.
+	signal.Ignore(syscall.SIGHUP)
 
 runLoop:
 	for {
@@ -403,11 +368,6 @@ runLoop:
 				}
 			}
 			break runLoop
-		case <-reload:
-			log.Printf("Received SIGHUP, reloading configuration from %s...", configFilePath)
-			if err := gateway.ReloadConfig(configFilePath); err != nil {
-				log.Printf("Config reload failed, keeping previous configuration: %v", err)
-			}
 		}
 	}
 
@@ -438,162 +398,6 @@ runLoop:
 	}
 
 	log.Println("API Gateway shut down gracefully.")
-}
-
-// watchConfigFile watches configFilePath for changes and calls
-// gw.ReloadConfig whenever it's written, until stop is closed. It watches
-// the file's containing directory rather than the file itself — editors and
-// deployment tools commonly save by writing a new file and renaming it over
-// the original (fsnotify's own documented workaround for this: a watch on
-// the file itself would silently stop firing after the first such rename,
-// since the watch follows the inode, not the path), and filters events down
-// to the target file's own name. Events are debounced with a short timer
-// since a single save often produces several rapid events (e.g. a WRITE
-// followed by a CHMOD).
-func watchConfigFile(configFilePath string, gw *gateway.Gateway, stop <-chan struct{}) error {
-	absPath, err := filepath.Abs(configFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve absolute path: %w", err)
-	}
-	dir := filepath.Dir(absPath)
-	name := filepath.Base(absPath)
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("failed to create file watcher: %w", err)
-	}
-	if err := watcher.Add(dir); err != nil {
-		watcher.Close()
-		return fmt.Errorf("failed to watch directory '%s': %w", dir, err)
-	}
-
-	log.Printf("Watching '%s' for changes (reload on save; disable with --watch=false).", absPath)
-
-	go func() {
-		defer watcher.Close()
-
-		const debounce = 200 * time.Millisecond
-		var debounceTimer *time.Timer
-		pending := make(chan struct{}, 1)
-
-		for {
-			select {
-			case <-stop:
-				if debounceTimer != nil {
-					debounceTimer.Stop()
-				}
-				return
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if filepath.Base(event.Name) != name {
-					continue
-				}
-				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
-					continue
-				}
-				if debounceTimer != nil {
-					debounceTimer.Stop()
-				}
-				debounceTimer = time.AfterFunc(debounce, func() {
-					select {
-					case pending <- struct{}{}:
-					default:
-					}
-				})
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Printf("Warning: config file watcher error: %v", err)
-			case <-pending:
-				if err := gw.ReloadConfig(configFilePath); err != nil {
-					log.Printf("Config reload failed, keeping previous configuration: %v", err)
-				}
-			}
-		}
-	}()
-
-	return nil
-}
-
-// watchCertFiles watches certFile and keyFile (config.LoadConfig has
-// already resolved both to absolute paths) and calls
-// gw.ReloadTLSCertificate whenever either changes, so a renewal tool (e.g.
-// certbot) replacing them in place takes effect without a restart. Same
-// directory-watch-plus-debounce approach as watchConfigFile, for the same
-// reason: watching the file itself, rather than its containing directory,
-// silently stops working after the first write-then-rename a renewal tool
-// typically does.
-func watchCertFiles(certFile, keyFile string, gw *gateway.Gateway, stop <-chan struct{}) error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("failed to create file watcher: %w", err)
-	}
-
-	// certFile and keyFile are very often the same directory (sometimes the
-	// same file, for a combined cert+key PEM) — watch each directory once.
-	dirs := map[string]bool{filepath.Dir(certFile): true, filepath.Dir(keyFile): true}
-	for dir := range dirs {
-		if err := watcher.Add(dir); err != nil {
-			watcher.Close()
-			return fmt.Errorf("failed to watch directory '%s': %w", dir, err)
-		}
-	}
-	names := map[string]bool{filepath.Base(certFile): true, filepath.Base(keyFile): true}
-
-	log.Printf("Watching TLS cert/key files ('%s', '%s') for changes.", certFile, keyFile)
-
-	go func() {
-		defer watcher.Close()
-
-		const debounce = 200 * time.Millisecond
-		var debounceTimer *time.Timer
-		pending := make(chan struct{}, 1)
-
-		for {
-			select {
-			case <-stop:
-				if debounceTimer != nil {
-					debounceTimer.Stop()
-				}
-				return
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if !names[filepath.Base(event.Name)] {
-					continue
-				}
-				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
-					continue
-				}
-				if debounceTimer != nil {
-					debounceTimer.Stop()
-				}
-				debounceTimer = time.AfterFunc(debounce, func() {
-					select {
-					case pending <- struct{}{}:
-					default:
-					}
-				})
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				log.Printf("Warning: TLS cert/key file watcher error: %v", err)
-			case <-pending:
-				if err := gw.ReloadTLSCertificate(); err != nil {
-					log.Printf("TLS certificate reload failed, keeping previous certificate: %v", err)
-				} else {
-					log.Printf("TLS certificate reloaded from '%s'/'%s'.", certFile, keyFile)
-				}
-			}
-		}
-	}()
-
-	return nil
 }
 
 func addUser(username, email, password string) {

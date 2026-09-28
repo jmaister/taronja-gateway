@@ -7,17 +7,13 @@ services:
       - "8080:8080"
     command: ["run", "--config", "/etc/taronja-gateway/config.yaml"]
     volumes:
-      # The whole directory, not just config.yaml, is bind-mounted —
-      # deliberately: Docker's single-file bind mounts break when the host
-      # replaces the file via the write-a-new-file-then-rename-it pattern
-      # most editors and `sed -i` use (the mount stays pinned to the old,
-      # now-unlinked inode), which would silently defeat file-watch reload
-      # below. A directory bind mount doesn't have that problem.
-      #
-      # Edit config/config.yaml on the host and either send SIGHUP
-      # (`docker compose kill -s HUP gateway`) or just save it — the gateway
-      # watches it by default and hot-reloads, no restart needed. See
-      # README.md "Try hot config reload".
+      # The whole directory, not just config.yaml, is bind-mounted — mostly
+      # so this directory could hold more than one file if a future
+      # addition to the demo needed it, not because the single file itself
+      # needs anything special: there's no live config reload here (the
+      # gateway only ever reads this at startup), so `docker compose
+      # restart gateway` after an edit re-establishes the bind mount fresh
+      # either way. See README.md "Editing the config".
       - ./config:/etc/taronja-gateway:ro
       - ./static-site:/srv/static-site:ro
       - ./static-site-secret:/srv/static-site-secret:ro

@@ -17,8 +17,11 @@ Then open **http://localhost:8080**.
 
 The first `--build` compiles the gateway from the repo root (`../../Dockerfile`
 — the React admin dashboard, then the Go binary); it's the slow step, and
-only needs repeating after you change gateway source, not after editing
-`config/config.yaml` or the static files (see "Try hot config reload" below).
+only needs repeating after you change gateway source. Editing a static file
+takes effect immediately, no restart needed at all — they're served straight
+off disk on every request. Editing `config/config.yaml` needs the gateway
+process itself to restart and re-read it (there's no in-place config
+reload): `docker compose restart gateway`, not a full `--build`.
 
 ## What's running
 
@@ -55,9 +58,8 @@ main [README's Middleware Architecture section](../../README.md#middleware-archi
    GOOGLE_CLIENT_SECRET=...
    ```
 4. `docker compose up --build` (or, if it's already running, just
-   `docker compose restart gateway` — hot reload picks up `.env` changes
-   too, see below, but the container needs to actually re-read its
-   environment, which only happens on a restart, not a config reload).
+   `docker compose restart gateway` — no `--build` needed for an `.env`
+   or `config.yaml` change, just a restart so the process re-reads them).
 5. Visit any authenticated route (`/secret/`, `/_/admin/`) — a "Sign in
    with Google" button now appears on the login page.
 
@@ -69,22 +71,11 @@ rest of the demo doesn't depend on OAuth being configured.
 
 ## Other features worth trying
 
-**Hot config reload** — edit `config/config.yaml` on the host (e.g. change
-`cacheControlSeconds`, add a route, or change `requestsPerMinute`) and save
-it; the running container picks it up without a restart (`--watch` is on by
-default) — verified working here even with editors/tools (`sed -i`
-included) that save by writing a new file and renaming it over the old one,
-which is why this mounts the whole `config/` directory rather than just the
-one file (a single-file bind mount doesn't survive that rename; a directory
-one does). Watch it happen: `docker compose logs -f gateway`.
-
-On Docker Desktop (macOS/Windows) specifically, the virtualized filesystem
-bind mounts go through can still occasionally miss a change notification —
-if a save doesn't seem to trigger a reload, this always works instead,
-everywhere:
-```bash
-docker compose kill -s HUP gateway
-```
+**Editing the config** — edit `config/config.yaml` on the host (e.g. change
+`cacheControlSeconds`, add a route, or change `requestsPerMinute`), then
+`docker compose restart gateway` to pick it up — there's no in-place
+reload, the same as running `tg` anywhere else. Watch the new config take
+effect: `docker compose logs -f gateway`.
 
 **Rate limiter** — `config/config.yaml` sets a deliberately low
 `requestsPerMinute: 60` on the whole gateway. Trigger it:

@@ -16,9 +16,9 @@ import (
 
 // RateLimiter implements an in‑memory rate limiter keyed by client IP.
 // It's safe for concurrent use and maintains its own cleanup goroutine —
-// call Close when a RateLimiter is being discarded (e.g. gateway/reload.go
-// building a fresh one for a config reload) so that goroutine actually
-// stops instead of running forever alongside its replacement.
+// call Close when a RateLimiter is being discarded (e.g. gateway/setup.go
+// building a fresh one during setup) so that goroutine actually stops
+// instead of running forever alongside its replacement.
 type RateLimiter struct {
 	cfg             config.RateLimiterConfig
 	entries         sync.Map // map[string]*rateEntry
@@ -135,7 +135,7 @@ type rateEntry struct {
 // no database connection to hand it one, so block events it enforces are
 // never persisted to the registry (see RateLimiter.blockedClientRepo).
 // The real gateway runtime always goes through NewRateLimiter directly
-// instead (see gateway/reload.go's buildRuntime), supplying one.
+// instead (see gateway/setup.go's buildRuntime), supplying one.
 func RateLimiterMiddleware(cfg config.RateLimiterConfig) func(http.Handler) http.Handler {
 	rl := NewRateLimiter(cfg, nil)
 	return rl.Handler
@@ -437,10 +437,10 @@ func (rl *RateLimiter) Config() config.RateLimiterConfig {
 }
 
 // cleanupLoop periodically removes stale entries from the map, until Close
-// is called — without this exit path, a RateLimiter discarded by a config
-// reload (gateway/reload.go builds a brand-new one on every reload) would
-// leak this goroutine and its ticker forever, one more per reload, and its
-// still-running cleanup would keep expiring entries an operator might
+// is called — without this exit path, a RateLimiter discarded by a test or
+// other short-lived caller (a real gateway process only ever builds one, in
+// gateway/setup.go) would leak this goroutine and its ticker forever, and
+// its still-running cleanup would keep expiring entries an operator might
 // expect to remain read-only history at that point.
 func (rl *RateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(rl.cleanupInterval)

@@ -56,7 +56,7 @@ func createTestSession(gw *Gateway) *db.Session {
 // routes attach directly (auth, cache-control). gw.handler is
 // gw.Mux wrapped in the global middleware chain (JA4H fingerprinting,
 // session extraction, traffic metrics, logging — see buildRuntime in
-// reload.go) and is what actually serves traffic in production. Calling
+// setup.go) and is what actually serves traffic in production. Calling
 // gw.Mux.ServeHTTP here would silently skip that entire chain, which is
 // exactly what let the uaparser.NewFromSaved()-per-request bug in
 // session/clientinfo.go (~200ms and ~45MB per analytics-tracked request) go

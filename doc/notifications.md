@@ -304,7 +304,7 @@ Each channel's own status is the outcome of its *most recent* attempt:
 |---|---|
 | `sent` | Delivered successfully. |
 | `failed` | The most recent attempt failed and the retry schedule is exhausted — permanent. |
-| `pending` | The most recent attempt failed, but a retry is still scheduled — not permanent yet. |
+| `pending` | Either the most recent attempt is still in-flight (the provider's Send call has not yet returned), or it failed but a retry is still scheduled — not permanent yet. |
 | `skipped` | The channel was never usable for this user/config (see `NotificationDeliveryStatusSkipped`) — never attempted, so it's neither a success nor a failure. |
 
 `overall` rolls those up worst-first: **pending beats failed beats sent**.
@@ -413,9 +413,9 @@ go test ./handlers/... -run Notification -v
 - **Fixed at startup, like tracing and TLS.** `notification.NewService`,
   the retry worker, and the Telegram poller (if configured) are constructed
   once, from whatever `notification.*` said at startup
-  (`gateway.InitNotifications`, called from `main.go`). A config reload
-  (SIGHUP or file-watch) that changes `notification.*` is stored but has no
-  effect until a full restart.
+  (`gateway.InitNotifications`, called from `main.go`) — there is no
+  config-reload path at all, so changing `notification.*` always needs a
+  full restart to take effect, the same as any other config change.
 - **Delivery failures never fail creation.** The in-app record is the
   source of truth and always succeeds if the database write does; each
   channel's outcome is recorded on its own `NotificationDelivery` row,
