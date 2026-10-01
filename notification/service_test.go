@@ -213,10 +213,112 @@ func TestService_Create(t *testing.T) {
 		assert.NotEmpty(t, fetched.RespondTokenHash)
 		require.NotNil(t, fetched.RespondTokenExpiresAt)
 	})
+
+	t.Run("records a pending delivery row while the provider is in-flight, then a failed row when it errors", func(t *testing.T) {
+		// A provider that blocks until we release it, so we can
+		// inspect the DB while the delivery is in-flight.
+		block := make(chan struct{})
+		release := make(chan struct{})
+		blockingProvider := &blockingProvider{
+			channel: db.NotificationChannelEmail,
+			block:   block,
+			release: release,
+		}
+		service, repo, userRepo := newTestService(t, config.NotificationConfig{})
+		service.providers[db.NotificationChannelEmail] = blockingProvider
+		user := &db.User{Username: "pending-u", Email: "pending@example.com"}
+		require.NoError(t, userRepo.CreateUser(user))
+
+		// Create spawns delivery goroutines but returns immediately.
+		notifications, _, err := service.Create(context.Background(), CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
+			Channels: []string{db.NotificationChannelEmail},
+		})
+		require.NoError(t, err)
+		require.Len(t, notifications, 1)
+
+		// Wait until the delivery goroutine has recorded the pending
+		// row and is now blocked on provider.Send.
+		require.Eventually(t, func() bool {
+			deliveries, err := repo.ListDeliveries(notifications[0].ID)
+			if err != nil || len(deliveries) == 0 {
+				return false
+			}
+			for _, d := range deliveries {
+				if d.Status == db.NotificationDeliveryStatusPending {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 10*time.Millisecond, "a pending row should exist while the provider Send is in-flight")
+
+		// Release the provider so the delivery completes (SMTP server
+		// rejects the connection → failed).
+		close(release)
+		waitForPendingDeliveries(service)
+
+		// The pending row is still in the history; the latest is failed.
+		deliveries, err := repo.ListDeliveries(notifications[0].ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 2, "one pending row plus one final failed row")
+		latest := deliveries[0] // ordered DESC by ListDeliveries
+		assert.Equal(t, db.NotificationDeliveryStatusFailed, latest.Status, "the final row is failed")
+	})
+
+		// Create spawns delivery goroutines but returns immediately.
+		notifications, _, err := service.Create(context.Background(), CreateInput{
+			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
+			Channels: []string{db.NotificationChannelEmail},
+		})
+		require.NoError(t, err)
+		require.Len(t, notifications, 1)
+
+		// Wait until the delivery goroutine has recorded the pending
+		// row and is now blocked on provider.Send.
+		require.Eventually(t, func() bool {
+			deliveries, err := repo.ListDeliveries(notifications[0].ID)
+			if err != nil || len(deliveries) == 0 {
+				return false
+			}
+			for _, d := range deliveries {
+				if d.Status == db.NotificationDeliveryStatusPending {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 10*time.Millisecond, "a pending row should exist while the provider Send is in-flight")
+
+		// Release the provider so the delivery completes (SMTP server
+		// rejects the connection → failed).
+		close(release)
+		waitForPendingDeliveries(service)
+
+		// The pending row is still in the history; the latest is failed.
+		deliveries, err := repo.ListDeliveries(notifications[0].ID)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 2, "one pending row plus one final failed row")
+		latest := deliveries[0] // ordered DESC by ListDeliveries
+		assert.Equal(t, db.NotificationDeliveryStatusFailed, latest.Status, "the final row is failed")
+	})
+}
+
+// blockingProvider is a test Provider that blocks on provider.Send
+// until a release signal is sent, letting tests inspect the DB while
+// the delivery is in-flight (NotificationDeliveryStatusPending).
+type blockingProvider struct {
+	channel string
+	block   chan struct{}
+	release chan struct{}
+}
+
+func (p *blockingProvider) Channel() string { return p.channel }
+
+func (p *blockingProvider) Send(ctx context.Context, req SendRequest) (string, error) {
+	<-p.release // unblock when the test releases us
+	return "", fmt.Errorf("deliberately failed")
 }
 
 // TestService_Create_RejectsTooManyRecipients is the regression test for
-// half of Finding 12 (unbounded goroutine spawning): before
 // MaxRecipientsPerCreate existed, a UserIDs list of any size was accepted
 // and fanned out into one delivery goroutine per recipient/channel pair —
 // a caller (or a compromised/careless admin script, CreateNotification

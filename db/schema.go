@@ -449,11 +449,14 @@ const (
 )
 
 // Notification delivery statuses — the value NotificationDelivery.Status
-// takes.
+// takes. A pending delivery is one that has been accepted and kicked off
+// (the provider's Send call is in-flight or queued) but has not completed
+// yet; it transitions to sent, failed, or skipped once the provider responds.
 const (
 	NotificationDeliveryStatusSent    = "sent"
 	NotificationDeliveryStatusFailed  = "failed"
 	NotificationDeliveryStatusSkipped = "skipped" // channel requested but the user has no recipient for it (no linked Telegram chat, provider disabled, ...)
+	NotificationDeliveryStatusPending = "pending" // delivery accepted and in-flight; the provider's Send call has not yet returned
 )
 
 // Notification is one in-app notification for one user. It always exists in

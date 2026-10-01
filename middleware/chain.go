@@ -41,15 +41,17 @@ func (c *ChainBuilder) Build(handler http.Handler) http.Handler {
 }
 
 // BuildGlobalChain builds the global middleware chain based on gateway
-// configuration. It delegates to BuildGlobalChainV2 (the factory/registry
-// system — see doc/refactor01.md Phase 2), so it now understands both the
-// legacy management.analytics/logging/rateLimiter flags and an explicit
-// `middleware:` config section, exactly like BuildGlobalChainV2.
+// configuration. It delegates to BuildGlobalChainFromConfigV2 (the
+// factory/registry system — see doc/refactor01.md Phase 2), so it now
+// understands both the legacy management.analytics/logging/rateLimiter
+// flags and an explicit `middleware:` config section, exactly like
+// BuildGlobalChainFromConfigV2.
 //
-// This function has no error return, for backward compatibility with any
-// existing callers, so a build failure (e.g. an invalid explicit middleware
-// section) is logged and results in an empty chain rather than a panic.
-// Prefer calling BuildGlobalChainV2 directly where an error return is
+// This function has no error return, for backward compatibility with
+// any existing callers, so a build failure (e.g. an invalid explicit
+// middleware section) is logged and results in an empty chain rather
+// than a panic. Prefer calling NewGlobalMiddlewareRegistry and
+// BuildGlobalChainFromConfigV2 directly where an error return is
 // acceptable, since it surfaces misconfiguration instead of silently
 // dropping the chain.
 func BuildGlobalChain(
@@ -59,7 +61,12 @@ func BuildGlobalChain(
 	trafficMetricRepo db.TrafficMetricRepository,
 	rateLimiter *RateLimiter,
 ) *ChainBuilder {
-	chain, err := BuildGlobalChainV2(gatewayConfig, sessionStore, tokenService, trafficMetricRepo, rateLimiter)
+	registry, err := NewGlobalMiddlewareRegistry(sessionStore, tokenService, trafficMetricRepo, rateLimiter)
+	if err != nil {
+		log.Printf("BuildGlobalChain: failed to build middleware registry: %v; falling back to an empty chain", err)
+		return NewChainBuilder()
+	}
+	chain, err := BuildGlobalChainFromConfigV2(registry, gatewayConfig)
 	if err != nil {
 		log.Printf("BuildGlobalChain: failed to build middleware chain via registry: %v; falling back to an empty chain", err)
 		return NewChainBuilder()
@@ -108,15 +115,21 @@ func Chain(handler http.Handler, middlewares ...Middleware) http.Handler {
 	return handler
 }
 
-// NewGlobalMiddlewareRegistry builds a MiddlewareRegistryV2 with a factory
+// NewGlobalMiddlewareRegistry builds a MiddlewareRegistry with a factory
 // registered for every built-in global middleware (compression, cors,
 // rate_limiter, ja4_fingerprint, session_extraction, traffic_metrics,
 // logging, tracing), wired to
-// the given dependencies. It's exposed separately from BuildGlobalChainV2 so
-// callers that need to introspect the registry after building the chain —
-// e.g. a middleware status/health/metrics API endpoint (doc/refactor01.md
-// Phase 3) — can keep a reference to it instead of it being discarded once
-// the chain is built.
+// the given dependencies. It also builds the chain from gatewayConfig
+// and returns both the registry and the built chain. Callers that
+// need to introspect the registry after building the chain — e.g. a
+// middleware status/health/metrics API endpoint (doc/refactor01.md
+// Phase 3) — can keep a reference to it instead of it being
+// discarded once the chain is built.
+//
+// This is the single entry point for building the global middleware
+// chain: callers either use this (when they need the registry
+// reference) or BuildGlobalChainFromConfigV2 directly (when they
+// already have a registry).
 func NewGlobalMiddlewareRegistry(
 	sessionStore session.SessionStore,
 	tokenService *auth.TokenService,

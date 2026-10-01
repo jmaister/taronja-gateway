@@ -339,6 +339,9 @@ func (s *Service) GetPreferredChannel(userID string) (string, error) {
 // comment for why that's worth recording rather than silently doing
 // nothing. A failure here doesn't end the story: RetryFailedDeliveries
 // picks it up later if the schedule allows (see recordDelivery).
+// Before calling the provider the delivery is recorded as
+// NotificationDeliveryStatusPending (in-flight) so the status
+// API can reflect that a send is currently in progress.
 func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Action, channel string) {
 	const firstAttempt = 1
 
@@ -355,6 +358,7 @@ func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Act
 	}
 
 	req := s.buildSendRequest(n, actions, channel, recipient)
+	s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusPending, "", "", firstAttempt)
 	externalRef, err := provider.Send(ctx, req)
 	if err != nil {
 		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusFailed, err.Error(), "", firstAttempt)
@@ -391,7 +395,10 @@ func (s *Service) buildSendRequest(n *db.Notification, actions []Action, channel
 // and the retry schedule isn't exhausted yet, this also sets NextRetryAt —
 // the only place that field is ever set — so RetryFailedDeliveries picks
 // it up later without deliver/retryOne needing to know anything about
-// scheduling themselves.
+// scheduling themselves. A "pending" status (NotificationDeliveryStatusPending)
+// records that the delivery has been accepted and is in-flight; it is
+// followed by a final record (sent/failed/skipped) once the provider
+// responds — see deliver and retryOne.
 func (s *Service) recordDelivery(notificationID, channel, status, errMsg, externalRef string, attemptNumber int) {
 	delivery := &db.NotificationDelivery{
 		NotificationID: notificationID,
@@ -462,6 +469,7 @@ func (s *Service) retryOne(ctx context.Context, delivery *db.NotificationDeliver
 	}
 
 	req := s.buildSendRequest(n, actions, delivery.Channel, recipient)
+	s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusPending, "", "", nextAttempt)
 	externalRef, err := provider.Send(ctx, req)
 	if err != nil {
 		s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusFailed, err.Error(), "", nextAttempt)
@@ -576,12 +584,15 @@ func (s *Service) ListDeliveries(notificationID, userID string, isAdmin bool) ([
 	return s.repo.ListDeliveries(notificationID)
 }
 
-// Status values GetNotificationStatus/GetBatchStatus report — distinct
-// from the raw, per-attempt db.NotificationDeliveryStatus* values a
-// NotificationDelivery row itself takes. StatusPending specifically means
-// "the most recent attempt on this channel failed, but a retry is still
-// scheduled" — it never appears as a NotificationDelivery.Status value,
-// only as this package's interpretation of one.
+// Status values GetNotificationStatus/GetBatchStatus report —
+// distinct from the raw, per-attempt db.NotificationDeliveryStatus*
+// values a NotificationDelivery row itself takes. StatusPending has
+// two origins: a raw NotificationDeliveryStatusPending row
+// (the delivery is in-flight, provider Send has not yet returned)
+// OR a db.NotificationDeliveryStatusFailed row whose retry is
+// still scheduled (a retry is pending). It never appears as a raw
+// db.NotificationDeliveryStatusSkipped; skipped channels are
+// reported as skipped, not as pending or sent.
 const (
 	StatusSent    = "sent"
 	StatusFailed  = "failed"
@@ -589,8 +600,10 @@ const (
 )
 
 // channelStatus reduces one channel's most recent delivery attempt to a
-// single status: the outcome of that attempt, with a failed one promoted
-// to StatusPending if a retry is still scheduled. Returns
+// single status: the outcome of that attempt, with a failed one
+// promoted to StatusPending if a retry is still scheduled, and a
+// raw NotificationDeliveryStatusPending row interpreted as
+// StatusPending (delivery in-flight). Returns
 // db.NotificationDeliveryStatusSkipped (not a Status constant above) for a
 // skipped attempt — skipped channels are reported in the per-channel
 // breakdown but deliberately excluded from overallStatus's rollup.
@@ -598,9 +611,11 @@ func channelStatus(latest *db.NotificationDelivery) string {
 	switch latest.Status {
 	case db.NotificationDeliveryStatusSent:
 		return StatusSent
+	case db.NotificationDeliveryStatusPending:
+		return StatusPending // in-flight; the provider's Send call has not yet returned
 	case db.NotificationDeliveryStatusFailed:
 		if latest.NextRetryAt != nil {
-			return StatusPending
+			return StatusPending // failed but retry scheduled
 		}
 		return StatusFailed
 	default: // db.NotificationDeliveryStatusSkipped
