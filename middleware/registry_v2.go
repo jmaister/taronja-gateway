@@ -38,7 +38,7 @@ type MiddlewareStatus struct {
 // middleware-status/metrics endpoints) could ever reach it — so no two
 // goroutines actually touch factories/built/metrics at once today. But
 // BuildChain's own doc comment documents calling it again on an
-// already-published, already-live registry (e.g. hot-reloading one chain's
+// already-published, already-live registry (e.g. rebuilding one chain's
 // specs in place, rather than replacing the whole registry) as supported,
 // legitimate reuse — a future caller relying on that documented contract
 // while requests are concurrently hitting the admin endpoints above would
@@ -84,7 +84,7 @@ func (r *MiddlewareRegistryV2) RegisterFactory(factory MiddlewareFactory) error 
 // Returns an error if a spec names an unregistered middleware or if a
 // dependency is not satisfied by an earlier spec.
 //
-// Calling BuildChain again on the same registry (e.g. after a config reload)
+// Calling BuildChain again on the same registry
 // discards the built/metrics state of any previous call first, so GetStatus
 // and GetMetrics/GetAllMetrics always reflect only the most recently built
 // chain rather than accumulating "active" middleware across calls.

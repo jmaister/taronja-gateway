@@ -160,12 +160,9 @@ happen at real gateway startup.
 
 ## Notes
 
-- **Fixed at startup, like TLS.** The OTLP exporter is constructed once,
-  from whatever `tracing.*` said at the time (`gateway.InitTracing`,
-  called from `main.go` before the gateway itself is built) — there is no
-  config-reload path at all, so changing `tracing.enabled`/`endpoint`/
-  `insecure` always needs a full restart to take effect, the same as any
-  other config change.
+- **Setup.** The OTLP exporter is constructed once, from `tracing.*`
+  (`gateway.InitTracing`, called from `main.go` before the gateway itself
+  is built).
 - **Testing this doesn't need a real collector.** Unit tests
   (`middleware/tracing_test.go`) use the OpenTelemetry SDK's own
   in-memory exporter (`go.opentelemetry.io/otel/sdk/trace/tracetest`) to

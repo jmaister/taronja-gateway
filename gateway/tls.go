@@ -16,9 +16,7 @@ import (
 )
 
 // staticCert holds a TLS certificate loaded once, at startup, from a
-// configured certFile/keyFile pair — picking up a renewed certificate (or
-// any other change to server.tls) needs a full restart, the same as any
-// other config change; there is no in-place reload path.
+// configured certFile/keyFile pair.
 type staticCert struct {
 	cert *tls.Certificate
 }

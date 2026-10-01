@@ -29,8 +29,7 @@ import (
 )
 
 // writeSelfSignedCert generates a throwaway self-signed cert/key pair
-// (serialNumber lets a test tell two generated certs apart, e.g. for a
-// reload test) and writes them as PEM files under a fresh temp dir,
+// (serialNumber lets a test tell two generated certs apart) and writes them as PEM files under a fresh temp dir,
 // returning their paths.
 func writeSelfSignedCert(t *testing.T, dir string, serialNumber int64) (certPath, keyPath string) {
 	t.Helper()

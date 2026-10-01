@@ -45,9 +45,7 @@ type Gateway struct {
 	// staticCert holds the TLS certificate when TLS is enabled with a
 	// static certFile/keyFile — see gateway/tls.go's staticCert. nil when
 	// TLS is disabled or using ACME (acmeManager manages its own
-	// certificate lifecycle instead). Loaded once, at construction; picking
-	// up a renewed certificate needs a full restart, the same as any other
-	// config change.
+	// certificate lifecycle instead).
 	staticCert *staticCert
 	// acmeManager obtains and renews the gateway's certificate automatically
 	// via ACME when TLS is enabled with server.tls.acme — see
@@ -76,10 +74,6 @@ type Gateway struct {
 	WebappEmbedFS      *embed.FS
 	StartTime          time.Time
 
-	// handler is the http.Server's actual Handler, set once by setup and
-	// never changed again — there is no config-reload path that would need
-	// to swap it out from under an already-listening socket; restart the
-	// process to pick up a config change instead.
 	handler http.Handler
 }
 
@@ -118,8 +112,6 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 	}
 
 	gateway.Server = &http.Server{
-		// Host/port, like everything else in cfg, are fixed for the life of
-		// this process — restart the gateway to change them.
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -127,13 +119,6 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		Handler:      gateway.handler,
 	}
 
-	// TLS, like host/port, is fixed at construction — enabling/disabling it,
-	// switching between a static cert/key pair and ACME, or changing either
-	// one's settings all mean rebinding the listener with a different
-	// protocol/certificate-source entirely, and there is no config-reload
-	// path at all now: restart the process for any of this (including
-	// picking up a renewed static certificate) to take effect. See
-	// gateway/tls.go.
 	if cfg.Server.TLS.Enabled {
 		gateway.RedirectServer = buildRedirectServer(cfg)
 
@@ -573,11 +558,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	// is enabled: it starts a child span per backend call and injects the
 	// current trace context into the outbound request's "traceparent"
 	// header, which is what actually makes this a *distributed* trace
-	// instead of one isolated span per hop. Read once here, at route
-	// registration time, matching every other config value this function
-	// closes over — tracing is fixed-at-startup, the same as TLS and
-	// everything else in gateway/setup.go, since there's no reload to react
-	// to.
+	// instead of one isolated span per hop.
 	var transport http.RoundTripper = http.DefaultTransport
 	if g.GatewayConfig.Tracing.Enabled {
 		transport = otelhttp.NewTransport(transport)

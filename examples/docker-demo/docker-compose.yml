@@ -7,13 +7,6 @@ services:
       - "8080:8080"
     command: ["run", "--config", "/etc/taronja-gateway/config.yaml"]
     volumes:
-      # The whole directory, not just config.yaml, is bind-mounted — mostly
-      # so this directory could hold more than one file if a future
-      # addition to the demo needed it, not because the single file itself
-      # needs anything special: there's no live config reload here (the
-      # gateway only ever reads this at startup), so `docker compose
-      # restart gateway` after an edit re-establishes the bind mount fresh
-      # either way. See README.md "Editing the config".
       - ./config:/etc/taronja-gateway:ro
       - ./static-site:/srv/static-site:ro
       - ./static-site-secret:/srv/static-site-secret:ro

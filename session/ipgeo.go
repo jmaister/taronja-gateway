@@ -95,9 +95,7 @@ var ipCacheCleanupOnce sync.Once
 // ever calling GetGeoDataFromIP (most tests) never spins up a goroutine it
 // has no way to stop. This is deliberately a forever-running,
 // process-lifetime goroutine rather than one with a Close() method like
-// middleware.RateLimiter's: ipCache is a package-level singleton rebuilt
-// only when the process restarts, with no equivalent per-instance/
-// per-reload lifecycle to leak against.
+// middleware.RateLimiter's: ipCache is a package-level singleton.
 func startIPCacheCleanup() {
 	ipCacheCleanupOnce.Do(func() {
 		go func() {

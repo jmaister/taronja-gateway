@@ -19,9 +19,8 @@ The first `--build` compiles the gateway from the repo root (`../../Dockerfile`
 — the React admin dashboard, then the Go binary); it's the slow step, and
 only needs repeating after you change gateway source. Editing a static file
 takes effect immediately, no restart needed at all — they're served straight
-off disk on every request. Editing `config/config.yaml` needs the gateway
-process itself to restart and re-read it (there's no in-place config
-reload): `docker compose restart gateway`, not a full `--build`.
+off disk on every request. After editing `config/config.yaml`, run
+`docker compose restart gateway` (not a full `--build`).
 
 ## What's running
 
@@ -59,7 +58,7 @@ main [README's Middleware Architecture section](../../README.md#middleware-archi
    ```
 4. `docker compose up --build` (or, if it's already running, just
    `docker compose restart gateway` — no `--build` needed for an `.env`
-   or `config.yaml` change, just a restart so the process re-reads them).
+   or `config.yaml` change).
 5. Visit any authenticated route (`/secret/`, `/_/admin/`) — a "Sign in
    with Google" button now appears on the login page.
 
@@ -73,8 +72,7 @@ rest of the demo doesn't depend on OAuth being configured.
 
 **Editing the config** — edit `config/config.yaml` on the host (e.g. change
 `cacheControlSeconds`, add a route, or change `requestsPerMinute`), then
-`docker compose restart gateway` to pick it up — there's no in-place
-reload, the same as running `tg` anywhere else. Watch the new config take
+`docker compose restart gateway` to pick it up. Watch the new config take
 effect: `docker compose logs -f gateway`.
 
 **Rate limiter** — `config/config.yaml` sets a deliberately low

@@ -66,16 +66,7 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 // setup validates cfg, builds the gateway's runtime (middleware chain, mux,
 // rate limiter), registers every route, and ensures the admin user exists —
 // the one-time sequence NewGatewayWithDependencies runs to bring a gateway
-// up. There is no equivalent "reload" path: this project used to support
-// re-reading and re-applying the config file without restarting (a file
-// watch and SIGHUP both triggering it), but that added a lot of machinery
-// — synchronizing concurrent reload attempts, deciding which fields even
-// could take effect without rebinding the listening socket, keeping a
-// previous generation's background resources (the rate limiter's cleanup
-// goroutine, a provider's own goroutine) from leaking on every reload — for
-// a capability this project has decided isn't worth the complexity: stop
-// the process and start it again to pick up a config change, the same as
-// any change to a file the process only ever reads once at startup.
+// up.
 func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	if err := middleware.ValidateAllMiddleware(g.Dependencies, cfg); err != nil {
 		return fmt.Errorf("middleware validation failed: %w", err)

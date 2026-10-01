@@ -18,13 +18,6 @@ import (
 // d.NotificationRepo/d.UserRepo) and before NewGatewayWithDependencies
 // (registerOpenAPIRoutes reads d.NotificationService when wiring up
 // StrictApiServer).
-//
-// Like InitTracing, notification config is fixed at startup and not
-// reload-aware: a config reload that changes notification.* is stored but
-// has no effect until a full restart (see doc/notifications.md's Notes
-// section) — the underlying provider credentials rarely change at
-// runtime, and reconstructing mid-flight would risk dropping whatever the
-// (harmless, best-effort) Telegram poller was mid-request on.
 func InitNotifications(ctx context.Context, cfg config.NotificationConfig, serverCfg config.ServerConfig, managementCfg config.ManagementConfig, d *deps.Dependencies) (shutdown func(context.Context) error, err error) {
 	respondBaseURL := ""
 	if serverCfg.URL != "" {

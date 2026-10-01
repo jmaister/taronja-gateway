@@ -162,7 +162,7 @@ func TestRegistryStatusReflectsOnlyMostRecentBuild(t *testing.T) {
 		t.Fatalf("first BuildChain failed: %v", err)
 	}
 
-	// Rebuild without rate_limiter (e.g. a config reload that dropped it).
+	// Rebuild without rate_limiter.
 	if _, err := registry.BuildChain([]MiddlewareSpec{{Name: "logging"}}); err != nil {
 		t.Fatalf("second BuildChain failed: %v", err)
 	}

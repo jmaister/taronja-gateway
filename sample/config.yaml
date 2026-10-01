@@ -15,8 +15,6 @@ server:
   #   # --- Option 1: your own certificate files ---
   #   certFile: /path/to/fullchain.pem
   #   keyFile: /path/to/privkey.pem
-  #   # Renewing certFile/keyFile in place (e.g. via certbot) is picked up
-  #   # automatically, with zero downtime — no restart or reload needed.
   #
   #   # --- Option 2: automatic certificates via ACME / Let's Encrypt ---
   #   # (comment out certFile/keyFile above if using this instead)

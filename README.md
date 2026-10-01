@@ -67,7 +67,6 @@ Features table, shows what is implemented and what is planned.
 | - Automatic failover on connection failure | ✅ | v1.0.0 |
 | TLS Termination (HTTPS)       | ✅       | v1.0.0 |
 | - Automatic HTTP → HTTPS redirect | ✅  | v1.0.0 |
-| - Zero-downtime certificate reload on renewal | ✅ | v1.0.0 |
 | - Automatic certificates via ACME / Let's Encrypt | ✅ | v1.0.0 |
 | robots.txt                    | 🚧       |        |
 | more...                       | 🚧       |        |
@@ -120,8 +119,6 @@ The Taronja Gateway CLI provides the following commands:
     ./tg run --config ./sample/config.yaml
     ```
     This command starts the Taronja API Gateway using the configuration file specified by the `--config` flag. On `Ctrl+C` or a `SIGTERM` (e.g. from `docker stop` or a Kubernetes pod eviction), it shuts down gracefully — draining in-flight requests for up to 15 seconds before exiting, instead of dropping them.
-
-    There is no way to change the running configuration without restarting — stop the process and start it again to pick up an edited config file, `.env`, or TLS certificate. `SIGHUP` is explicitly ignored, not left to whatever the OS would otherwise do with it.
 
 *   **Add a new user:**
     ```bash
@@ -351,7 +348,7 @@ both is a config-load error):
 | | [Option 1: your own certificate files](#option-1-your-own-certificate-files) | [Option 2: ACME / Let's Encrypt](#option-2-automatic-certificates-via-acme--lets-encrypt) |
 |---|---|---|
 | Config key | `certFile` / `keyFile` | `acme` |
-| **Who obtains/renews the certificate** | **You** — `certbot`, a commercial CA, an internal PKI, etc., running independently of the gateway. The gateway only *notices the file changed* and hot-swaps it in; it never requests anything itself. | **The gateway itself**, automatically, for as long as it keeps running — no external tool, no cron job, nothing else to keep working. |
+| **Who obtains/renews the certificate** | **You** — `certbot`, a commercial CA, an internal PKI, etc., running independently of the gateway. The gateway never requests anything itself. | **The gateway itself**, automatically, for as long as it keeps running — no external tool, no cron job, nothing else to keep working. |
 | **Network requirement** | None — works on a fully private/internal network, behind a firewall, with no public DNS at all. | The domain(s) must have **public DNS pointing at this gateway** and be **reachable from the internet** on port 80 and/or 443 — Let's Encrypt's own servers connect *to* the gateway to prove domain ownership. Won't work for internal-only services. |
 | Wildcard domains (`*.example.com`) | Supported, if your certificate provider issues them | **Not supported** (needs a `dns-01` challenge; unimplemented here) |
 | Best for | Internal/private services, an existing CDN- or org-issued certificate, wildcard certs | Public-facing services where you just want HTTPS with zero ongoing certificate management |
@@ -418,7 +415,7 @@ openssl x509 -noout -pubkey -in fullchain.pem | openssl md5
 openssl pkey  -pubout       -in privkey.pem    | openssl md5
 ```
 
-**Picking up a renewed certificate is automatic, with zero downtime — but you still need something else actually renewing it.** The gateway itself never requests or renews a certificate in this mode; that's `certbot` (or whatever issued it)'s job, typically on its own cron job/systemd timer, same as it would be for e.g. nginx. What the gateway does automatically is *notice* when that tool replaces `certFile`/`keyFile` and hot-swap the in-memory certificate the moment it does — no restart, no reload, no dropped connections; already-open connections keep using whatever certificate they negotiated. This is independent of [hot config reload](#commands): a renewed certificate file doesn't require touching `config.yaml` at all. (Compare this to Option 2 below, where the gateway handles the entire renewal itself.)
+**Renewal is up to you.** The gateway never requests or renews a certificate in this mode; that's `certbot` (or whatever issued it)'s job, typically on its own cron job/systemd timer, same as it would be for e.g. nginx. After a renewed `certFile`/`keyFile` is in place, restart the gateway to load it. (Compare this to Option 2 below, where the gateway handles the entire renewal itself.)
 
 #### Option 2: Automatic certificates via ACME / Let's Encrypt
 
@@ -452,7 +449,7 @@ server:
 - **`tls-alpn-01`** — answered directly on the main HTTPS listener itself, no extra port needed. Some networks/CDNs in front of the gateway strip the ALPN protocol this needs, though, so it isn't always available.
 - **`http-01`** — answered on the `redirectPort` listener (default 80, same one that redirects normal traffic to HTTPS), under `/.well-known/acme-challenge/`. This means `redirectPort` needs to stay enabled (the default) for `http-01` to be available as a fallback — setting it to `0` leaves `tls-alpn-01` as the only option.
 
-**The first certificate for a new domain is requested lazily**, on that domain's first real TLS handshake — not at gateway startup. This means a misconfigured domain (DNS not yet pointed at this gateway, port 80/443 unreachable from the internet) surfaces as a failed handshake for a real client hitting it, not as a startup error — check the gateway's logs if HTTPS connections are failing right after enabling this. Renewal happens automatically in the background well before expiry, with no restart, reload, or file-watching involved (there's no cert/key file for you to manage at all in this mode).
+**The first certificate for a new domain is requested lazily**, on that domain's first real TLS handshake — not at gateway startup. This means a misconfigured domain (DNS not yet pointed at this gateway, port 80/443 unreachable from the internet) surfaces as a failed handshake for a real client hitting it, not as a startup error — check the gateway's logs if HTTPS connections are failing right after enabling this. Renewal happens automatically in the background well before expiry, with no restart needed (there's no cert/key file for you to manage at all in this mode).
 
 #### A free bonus of terminating TLS yourself: TLS-level client fingerprinting
 
@@ -487,8 +484,7 @@ An incoming request's trace context (the W3C `traceparent` header) is
 continued rather than replaced, and it's propagated forward to whatever
 backend a proxy route sends the request to — so a trace can span the whole
 journey through this gateway and beyond, not just the hop the gateway
-itself handles. Like TLS, this is fixed at startup: changing it on a config
-reload logs a warning rather than taking effect until a restart. See
+itself handles. See
 [`tracing`](doc/middleware/tracing.md) for the full reference, including
 how this is tested without needing a real collector, and a "Try it
 locally" walkthrough for seeing real traces in a real UI (Jaeger's

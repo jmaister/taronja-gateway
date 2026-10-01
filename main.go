@@ -53,10 +53,7 @@ var rootCmd = &cobra.Command{
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the Taronja API Gateway",
-	Long: `Starts the Taronja API Gateway using the specified configuration file.
-
-There is no way to change the running configuration without restarting:
-stop the process and start it again to pick up an edited config file.`,
+	Long:  `Starts the Taronja API Gateway using the specified configuration file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		configFilePath, err := cmd.Flags().GetString("config")
 		if err != nil {
@@ -297,8 +294,8 @@ func runGateway(configFilePath string) {
 	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
 
 	// Serve in the background so this goroutine can watch for a
-	// startup/runtime error, an interrupt/terminate signal, or a reload
-	// request — reacting appropriately to each — until shutdown. Buffered
+	// startup/runtime error or an interrupt/terminate signal —
+	// reacting appropriately to each — until shutdown. Buffered
 	// for 2: with TLS enabled, gateway.RedirectServer sends into the same
 	// channel too (see below), and a clean shutdown can leave one send
 	// sitting unread once runLoop breaks on the first — harmless since the
@@ -331,17 +328,8 @@ func runGateway(configFilePath string) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// SIGHUP used to trigger a config reload (see this project's earlier
-	// history); now that there's no such thing, it must still be
-	// explicitly ignored, not just left unhandled — Go's default
-	// disposition for a signal nothing calls signal.Notify for is the
-	// OS's own default action, and SIGHUP's default action is to
-	// terminate the process immediately, with no graceful shutdown at
-	// all (confirmed directly: without this, `kill -HUP <pid>` kills the
-	// gateway outright, no "shutting down gracefully" log line, no drain
-	// of in-flight requests — silently, the first time anything sends it
-	// for any reason). SIGINT/SIGTERM above remain the only two signals
-	// that end this process on purpose.
+	// An unhandled SIGHUP falls through to the OS default, which kills the
+	// process with no graceful shutdown.
 	signal.Ignore(syscall.SIGHUP)
 
 runLoop:
@@ -378,7 +366,7 @@ runLoop:
 	// Dependencies.Close and PERFORMANCE_ANALYSIS.md).
 	gateway.Dependencies.Close()
 
-	// A fresh, short-lived context: the one from the stop/reload select
+	// A fresh, short-lived context: the one from the select
 	// cases above is out of scope here, and a span for the very last
 	// requests this process handled would otherwise sit lost in the batch
 	// exporter's internal queue when the process exits, never reaching the

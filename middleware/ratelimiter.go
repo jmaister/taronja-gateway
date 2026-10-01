@@ -24,9 +24,7 @@ type RateLimiter struct {
 	entries         sync.Map // map[string]*rateEntry
 	cleanupInterval time.Duration
 	// stop, closed by Close, tells cleanupLoop to exit. Close is safe to
-	// call more than once (sync.Once) since a reload only ever needs to
-	// close the *previous* generation's limiter once, but nothing enforces
-	// that at the call site.
+	// call more than once (sync.Once).
 	stop     chan struct{}
 	stopOnce sync.Once
 	// scanPatterns is cfg.VulnerabilityScan.URLs, preprocessed once here

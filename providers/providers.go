@@ -61,10 +61,7 @@ type AuthProvider interface {
 // during registration (e.g. a JWKS refresh loop for a provider that
 // verifies signed ID tokens, the way the Microsoft/Facebook/Apple
 // providers on the wip/microsoft-apple-facebook-auth branch do — none of
-// the providers currently registered here start one). Callers that
-// re-run this on every config reload (as gateway.registerLoginRoutes
-// does) must cancel the ctx from the *previous* call once the new one is
-// registered, or each reload leaks one more such goroutine.
+// the providers currently registered here start one).
 func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
