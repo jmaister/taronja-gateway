@@ -293,13 +293,10 @@ func runGateway(configFilePath string) {
 	// Print OAuth callback URLs if configured
 	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
 
-	// Serve in the background so this goroutine can watch for a
-	// startup/runtime error or an interrupt/terminate signal —
-	// reacting appropriately to each — until shutdown. Buffered
-	// for 2: with TLS enabled, gateway.RedirectServer sends into the same
-	// channel too (see below), and a clean shutdown can leave one send
-	// sitting unread once runLoop breaks on the first — harmless since the
-	// channel is buffered and never read past that.
+	// Serve in the background so this goroutine can wait for either a
+	// server error or an interrupt/terminate signal. Buffered for 2 because
+	// the redirect server (when TLS is enabled) sends into the same channel,
+	// and only the first send is ever read.
 	serverErr := make(chan error, 2)
 	go func() {
 		if config.Server.TLS.Enabled {
@@ -332,30 +329,23 @@ func runGateway(configFilePath string) {
 	// process with no graceful shutdown.
 	signal.Ignore(syscall.SIGHUP)
 
-runLoop:
-	for {
-		select {
-		case err := <-serverErr:
-			if err != nil && err != http.ErrServerClosed {
-				log.Fatalf("FATAL: Failed to start server: %v", err)
+	select {
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("FATAL: Failed to start server: %v", err)
+		}
+	case sig := <-stop:
+		// Drain in-flight requests instead of dropping them.
+		log.Printf("Received %s, shutting down gracefully (waiting up to %s for in-flight requests to finish)...", sig, gracefulShutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+		defer cancel()
+		if err := gateway.Server.Shutdown(ctx); err != nil {
+			log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
+		}
+		if gateway.RedirectServer != nil {
+			if err := gateway.RedirectServer.Shutdown(ctx); err != nil {
+				log.Printf("Warning: HTTP->HTTPS redirect listener did not shut down cleanly within %s: %v", gracefulShutdownTimeout, err)
 			}
-			break runLoop
-		case sig := <-stop:
-			// Drain in-flight requests instead of dropping them, which killing
-			// the process outright (the previous behavior — ListenAndServe was
-			// simply never asked to stop) would do on every deploy or restart.
-			log.Printf("Received %s, shutting down gracefully (waiting up to %s for in-flight requests to finish)...", sig, gracefulShutdownTimeout)
-			ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
-			defer cancel()
-			if err := gateway.Server.Shutdown(ctx); err != nil {
-				log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
-			}
-			if gateway.RedirectServer != nil {
-				if err := gateway.RedirectServer.Shutdown(ctx); err != nil {
-					log.Printf("Warning: HTTP->HTTPS redirect listener did not shut down cleanly within %s: %v", gracefulShutdownTimeout, err)
-				}
-			}
-			break runLoop
 		}
 	}
 
@@ -366,11 +356,9 @@ runLoop:
 	// Dependencies.Close and PERFORMANCE_ANALYSIS.md).
 	gateway.Dependencies.Close()
 
-	// A fresh, short-lived context: the one from the select
-	// cases above is out of scope here, and a span for the very last
-	// requests this process handled would otherwise sit lost in the batch
-	// exporter's internal queue when the process exits, never reaching the
-	// collector. No-op when tracing was never enabled (see InitTracing).
+	// A fresh context, since the shutdown one above may already be expired.
+	// Flushes spans still queued in the batch exporter; no-op when tracing
+	// is disabled.
 	tracingShutdownCtx, tracingShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer tracingShutdownCancel()
 	if err := shutdownTracing(tracingShutdownCtx); err != nil {
