@@ -236,10 +236,12 @@ func (r *NotificationRepositoryDB) CreateDelivery(d *NotificationDelivery) error
 	return r.db.Create(d).Error
 }
 
+// Rows written in the same clock tick (coarse timers, e.g. on Windows) tie on
+// created_at, so rowid, i.e. insertion order, breaks the tie.
 func (r *NotificationRepositoryDB) FindLatestDelivery(notificationID, channel string) (*NotificationDelivery, error) {
 	var d NotificationDelivery
 	err := r.db.Where("notification_id = ? AND channel = ?", notificationID, channel).
-		Order("created_at DESC").First(&d).Error
+		Order("created_at DESC, rowid DESC").First(&d).Error
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +251,7 @@ func (r *NotificationRepositoryDB) FindLatestDelivery(notificationID, channel st
 func (r *NotificationRepositoryDB) ListDeliveries(notificationID string) ([]*NotificationDelivery, error) {
 	var deliveries []*NotificationDelivery
 	err := r.db.Where("notification_id = ?", notificationID).
-		Order("created_at DESC").Find(&deliveries).Error
+		Order("created_at DESC, rowid DESC").Find(&deliveries).Error
 	return deliveries, err
 }
 
