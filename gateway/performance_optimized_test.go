@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
 )
@@ -40,7 +40,7 @@ func BenchmarkStaticRequestAnalyticsIncludingStatic(b *testing.B) {
 // management.excludeStaticAssets: true — TrafficMetricMiddleware skips its
 // response-writer wrapping, TrafficMetric construction, and async DB write
 // for this request because session.IsStaticAssetPath("/_/static/style.css")
-// is true. See PERFORMANCE_ANALYSIS.md for the measured before/after.
+// is true. See doc/PERFORMANCE_ANALYSIS.md for the measured before/after.
 func BenchmarkStaticRequestAnalyticsExcludingStatic(b *testing.B) {
 	cfg := createTestConfig()
 	cfg.Management.ExcludeStaticAssets = true
@@ -62,7 +62,7 @@ func BenchmarkStaticRequestAnalyticsExcludingStatic(b *testing.B) {
 
 // BenchmarkJA4HCaching specifically tests JA4H caching performance
 func BenchmarkJA4HCaching(b *testing.B) {
-	cache := middleware.NewJA4HCache(1000)
+	cache := builtin.NewJA4HCache(1000)
 
 	// Create a test request
 	req := httptest.NewRequest("GET", "/test", nil)
@@ -87,7 +87,7 @@ func BenchmarkJA4HCaching(b *testing.B) {
 
 // BenchmarkJA4HNoCaching benchmarks JA4H without caching for comparison
 func BenchmarkJA4HNoCaching(b *testing.B) {
-	optimizedMiddleware := middleware.OptimizedJA4Middleware(false)
+	optimizedMiddleware := builtin.OptimizedJA4Middleware(false)
 
 	// Create a simple handler
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

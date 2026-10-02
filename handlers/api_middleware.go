@@ -10,7 +10,7 @@ import (
 )
 
 // GetMiddlewareStatus implements GET /_/api/middleware — lists every global
-// middleware known to the running registry (see middleware.MiddlewareRegistryV2,
+// middleware known to the running registry (see middleware.Registry,
 // doc/refactor01.md Phase 3), with its status, dependencies, and health where
 // a check is implemented.
 func (s *StrictApiServer) GetMiddlewareStatus(ctx context.Context, req api.GetMiddlewareStatusRequestObject) (api.GetMiddlewareStatusResponseObject, error) {
@@ -55,7 +55,7 @@ func (s *StrictApiServer) GetMiddlewareStatus(ctx context.Context, req api.GetMi
 
 // GetMiddlewareMetrics implements GET /_/api/middleware/{name}/metrics — the
 // in-memory request metrics recorded for a single global middleware since the
-// process started (see middleware.MiddlewareRegistryV2.GetMetrics).
+// process started (see middleware.Registry.GetMetrics).
 func (s *StrictApiServer) GetMiddlewareMetrics(ctx context.Context, req api.GetMiddlewareMetricsRequestObject) (api.GetMiddlewareMetricsResponseObject, error) {
 	// admin check, matching the rate limiter stats/config endpoints
 	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
@@ -89,7 +89,7 @@ func (s *StrictApiServer) GetMiddlewareMetrics(ctx context.Context, req api.GetM
 
 // GetAllMiddlewareMetrics implements GET /_/api/middleware/metrics — the
 // in-memory request metrics for every global middleware that has been built
-// into the running chain, in one call (see middleware.MiddlewareRegistryV2.GetAllMetrics).
+// into the running chain, in one call (see middleware.Registry.GetAllMetrics).
 // Added in Phase 5 (doc/refactor01.md) so a dashboard doesn't need one
 // request per middleware from the status list.
 func (s *StrictApiServer) GetAllMiddlewareMetrics(ctx context.Context, req api.GetAllMiddlewareMetricsRequestObject) (api.GetAllMiddlewareMetricsResponseObject, error) {

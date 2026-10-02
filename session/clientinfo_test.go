@@ -28,7 +28,7 @@ func TestNewClientInfo_Fingerprint(t *testing.T) {
 			name: "only JA4H present falls back to it",
 			setupRequest: func() *http.Request {
 				req := httptest.NewRequest("GET", "/test", nil)
-				req.Header.Set(fingerprint.JA4HHeaderName, "test-ja4h-fingerprint")
+				fingerprint.Set(req, fingerprint.TypeJA4H, "test-ja4h-fingerprint")
 				return req
 			},
 			expectedFingerprint: "test-ja4h-fingerprint",
@@ -38,41 +38,27 @@ func TestNewClientInfo_Fingerprint(t *testing.T) {
 			name: "realistic JA4H-only value",
 			setupRequest: func() *http.Request {
 				req := httptest.NewRequest("POST", "/api/login", nil)
-				req.Header.Set(fingerprint.JA4HHeaderName, "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac")
+				fingerprint.Set(req, fingerprint.TypeJA4H, "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac")
 				return req
 			},
 			expectedFingerprint: "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac",
 			expectedType:        fingerprint.TypeJA4H,
 		},
 		{
-			// This is the scenario that matters most in practice: the
-			// ja4_fingerprint middleware sets both headers on essentially
-			// every real request (StableFingerprint just needs a
-			// User-Agent, which JA4H itself already assumes), so the
-			// stable fingerprint — not JA4H — is what actually ends up
-			// stored day to day whenever TLS isn't involved.
-			name: "stable fingerprint present outranks JA4H",
+			name: "stable fingerprint",
 			setupRequest: func() *http.Request {
 				req := httptest.NewRequest("GET", "/test", nil)
-				req.Header.Set(fingerprint.JA4HHeaderName, "ja4h-value")
-				req.Header.Set(fingerprint.StableFingerprintHeaderName, "stable-value")
+				fingerprint.Set(req, fingerprint.TypeStable, "stable-value")
 				return req
 			},
 			expectedFingerprint: "stable-value",
 			expectedType:        fingerprint.TypeStable,
 		},
 		{
-			// TLS JA4 outranks everything, including a present stable
-			// fingerprint — this is what a TLS-enabled gateway's requests
-			// actually look like (gateway/ja4tls.go sets this header
-			// before the ja4_fingerprint middleware's stable/JA4H headers
-			// are even read here).
-			name: "TLS JA4 present outranks both stable and JA4H",
+			name: "TLS JA4",
 			setupRequest: func() *http.Request {
 				req := httptest.NewRequest("GET", "/test", nil)
-				req.Header.Set(fingerprint.JA4HHeaderName, "ja4h-value")
-				req.Header.Set(fingerprint.StableFingerprintHeaderName, "stable-value")
-				req.Header.Set(fingerprint.JA4TLSHeaderName, "t13i1311h2_f57a46bbacb6_e5728521abd4")
+				fingerprint.Set(req, fingerprint.TypeJA4TLS, "t13i1311h2_f57a46bbacb6_e5728521abd4")
 				return req
 			},
 			expectedFingerprint: "t13i1311h2_f57a46bbacb6_e5728521abd4",

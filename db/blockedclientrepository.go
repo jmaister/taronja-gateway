@@ -12,7 +12,7 @@ import (
 // short-lived tracking.
 type BlockedClientRepository interface {
 	// Create persists one block event. Called from
-	// middleware/ratelimiter.go's Handler in a background goroutine —
+	// middleware/builtin/ratelimiter.go's Handler in a background goroutine —
 	// never on the hot path of the request that's actively being
 	// rejected with a 429.
 	Create(bc *BlockedClient) error

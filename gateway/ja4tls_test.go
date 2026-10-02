@@ -18,10 +18,9 @@ import (
 )
 
 func TestGatewayJA4TLS_RealHandshakeSetsFingerprintHeader(t *testing.T) {
-	var receivedJA4TLS, receivedJA4H string
+	var receivedJA4TLS, receivedType string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedJA4TLS = r.Header.Get(fingerprint.JA4TLSHeaderName)
-		receivedJA4H = r.Header.Get(fingerprint.JA4HHeaderName)
+		receivedJA4TLS, receivedType = fingerprint.SelectFingerprint(r)
 		fmt.Fprint(w, "ok")
 	}))
 	t.Cleanup(backend.Close)
@@ -75,15 +74,13 @@ func TestGatewayJA4TLS_RealHandshakeSetsFingerprintHeader(t *testing.T) {
 	// correctly-computed JA4 rather than just "some non-empty string".
 	assert.True(t, strings.HasPrefix(receivedJA4TLS, "t13"), "expected a TLS 1.3 JA4 fingerprint, got %q", receivedJA4TLS)
 
-	// JA4H must still work unaffected — TLS JA4 is additive, not a
-	// replacement.
-	assert.NotEmpty(t, receivedJA4H)
+	assert.Equal(t, fingerprint.TypeJA4TLS, receivedType)
 }
 
 func TestGatewayJA4TLS_AbsentWhenTLSDisabled(t *testing.T) {
-	var receivedJA4TLS string
+	var receivedType string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedJA4TLS = r.Header.Get(fingerprint.JA4TLSHeaderName)
+		_, receivedType = fingerprint.SelectFingerprint(r)
 		fmt.Fprint(w, "ok")
 	}))
 	t.Cleanup(backend.Close)
@@ -104,5 +101,5 @@ func TestGatewayJA4TLS_AbsentWhenTLSDisabled(t *testing.T) {
 	gw.Mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/ping", nil))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Empty(t, receivedJA4TLS, "no TLS connection ever happened, so there must be no fingerprint to report")
+	assert.NotEqual(t, fingerprint.TypeJA4TLS, receivedType, "no TLS connection ever happened, so there must be no TLS fingerprint to report")
 }

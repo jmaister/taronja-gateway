@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	fp "github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +18,7 @@ import (
 // stable fingerprint outranks JA4H in that selection, so that's what
 // actually ends up stored — not literally the JA4H value, even though the
 // middleware that computes it is still named "JA4 middleware" (it computes
-// all three signals, JA4H included; see middleware/ja4.go).
+// all three signals, JA4H included; see middleware/builtin/ja4.go).
 func TestFingerprintIntegration(t *testing.T) {
 	// Simple handler that creates session and metric like the real gateway
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +36,7 @@ func TestFingerprintIntegration(t *testing.T) {
 	})
 
 	// Apply the JA4 middleware
-	middlewareChain := middleware.JA4Middleware(handler)
+	middlewareChain := builtin.JA4Middleware(handler)
 
 	// Create a test request with realistic headers
 	req := httptest.NewRequest("POST", "/api/login", nil)
@@ -67,7 +67,7 @@ func TestFingerprintIntegration(t *testing.T) {
 func TestFingerprintWithoutMiddleware(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientInfo := session.NewClientInfo(r)
-		w.Header().Set(fp.JA4HHeaderName, clientInfo.Fingerprint)
+		w.Header().Set("Test-Fingerprint", clientInfo.Fingerprint)
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -79,11 +79,9 @@ func TestFingerprintWithoutMiddleware(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	// Verify that no fingerprint was generated
-	fingerprintValue := rr.Header().Get(fp.JA4HHeaderName)
+	fingerprintValue := rr.Header().Get("Test-Fingerprint")
 	assert.Empty(t, fingerprintValue, "Without middleware, no fingerprint should be generated")
 
-	// Verify none of the underlying headers were set either
-	assert.Empty(t, req.Header.Get(fp.JA4HHeaderName))
-	assert.Empty(t, req.Header.Get(fp.StableFingerprintHeaderName))
-	assert.Empty(t, req.Header.Get(fp.JA4TLSHeaderName))
+	// Verify the fingerprint header was not set either
+	assert.Empty(t, req.Header.Get(fp.HeaderName))
 }

@@ -346,7 +346,7 @@ func (t *Token) BeforeSave(tx *gorm.DB) error {
 }
 
 // Block reason constants — the value BlockedClient.Reason takes,
-// matching exactly which counter middleware/ratelimiter.go's Handler
+// matching exactly which counter middleware/builtin/ratelimiter.go's Handler
 // found tripped a configured threshold.
 const (
 	BlockReasonRateLimit         = "rate_limit"
@@ -357,7 +357,7 @@ const (
 // BlockedClient records one rate-limiter block event: an IP was blocked,
 // for how long, and what triggered it. This is a persistent history —
 // the in-memory RateLimiter itself keeps no such record past the block's
-// own expiry: middleware/ratelimiter.go's cleanupLoop deletes an IP's
+// own expiry: middleware/builtin/ratelimiter.go's cleanupLoop deletes an IP's
 // entire tracked state (including its block) the moment the block window
 // ends and the IP has gone quiet, so without this, "was this IP blocked
 // last week, and why" had no answer once that happened — only
@@ -396,7 +396,7 @@ type BlockedClient struct {
 // BeforeCreate normalizes BlockedAt/BlockedUntil to UTC before they're
 // persisted — see TrafficMetric.BeforeCreate's comment for why this
 // happens defensively here rather than trusting every call site
-// (middleware/ratelimiter.go builds both from a plain time.Now(), which
+// (middleware/builtin/ratelimiter.go builds both from a plain time.Now(), which
 // carries the server's local zone) to remember .UTC() itself.
 func (b *BlockedClient) BeforeCreate(tx *gorm.DB) error {
 	b.BlockedAt = b.BlockedAt.UTC()

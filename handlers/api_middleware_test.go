@@ -11,27 +11,23 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
-	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // setupMiddlewareTestServer builds a StrictApiServer wired to a real
-// middleware.MiddlewareRegistryV2, with the logging middleware active (built
+// middleware.Registry, with the logging middleware active (built
 // into a chain) so status/metrics/health have something concrete to report.
 func setupMiddlewareTestServer(t *testing.T) *StrictApiServer {
 	t.Helper()
 	dependencies := deps.NewTest()
 
-	registry, err := middleware.NewGlobalMiddlewareRegistry(
-		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil,
-	)
-	require.NoError(t, err)
-
 	gatewayConfig := &config.GatewayConfig{}
 	gatewayConfig.Management.Logging = true
-	_, err = middleware.BuildGlobalChainFromConfigV2(registry, gatewayConfig)
+	registry, _, err := builtin.NewGlobalChain(gatewayConfig,
+		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil)
 	require.NoError(t, err)
 
 	return NewStrictApiServer(
@@ -117,14 +113,10 @@ func TestGetMiddlewareMetrics_UnknownNameReturns404(t *testing.T) {
 func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 	dependencies := deps.NewTest()
 
-	registry, err := middleware.NewGlobalMiddlewareRegistry(
-		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil,
-	)
-	require.NoError(t, err)
-
 	gatewayConfig := &config.GatewayConfig{}
 	gatewayConfig.Management.Logging = true
-	chain, err := middleware.BuildGlobalChainFromConfigV2(registry, gatewayConfig)
+	registry, chain, err := builtin.NewGlobalChain(gatewayConfig,
+		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil)
 	require.NoError(t, err)
 
 	// Drive one request through the built chain so the logging middleware
@@ -167,14 +159,10 @@ func TestGetAllMiddlewareMetrics_Unauthorized(t *testing.T) {
 func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
 	dependencies := deps.NewTest()
 
-	registry, err := middleware.NewGlobalMiddlewareRegistry(
-		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil,
-	)
-	require.NoError(t, err)
-
 	gatewayConfig := &config.GatewayConfig{}
 	gatewayConfig.Management.Logging = true // rate_limiter, ja4, etc. stay unbuilt
-	chain, err := middleware.BuildGlobalChainFromConfigV2(registry, gatewayConfig)
+	registry, chain, err := builtin.NewGlobalChain(gatewayConfig,
+		dependencies.SessionStore, dependencies.TokenService, dependencies.TrafficMetricRepo, nil)
 	require.NoError(t, err)
 
 	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

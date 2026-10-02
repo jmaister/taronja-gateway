@@ -61,7 +61,7 @@ func createTestSession(gw *Gateway) *db.Session {
 // exactly what let the uaparser.NewFromSaved()-per-request bug in
 // session/clientinfo.go (~200ms and ~45MB per analytics-tracked request) go
 // undetected by every benchmark in this file for as long as it did — see
-// PERFORMANCE_ANALYSIS.md's "August 2026 update" section.
+// doc/PERFORMANCE_ANALYSIS.md's "August 2026 update" section.
 
 // BenchmarkAPIRequest benchmarks the handling of API requests
 func BenchmarkAPIRequest(b *testing.B) {

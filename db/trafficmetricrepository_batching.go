@@ -15,7 +15,7 @@ import (
 // write transaction takes the single process-wide writer lock, so
 // concurrent single-row inserts serialize against each other for no benefit.
 // Batching them turns N requests' worth of writes into a handful of larger
-// transactions instead of N small ones (see PERFORMANCE_ANALYSIS.md for the
+// transactions instead of N small ones (see doc/PERFORMANCE_ANALYSIS.md for the
 // measured effect).
 //
 // Create itself never touches the database — it only appends to an
@@ -100,7 +100,7 @@ func NewBatchingTrafficMetricRepository(inner TrafficMetricRepository, maxBatchS
 // If pending is already at maxPending — the flush goroutine falling
 // behind whatever's calling Create, for however long — stat is dropped
 // instead of appended, and Create returns an error so the caller's own
-// logging (see middleware/trafficmetric.go) surfaces that this happened,
+// logging (see middleware/builtin/trafficmetric.go) surfaces that this happened,
 // rather than growing the buffer without bound. See maxPending's doc
 // comment for why dropping is the right trade-off for this specific data.
 func (b *BatchingTrafficMetricRepository) Create(stat *TrafficMetric) error {

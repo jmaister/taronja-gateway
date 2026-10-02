@@ -35,7 +35,7 @@ var stableHeaders = []string{
 
 // StableFingerprint computes a deliberately reduced-entropy fingerprint
 // from req — a custom, project-specific signal (not part of the JA4
-// family; see StableFingerprintHeaderName) meant to identify the same real
+// family; see TypeStable) meant to identify the same real
 // client more *consistently* across different request types than JA4H
 // does, at the cost of being coarser (more distinct real clients can share
 // one value) and, like any header-based signal, spoofable by a client that

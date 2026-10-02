@@ -1,49 +1,66 @@
 package fingerprint
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+
+	"github.com/exaring/ja4plus"
+)
+
+// HeaderName is the single request header carrying the client fingerprint
+// downstream, formatted as "<type>:<value>" (see Set and SelectFingerprint).
+const HeaderName = "X-Taronja-Fingerprint"
 
 // Fingerprint type identifiers — the value db.ClientInfo.FingerprintType
-// takes, naming which algorithm produced db.ClientInfo.Fingerprint. See
-// SelectFingerprint for the priority order between them.
+// takes, naming which algorithm produced db.ClientInfo.Fingerprint.
 const (
 	TypeJA4TLS = "ja4_tls"
 	TypeStable = "stable"
 	TypeJA4H   = "ja4h"
 )
 
-// SelectFingerprint picks the single best available client fingerprint for
-// req, so callers (session.NewClientInfo) always have exactly one
-// value+type to store rather than three parallel, independently-present
-// fields. Priority is most-reliable-available-signal-wins:
+// Set stores a fingerprint of the given type in the request's fingerprint
+// header, replacing whatever the client sent. An empty value clears it.
+func Set(req *http.Request, fingerprintType, value string) {
+	if value == "" {
+		req.Header.Del(HeaderName)
+		return
+	}
+	req.Header.Set(HeaderName, fingerprintType+":"+value)
+}
+
+// Assign picks the single best available fingerprint for req and stores it
+// with Set, overwriting any value the client sent. Priority is
+// most-reliable-available-signal-wins:
 //
 //  1. TLS-level JA4 (TypeJA4TLS) — a property of the client's TLS stack,
-//     stable across every request on the same connection. Only present at
-//     all when the gateway terminates TLS itself; see gateway/ja4tls.go.
-//  2. The reduced-entropy "stable" fingerprint (TypeStable) — works
-//     without TLS, and unlike JA4H stays constant across different request
-//     types from the same client; see StableFingerprint's doc comment.
-//  3. JA4H (TypeJA4H) — always computed when the ja4_fingerprint
-//     middleware runs, but the noisiest of the three; see
-//     doc/middleware/ja4-fingerprint.md.
+//     stable across every request on the same connection. Only present when
+//     the gateway terminates TLS itself; see gateway/ja4tls.go.
+//  2. The reduced-entropy "stable" fingerprint (TypeStable) — works without
+//     TLS, and unlike JA4H stays constant across different request types
+//     from the same client; see StableFingerprint.
+//  3. ja4h (TypeJA4H), the caller-computed JA4H value — the noisiest of the
+//     three; see doc/middleware/ja4-fingerprint.md.
 //
-// In practice tier 3 is rarely actually selected: StableFingerprint is
-// present whenever the client sent any of a handful of near-universal
-// browser headers (see its own doc comment), which is true of virtually
-// every real HTTP client that also produces a usable JA4H. Tier 3 mainly
-// matters for a request with no browser-identifying headers at all, where
-// even JA4H itself is likely to be low-signal.
-//
-// Returns ("", "") if none of the three produced anything — no
-// ja4_fingerprint middleware ran at all, most likely.
+// If none is available the header is cleared.
+func Assign(req *http.Request, ja4h string) {
+	if v := ja4plus.JA4FromContext(req.Context()); v != "" {
+		Set(req, TypeJA4TLS, v)
+		return
+	}
+	if v := StableFingerprint(req); v != "" {
+		Set(req, TypeStable, v)
+		return
+	}
+	Set(req, TypeJA4H, ja4h)
+}
+
+// SelectFingerprint returns the fingerprint value and type stored by Assign
+// or Set, or ("", "") if there is none.
 func SelectFingerprint(req *http.Request) (value, fingerprintType string) {
-	if v := GetJA4TLSFromRequest(req); v != "" {
-		return v, TypeJA4TLS
+	fingerprintType, value, ok := strings.Cut(req.Header.Get(HeaderName), ":")
+	if !ok || value == "" {
+		return "", ""
 	}
-	if v := GetStableFingerprintFromRequest(req); v != "" {
-		return v, TypeStable
-	}
-	if v := GetJA4FromRequest(req); v != "" {
-		return v, TypeJA4H
-	}
-	return "", ""
+	return value, fingerprintType
 }

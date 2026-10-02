@@ -69,8 +69,8 @@ func (s *SessionStoreDB) FindSessionByToken(token string) (*Session, error) {
 	// so GORM has nothing to populate it from — set it from the caller's
 	// own already-known raw value instead. Every downstream consumer of a
 	// *Session this returns (ValidateSession's own CloseSession-on-expiry
-	// call, middleware/session.go's admin-denied auto-logout,
-	// middleware/trafficmetric.go's recorded SessionID, X-User-Data's
+	// call, middleware/builtin/session.go's admin-denied auto-logout,
+	// middleware/builtin/trafficmetric.go's recorded SessionID, X-User-Data's
 	// "token" field) reads it expecting the real session token, not an
 	// empty string.
 	sessionData.Token = token

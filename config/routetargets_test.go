@@ -127,7 +127,7 @@ func TestRouteConfig_To_InvalidShapeRejected(t *testing.T) {
 func TestRouteConfig_To_AbsentForProxyRoute_LeavesNilAtLoadTime(t *testing.T) {
 	// LoadConfig itself doesn't reject a proxy route with no `to:`
 	// configured at all (that's middleware.ValidateRouteConfiguration's job
-	// — see middleware/validation_test.go for that coverage); decoding one
+	// — see middleware/builtin/validation_test.go for that coverage); decoding one
 	// must still leave To nil, not error out or default to something.
 	path := writeRouteTestConfig(t, `routes:
   - name: no-target

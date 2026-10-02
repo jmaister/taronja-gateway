@@ -9,7 +9,7 @@ import (
 )
 
 // MiddlewareMetricsSnapshot is a point-in-time read of a middleware's
-// request metrics, as tracked by MiddlewareRegistryV2 since the chain was
+// request metrics, as tracked by Registry since the chain was
 // built (counters are in-memory only and reset on process restart).
 type MiddlewareMetricsSnapshot struct {
 	Name         string `json:"name"`
@@ -105,7 +105,7 @@ func instrumentMiddleware(mw Middleware, counter *middlewareMetricsCounter) Midd
 // Returns an error if name is not a registered factory. A registered
 // middleware that has never been built into a chain (or has been built but
 // not yet seen a request) returns a zero-valued snapshot, not an error.
-func (r *MiddlewareRegistryV2) GetMetrics(name string) (MiddlewareMetricsSnapshot, error) {
+func (r *Registry) GetMetrics(name string) (MiddlewareMetricsSnapshot, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -121,7 +121,7 @@ func (r *MiddlewareRegistryV2) GetMetrics(name string) (MiddlewareMetricsSnapsho
 
 // GetAllMetrics returns a snapshot of every middleware that has been built
 // into a chain at least once (see BuildChain), keyed by name.
-func (r *MiddlewareRegistryV2) GetAllMetrics() map[string]MiddlewareMetricsSnapshot {
+func (r *Registry) GetAllMetrics() map[string]MiddlewareMetricsSnapshot {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

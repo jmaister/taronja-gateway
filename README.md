@@ -216,117 +216,7 @@ notification:
 
 ## Config File Versioning
 
-The config file declares a schema version, in `MAJOR.MINOR` format:
-
-```yaml
-version: "1.0"
-```
-
-There's no third, patch-level component — every actual change to the config
-schema is either "the structure changed" (bump `MAJOR`, needs a real
-migration) or "a field was added/removed with no structural change" (bump
-`MINOR`, no migration needed at all — see below). A bare major number
-(`version: 1`, no dot) is also accepted and treated as `1.0`, for backward
-compatibility with configs migrated before `MINOR` versions existed.
-
-On startup, the gateway logs the version it detected and what it currently
-supports:
-
-```
-Config file version: 1.0 (current: 1.0)
-```
-
-**A file with no `version:` key at all is treated as pre-v1.0.0**, not as
-already current — every config file written before this release has no
-`version:` field (the field itself is new in v1.0.0), and some of those
-need a real, one-time content change to keep working correctly under the
-current schema (the `notification.email.smtp.*` block became
-`notification.email.*` directly — see below). Add `version: "1.0"` once
-you've migrated to declare your config current going forward.
-
-**The gateway refuses to start unless the config file's version exactly
-matches what the binary supports** — outdated, undeclared, *and* newer than
-supported all fail the same way: a version mismatch means this binary can't
-be sure it understands the file correctly, in either direction. `tg run`
-(and `tg middleware list`) fail immediately with an error telling you what
-to do.
-
-An outdated or undeclared file:
-
-```
-FATAL: Failed to load configuration: config file 'config.yaml' has no declared version (treated as pre-v1.0.0), but this gateway requires version 1.0
-
-Run this to upgrade it (it prints the migrated config; redirect it to a file):
-
-    tg migrate --config config.yaml > config-v1.0.yaml
-
-Then point --config at the new file.
-```
-
-A config newer than this binary supports (e.g. after a rollback to an older
-gateway version):
-
-```
-FATAL: Failed to load configuration: config file 'config.yaml' declares version 1.2, newer than this gateway version supports (1.0)
-
-This gateway binary predates that config schema version and can't guarantee it
-honors every setting the file relies on. Upgrade the gateway binary to one that
-supports config schema version 1.2 or newer, then try again.
-```
-
-There's no `tg migrate`-style fix for that second case — a migration only
-ever moves a config forward, so nothing can downgrade one back down. The
-only real remedy is upgrading the gateway binary itself.
-
-`tg migrate` **prints** the migrated config to stdout — it never writes a
-file itself, and never touches the original. Redirect the output to save
-it, same as any other Unix command:
-
-```bash
-./tg migrate --config config.yaml > config-v1.1.yaml
-./tg run --config config-v1.1.yaml
-```
-
-You choose the destination filename; `config-v<X.Y>.yaml` (as suggested in
-the error above) is just a convention, not a requirement. A config several
-versions behind is migrated one step at a time internally (e.g.
-0.0→1.0→1.1), so a single `tg migrate` run always gets you all the way to
-the version this build requires. Running it on a config that's already
-current just prints the file back unchanged (with a note on stderr, so it
-doesn't pollute the redirected output).
-
-**Not every version bump needs a migration step.** A `MINOR` bump for a
-purely additive change — a new optional field with a sensible zero-value
-default — just stamps the new version onto the file with nothing else
-touched; there's no content transformation to run. Real content migrations,
-like the one below, are the exception, reserved for an actual structural
-change (typically paired with a `MAJOR` bump).
-
-**What actually changes for a pre-v1.0.0 config today:** the only real
-content migration so far flattens a `notification.email.smtp:` block (the
-original, v0.0.24-era shape) directly onto `notification.email:` —
-
-```yaml
-# before (pre-v1.0.0)
-notification:
-  email:
-    enabled: true
-    smtp:
-      host: smtp.example.com
-      port: 587
-
-# after (version: "1.0")
-notification:
-  email:
-    enabled: true
-    host: smtp.example.com
-    port: 587
-```
-
-— plus stamping `version: "1.0"` on the file. A config with no
-`notification.email.smtp` block to begin with (most of them) only gets the
-`version: "1.0"` line added; everything else, including comments and
-`${VAR_NAME}` placeholders, passes through untouched.
+The config file declares a schema version in `MAJOR.MINOR` format (`version: "1.0"`). The gateway refuses to start when the file's version differs from the one it supports, in either direction. Run `tg migrate` to upgrade an older file. See [doc/config-versioning.md](doc/config-versioning.md) for the version rules and migration steps.
 
 ## Configuration Sections
 
@@ -341,130 +231,13 @@ Defines the gateway server settings.
 
 ### TLS / HTTPS
 
-The gateway can terminate HTTPS itself, on `server.port`. There are two ways
-to give it a certificate — pick one (they're mutually exclusive; configuring
-both is a config-load error):
+The gateway can terminate HTTPS itself on `server.port`, using either your own certificate files (`certFile` / `keyFile`) or automatic Let's Encrypt certificates (`acme`). The two options are mutually exclusive. Terminating TLS yourself also enables TLS-level JA4 client fingerprinting with no extra config.
 
-| | [Option 1: your own certificate files](#option-1-your-own-certificate-files) | [Option 2: ACME / Let's Encrypt](#option-2-automatic-certificates-via-acme--lets-encrypt) |
-|---|---|---|
-| Config key | `certFile` / `keyFile` | `acme` |
-| **Who obtains/renews the certificate** | **You** — `certbot`, a commercial CA, an internal PKI, etc., running independently of the gateway. The gateway never requests anything itself. | **The gateway itself**, automatically, for as long as it keeps running — no external tool, no cron job, nothing else to keep working. |
-| **Network requirement** | None — works on a fully private/internal network, behind a firewall, with no public DNS at all. | The domain(s) must have **public DNS pointing at this gateway** and be **reachable from the internet** on port 80 and/or 443 — Let's Encrypt's own servers connect *to* the gateway to prove domain ownership. Won't work for internal-only services. |
-| Wildcard domains (`*.example.com`) | Supported, if your certificate provider issues them | **Not supported** (needs a `dns-01` challenge; unimplemented here) |
-| Best for | Internal/private services, an existing CDN- or org-issued certificate, wildcard certs | Public-facing services where you just want HTTPS with zero ongoing certificate management |
-
-#### Option 1: Your own certificate files
-
-```yaml
-server:
-  port: 443
-  tls:
-    enabled: true
-    certFile: /etc/letsencrypt/live/example.com/fullchain.pem
-    keyFile: /etc/letsencrypt/live/example.com/privkey.pem
-```
-
-- `enabled`: Turn on HTTPS termination. Requires `certFile` and `keyFile` (or `acme` — see Option 2). Default: `false` (plain HTTP).
-- `certFile`: Path to the PEM certificate (or full chain — leaf cert followed by any intermediates).
-- `keyFile`: Path to the PEM private key matching `certFile`.
-- `redirectPort`: Plain-HTTP port the gateway also listens on, redirecting every request there to the HTTPS equivalent on `server.port`. Omit for the default (80); set to `0` to disable the redirect listener entirely (e.g. if something else already owns port 80 in front of the gateway).
-
-A bad or unparseable cert/key pair is rejected at config-load time (`tg validate` catches it before deploy), the same way a bad admin/CORS/route setting is.
-
-##### Certificate file format
-
-`certFile` must be **PEM-encoded** (not DER/binary, not PKCS#12/`.pfx`) — a text file made of one or more blocks that look like this:
-
-```
------BEGIN CERTIFICATE-----
-MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiIMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
-... (many more base64-encoded lines) ...
------END CERTIFICATE-----
-```
-
-Give it the **full chain** — your certificate's own `CERTIFICATE` block followed immediately by every intermediate CA certificate's block, leaf first — not just the leaf alone. A browser that already trusts the intermediate (cached from visiting another site) will work either way, but a browser or API client seeing it for the first time won't be able to build a trust path to a root CA without it, and will reject the connection. This is exactly what a `fullchain.pem` from `certbot` already contains — use that file, not `cert.pem` (which certbot also writes, containing the leaf only).
-
-`keyFile` must also be PEM-encoded, containing exactly one private key matching the certificate, in any of these forms (Go's standard library auto-detects which one it is):
-
-```
------BEGIN PRIVATE KEY-----        (PKCS#8 — RSA, ECDSA, or Ed25519)
------BEGIN RSA PRIVATE KEY-----    (PKCS#1 — RSA only)
------BEGIN EC PRIVATE KEY-----     (SEC1 — ECDSA only)
------END ...-----
-```
-
-**A passphrase-encrypted private key is not supported** — the gateway has no way to prompt for a passphrase at startup, so a key file with a `Proc-Type: 4,ENCRYPTED` header (or PKCS#8's own encrypted form) fails to load with an unhelpful parse error, not a clear "this key needs a passphrase" message. Strip the passphrase before pointing `keyFile` at it:
-
-```bash
-openssl rsa -in encrypted-key.pem -out privkey.pem       # RSA key
-openssl ec  -in encrypted-key.pem -out privkey.pem       # EC key
-```
-
-**Generating a self-signed certificate for local testing** (browsers will show a trust warning for it — that's expected; it's for testing the gateway's TLS support itself, not for production):
-
-```bash
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
-  -keyout privkey.pem -out fullchain.pem -days 365 -nodes \
-  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
-```
-
-**Verifying a cert/key pair actually match** (compares a hash of each side's public key — a mismatch here is exactly the kind of thing that produces `tls: private key does not match public key` at startup):
-
-```bash
-openssl x509 -noout -pubkey -in fullchain.pem | openssl md5
-openssl pkey  -pubout       -in privkey.pem    | openssl md5
-```
-
-**Renewal is up to you.** The gateway never requests or renews a certificate in this mode; that's `certbot` (or whatever issued it)'s job, typically on its own cron job/systemd timer, same as it would be for e.g. nginx. After a renewed `certFile`/`keyFile` is in place, restart the gateway to load it. (Compare this to Option 2 below, where the gateway handles the entire renewal itself.)
-
-#### Option 2: Automatic certificates via ACME / Let's Encrypt
-
-The gateway can obtain and renew its own certificate via the ACME protocol
-(RFC 8555) — what Let's Encrypt and several other certificate authorities
-speak — with no `certbot` or other external tool needed:
-
-```yaml
-server:
-  port: 443
-  tls:
-    enabled: true
-    acme:
-      domains: ["example.com", "www.example.com"]
-      email: admin@example.com
-```
-
-- `domains`: Every hostname the gateway should obtain a certificate for. Required — at least one. Must exactly match what clients connect with; **wildcard domains (`*.example.com`) are not supported** — those need a `dns-01` challenge, which this integration doesn't implement, so use Option 1 with a DNS-capable ACME client instead.
-- `email`: Optional contact address the CA can use for expiry/problem notifications.
-- `cacheDir`: Where the obtained certificate(s) and the ACME account key are persisted across restarts (created automatically). Default: `.autocert-cache` (relative to the working directory).
-- `directoryURL`: Overrides the ACME server. Empty (the default) means Let's Encrypt's production directory. Point this at Let's Encrypt's **staging** directory while testing a setup, to avoid the much stricter production rate limits — staging certificates aren't trusted by real browsers, so switch back (or remove the override) once things work:
-  ```yaml
-      acme:
-        domains: ["example.com"]
-        directoryURL: https://acme-staging-v02.api.letsencrypt.org/directory
-  ```
-
-**Using this feature means accepting the CA's Terms of Service on your behalf** — there's no interactive prompt a long-running server could sensibly show, so the gateway accepts automatically, the same way every other ACME client integration (Caddy, Traefik, certbot's `--agree-tos`) does.
-
-**Domain validation happens automatically**, via whichever of the two standard challenge types succeeds:
-- **`tls-alpn-01`** — answered directly on the main HTTPS listener itself, no extra port needed. Some networks/CDNs in front of the gateway strip the ALPN protocol this needs, though, so it isn't always available.
-- **`http-01`** — answered on the `redirectPort` listener (default 80, same one that redirects normal traffic to HTTPS), under `/.well-known/acme-challenge/`. This means `redirectPort` needs to stay enabled (the default) for `http-01` to be available as a fallback — setting it to `0` leaves `tls-alpn-01` as the only option.
-
-**The first certificate for a new domain is requested lazily**, on that domain's first real TLS handshake — not at gateway startup. This means a misconfigured domain (DNS not yet pointed at this gateway, port 80/443 unreachable from the internet) surfaces as a failed handshake for a real client hitting it, not as a startup error — check the gateway's logs if HTTPS connections are failing right after enabling this. Renewal happens automatically in the background well before expiry, with no restart needed (there's no cert/key file for you to manage at all in this mode).
-
-#### A free bonus of terminating TLS yourself: TLS-level client fingerprinting
-
-Whichever certificate source you use, enabling TLS also turns on **TLS-level JA4 fingerprinting** automatically — no extra config. Unlike [JA4H](doc/middleware/ja4-fingerprint.md) (computed per HTTP request from header count/order, which varies constantly between a page load and its own subresource/API requests — see that page for why), TLS JA4 is computed once per TLS connection from the client's actual TLS stack (cipher suites, extensions, ALPN, TLS version): a property of the client's OS/browser/TLS library, not of any individual request, so it stays the same across every request on that connection. It's only possible because the gateway itself sees the raw `ClientHello` — this is the concrete meaning of "if we control the TLS certificates" in practice: TLS terminated by something else in front of this gateway (a CDN, a load balancer) means this gateway never sees a `ClientHello` at all.
-
-It's exposed the same way as every other fingerprint signal — via the single `fingerprint`/`fingerprintType` pair on every session/traffic-metric row and in `X-User-Data` (`fingerprintType: "ja4_tls"` when TLS produced it) — see [doc/middleware/ja4-fingerprint.md](doc/middleware/ja4-fingerprint.md#one-consolidated-fingerprint-not-three) for how the three fingerprinting signals get reduced to that single pair, and the [`X-User-Data` field reference](#field-reference) below for the exact JSON shape.
+See [doc/tls.md](doc/tls.md) for both options, the certificate file format, and ACME requirements.
 
 ### Tracing
 
-The gateway can create an [OpenTelemetry](https://opentelemetry.io/) span per
-request and export it over OTLP/HTTP to any collector that speaks the
-protocol — an OpenTelemetry Collector, Jaeger, Tempo, Honeycomb, Grafana
-Cloud, etc. Disabled by default, and configured at the top level of the
-config file (not under `management:`, since it's not a dashboard/API
-concern):
+The gateway can export an [OpenTelemetry](https://opentelemetry.io/) span per request over OTLP/HTTP. It is disabled by default and configured at the top level of the config file:
 
 ```yaml
 tracing:
@@ -473,22 +246,7 @@ tracing:
   insecure: true             # plain HTTP to endpoint, not HTTPS
 ```
 
-- `enabled`: Turn on tracing. Requires `endpoint`. Default: `false`.
-- `endpoint`: The OTLP/HTTP collector's `host:port` — no scheme, no path.
-- `insecure`: Send spans over plain HTTP instead of HTTPS. Most self-hosted
-  local collectors don't terminate TLS at all, so this commonly needs
-  setting to `true` for those; a managed backend reachable over the public
-  internet almost always wants it left `false` (the default).
-
-An incoming request's trace context (the W3C `traceparent` header) is
-continued rather than replaced, and it's propagated forward to whatever
-backend a proxy route sends the request to — so a trace can span the whole
-journey through this gateway and beyond, not just the hop the gateway
-itself handles. See
-[`tracing`](doc/middleware/tracing.md) for the full reference, including
-how this is tested without needing a real collector, and a "Try it
-locally" walkthrough for seeing real traces in a real UI (Jaeger's
-all-in-one Docker image) in a few minutes.
+See [doc/middleware/tracing.md](doc/middleware/tracing.md) for the full reference and a local Jaeger walkthrough.
 
 ### Management
 
@@ -518,219 +276,43 @@ all of them together (options, dependencies, chain order).
 
 ### Middleware (optional, advanced)
 
-By default, the global middleware chain (compression, CORS, rate limiting,
-JA4 fingerprinting, session extraction, traffic metrics, request logging —
-see [doc/middleware/](doc/middleware/README.md) for what each one does) is
-controlled by the `compression` / `cors` / `logging` / `analytics` /
-`rateLimiter` flags above. For explicit control over which middleware runs
-and in what order, add a `middleware:` section — when present it fully
-replaces those flags:
+By default the global middleware chain is controlled by the `compression` / `cors` / `logging` / `analytics` / `rateLimiter` flags above. To control exactly which middleware runs and in what order, add a `middleware:` section; when present it fully replaces those flags.
 
 ```yaml
 middleware:
   global:
     - name: compression
-    - name: cors
-      cors:
-        allowedOrigins: ["https://app.example.com"]
     - name: rate_limiter
-      rateLimiter:
-        requestsPerMinute: 1000
-        maxErrors: 10
-        blockMinutes: 5
-    - name: ja4_fingerprint
-    - name: session_extraction
-    - name: traffic_metrics
-      trafficMetrics:
-        excludeStaticAssets: true
     - name: logging
-      enabled: false   # listed but disabled
 ```
 
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](doc/middleware/README.md#two-ways-to-enable-any-of-these)
-for a full comparison of the two forms (including the "fully replaces those
-flags" gotcha above spelled out in more detail — it's easy to trip on when
-adding this section just to reorder or reconfigure one middleware).
-
-See [Middleware Architecture](#middleware-architecture) below for how to
-inspect this at runtime, and `doc/middleware_development.md` for adding your
-own middleware.
+See [doc/middleware/configuration.md](doc/middleware/configuration.md) for the full example, and [Middleware Architecture](#middleware-architecture) for runtime inspection.
 
 ### Routes
 
-Define routing rules for incoming requests. Each route can:
+Each route maps a `from` path pattern to a backend (`to`, a single URL or a list for load balancing), a single file (`toFile`), or a folder (`toFolder`). Common properties:
 
-- Proxy requests to backend services
-- Serve static files
-- Require authentication
-- Control caching behavior
+- `name`: human-readable route identifier
+- `from`: URL path pattern to match (supports `*` wildcards)
+- `to`: backend URL, or a list of URLs to load balance across
+- `toFile` / `toFolder` / `static`: serve static files
+- `removeFromPath`: prefix to remove before forwarding to the backend
+- `authentication.enabled`: require authentication for this route
+- `options.cacheControlSeconds`: cache duration in seconds (0 = no-cache)
 
-**Route Properties:**
-
-- `name`: Human-readable route identifier
-- `from`: URL path pattern to match (supports wildcards with `*`)
-- `to`: Backend URL to proxy requests to. Accepts either a single URL
-  (`to: https://api.example.com`) or a list of URLs
-  (`to: [https://api-1.example.com, https://api-2.example.com]`) for load
-  balancing — see [Load Balancing](#load-balancing) below
-- `toFile`: Serve a single static file
-- `toFolder`: Serve files from a directory
-- `static`: Set to `true` for static file serving
-- `removeFromPath`: Remove prefix before forwarding to backend
-- `authentication.enabled`: Require authentication for this route
-- `options.cacheControlSeconds`: Cache duration in seconds (0 = no-cache)
-
-**Example Routes:**
-
-```yaml
-routes:
-  # Serve a single file
-  - name: Favicon
-    from: /favicon.ico
-    toFile: ./sample/webfiles/favicon.ico
-    static: true
-
-  # Public API - no authentication required
-  - name: Public API v1
-    from: /api/v1/*
-    removeFromPath: "/api/v1/"
-    to: https://jsonplaceholder.typicode.com
-    authentication:
-      enabled: false
-    options:
-      cacheControlSeconds: 300  # Cache for 5 minutes
-
-  # Authenticated API route
-  - name: Private API v2
-    from: /api/v2/*
-    removeFromPath: "/api/v2/"
-    to: https://api.example.com
-    authentication:
-      enabled: true
-    options:
-      cacheControlSeconds: 0  # No cache
-
-  # Static files folder - public
-  - name: CSS and JavaScript
-    from: /assets/*
-    toFolder: ./static/assets
-    static: true
-    options:
-      cacheControlSeconds: 604800  # Cache for 1 week
-
-  # Another static folder - requires authentication
-  - name: Protected Documents
-    from: /documents/*
-    toFolder: ./static/private-docs
-    static: true
-    authentication:
-      enabled: true
-    options:
-      cacheControlSeconds: 3600  # Cache for 1 hour
-
-  # Frontend application - no authentication
-  - name: Public Frontend
-    from: /
-    toFolder: ./static/public
-    static: true
-    options:
-      cacheControlSeconds: 86400  # Cache for 1 day
-
-  # Admin panel - requires authentication
-  - name: Admin Dashboard
-    from: /admin/*
-    toFolder: ./static/admin
-    static: true
-    authentication:
-      enabled: true
-    options:
-      cacheControlSeconds: 0  # No cache for dashboard
-```
-
-### Load Balancing
-
-Give `to` a list instead of a single URL to spread requests across multiple
-backend instances:
-
-```yaml
-- name: API (load balanced)
-  from: /api/*
-  to:
-    - http://api-1.internal:8080
-    - http://api-2.internal:8080
-    - http://api-3.internal:8080
-  authentication:
-    enabled: false
-```
-
-Requests are distributed round-robin across the list. If a backend's
-connection attempt fails outright (refused, DNS failure, timeout), the
-gateway automatically retries the same request against the next backend in
-the list before giving up — a request only fails with `502 Bad Gateway` if
-every listed backend is unreachable. This failover only reacts to
-connection-level failures, never to a backend's response status code: a
-backend returning its own `500` is a real answer, not treated as "down."
-
-The listed URLs are expected to be interchangeable replicas of the same
-backend — same path structure, differing only in scheme/host. Use separate
-route entries (different `from:` patterns) to send different paths to
-different places; that's routing, not load balancing.
-
-A single URL (`to: http://backend:8080`) continues to work exactly as
-before — this is purely additive.
+See [doc/routes.md](doc/routes.md) for examples and load balancing, and [doc/CACHE_CONTROL.md](doc/CACHE_CONTROL.md) for caching.
 
 ### Authentication Providers
 
-Configure authentication methods for your gateway.
+Basic (username/password) authentication and the Google and GitHub OAuth2 providers are configured under `authenticationProviders`. Each is independent and optional, and the login page shows a button for every enabled one.
 
-**Basic Authentication:**
 ```yaml
 authenticationProviders:
   basic:
     enabled: true
 ```
 
-**OAuth2 Providers:** each one below is independent and optional — enable
-as many side by side as you like (the login page shows a button for each
-configured one). The redirect/callback URL you register with the provider
-must match `<server.url><management.prefix>/auth/<provider>/callback`
-exactly (scheme, host, port, and path) — the samples below assume the
-defaults (`http://localhost:8080`, prefix `/_`).
-
-#### Google
-
-Get credentials: [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials) → **Create Credentials → OAuth client ID** (application type "Web application").
-
-- **Credentials needed:** Client ID, Client Secret
-- **Authorized JavaScript origin:** `http://localhost:8080`
-- **Authorized redirect URI:** `http://localhost:8080/_/auth/google/callback`
-
-```yaml
-authenticationProviders:
-  google:
-    clientId: ${GOOGLE_CLIENT_ID}
-    clientSecret: ${GOOGLE_CLIENT_SECRET}
-```
-
-#### GitHub
-
-Get credentials: [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers) → **New OAuth App**.
-
-- **Credentials needed:** Client ID, Client Secret
-- **Homepage URL:** `http://localhost:8080`
-- **Authorization callback URL:** `http://localhost:8080/_/auth/github/callback`
-
-```yaml
-authenticationProviders:
-  github:
-    clientId: ${GITHUB_CLIENT_ID}
-    clientSecret: ${GITHUB_CLIENT_SECRET}
-```
-
-Microsoft (Entra ID / Azure AD), Facebook, and Apple ("Sign in with
-Apple") setup instructions moved to the `wip/microsoft-apple-facebook-auth`
-branch along with their implementation — untested, coming back to this
-later (see the Features table's footnote above).
+See [doc/authentication-providers.md](doc/authentication-providers.md) for the OAuth2 setup and callback URLs.
 
 ### Branding
 
@@ -755,20 +337,7 @@ geolocation:
 
 ### Notifications
 
-The gateway can store and deliver notifications on behalf of the app(s) it
-sits in front of — in-app always, plus email and/or Telegram if
-configured — so each app doesn't need to build its own notification list,
-SMTP integration, or Telegram bot. One call can notify a whole list of
-users at once, each independently, and each user can pick their own
-preferred delivery channel. Failed deliveries retry automatically with
-backoff, and a single sent/failed/pending status — per notification, and
-rolled up across a whole multi-recipient batch — is computed on demand
-from the full delivery history (every attempt, every channel). An
-optional signed outbound webhook tells the calling app when a user
-actually responds, so it doesn't have to poll for that either. See
-[doc/notifications.md](doc/notifications.md) for the full data model, API
-reference, retry schedule, and how the email answer-link
-and Telegram account-linking flows work.
+The gateway can store and deliver notifications on behalf of the apps it sits in front of: in-app always, plus email and Telegram if configured. See [doc/notifications.md](doc/notifications.md) for the data model, API, retry schedule, and delivery flows.
 
 ```yaml
 notification:
@@ -839,322 +408,17 @@ Full design rationale and phase-by-phase history: [`doc/refactor01.md`](doc/refa
 
 # Building and Releasing
 
-## Development Builds
-
-```bash
-# Build the binary
-make build
-
-# Run tests
-make test
-
-# Generate test coverage report
-make cover
-
-# Run in development mode with automatic restart on file changes
-make dev
-```
-
-## Release Process
-
-Taronja Gateway uses [GoReleaser](https://goreleaser.com/) for building and publishing releases.
-
-```bash
-# Install GoReleaser
-make setup-goreleaser
-
-# Check GoReleaser configuration
-make release-check
-
-# Create a local snapshot release (for testing)
-make release-local
-
-# Build Docker image locally
-make release-docker
-```
-
-## GitHub Releases
-
-When a new version is ready to be released:
-
-1. Tag the commit with a semantic version:
-   ```bash
-   git tag -a v1.0.0 -m "Release v1.0.0"
-   git push origin v1.0.0
-   ```
-
-2. Create a new release on GitHub, pointing to the created tag — this is
-   the step that actually publishes anything; GoReleaser and the SDK/clients
-   workflows all trigger on the release being *published*, not on the tag
-   existing. See [`doc/v1.0.0-release-notes.md`](doc/v1.0.0-release-notes.md)
-   for a human-readable summary of what's in this release, useful as a
-   starting point for the release description (GoReleaser also generates
-   its own changelog from commit messages automatically).
-
-3. The GitHub action will automatically:
-   - Build binaries for multiple platforms
-   - Create Docker images
-   - Generate coverage reports
-   - Publish all artifacts to the GitHub release
-
-## Geolocation Configuration
-
-Configure IP geolocation services in your `config.yaml`:
-
-```yaml
-geolocation:
-  iplocateApiKey: ${IPLOCATE_IO_API_KEY}  # Optional: Use iplocate.io
-```
-
-- **With API key**: Uses [iplocate.io](https://www.iplocate.io) (more accurate, requires API key)
-- **Without API key**: Uses [freeipapi.com](https://freeipapi.com) (free, basic accuracy)
-
-Geolocation data is cached for 7 days to optimize performance and reduce API calls.
+`make build`, `make test`, `make cover` and `make dev` cover day-to-day development. Releases are built and published with [GoReleaser](https://goreleaser.com/). See [doc/building-and-releasing.md](doc/building-and-releasing.md).
 
 
 # Authentication on the APIs
 
-When a request is proxied to a backend route that has `authentication.enabled: true`, Taronja Gateway injects HTTP headers into the request so the backend service can identify the authenticated user. These headers are only set when a valid session exists.
+Proxied requests to routes with `authentication.enabled: true` carry `X-User-Id` and `X-User-Data` headers, set only when a valid session (cookie) or bearer token exists. See [doc/backend-integration.md](doc/backend-integration.md) for the header reference, the `X-User-Data` JSON structure, and a backend example.
 
-## Headers Sent to Backend Routes
+# Getting the Current User from the Frontend
 
-### Standard Proxy Headers
+A frontend served through the gateway can fetch the current user from the gateway's session API. See [doc/backend-integration.md](doc/backend-integration.md#getting-the-current-user-from-the-frontend).
 
-Every proxied request (authenticated or not) includes the following standard headers:
+# Login and Logout Links from a Web Page
 
-| Header              | Type     | Description                                                    |
-|---------------------|----------|----------------------------------------------------------------|
-| `X-Forwarded-Host`  | `string` | The original `Host` header from the client request.            |
-| `X-Forwarded-Proto` | `string` | The protocol the client's connection to this gateway actually used — `https` only when TLS terminated here or a trusted upstream proxy said so, `http` otherwise. |
-| `X-Forwarded-For`   | `string` | The client's real IP address, resolved the same way `X-Real-IP`/`X-Client-IP` are — trusted only from a loopback/private-range peer, never taken from a direct client at face value. |
-
-**`X-Forwarded-Host` is not verified.** Unlike `X-Forwarded-Proto`/`X-Forwarded-For` above, this gateway forwards the client's `Host` header exactly as received, with no check that it matches anything this gateway is actually configured to serve — any direct client can set it to whatever they want. If a backend route builds an absolute URL from this header (a password-reset link, an OAuth redirect, a cache key), that URL is only as trustworthy as the client who sent the request — treat it the same way you'd treat any other unauthenticated, client-supplied input, not as something this gateway already validated for you.
-
-### Authentication Headers
-
-These headers are added only on routes with `authentication.enabled: true` and when the user has a valid session:
-
-| Header        | Type     | Description                                                                 |
-|---------------|----------|-----------------------------------------------------------------------------|
-| `X-User-Id`   | `string` | The unique user ID (CUID) of the authenticated user.                        |
-| `X-User-Data` | `string` | A JSON-serialized object containing the full session data (see structure below). |
-
-## `X-User-Data` JSON Structure
-
-The `X-User-Data` header contains a JSON-encoded session object with the following fields:
-
-```json
-{
-  "token": "string",
-  "userId": "string",
-  "username": "string",
-  "email": "string",
-  "isAuthenticated": true,
-  "isAdmin": false,
-  "validUntil": "2026-02-28T12:00:00Z",
-  "provider": "string",
-  "closedOn": null,
-  "lastActivity": "2026-02-27T10:30:00Z",
-  "sessionName": "string",
-  "createdFrom": "string",
-  "ipAddress": "string",
-  "userAgent": "string",
-  "referrer": "string",
-  "browserFamily": "string",
-  "browserVersion": "string",
-  "osFamily": "string",
-  "osVersion": "string",
-  "deviceFamily": "string",
-  "deviceBrand": "string",
-  "deviceModel": "string",
-  "geoLocation": "string",
-  "latitude": 0.0,
-  "longitude": 0.0,
-  "city": "string",
-  "zipCode": "string",
-  "country": "string",
-  "countryCode": "string",
-  "region": "string",
-  "continent": "string",
-  "fingerprint": "string",
-  "fingerprintType": "string"
-}
-```
-
-### Field Reference
-
-| Field              | Type      | Description                                                      |
-|--------------------|-----------|------------------------------------------------------------------|
-| `token`            | `string`  | The session token identifier.                                    |
-| `userId`           | `string`  | Unique user ID (CUID format).                                    |
-| `username`         | `string`  | Username of the authenticated user.                              |
-| `email`            | `string`  | Email address of the user.                                       |
-| `isAuthenticated`  | `bool`    | Whether the session is authenticated.                            |
-| `isAdmin`          | `bool`    | Whether the user has admin privileges.                           |
-| `validUntil`       | `string`  | Session expiration timestamp (RFC 3339 / ISO 8601).              |
-| `provider`         | `string`  | Authentication provider used (`basic`, `google`, `github`, etc). |
-| `closedOn`         | `string?` | Timestamp when the session was closed, or `null` if active.      |
-| `lastActivity`     | `string`  | Timestamp of the last user activity in this session.             |
-| `sessionName`      | `string`  | Optional name assigned to the session.                           |
-| `createdFrom`      | `string`  | How the session was created (e.g. `cookie`, `token`).            |
-| `ipAddress`        | `string`  | Client IP address.                                               |
-| `userAgent`        | `string`  | Client's User-Agent string.                                      |
-| `referrer`         | `string`  | HTTP referrer.                                                   |
-| `browserFamily`    | `string`  | Browser name (e.g. `Chrome`, `Firefox`).                         |
-| `browserVersion`   | `string`  | Browser version string.                                          |
-| `osFamily`         | `string`  | Operating system name.                                           |
-| `osVersion`        | `string`  | Operating system version.                                        |
-| `deviceFamily`     | `string`  | Device type (e.g. `desktop`, `mobile`).                          |
-| `deviceBrand`      | `string`  | Device manufacturer.                                             |
-| `deviceModel`      | `string`  | Device model name.                                               |
-| `geoLocation`      | `string`  | General geolocation description.                                 |
-| `latitude`         | `float`   | GPS latitude coordinate.                                         |
-| `longitude`        | `float`   | GPS longitude coordinate.                                        |
-| `city`             | `string`  | City name from geolocation.                                      |
-| `zipCode`          | `string`  | Postal / ZIP code.                                               |
-| `country`          | `string`  | Country name.                                                    |
-| `countryCode`      | `string`  | ISO country code (2-3 characters).                               |
-| `region`           | `string`  | State, province, or region.                                      |
-| `continent`        | `string`  | Continent name.                                                  |
-| `fingerprint`      | `string`  | The client's fingerprint value — see `fingerprintType` for which algorithm produced it. Whichever of the three available signals is most reliable wins; see [doc/middleware/ja4-fingerprint.md](doc/middleware/ja4-fingerprint.md#one-consolidated-fingerprint-not-three) for the full priority order and why. |
-| `fingerprintType`  | `string`  | Which algorithm produced `fingerprint`: `ja4_tls` (TLS-level JA4 — most stable, only possible when `server.tls.enabled`), `stable` (reduced-entropy header-based fingerprint), or `ja4h` (HTTP-header JA4H — the noisiest of the three). Empty string if `fingerprint` is empty too. |
-
-## Authentication Methods
-
-Backend routes can receive authenticated requests via two methods:
-
-1. **Session cookie** — The user logs in through the gateway (Basic auth or OAuth2), and a `tg_session_token` cookie is set. The gateway validates the cookie on each request and injects the headers above.
-
-2. **Bearer token** — API clients can authenticate using a token in the `Authorization` header:
-   ```
-   Authorization: Bearer <token>
-   ```
-   The gateway validates the token, creates a session-like object, and injects the same `X-User-Id` and `X-User-Data` headers.
-
-## Example: Reading Headers in a Backend Service
-
-**Node.js / Express:**
-```js
-app.get('/api/resource', (req, res) => {
-    const userId = req.headers['x-user-id'];
-    const userData = JSON.parse(req.headers['x-user-data']);
-  console.log(`User: ${userData.username} (${userId})`);
-  res.json({ message: `Hello, ${userData.username}` });
-});
-```
-
-**Go:**
-```go
-func handler(w http.ResponseWriter, r *http.Request) {
-    userId := r.Header.Get("X-User-Id")
-    userDataJson := r.Header.Get("X-User-Data")
-    // Parse userDataJson as needed
-    fmt.Fprintf(w, "User ID: %s", userId)
-}
-```
-
-**Python / Flask:**
-```python
-@app.route('/api/resource')
-def resource():
-    user_id = request.headers.get('X-User-Id')
-    user_data = json.loads(request.headers.get('X-User-Data', '{}'))
-    return jsonify(message=f"Hello, {user_data.get('Username')}")
-```
-
-## Getting the Current User from the Frontend
-
-Web applications served through the gateway can call the `/_/me` endpoint to retrieve information about the currently logged-in user. The endpoint uses the session cookie (`tg_session_token`) that the browser sends automatically.
-
-**Endpoint:** `GET /_/me`
-
-- Returns `200` with user data if the user is authenticated.
-- Returns `401` if no valid session exists.
-
-**Response (200):**
-
-```json
-{
-  "authenticated": true,
-  "username": "testuser",
-  "email": "user@example.com",
-  "name": "Test User",
-  "picture": "https://example.com/picture.jpg",
-  "givenName": "Test",
-  "familyName": "User",
-  "provider": "google",
-  "isAdmin": false,
-  "timestamp": "2026-02-27T12:00:00Z"
-}
-```
-
-| Field           | Type      | Nullable | Description                                              |
-|-----------------|-----------|----------|----------------------------------------------------------|
-| `authenticated` | `bool`    | No       | Always `true` when the response is 200.                  |
-| `username`      | `string`  | No       | Username of the authenticated user.                      |
-| `email`         | `string`  | Yes      | Email address (format: email).                           |
-| `name`          | `string`  | Yes      | Full display name.                                       |
-| `picture`       | `string`  | Yes      | URL to the user's profile picture.                       |
-| `givenName`     | `string`  | Yes      | First name.                                              |
-| `familyName`    | `string`  | Yes      | Last name.                                               |
-| `provider`      | `string`  | No       | Authentication provider (`basic`, `google`, `github`).   |
-| `isAdmin`       | `bool`    | No       | Whether the user has admin privileges.                   |
-| `timestamp`     | `string`  | No       | Server timestamp (RFC 3339 / ISO 8601).                  |
-
-**Example: Fetching the current user from JavaScript:**
-
-```js
-const response = await fetch('/_/me', { credentials: 'include' });
-if (response.ok) {
-    const user = await response.json();
-    console.log(`Logged in as ${user.username}`);
-} else {
-    console.log('Not authenticated');
-}
-```
-
-## Login and Logout Links from a Web Page
-
-You can add direct login/logout links in your frontend pages.
-
-By default, the management prefix is `_`, so authentication URLs are under `/_/`.
-
-### Login Links
-
-Use the login page endpoint:
-
-- `/_/login`
-
-This page automatically shows all configured login options (Basic, Google, GitHub, etc.).
-
-Optional redirect after login:
-
-- `/_/login?redirect=/dashboard`
-
-### Logout Link
-
-- `/_/logout`
-
-Optional redirect after logout:
-
-- `/_/logout?redirect=/`
-- `/_/logout?redirect=/goodbye`
-
-### HTML Example
-
-```html
-<a href="/_/login?redirect=/dashboard">Login</a>
-<a href="/_/logout?redirect=/">Logout</a>
-```
-
-### JavaScript Example
-
-```js
-function login() {
-  window.location.href = '/_/login?redirect=/dashboard';
-}
-
-function logout() {
-  window.location.href = '/_/logout?redirect=/';
-}
-```
+Plain links to the gateway's login and logout endpoints are enough. See [doc/backend-integration.md](doc/backend-integration.md#login-and-logout-links-from-a-web-page).

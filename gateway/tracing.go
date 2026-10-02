@@ -26,7 +26,7 @@ import (
 // own built-in no-op provider in place — every otel.Tracer(...).Start()
 // call anywhere still works, just does nothing, at negligible cost. This
 // project also never adds TracingMiddleware to the chain (or wraps the
-// proxy transport) unless tracing is enabled — see registry_v2.go — so in
+// proxy transport) unless tracing is enabled — see middleware/builtin/global.go — so in
 // practice a disabled config touches none of this machinery at all; this
 // no-op path exists for the same reason as the disabled paths in
 // gateway/tls.go and gateway/ja4tls.go: correct behavior if something ever

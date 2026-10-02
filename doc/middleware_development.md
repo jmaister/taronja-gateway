@@ -22,7 +22,7 @@ Four pieces make up the system, all in the `middleware` package:
 - **`MiddlewareFactory`** (`middleware/factory.go`) — the interface that lets
   the registry discover, describe, and build a `Middleware`. This is what you
   implement.
-- **`MiddlewareRegistryV2`** (`middleware/registry_v2.go`) — holds registered
+- **`Registry`** (`middleware/registry.go`) — holds registered
   factories and builds a `ChainBuilder` from an ordered list of
   `MiddlewareSpec`, validating that every spec's declared dependencies are
   satisfied by an earlier spec in the same list.
@@ -31,7 +31,7 @@ Four pieces make up the system, all in the `middleware` package:
 
 The gateway's own five built-in middlewares (`rate_limiter`,
 `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`) are
-implemented exactly this way in `middleware/factory.go` — read that file
+implemented exactly this way in `middleware/builtin/factories.go` — read that file
 alongside this guide; it's the reference implementation, not a special case.
 
 ## 1. Implement `MiddlewareFactory`
@@ -55,7 +55,7 @@ type MiddlewareFactory interface {
   status endpoint and the `tg middleware list` CLI output.
 - **`GetDependencies()`** lists the names of other middleware that must
   already be earlier in the same chain. Returning `nil`/`[]string{}` means no
-  ordering requirement. `MiddlewareRegistryV2.BuildChain` (and
+  ordering requirement. `Registry.BuildChain` (and
   `ValidateSpecs`) reject a chain where a dependency isn't satisfied by an
   earlier spec — e.g. the gateway's own `traffic_metrics` depends on
   `ja4_fingerprint` (it reads the JA4H header via `session.NewClientInfo` to
@@ -79,7 +79,7 @@ type MiddlewareFactory interface {
 A factory usually needs constructor dependencies (a DB repo, a client, a
 config struct) — accept them in a `NewXFactory(...)` constructor and store
 them on the struct, the same way `NewSessionExtractionFactory(sessionStore,
-tokenService)` does in `middleware/factory.go`.
+tokenService)` does in `middleware/builtin/factories.go`.
 
 ## 2. (Optional) Implement `HealthChecker`
 
@@ -98,7 +98,7 @@ Only implement this if your middleware has genuine runtime state worth
 reporting — a connection pool, a circuit breaker, a rate limiter's
 tracked/blocked IPs (see `RateLimiterFactory.HealthCheck` in
 `middleware/factory.go`). If there's nothing meaningful to check, **don't**
-implement it: `MiddlewareRegistryV2.GetHealth`/`GetStatus` report
+implement it: `Registry.GetHealth`/`GetStatus` report
 `Status: "unknown"` for a factory that doesn't implement `HealthChecker`,
 which is more honest than a hardcoded `"healthy"` that was never actually
 verified. Three of the gateway's five built-ins (`ja4_fingerprint`,
@@ -108,7 +108,7 @@ this reason.
 ## 3. Register it and build a chain
 
 ```go
-registry := middleware.NewMiddlewareRegistryV2()
+registry := middleware.NewRegistry()
 if err := registry.RegisterFactory(NewMyFactory(...)); err != nil {
 	// a factory with this name is already registered
 }
@@ -120,19 +120,20 @@ handler := chain.Build(mux) // wrap your actual http.Handler / mux
 ```
 
 This is exactly what `examples/middleware-plugin/requestid_test.go` does to
-prove the example works, and exactly what `middleware.NewGlobalMiddlewareRegistry`
-+ `BuildGlobalChainFromConfigV2` do inside the gateway itself
-(`middleware/chain.go`, `gateway/gateway.go`).
+prove the example works, and exactly what `builtin.NewGlobalChain` does inside the gateway itself
+(`middleware/builtin/global.go`, `gateway/setup.go`).
 
 ## 4. Wiring into the actual gateway
 
-The gateway's own global chain is closed over its five built-in factories —
-`NewGlobalMiddlewareRegistry` in `middleware/chain.go` is the single place
-that registers them. There are two ways to add a middleware to a running
+The gateway's own global chain is closed over its built-in factories —
+`newGlobalRegistry` in `middleware/builtin/global.go` is the single place
+that registers them. The `middleware` package holds only the plumbing
+(`Registry`, `MiddlewareFactory`, `ChainBuilder`); the implementations live
+in `middleware/builtin`. There are two ways to add a middleware to a running
 gateway:
 
-- **Built into the gateway itself**: add a factory to `middleware/factory.go`
-  and a registration call to `NewGlobalMiddlewareRegistry`, plus a name
+- **Built into the gateway itself**: add the implementation and its factory
+  to `middleware/builtin/` and a registration call to `newGlobalRegistry`, plus a name
   constant in `config/middleware.go` (`config.MiddlewareNameXxx`) so
   `config.LoadConfig` accepts it in a `middleware:` YAML section
   (`doc/refactor01.md` Phase 2) and it appears as an option there. This is
@@ -140,10 +141,10 @@ gateway:
   the gateway.
 - **A separate module, wired in by whoever embeds the gateway**: build your
   own `main.go` (or fork the gateway's) that constructs
-  `middleware.NewGlobalMiddlewareRegistry(...)`, additionally calls
-  `registry.RegisterFactory(yourpackage.NewFactory(...))`, and passes the
-  extended registry to `middleware.BuildGlobalChainFromConfigV2` instead of
-  using the one-call `middleware.BuildGlobalChainV2` helper. This is the
+  `middleware.NewRegistry()`, registers the `builtin.New*Factory(...)`
+  factories it wants plus `yourpackage.NewFactory(...)`, and builds the chain
+  with `registry.BuildChain(specs)` (specs from
+  `builtin.ResolveGlobalChainSpecs`, or written by hand). This is the
   `examples/middleware-plugin/` scenario: nothing in `middleware/` or
   `gateway/` needs to change.
 
@@ -151,7 +152,7 @@ Either way, once a middleware is in the registry, it participates fully in
 the existing tooling: `GET <prefix>/api/middleware` reports its status and
 health, `GET <prefix>/api/middleware/{name}/metrics` reports its request
 count/error count/average duration (every middleware built via
-`MiddlewareRegistryV2.BuildChain` is automatically wrapped with this
+`Registry.BuildChain` is automatically wrapped with this
 instrumentation — see `middleware/metrics.go`, no opt-in needed), and
 `tg middleware list --config <path>` prints it from the command line without
 starting the server.
@@ -169,11 +170,11 @@ When adding a middleware, match what the built-ins already do:
   isn't idempotent.
 - If your middleware wraps the `http.ResponseWriter` to observe the status
   code or response size, follow the existing pattern in
-  `middleware/trafficmetric.go` / `middleware/logging.go` /
+  `middleware/builtin/trafficmetric.go` / `middleware/builtin/logging.go` /
   `middleware/metrics.go` (a thin wrapper implementing `WriteHeader`), rather
   than reimplementing response buffering.
-- Write tests the same way `middleware/registry_v2_test.go` and
+- Write tests the same way `middleware/builtin/registry_test.go` and
   `middleware/health_metrics_test.go` do: build a chain through the real
-  `MiddlewareRegistryV2`/`ChainBuilder` and drive it with
+  `Registry`/`ChainBuilder` and drive it with
   `net/http/httptest`, rather than only unit-testing the bare middleware
   function in isolation.

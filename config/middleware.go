@@ -2,7 +2,7 @@ package config
 
 // Known global middleware names. These are the identifiers accepted in
 // `middleware.global[].name` (see MiddlewareEntryConfig) and are also used by
-// the middleware package's factories (middleware/factory.go) so both sides
+// the middleware package's factories (middleware/builtin/factories.go) so both sides
 // agree on naming without middleware needing to import config, or config
 // needing to import middleware (which already imports config).
 const (

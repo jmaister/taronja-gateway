@@ -7,6 +7,7 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -19,11 +20,11 @@ import (
 type gatewayRuntime struct {
 	mux               *http.ServeMux
 	handler           http.Handler
-	rateLimiter       *middleware.RateLimiter
-	registry          *middleware.MiddlewareRegistryV2
-	authMiddleware    *middleware.AuthMiddleware
-	cacheMiddleware   *middleware.HttpCacheMiddleware
-	routeChainBuilder *middleware.RouteChainBuilder
+	rateLimiter       *builtin.RateLimiter
+	registry          *middleware.Registry
+	authMiddleware    *builtin.AuthMiddleware
+	cacheMiddleware   *builtin.HttpCacheMiddleware
+	routeChainBuilder *builtin.RouteChainBuilder
 }
 
 // buildRuntime assembles a gatewayRuntime for cfg: the rate limiter, the
@@ -36,21 +37,17 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 	// Built from the *effective* config (a per-entry middleware.global
 	// rate_limiter override if present, otherwise management.rateLimiter) —
 	// see the equivalent comment this replaces in the old createHTTPServer.
-	rl := middleware.NewRateLimiter(middleware.EffectiveRateLimiterConfig(cfg), d.BlockedClientRepo)
+	rl := builtin.NewRateLimiter(builtin.EffectiveRateLimiterConfig(cfg), d.BlockedClientRepo)
 
-	registry, err := middleware.NewGlobalMiddlewareRegistry(d.SessionStore, d.TokenService, d.TrafficMetricRepo, rl)
+	registry, globalChain, err := builtin.NewGlobalChain(cfg, d.SessionStore, d.TokenService, d.TrafficMetricRepo, rl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build middleware registry: %w", err)
-	}
-	globalChain, err := middleware.BuildGlobalChainFromConfigV2(registry, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build middleware chain: %w", err)
+		return nil, fmt.Errorf("failed to build global middleware chain: %w", err)
 	}
 	handler := globalChain.Build(mux)
 
-	authMiddleware := middleware.NewAuthMiddleware(d.SessionStore, d.TokenService, cfg.Management.Prefix)
-	cacheMiddleware := middleware.NewHttpCacheMiddleware()
-	routeChainBuilder := middleware.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
+	authMiddleware := builtin.NewAuthMiddleware(d.SessionStore, d.TokenService, cfg.Management.Prefix)
+	cacheMiddleware := builtin.NewHttpCacheMiddleware()
+	routeChainBuilder := builtin.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
 
 	return &gatewayRuntime{
 		mux:               mux,
@@ -68,10 +65,10 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 // the one-time sequence NewGatewayWithDependencies runs to bring a gateway
 // up.
 func (g *Gateway) setup(cfg *config.GatewayConfig) error {
-	if err := middleware.ValidateAllMiddleware(g.Dependencies, cfg); err != nil {
+	if err := builtin.ValidateAllMiddleware(g.Dependencies, cfg); err != nil {
 		return fmt.Errorf("middleware validation failed: %w", err)
 	}
-	middleware.LogMiddlewareStatus(cfg)
+	builtin.LogMiddlewareStatus(cfg)
 
 	rt, err := buildRuntime(cfg, g.Dependencies)
 	if err != nil {
@@ -99,7 +96,7 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	session.SetGeolocationConfig(&cfg.Geolocation)
 
 	// TLS JA4 capture (see gateway/ja4tls.go) wraps outside rt.handler
-	// entirely, rather than going through the MiddlewareRegistryV2 like the
+	// entirely, rather than going through the Registry like the
 	// seven global middlewares: it's a TLS-connection-level concern, not an
 	// HTTP one. g.tlsJA4 is nil when TLS is disabled.
 	g.handler = rt.handler

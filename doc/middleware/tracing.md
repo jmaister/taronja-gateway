@@ -164,7 +164,7 @@ happen at real gateway startup.
   (`gateway.InitTracing`, called from `main.go` before the gateway itself
   is built).
 - **Testing this doesn't need a real collector.** Unit tests
-  (`middleware/tracing_test.go`) use the OpenTelemetry SDK's own
+  (`middleware/builtin/tracing_test.go`) use the OpenTelemetry SDK's own
   in-memory exporter (`go.opentelemetry.io/otel/sdk/trace/tracetest`) to
   assert on span names, attributes, and parent/child relationships with
   no network involved at all. `gateway/tracing_test.go` goes further and

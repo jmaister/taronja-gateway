@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/exaring/ja4plus"
-	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 )
 
 // tlsJA4 wires TLS-level JA4 fingerprinting (github.com/exaring/ja4plus)
@@ -16,7 +15,7 @@ import (
 // ClientHello, which is only ever visible at the TLS layer this gateway
 // terminates, never if TLS is terminated by something else in front of it.
 //
-// Unlike JA4H (middleware/ja4.go — computed per HTTP request from header
+// Unlike JA4H (middleware/builtin/ja4.go — computed per HTTP request from header
 // count/order/presence, which varies constantly between a page load and
 // its own subresource/API requests; see doc/middleware/ja4-fingerprint.md),
 // TLS JA4 is computed once per TLS connection, from the client's actual
@@ -53,19 +52,9 @@ func (j *tlsJA4) connStateCallback(conn net.Conn, state http.ConnState) {
 	j.mw.ConnStateCallback(conn, state)
 }
 
-// middleware wraps next so a downstream handler sees the fingerprint
-// captured during the TLS handshake as a request header
-// (fingerprint.JA4TLSHeaderName) — the same "read it back off the request"
-// pattern JA4H already establishes (see middleware/ja4.go), so
-// session.NewClientInfo and any other consumer don't need a second way to
-// access a fingerprint. Must wrap the entire chain (added outside
-// buildRuntime's handler, in setup) so the header is set before
-// session_extraction/traffic_metrics run.
+// middleware wraps next so the fingerprint captured during the TLS handshake
+// is available in the request context, where fingerprint.Assign (called by
+// the ja4_fingerprint middleware) picks it up. Must wrap the entire chain.
 func (j *tlsJA4) middleware(next http.Handler) http.Handler {
-	return j.mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if fp := ja4plus.JA4FromContext(r.Context()); fp != "" {
-			r.Header.Set(fingerprint.JA4TLSHeaderName, fp)
-		}
-		next.ServeHTTP(w, r)
-	}))
+	return j.mw.Wrap(next)
 }

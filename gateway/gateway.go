@@ -24,6 +24,7 @@ import (
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/providers"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
@@ -61,15 +62,15 @@ type Gateway struct {
 	// further below — see the comment at its construction site.
 	tlsJA4 *tlsJA4
 	// Middleware components (created during gateway initialization)
-	AuthMiddleware      *middleware.AuthMiddleware
-	HttpCacheMiddleware *middleware.HttpCacheMiddleware
-	RouteChainBuilder   *middleware.RouteChainBuilder
+	AuthMiddleware      *builtin.AuthMiddleware
+	HttpCacheMiddleware *builtin.HttpCacheMiddleware
+	RouteChainBuilder   *builtin.RouteChainBuilder
 	// Rate limiter instance (for stats/config APIs)
-	RateLimiter *middleware.RateLimiter
+	RateLimiter *builtin.RateLimiter
 	// Registry of global middleware factories, built by setup. Kept
 	// on the Gateway so the middleware status/health/metrics API (see
 	// doc/refactor01.md Phase 3) can introspect it after startup.
-	MiddlewareRegistry *middleware.MiddlewareRegistryV2
+	MiddlewareRegistry *middleware.Registry
 	templates          map[string]*template.Template
 	WebappEmbedFS      *embed.FS
 	StartTime          time.Time
@@ -302,7 +303,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := builtin.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -326,11 +327,11 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
-		var errorWithResponse *middleware.ErrorWithResponse
+		var errorWithResponse *builtin.ErrorWithResponse
 		if errors.As(err, &errorWithResponse) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(errorWithResponse.Code)

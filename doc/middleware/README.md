@@ -2,7 +2,7 @@
 
 One page per built-in global middleware — what it does, how to enable and
 configure it, and what it depends on. These are the eight middlewares
-`middleware.NewGlobalMiddlewareRegistry` registers; see [Middleware
+`builtin.NewGlobalChain` registers; see [Middleware
 Architecture](../../README.md#middleware-architecture) in the main README
 for the factory/registry system they're built on, how to inspect a running
 chain (`tg middleware list`, `GET <prefix>/api/middleware`), and how to add

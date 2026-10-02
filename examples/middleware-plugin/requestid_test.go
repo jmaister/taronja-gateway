@@ -46,11 +46,11 @@ func TestMiddleware_PropagatesInboundID(t *testing.T) {
 
 // TestFactory_RegistersAndBuildsThroughRealRegistry is the point of this
 // example: it proves a third-party middleware integrates with nothing more
-// than middleware.NewMiddlewareRegistryV2 and middleware.MiddlewareFactory —
+// than middleware.NewRegistry and middleware.MiddlewareFactory —
 // the exact same public API the gateway's own built-in middleware use (see
-// middleware/factory.go).
+// middleware/builtin/factories.go).
 func TestFactory_RegistersAndBuildsThroughRealRegistry(t *testing.T) {
-	registry := middleware.NewMiddlewareRegistryV2()
+	registry := middleware.NewRegistry()
 	if err := registry.RegisterFactory(NewFactory()); err != nil {
 		t.Fatalf("RegisterFactory failed: %v", err)
 	}

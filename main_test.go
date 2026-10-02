@@ -107,7 +107,7 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 // calls os.Exit(1) directly and isn't covered here for the same reason (see
 // the note below); config.LoadConfig's and middleware.ValidateConfigOnly's
 // own error cases (what validateConfigFile just forwards) are covered
-// directly in config/version_test.go and middleware/validation_test.go.
+// directly in config/version_test.go and middleware/builtin/validation_test.go.
 func TestValidateConfigFile_ValidConfig_PrintsSuccess(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

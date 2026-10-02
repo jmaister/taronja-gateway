@@ -20,10 +20,10 @@ points:
   failure mode, so it always reports healthy)
 
 `requestid_test.go` proves the integration actually works: it registers
-`Factory` into a real `middleware.MiddlewareRegistryV2` and builds a chain
+`Factory` into a real `middleware.Registry` and builds a chain
 with it, the same way `gateway.go` builds the gateway's own global chain from
-its built-in factories (see `middleware/chain.go`'s
-`NewGlobalMiddlewareRegistry`).
+its built-in factories (see `middleware/builtin/global.go`'s
+`NewGlobalChain`).
 
 Read `doc/middleware_development.md` for the full walkthrough this example is
 based on, including how to wire a middleware like this one into a real

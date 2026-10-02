@@ -7,38 +7,9 @@
 We assume "_" is the prefix for all gateway routes, no need to configure it.
 Using /_tg/ might be a good one so we see the name of the project everywhere.
 
-## Middleware looks repeated
-
-These are the logs from the starting application, looks like middleware gets registered twice
-
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: compression
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: cors
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: rate_limiter
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: ja4_fingerprint
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: session_extraction
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: traffic_metrics
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: logging
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: tracing
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: ja4_fingerprint
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: session_extraction
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: traffic_metrics
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: logging
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: tracing
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: compression
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: cors
-2026/09/24 00:40:09 registry_v2.go:75: Registered middleware factory: rate_limiter
-2026/09/24 00:40:09 validation.go:357: All middleware validation completed successfully
-
 ## TO FIX
 
-- middleware/fingerprint/ja4.go shows two different headers for the JA4 or fingerprint, we must use only one header name
-- chain.go: NewGlobalMiddlewareRegistry and BuildGlobalChainV2, we must have only one method 
-- middleware module: separate middleware handling (factory, chain, registry,...) from the middleware implementations (cors, compression, ...), also do not name RegistryV2, just call it Registry
 - integration_ja4h_test.go really needed? if so, can be moved to a different place?
-- main.go has a GOTO!!!!!!!!!! remove it!
-- remove watch/reload/etc... just stop the app and start again, saves too much code
-- PERFORMANCE_ANALYSIS.md, move it to docs/
-- README.md is huge! summarize and move to docs/middleware/*.md, put links
 
 
 # Health check 

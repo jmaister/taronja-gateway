@@ -21,7 +21,7 @@ change to an existing `config.yaml`.
 **A factory + registry for the global middleware chain.** Every built-in
 global middleware (`rate_limiter`, `ja4_fingerprint`, `session_extraction`,
 `traffic_metrics`, `logging`) now has a `MiddlewareFactory`
-(`middleware/factory.go`) registered into a `MiddlewareRegistryV2`
+(`middleware/factory.go`) registered into a `Registry`
 (`middleware/registry_v2.go`), which builds the chain from an ordered,
 inspectable list of specs and validates declared dependencies between them at
 build time — e.g. `traffic_metrics` (which reads the JA4 fingerprint header
@@ -94,12 +94,12 @@ source.
   to the new registry internally, but produces the same chain for the same
   config either way.
 - **New, optional Go API surface**: `middleware.MiddlewareFactory`,
-  `middleware.MiddlewareRegistryV2`, `middleware.HealthChecker`,
+  `middleware.Registry`, `middleware.HealthChecker`,
   `middleware.NewGlobalMiddlewareRegistry`, `middleware.ResolveGlobalChainSpecs`,
   `middleware.BuildGlobalChainFromConfigV2`, `middleware.ValidateGlobalChainSpecs`.
   None of it needs to be used to keep existing behavior.
 - **One internal signature change**: `handlers.NewStrictApiServer` gained a
-  trailing `*middleware.MiddlewareRegistryV2` parameter (pass `nil` if you
+  trailing `*middleware.Registry` parameter (pass `nil` if you
   don't need the new endpoints to return real data). This only affects direct
   callers of that constructor — the packaged gateway (`gateway.NewGatewayWithDependencies`)
   wires it automatically.

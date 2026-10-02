@@ -10,61 +10,60 @@ import (
 
 func TestSelectFingerprint(t *testing.T) {
 	tests := []struct {
-		name          string
-		setHeaders    map[string]string
-		expectedValue string
-		expectedType  string
+		name         string
+		header       string
+		expectedVal  string
+		expectedType string
 	}{
-		{
-			name:          "nothing set",
-			setHeaders:    map[string]string{},
-			expectedValue: "",
-			expectedType:  "",
-		},
-		{
-			name:          "only JA4H",
-			setHeaders:    map[string]string{JA4HHeaderName: "ja4h-value"},
-			expectedValue: "ja4h-value",
-			expectedType:  TypeJA4H,
-		},
-		{
-			name: "stable outranks JA4H",
-			setHeaders: map[string]string{
-				JA4HHeaderName:              "ja4h-value",
-				StableFingerprintHeaderName: "stable-value",
-			},
-			expectedValue: "stable-value",
-			expectedType:  TypeStable,
-		},
-		{
-			name: "TLS JA4 outranks stable and JA4H",
-			setHeaders: map[string]string{
-				JA4HHeaderName:              "ja4h-value",
-				StableFingerprintHeaderName: "stable-value",
-				JA4TLSHeaderName:            "tls-value",
-			},
-			expectedValue: "tls-value",
-			expectedType:  TypeJA4TLS,
-		},
-		{
-			name: "only TLS JA4",
-			setHeaders: map[string]string{
-				JA4TLSHeaderName: "tls-value",
-			},
-			expectedValue: "tls-value",
-			expectedType:  TypeJA4TLS,
-		},
+		{"missing", "", "", ""},
+		{"ja4h", "ja4h:ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", TypeJA4H},
+		{"tls", "ja4_tls:t13i1311h2_f57a46bbacb6_e5728521abd4", "t13i1311h2_f57a46bbacb6_e5728521abd4", TypeJA4TLS},
+		{"value keeps later colons", "stable:a:b", "a:b", TypeStable},
+		{"no separator", "garbage", "", ""},
+		{"empty value", "ja4h:", "", ""},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			for k, v := range tt.setHeaders {
-				req.Header.Set(k, v)
+			if tt.header != "" {
+				req.Header.Set(HeaderName, tt.header)
 			}
-			value, fpType := SelectFingerprint(req)
-			assert.Equal(t, tt.expectedValue, value)
-			assert.Equal(t, tt.expectedType, fpType)
+			val, typ := SelectFingerprint(req)
+			assert.Equal(t, tt.expectedVal, val)
+			assert.Equal(t, tt.expectedType, typ)
 		})
 	}
+}
+
+func TestAssign_PrefersStableOverJA4H(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept-Language", "en-US")
+	req.Header.Set(HeaderName, "ja4_tls:spoofed")
+
+	Assign(req, "ja4h-value")
+
+	val, typ := SelectFingerprint(req)
+	assert.Equal(t, TypeStable, typ)
+	assert.Equal(t, StableFingerprint(req), val)
+}
+
+func TestAssign_FallsBackToJA4H(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Del("User-Agent")
+
+	Assign(req, "ja4h-value")
+
+	val, typ := SelectFingerprint(req)
+	assert.Equal(t, TypeJA4H, typ)
+	assert.Equal(t, "ja4h-value", val)
+}
+
+func TestAssign_ClearsHeaderWhenNothingAvailable(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(HeaderName, "ja4_tls:spoofed")
+
+	Assign(req, "")
+
+	assert.Empty(t, req.Header.Get(HeaderName))
 }

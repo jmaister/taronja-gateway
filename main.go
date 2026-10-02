@@ -19,7 +19,7 @@ import (
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
-	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -353,7 +353,7 @@ func runGateway(configFilePath string) {
 	// Shutdown, or ListenAndServe returning on its own) — nothing is still
 	// calling Dependencies.TrafficMetricRepo.Create concurrently by this
 	// point, so it's safe to flush and stop its batching goroutine (see
-	// Dependencies.Close and PERFORMANCE_ANALYSIS.md).
+	// Dependencies.Close and doc/PERFORMANCE_ANALYSIS.md).
 	gateway.Dependencies.Close()
 
 	// A fresh context, since the shutdown one above may already be expired.
@@ -399,7 +399,7 @@ func addUser(username, email, password string) {
 }
 
 // listMiddleware loads a config file and prints the resolved global middleware
-// chain (see doc/refactor01.md Phase 4). It builds a MiddlewareRegistryV2 with
+// chain (see doc/refactor01.md Phase 4). It builds the registry via builtin.NewGlobalChain with
 // no real dependencies (nil session store, repositories, rate limiter) since
 // introspection only needs each factory's name/description/dependencies —
 // Create() never actually invokes them — so this never opens a database
@@ -411,19 +411,14 @@ func listMiddleware(configFilePath string) {
 		os.Exit(1)
 	}
 
-	registry, err := middleware.NewGlobalMiddlewareRegistry(nil, nil, nil, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: Failed to build middleware registry: %v\n", err)
-		os.Exit(1)
-	}
-
-	specs, err := middleware.ResolveGlobalChainSpecs(cfg)
+	specs, err := builtin.ResolveGlobalChainSpecs(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: Failed to resolve middleware chain: %v\n", err)
 		os.Exit(1)
 	}
 
-	if _, err := middleware.BuildGlobalChainFromConfigV2(registry, cfg); err != nil {
+	registry, _, err := builtin.NewGlobalChain(cfg, nil, nil, nil, nil)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: Failed to build middleware chain: %v\n", err)
 		os.Exit(1)
 	}
@@ -528,7 +523,7 @@ func validateConfigFile(configFilePath string) {
 		os.Exit(1)
 	}
 
-	if err := middleware.ValidateConfigOnly(cfg); err != nil {
+	if err := builtin.ValidateConfigOnly(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}

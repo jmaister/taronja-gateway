@@ -6,7 +6,7 @@
 //
 // See doc/middleware_development.md for the accompanying walkthrough, and
 // requestid_test.go for it being registered and built through the real
-// middleware.MiddlewareRegistryV2, the same way the gateway's own built-in
+// middleware.Registry, the same way the gateway's own built-in
 // middleware are.
 package requestid
 
@@ -61,7 +61,7 @@ func Middleware(next http.Handler) http.Handler {
 }
 
 // Factory implements middleware.MiddlewareFactory — the interface the
-// gateway's registry (middleware.MiddlewareRegistryV2) uses to discover and
+// gateway's registry (middleware.Registry) uses to discover and
 // build middleware. This is the only integration point a third-party
 // middleware needs; nothing here is exported by or coupled to the gateway's
 // internal packages.
@@ -90,7 +90,7 @@ func (f *Factory) GetDescription() string {
 // GetDependencies returns nil: request ID assignment has no ordering
 // requirement relative to any other middleware. A non-empty slice here would
 // mean "the named middleware(s) must already be in the chain before this
-// one" — see MiddlewareRegistryV2.BuildChain.
+// one" — see Registry.BuildChain.
 func (f *Factory) GetDependencies() []string { return nil }
 
 // GetDefaultConfig returns struct{}{}: this middleware takes no configuration.

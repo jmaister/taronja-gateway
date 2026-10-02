@@ -93,7 +93,7 @@ func IsTrustedProxy(remoteIP string) bool {
 // anything in the request's URL, but because the attacker's own
 // X-Forwarded-For header was trusted at face value. Beyond the log
 // noise, unconditionally trusting these headers also made IP-based rate
-// limiting (middleware/ratelimiter.go) and analytics trivially spoofable
+// limiting (middleware/builtin/ratelimiter.go) and analytics trivially spoofable
 // by any client that isn't actually behind a real proxy. An earlier fix
 // made trust explicitly configurable (server.trustedProxies); that was
 // scrapped for this — the deployment shapes it needed to cover (proxy on
@@ -141,7 +141,7 @@ func GetClientIP(r *http.Request) string {
 // 7239 describes: under that topology — common, not universal — a client
 // sending its own fake leading entry got it trusted outright, letting it
 // rotate a fresh "identity" per request to defeat IP-based rate limiting
-// and blocklisting (middleware/ratelimiter.go), and to poison the IP
+// and blocklisting (middleware/builtin/ratelimiter.go), and to poison the IP
 // address recorded against every session/traffic-metric row.
 //
 // Returns "" if every entry is itself trusted (an all-internal chain, e.g.

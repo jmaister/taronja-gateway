@@ -21,7 +21,7 @@ type HealthChecker interface {
 // value is false if name is not a registered factory; a registered factory
 // that doesn't implement HealthChecker still returns true, with
 // MiddlewareHealth{Status: "unknown"}.
-func (r *MiddlewareRegistryV2) GetHealth(name string) (MiddlewareHealth, bool) {
+func (r *Registry) GetHealth(name string) (MiddlewareHealth, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

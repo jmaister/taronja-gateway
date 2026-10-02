@@ -25,7 +25,7 @@ never adds latency to the response the client sees. In production
 are coalesced in memory and flushed to the database every 100 records or
 500ms, whichever comes first, rather than one transaction per request —
 this is not configurable via YAML, since there's no real trade-off for an
-operator to tune (see `PERFORMANCE_ANALYSIS.md`'s "batching traffic-metrics
+operator to tune (see `doc/PERFORMANCE_ANALYSIS.md`'s "batching traffic-metrics
 writes" section for the measured effect and the small, deliberate
 durability trade-off: up to 500ms of the very latest rows can be lost on a
 hard crash instead of a graceful shutdown). Test dependencies
@@ -112,6 +112,6 @@ silently recording metrics with that field empty.
 - [doc/middleware/ja4-fingerprint.md](ja4-fingerprint.md) and
   [doc/middleware/session-extraction.md](session-extraction.md) — the rest
   of the "analytics" group, run immediately before this one.
-- `PERFORMANCE_ANALYSIS.md` — the excludeStaticAssets and write-batching
+- `doc/PERFORMANCE_ANALYSIS.md` — the excludeStaticAssets and write-batching
   measurements referenced above, plus the broader performance history of
   this middleware.

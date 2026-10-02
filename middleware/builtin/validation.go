@@ -1,0 +1,456 @@
+package builtin
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/gateway/deps"
+)
+
+// ValidationError represents a middleware validation error
+type ValidationError struct {
+	Middleware string
+	Message    string
+}
+
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("middleware %s: %s", e.Middleware, e.Message)
+}
+
+// ValidateDependencies validates that all required dependencies are available
+func ValidateDependencies(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	if deps == nil {
+		return &ValidationError{
+			Middleware: "global",
+			Message:    "dependencies cannot be nil",
+		}
+	}
+
+	if config == nil {
+		return &ValidationError{
+			Middleware: "global",
+			Message:    "gateway configuration is required",
+		}
+	}
+
+	return nil
+}
+
+// ValidateAnalyticsMiddleware validates analytics middleware configuration and dependencies
+func ValidateAnalyticsMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	if !config.Management.Analytics {
+		// Analytics not enabled, no validation needed
+		return nil
+	}
+
+	log.Printf("Validating analytics middleware dependencies...")
+
+	// Validate SessionStore for session extraction
+	if deps.SessionStore == nil {
+		return &ValidationError{
+			Middleware: "session_extraction",
+			Message:    "session store is required when analytics is enabled",
+		}
+	}
+
+	// Validate TokenService for session extraction
+	if deps.TokenService == nil {
+		return &ValidationError{
+			Middleware: "session_extraction",
+			Message:    "token service is required when analytics is enabled",
+		}
+	}
+
+	// Validate TrafficMetricRepository for traffic metrics
+	if deps.TrafficMetricRepo == nil {
+		return &ValidationError{
+			Middleware: "traffic_metrics",
+			Message:    "traffic metric repository is required when analytics is enabled",
+		}
+	}
+
+	log.Printf("Analytics middleware dependencies validated successfully")
+	return nil
+}
+
+// ValidateAuthenticationMiddleware validates authentication middleware configuration and dependencies
+func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	// Check if any routes require authentication
+	hasAuthRoutes := false
+	for _, route := range config.Routes {
+		if route.Authentication.Enabled {
+			hasAuthRoutes = true
+			break
+		}
+	}
+
+	if !hasAuthRoutes {
+		// No auth routes, no validation needed
+		return nil
+	}
+
+	log.Printf("Validating authentication middleware dependencies...")
+
+	// Validate SessionStore for authentication
+	if deps.SessionStore == nil {
+		return &ValidationError{
+			Middleware: "authentication",
+			Message:    "session store is required when authentication is enabled on routes",
+		}
+	}
+
+	// Validate TokenService for authentication
+	if deps.TokenService == nil {
+		return &ValidationError{
+			Middleware: "authentication",
+			Message:    "token service is required when authentication is enabled on routes",
+		}
+	}
+
+	// Validate UserRepository for authentication
+	if deps.UserRepo == nil {
+		return &ValidationError{
+			Middleware: "authentication",
+			Message:    "user repository is required when authentication is enabled on routes",
+		}
+	}
+
+	// Validate TokenRepository for authentication
+	if deps.TokenRepo == nil {
+		return &ValidationError{
+			Middleware: "authentication",
+			Message:    "token repository is required when authentication is enabled on routes",
+		}
+	}
+
+	// Validate management prefix for redirects
+	if config.Management.Prefix == "" {
+		return &ValidationError{
+			Middleware: "authentication",
+			Message:    "management prefix is required when authentication is enabled",
+		}
+	}
+
+	log.Printf("Authentication middleware dependencies validated successfully")
+	return nil
+}
+
+// ValidateRateLimiterMiddleware validates the rate limiter configuration.
+//
+// This reads EffectiveRateLimiterConfig rather than config.Management.RateLimiter
+// directly, so an explicit `middleware: global` rate_limiter entry's own
+// override (see specsFromMiddlewareSection) gets validated too — otherwise an
+// invalid per-entry override (e.g. a negative requestsPerMinute) would sail
+// through startup validation untouched, since it never lives under
+// management.rateLimiter at all, and only misbehave once the chain actually
+// builds.
+func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	rl := EffectiveRateLimiterConfig(config)
+	// if neither mode is enabled, nothing to check
+	if !rl.IsEnabled() {
+		return nil
+	}
+
+	if rl.RequestsPerMinute < 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "requestsPerMinute cannot be negative"}
+	}
+	if rl.MaxErrors < 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "maxErrors cannot be negative"}
+	}
+	if rl.BlockMinutes <= 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "blockMinutes must be positive when rate limiting is enabled"}
+	}
+
+	// vulnerability scan validation
+	v := rl.VulnerabilityScan
+	if v.Max404 < 0 {
+		return &ValidationError{Middleware: "rate_limiter", Message: "vulnerabilityScan.max404 cannot be negative"}
+	}
+	if v.Max404 > 0 {
+		if len(v.URLs) == 0 {
+			return &ValidationError{Middleware: "rate_limiter", Message: "vulnerabilityScan.urls must be provided when max404 > 0"}
+		}
+		if v.BlockMinutes <= 0 {
+			return &ValidationError{Middleware: "rate_limiter", Message: "vulnerabilityScan.blockMinutes must be positive when scan detection is enabled"}
+		}
+	}
+
+	return nil
+}
+
+// ValidateCORSMiddleware validates the CORS configuration.
+//
+// This reads EffectiveCORSConfig rather than config.Management.CORS
+// directly, so an explicit `middleware: global` cors entry's own override
+// (see specsFromMiddlewareSection) gets validated too — otherwise a config
+// combining a wildcard origin with allowCredentials via that path would
+// sail through startup validation untouched (Management.CORS itself would
+// look disabled, since the operator configured CORS the other way) and
+// only defeat the credentialed-request protection once the chain actually
+// builds and starts serving traffic. See EffectiveRateLimiterConfig's own
+// doc comment for the identical class of gap this mirrors.
+func ValidateCORSMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	cors := EffectiveCORSConfig(config)
+	if !cors.IsEnabled() {
+		return nil
+	}
+
+	// The CORS spec forbids a wildcard origin on a credentialed request —
+	// browsers reject "Access-Control-Allow-Origin: *" outright when
+	// Access-Control-Allow-Credentials is also true. Reject this combination
+	// at config load time instead of shipping a CORS setup that silently
+	// doesn't work in any browser.
+	if cors.AllowCredentials && cors.AllowsAnyOrigin() {
+		return &ValidationError{
+			Middleware: "cors",
+			Message:    "allowedOrigins cannot include \"*\" when allowCredentials is true (browsers reject that combination) — list the specific origins that need credentials instead",
+		}
+	}
+
+	if cors.MaxAgeSeconds < 0 {
+		return &ValidationError{Middleware: "cors", Message: "maxAgeSeconds cannot be negative"}
+	}
+
+	return nil
+}
+
+// ValidateMiddlewareChainConfig validates the global middleware chain
+// configuration — the explicit `middleware:` section if present, otherwise
+// the legacy management.analytics/logging/rateLimiter flags — by resolving it
+// to the same ordered MiddlewareSpec list NewGlobalChain will use
+// (ResolveGlobalChainSpecs) and checking every spec's name and dependency
+// graph (ValidateGlobalChainSpecs). This runs before real dependencies
+// (session store, DB repositories, rate limiter instance) exist, so it
+// catches mistakes like enabling session_extraction without ja4_fingerprint,
+// or a typo'd middleware name, at startup instead of at request time.
+func ValidateMiddlewareChainConfig(config *config.GatewayConfig) error {
+	specs, err := ResolveGlobalChainSpecs(config)
+	if err != nil {
+		return &ValidationError{Middleware: "global", Message: err.Error()}
+	}
+	if err := ValidateGlobalChainSpecs(specs); err != nil {
+		return &ValidationError{Middleware: "global", Message: err.Error()}
+	}
+	return nil
+}
+
+// ValidateAdminAccess validates admin access configuration
+func ValidateAdminAccess(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	if !config.Management.Admin.Enabled {
+		// Admin not enabled, no validation needed
+		return nil
+	}
+
+	log.Printf("Validating admin access configuration...")
+
+	// Validate admin credentials
+	if config.Management.Admin.Username == "" {
+		return &ValidationError{
+			Middleware: "admin",
+			Message:    "admin username is required when admin is enabled",
+		}
+	}
+
+	if config.Management.Admin.Password == "" {
+		return &ValidationError{
+			Middleware: "admin",
+			Message:    "admin password is required when admin is enabled",
+		}
+	}
+
+	/*
+		if deps.GatewayConfig.Management.Admin.Email == "" {
+			return &ValidationError{
+				Middleware: "admin",
+				Message:    "admin email is required when admin is enabled",
+			}
+		}
+	*/
+
+	log.Printf("Admin access configuration validated successfully")
+	return nil
+}
+
+// ValidateRouteConfiguration validates route-specific middleware configuration
+func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	log.Printf("Validating route middleware configuration...")
+
+	for _, route := range config.Routes {
+		// Validate static routes
+		if route.Static {
+			if route.ToFile == "" && len(route.To) == 0 && route.ToFolder == "" {
+				return &ValidationError{
+					Middleware: "static",
+					Message:    fmt.Sprintf("static route '%s' must have either ToFile, ToFolder, or To configured", route.Name),
+				}
+			}
+		} else {
+			// Validate proxy routes
+			if len(route.To) == 0 {
+				return &ValidationError{
+					Middleware: "proxy",
+					Message:    fmt.Sprintf("proxy route '%s' must have To URL configured", route.Name),
+				}
+			}
+		}
+
+		// Validate cache configuration
+		if route.Options != nil && route.Options.CacheControlSeconds != nil {
+			if *route.Options.CacheControlSeconds < 0 {
+				return &ValidationError{
+					Middleware: "cache",
+					Message:    fmt.Sprintf("route '%s' has invalid cache control seconds: %d", route.Name, *route.Options.CacheControlSeconds),
+				}
+			}
+		}
+	}
+
+	log.Printf("Route middleware configuration validated successfully")
+	return nil
+}
+
+// ValidateAllMiddleware validates all middleware configuration and dependencies
+func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
+	log.Printf("Starting comprehensive middleware validation...")
+
+	// Validate basic dependencies
+	if err := ValidateDependencies(deps, config); err != nil {
+		return err
+	}
+
+	// Validate analytics middleware
+	if err := ValidateAnalyticsMiddleware(deps, config); err != nil {
+		return err
+	}
+
+	// Validate authentication middleware
+	if err := ValidateAuthenticationMiddleware(deps, config); err != nil {
+		return err
+	}
+
+	// Validate admin access
+	if err := ValidateAdminAccess(deps, config); err != nil {
+		return err
+	}
+
+	// Validate route configuration
+	if err := ValidateRouteConfiguration(deps, config); err != nil {
+		return err
+	}
+
+	// Validate rate limiter settings
+	if err := ValidateRateLimiterMiddleware(deps, config); err != nil {
+		return err
+	}
+
+	// Validate CORS settings
+	if err := ValidateCORSMiddleware(deps, config); err != nil {
+		return err
+	}
+
+	// Validate the global middleware chain's names and dependency graph
+	if err := ValidateMiddlewareChainConfig(config); err != nil {
+		return err
+	}
+
+	log.Printf("All middleware validation completed successfully")
+	return nil
+}
+
+// ValidateConfigOnly runs every ValidateAllMiddleware check that validates
+// the config file itself and never dereferences deps (ValidateRouteConfiguration,
+// ValidateAdminAccess, ValidateRateLimiterMiddleware, ValidateCORSMiddleware,
+// ValidateMiddlewareChainConfig) — deliberately skipping
+// ValidateAnalyticsMiddleware/ValidateAuthenticationMiddleware/ValidateDependencies,
+// which check that dependency injection wired real objects (a session store,
+// a DB-backed user repository, ...), not a property of the config file.
+//
+// This is what `tg validate` calls: it needs to check the config is well
+// formed without opening a database connection or constructing a real
+// deps.Dependencies, the same way `tg middleware list` and `tg migrate`
+// don't either.
+func ValidateConfigOnly(config *config.GatewayConfig) error {
+	if err := ValidateRouteConfiguration(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateAdminAccess(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateRateLimiterMiddleware(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateCORSMiddleware(nil, config); err != nil {
+		return err
+	}
+	if err := ValidateMiddlewareChainConfig(config); err != nil {
+		return err
+	}
+	return nil
+}
+
+// LogMiddlewareStatus logs the status of all middleware based on configuration
+func LogMiddlewareStatus(config *config.GatewayConfig) {
+	log.Printf("=== middleware.Middleware Status ===")
+
+	// Global middleware status
+	if config.Management.Analytics {
+		log.Printf("✓ JA4H Fingerprinting: ENABLED")
+		log.Printf("✓ Session Extraction: ENABLED")
+		log.Printf("✓ Traffic Metrics: ENABLED")
+	} else {
+		log.Printf("✗ Analytics Middleware: DISABLED")
+	}
+
+	if config.Management.Logging {
+		log.Printf("✓ Request Logging: ENABLED")
+	} else {
+		log.Printf("✗ Request Logging: DISABLED")
+	}
+
+	// Rate limiter
+	if config.Management.RateLimiter.IsEnabled() {
+		log.Printf("✓ Rate Limiter: ENABLED (rpm=%d, maxErrors=%d, blockMinutes=%d, scanMax404=%d, scanURLs=%d, scanBlockMinutes=%d)",
+			config.Management.RateLimiter.RequestsPerMinute,
+			config.Management.RateLimiter.MaxErrors,
+			config.Management.RateLimiter.BlockMinutes,
+			config.Management.RateLimiter.VulnerabilityScan.Max404,
+			len(config.Management.RateLimiter.VulnerabilityScan.URLs),
+			config.Management.RateLimiter.VulnerabilityScan.BlockMinutes)
+	} else {
+		log.Printf("✗ Rate Limiter: DISABLED")
+	}
+
+	// Route-specific middleware status
+	authRoutes := 0
+	cacheRoutes := 0
+	for _, route := range config.Routes {
+		if route.Authentication.Enabled {
+			authRoutes++
+		}
+		if route.Options != nil && route.Options.CacheControlSeconds != nil {
+			cacheRoutes++
+		}
+	}
+
+	if authRoutes > 0 {
+		log.Printf("✓ Authentication: ENABLED on %d routes", authRoutes)
+	} else {
+		log.Printf("✗ Authentication: NOT USED")
+	}
+
+	if cacheRoutes > 0 {
+		log.Printf("✓ Cache Control: ENABLED on %d routes", cacheRoutes)
+	} else {
+		log.Printf("✗ Cache Control: NOT USED")
+	}
+
+	// Admin access status
+	if config.Management.Admin.Enabled {
+		log.Printf("✓ Admin Access: ENABLED (user: %s)", config.Management.Admin.Username)
+	} else {
+		log.Printf("✗ Admin Access: DISABLED")
+	}
+
+	log.Printf("=========================")
+}

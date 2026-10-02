@@ -74,7 +74,7 @@ func NewProduction() *Dependencies {
 	userRepo := db.NewDBUserRepository(gormDB)
 	sessionRepo := db.NewSessionRepositoryDB(gormDB)
 	// Wrapped in a batcher: see the trafficMetricsBatchSize doc comment and
-	// PERFORMANCE_ANALYSIS.md for why. Dependencies.Close flushes it on
+	// doc/PERFORMANCE_ANALYSIS.md for why. Dependencies.Close flushes it on
 	// shutdown.
 	trafficMetricRepo := db.NewBatchingTrafficMetricRepository(
 		db.NewTrafficMetricRepository(gormDB),
