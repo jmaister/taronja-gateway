@@ -64,6 +64,10 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	// exercised here against genuine historical data instead.
 	sqlDB, err := gdb.DB()
 	require.NoError(t, err)
+	// Windows can't delete t.TempDir()'s database file while it's open, which
+	// fails the test at cleanup; cleanups run last-in-first-out, so this
+	// closes the connection before TempDir's removal.
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, runMigrations(sqlDB))
 
 	// Existing data survived, untouched in substance.
