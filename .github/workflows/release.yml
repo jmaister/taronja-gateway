@@ -18,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.27'
           cache: true
 
       - name: Set up Node.js
@@ -28,8 +28,16 @@ jobs:
           cache: 'npm'
           cache-dependency-path: webapp/package-lock.json
 
+      # See ci.yml's "Generate Go API code and TypeScript client" step for
+      # why this runs from inside webapp/ (after `npm install` there) rather
+      # than a bare `npx --yes @hey-api/openapi-ts` from the repo root: the
+      # bare form resolves its own isolated (and potentially incompatible)
+      # typescript dependency instead of the one pinned in webapp/package.json.
       - name: Generate API client
-        run: npx --yes @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch
+        run: |
+          cd webapp
+          npm install
+          npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
 
       - name: Set up GoReleaser
         uses: goreleaser/goreleaser-action@v7

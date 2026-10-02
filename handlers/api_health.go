@@ -13,7 +13,7 @@ func (s *StrictApiServer) HealthCheck(ctx context.Context, request api.HealthChe
 
 	response := api.HealthCheck200JSONResponse{
 		Status:    "ok",
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UTC(),
 		Uptime:    uptime.String(),
 	}
 

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"html/template" // Added for template parsing
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -22,9 +24,11 @@ import (
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/providers"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // --- Gateway Struct ---
@@ -34,96 +38,54 @@ type Gateway struct {
 	Mux           *http.ServeMux
 	Dependencies  *deps.Dependencies
 	// Middleware components (created during gateway initialization)
-	AuthMiddleware      *middleware.AuthMiddleware
-	HttpCacheMiddleware *middleware.HttpCacheMiddleware
-	RouteChainBuilder   *middleware.RouteChainBuilder
+	AuthMiddleware      *builtin.AuthMiddleware
+	HttpCacheMiddleware *builtin.HttpCacheMiddleware
+	RouteChainBuilder   *builtin.RouteChainBuilder
 	// Rate limiter instance (for stats/config APIs)
-	RateLimiter   *middleware.RateLimiter
-	templates     map[string]*template.Template
-	WebappEmbedFS *embed.FS
-	StartTime     time.Time
+	RateLimiter *builtin.RateLimiter
+	// Registry of global middleware factories, built by setup. Kept
+	// on the Gateway so the middleware status/health/metrics API (see
+	// doc/refactor01.md Phase 3) can introspect it after startup.
+	MiddlewareRegistry *middleware.Registry
+	templates          map[string]*template.Template
+	WebappEmbedFS      *embed.FS
+	StartTime          time.Time
+
+	handler http.Handler
 }
 
 // --- NewGatewayWithDependencies Function ---
 
 // NewGatewayWithDependencies creates a new gateway instance with pre-initialized dependencies
-func NewGatewayWithDependencies(config *config.GatewayConfig, webappEmbedFS *embed.FS, deps *deps.Dependencies) (*Gateway, error) {
-	// Create middleware components from the core dependencies
-	authMiddleware := middleware.NewAuthMiddleware(deps.SessionStore, deps.TokenService, config.Management.Prefix)
-	cacheMiddleware := middleware.NewHttpCacheMiddleware()
-	routeChainBuilder := middleware.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
-
-	// Validate middleware dependencies
-	if err := middleware.ValidateAllMiddleware(deps, config); err != nil {
-		return nil, fmt.Errorf("middleware validation failed: %w", err)
-	}
-
-	// Log middleware status
-	middleware.LogMiddlewareStatus(config)
-
-	// Create HTTP server with middleware chain (also returns limiter)
-	server, mux, rl, err := createHTTPServer(config, deps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
-	}
-
+func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.FS, deps *deps.Dependencies) (*Gateway, error) {
 	// Initialize templates
 	templates, err := parseTemplates(static.StaticAssetsFS, "login.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
-	// Create gateway instance
 	gateway := &Gateway{
-		GatewayConfig:       config,
-		Server:              server,
-		Mux:                 mux,
-		Dependencies:        deps,
-		AuthMiddleware:      authMiddleware,
-		HttpCacheMiddleware: cacheMiddleware,
-		RouteChainBuilder:   routeChainBuilder,
-		RateLimiter:         rl,
-		templates:           templates,
-		WebappEmbedFS:       webappEmbedFS,
-		StartTime:           time.Now(),
+		Dependencies:  deps,
+		templates:     templates,
+		WebappEmbedFS: webappEmbedFS,
+		StartTime:     time.Now(),
 	}
 
-	// Configure routes
-	if err := configureRoutes(gateway); err != nil {
-		return nil, fmt.Errorf("failed to configure routes: %w", err)
+	// Validates, builds the middleware chain/mux/rate limiter, registers all
+	// routes, and ensures the admin user.
+	if err := gateway.setup(cfg); err != nil {
+		return nil, err
 	}
 
-	// Ensure admin user exists if configured
-	if err := ensureAdminUser(config, deps.UserRepo); err != nil {
-		return nil, fmt.Errorf("failed to ensure admin user: %w", err)
-	}
-
-	return gateway, nil
-}
-
-// createHTTPServer creates the HTTP server with middleware chain
-func createHTTPServer(config *config.GatewayConfig, deps *deps.Dependencies) (*http.Server, *http.ServeMux, *middleware.RateLimiter, error) {
-	mux := http.NewServeMux()
-
-	// instantiate rate limiter once and keep reference
-	rl := middleware.NewRateLimiter(config.Management.RateLimiter)
-
-	// Build the global middleware chain with the limiter
-	globalChain := middleware.BuildGlobalChain(config, deps.SessionStore, deps.TokenService, deps.TrafficMetricRepo, rl)
-	handler := globalChain.Build(mux)
-
-	// attach limiter to gateway via returned value later
-	// (caller is responsible for storing it)
-
-	server := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port),
+	gateway.Server = &http.Server{
+		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,
-		Handler:      handler,
+		Handler:      gateway.handler,
 	}
 
-	return server, mux, rl, nil
+	return gateway, nil
 }
 
 // configureRoutes sets up all the gateway routes
@@ -211,26 +173,24 @@ func (g *Gateway) registerDashboard(prefix string) {
 		// Get the path after stripping the dashboard prefix
 		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
 
-		// Check if this looks like a static asset (has file extension)
-		isStaticAsset := strings.Contains(path, ".") && (strings.HasSuffix(path, ".js") ||
-			strings.HasSuffix(path, ".css") ||
-			strings.HasSuffix(path, ".json") ||
-			strings.HasSuffix(path, ".png") ||
-			strings.HasSuffix(path, ".jpg") ||
-			strings.HasSuffix(path, ".jpeg") ||
-			strings.HasSuffix(path, ".gif") ||
-			strings.HasSuffix(path, ".svg") ||
-			strings.HasSuffix(path, ".ico") ||
-			strings.HasSuffix(path, ".woff") ||
-			strings.HasSuffix(path, ".woff2") ||
-			strings.HasSuffix(path, ".ttf") ||
-			strings.HasSuffix(path, ".eot"))
+		// A path with a dot might be a real static asset; one without is
+		// certainly a client-side SPA route (e.g. /admin/users) and never
+		// worth an embed.FS lookup. This used to be a fixed 12-extension
+		// whitelist (.js/.css/.json/.png/...), which meant any asset type
+		// Vite happened to emit that wasn't on the list — a .wasm chunk, a
+		// .map source map, a .webmanifest, anything — would never even be
+		// attempted below and would silently always fall back to
+		// index.html instead of being served. The ReadFile attempt right
+		// after this is the real, authoritative check; this is only a
+		// cheap pre-filter to skip that attempt for the common case of an
+		// extensionless route.
+		looksLikeAsset := strings.Contains(path, ".")
 
 		var data []byte
 		var err error
 		var finalPath string
 
-		if path == "" || path == "/" || !isStaticAsset {
+		if path == "" || path == "/" || !looksLikeAsset {
 			// Serve index.html for root requests or SPA routes (no file extension)
 			finalPath = "webapp/dist/index.html"
 		} else {
@@ -253,32 +213,20 @@ func (g *Gateway) registerDashboard(prefix string) {
 			}
 		}
 
-		// Determine content type based on the final served file extension
-		contentType := "text/html"
-		if strings.HasSuffix(finalPath, ".js") {
-			contentType = "application/javascript"
-		} else if strings.HasSuffix(finalPath, ".css") {
-			contentType = "text/css"
-		} else if strings.HasSuffix(finalPath, ".json") {
-			contentType = "application/json"
-		} else if strings.HasSuffix(finalPath, ".png") {
-			contentType = "image/png"
-		} else if strings.HasSuffix(finalPath, ".jpg") || strings.HasSuffix(finalPath, ".jpeg") {
-			contentType = "image/jpeg"
-		} else if strings.HasSuffix(finalPath, ".gif") {
-			contentType = "image/gif"
-		} else if strings.HasSuffix(finalPath, ".svg") {
-			contentType = "image/svg+xml"
-		} else if strings.HasSuffix(finalPath, ".ico") {
-			contentType = "image/x-icon"
-		} else if strings.HasSuffix(finalPath, ".woff") {
-			contentType = "font/woff"
-		} else if strings.HasSuffix(finalPath, ".woff2") {
-			contentType = "font/woff2"
-		} else if strings.HasSuffix(finalPath, ".ttf") {
-			contentType = "font/ttf"
-		} else if strings.HasSuffix(finalPath, ".eot") {
-			contentType = "application/vnd.ms-fontobject"
+		// Determine content type from the final served file's extension.
+		// mime.TypeByExtension is a map lookup (O(1) and complete — every
+		// extension Go/the OS knows about) replacing what used to be a
+		// hand-maintained chain of up to 12 sequential HasSuffix checks
+		// that only covered exactly the same 12 extensions as
+		// looksLikeAsset above; any other real asset type fell through to
+		// "text/html", which is actively wrong for a binary file (a
+		// browser could try to render it as a page) rather than merely
+		// incomplete. index.html resolves correctly through the same
+		// lookup (mime.TypeByExtension(".html")), so it needs no special
+		// case here.
+		contentType := mime.TypeByExtension(filepath.Ext(finalPath))
+		if contentType == "" {
+			contentType = "application/octet-stream"
 		}
 
 		w.Header().Set("Content-Type", contentType)
@@ -286,7 +234,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := middleware.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := builtin.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -301,17 +249,20 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.Dependencies.TrafficMetricRepo,
 		g.Dependencies.TokenRepo,
 		g.Dependencies.CountersRepo,
+		g.Dependencies.BlockedClientRepo,
 		g.Dependencies.TokenService,
 		g.StartTime,
 		g.RateLimiter,
+		g.MiddlewareRegistry,
+		g.Dependencies.NotificationService,
 	)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := middleware.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
-		var errorWithResponse *middleware.ErrorWithResponse
+		var errorWithResponse *builtin.ErrorWithResponse
 		if errors.As(err, &errorWithResponse) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(errorWithResponse.Code)
@@ -367,17 +318,34 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 
 // registerLoginRoutes adds login routes for basic and OAuth2 authentication.
 func (g *Gateway) registerLoginRoutes() {
+	cfg := g.GatewayConfig
+
 	// Register all providers - basic, OAuth, etc.
-	if g.GatewayConfig.HasAnyAuthentication() {
-		// Register all authentication providers based on configuration
-		providers.RegisterProviders(g.Mux, g.Dependencies.SessionStore, g.GatewayConfig, g.Dependencies.UserRepo)
+	if cfg.HasAnyAuthentication() {
+		// context.Background(), not a cancelable context tied to some later
+		// "replace this registration" event: registerLoginRoutes only ever
+		// runs once now, at startup, so there is no next registration a
+		// background goroutine (see RegisterProviders' own doc comment for
+		// the kind of provider that starts one) would ever need cancelling
+		// for — the process exiting is what ends it, same as everything
+		// else this gateway starts at startup.
+		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
 	}
 
 	// Login page handler
-	loginPath := g.GatewayConfig.Management.Prefix + "/login"
+	loginPath := cfg.Management.Prefix + "/login"
 	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		// Populate data from config and request
-		data := config.NewLoginPageData(r.URL.Query().Get("redirect"), g.GatewayConfig)
+		// Populate data from config and request. Reads the *live* config
+		// (not the cfg captured above at route-registration time) since this
+		// closure keeps running against whichever generation is current —
+		// see currentConfig's doc comment. The redirect value is sanitized
+		// here too, not just by the login/logout handlers it eventually
+		// reaches (see session.SanitizeRedirectPath's doc comment) — this
+		// keeps .RedirectURL itself always a safe same-origin path
+		// wherever the template embeds it (the per-provider login links,
+		// the hidden form field), rather than relying on every downstream
+		// consumer to have remembered to sanitize it independently.
+		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
 
 		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
 		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root
@@ -414,18 +382,30 @@ func (g *Gateway) configureUserRoutes() error {
 				continue
 			}
 		} else {
-			if routeConfig.To == "" {
+			if len(routeConfig.To) == 0 {
 				log.Printf("Warning: Empty 'to' URL for proxy route '%s'. Skipping registration.", routeConfig.Name)
 				continue
 			}
-			targetURL, parseErr := url.Parse(routeConfig.To)
+			targetURLs := make([]*url.URL, 0, len(routeConfig.To))
+			var parseErr error
+			for _, to := range routeConfig.To {
+				targetURL, err := url.Parse(to)
+				if err != nil {
+					parseErr = fmt.Errorf("target %q: %w", to, err)
+					break
+				}
+				targetURLs = append(targetURLs, targetURL)
+			}
 			if parseErr != nil {
-				log.Printf("Warning: Invalid target URL '%s' for proxy route '%s': %v. Skipping registration.", routeConfig.To, routeConfig.Name, parseErr)
+				log.Printf("Warning: Invalid target URL(s) %v for proxy route '%s': %v. Skipping registration.", []string(routeConfig.To), routeConfig.Name, parseErr)
 				continue
 			}
-			handler = g.createProxyHandlerFunc(routeConfig, targetURL)
+			handler = g.createProxyHandlerFunc(routeConfig, targetURLs)
+			if len(targetURLs) > 1 {
+				log.Printf("Proxy Route [%s]: load balancing across %d backends: %s", routeConfig.Name, len(targetURLs), formatTargets(routeConfig.To))
+			}
 			if routeConfig.IsSPA {
-				log.Printf("Proxy Route [%s]: SPA mode enabled - upstream 404s will fall back to base URL: %s", routeConfig.Name, routeConfig.To)
+				log.Printf("Proxy Route [%s]: SPA mode enabled - upstream 404s will fall back to base URL: %s", routeConfig.Name, formatTargets(routeConfig.To))
 			}
 		}
 
@@ -440,7 +420,7 @@ func (g *Gateway) configureUserRoutes() error {
 			basePattern := strings.TrimSuffix(pattern, "*")
 			g.Mux.HandleFunc(basePattern, handler)
 			log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
-				routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, basePattern, pattern)
+				routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled, basePattern, pattern)
 		} else {
 			// For static file routes, register both with and without trailing slash to avoid redirects
 			if routeConfig.Static && routeConfig.ToFile != "" {
@@ -455,7 +435,7 @@ func (g *Gateway) configureUserRoutes() error {
 				g.Mux.HandleFunc(patternWithSlash, handler)
 
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
-					routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled,
+					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled,
 					routeConfig.From, patternWithSlash)
 			} else {
 				// For other routes, ensure the pattern ends with a slash for consistency
@@ -464,7 +444,7 @@ func (g *Gateway) configureUserRoutes() error {
 				}
 				g.Mux.HandleFunc(pattern, handler)
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (pattern: %s)",
-					routeConfig.Name, routeConfig.From, routeConfig.To, routeConfig.Authentication.Enabled, pattern)
+					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled, pattern)
 			}
 		}
 	}
@@ -490,10 +470,36 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 }
 
 // --- Route Handler Creation ---
-// createProxyHandlerFunc generates the core handler function for proxy routes (without auth).
-func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURL *url.URL) http.HandlerFunc {
+// createProxyHandlerFunc generates the core handler function for proxy
+// routes (without auth). targetURLs holds one entry for a plain
+// single-backend route, or more than one for a load-balanced route (see
+// config.RouteTargets) — either way, targetURLs[0] is used to build the
+// base httputil.ReverseProxy and for path composition below, since
+// multiple targets are assumed to be interchangeable replicas sharing the
+// same path structure. Backend *selection* per request (round-robin, with
+// failover to the next target if one's connection attempt fails) happens
+// in proxy.Transport (see newRoundRobinTransport), not here — everything
+// in this function runs once, at route-registration time, the same as
+// before targetURLs could hold more than one entry.
+func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURLs []*url.URL) http.HandlerFunc {
+	targetURL := targetURLs[0]
+
 	// Create the proxy once when the handler is created
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	// otelhttp.NewTransport, not a bare http.DefaultTransport, when tracing
+	// is enabled: it starts a child span per backend call and injects the
+	// current trace context into the outbound request's "traceparent"
+	// header, which is what actually makes this a *distributed* trace
+	// instead of one isolated span per hop.
+	var transport http.RoundTripper = http.DefaultTransport
+	if g.GatewayConfig.Tracing.Enabled {
+		transport = otelhttp.NewTransport(transport)
+	}
+	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name, transport)
+
+	// Read once here, same as transport above, at route-registration time.
+	// See trustedForwardedHost's doc comment for what this actually gates.
+	allowedHosts := allowedRedirectHosts(g.GatewayConfig)
 
 	// Store the original director
 	originalDirector := proxy.Director
@@ -528,9 +534,31 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 
 		// Set forwarded headers
-		req.Header.Set("X-Forwarded-Host", req.Host)
+		//
+		// trustedForwardedHost only forwards req.Host when it's a hostname
+		// this gateway is actually configured to be reached by — otherwise
+		// the header is dropped rather than forwarding whatever a direct
+		// client's own Host header claimed. Without this, any client could
+		// set an arbitrary Host on their request (nothing about routing in
+		// this gateway depends on it — every route matches purely on path)
+		// and have it forwarded to the backend as X-Forwarded-Host
+		// unverified, a live Host-header-poisoning path into any backend
+		// that builds absolute URLs (password-reset links, OAuth
+		// redirects, cache keys) from it.
+		if forwardedHost := trustedForwardedHost(req, allowedHosts); forwardedHost != "" {
+			req.Header.Set("X-Forwarded-Host", forwardedHost)
+		} else {
+			req.Header.Del("X-Forwarded-Host")
+		}
+		// session.RequestIsSecure applies the same trusted-proxy boundary
+		// here as GetClientIP already applies to X-Forwarded-For/
+		// X-Real-IP/X-Client-IP — see its doc comment for why a bare
+		// req.TLS != nil check alone isn't enough (an upstream TLS
+		// terminator) and why a client-supplied X-Forwarded-Proto claim
+		// can't just be trusted outright either (a direct, untrusted
+		// client).
 		scheme := "http"
-		if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
+		if session.RequestIsSecure(req) {
 			scheme = "https"
 		}
 		req.Header.Set("X-Forwarded-Proto", scheme)
@@ -551,10 +579,23 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				return nil
 			}
 
-			log.Printf("Proxy Route [%s]: SPA fallback - upstream returned 404 for %s, fetching base URL: %s",
-				routeConfig.Name, resp.Request.URL.Path, targetURL.String())
+			// resp.Request is the request roundRobinTransport actually sent —
+			// for a load-balanced route that's whichever backend answered
+			// this specific request, not necessarily targetURLs[0]. Reusing
+			// its Scheme/Host (and targetURL.Path, the shared base path —
+			// see createProxyHandlerFunc's doc comment) means the SPA
+			// fallback re-fetches from the same backend that returned the
+			// 404, rather than always the first configured target.
+			fallbackBaseURL := &url.URL{
+				Scheme: resp.Request.URL.Scheme,
+				Host:   resp.Request.URL.Host,
+				Path:   targetURL.Path,
+			}
 
-			fallbackReq, err := http.NewRequestWithContext(resp.Request.Context(), http.MethodGet, targetURL.String(), nil)
+			log.Printf("Proxy Route [%s]: SPA fallback - upstream returned 404 for %s, fetching base URL: %s",
+				routeConfig.Name, resp.Request.URL.Path, fallbackBaseURL.String())
+
+			fallbackReq, err := http.NewRequestWithContext(resp.Request.Context(), http.MethodGet, fallbackBaseURL.String(), nil)
 			if err != nil {
 				log.Printf("Proxy Route [%s]: SPA fallback failed - could not create request: %v", routeConfig.Name, err)
 				return nil
@@ -587,24 +628,51 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 	}
 
-	// Set up error handler
+	// Set up error handler. This fires whenever the round trip to the
+	// upstream fails (connection refused, DNS failure, timeout, etc.).
+	//
+	// Previously this checked rw.(http.Hijacker) and, if the assertion
+	// succeeded, called Hijack() "to check whether the header was already
+	// written" before deciding whether it was safe to call http.Error.
+	// That check has a side effect: Hijack() unconditionally takes the raw
+	// connection away from net/http, and nothing here ever wrote to or
+	// closed it afterwards. Since the plain http.ResponseWriter net/http
+	// hands out implements Hijacker, and neither analytics nor request
+	// logging are wrapping it unless Management.Logging or .Analytics is
+	// turned on (both default false), this fired on essentially every
+	// upstream failure in an out-of-the-box config: the connection was
+	// hijacked and then abandoned, so the client received nothing at all
+	// and simply hung until its own timeout instead of a fast 502.
+	//
+	// http.Error's WriteHeader is safe to call even if a response was
+	// already partially written (net/http logs "superfluous
+	// WriteHeader call" and no-ops) — matching httputil.ReverseProxy's own
+	// default ErrorHandler, which just calls rw.WriteHeader unconditionally.
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, routeConfig.To, err)
-		// Avoid writing header if already written
-		if h, ok := rw.(http.Hijacker); ok {
-			_, _, hijackErr := h.Hijack()
-			if hijackErr == nil {
-				log.Printf("Proxy error occurred after response may have started for route '%s'. Connection hijacked.", routeConfig.Name)
-				// Cannot write status code anymore.
-				return
-			}
-		}
-		// Check if header has been written (best effort)
+		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), err)
 		http.Error(rw, "Bad Gateway", http.StatusBadGateway)
 	}
 
 	// Return the handler function
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Discard any client-supplied copy of these two headers
+		// unconditionally, before anything else — including on a route
+		// with authentication.enabled: false, which never reaches the
+		// block below that would otherwise overwrite them from a real
+		// session. Without this, a direct client could set its own
+		// X-User-Id/X-User-Data (a full session JSON dump, including
+		// IsAdmin) on any such route and have it forwarded to the backend
+		// completely unmodified, indistinguishable from a real
+		// gateway-asserted identity to a backend that follows this
+		// gateway's own documented contract of trusting these headers
+		// instead of reimplementing auth itself (see README.md's
+		// "Authentication on the APIs" section). The block below still
+		// re-sets both from a validated session on a route that does
+		// require it, so this only ever removes a forged value, never a
+		// legitimate one.
+		r.Header.Del(session.UserIdHeader)
+		r.Header.Del(session.UserDataHeader)
+
 		// For authenticated routes, extract user ID and set header
 		if routeConfig.Authentication.Enabled {
 
@@ -923,6 +991,14 @@ func hasMiddleWildcard(from string) bool {
 		return false
 	}
 	return true
+}
+
+// formatTargets renders a route's config.RouteTargets for a log line — a
+// single target prints as itself, unadorned, so existing single-backend
+// routes' log output is unchanged; more than one prints comma-joined
+// rather than Go's default "[a b]" slice format.
+func formatTargets(targets config.RouteTargets) string {
+	return strings.Join(targets, ", ")
 }
 
 // singleJoiningSlash remains unchanged

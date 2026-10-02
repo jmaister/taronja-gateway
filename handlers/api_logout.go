@@ -21,11 +21,14 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 		}
 	}
 
-	// Redirect URL from query parameters, default to "/"
-	redirectURL := request.Params.Redirect
-	if redirectURL == nil || *redirectURL == "" {
-		redirectURL = new(string)
-		*redirectURL = "/"
+	// Redirect URL from query parameters, sanitized to a same-origin path —
+	// see session.SanitizeRedirectPath's doc comment for why this endpoint
+	// (reachable with no session at all) can't just trust it.
+	redirectURL := new(string)
+	if request.Params.Redirect != nil {
+		*redirectURL = session.SanitizeRedirectPath(*request.Params.Redirect)
+	} else {
+		*redirectURL = session.SanitizeRedirectPath("")
 	}
 
 	// Create the Set-Cookie header value for clearing the session
@@ -38,6 +41,7 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 		SameSite: http.SameSiteLaxMode,
 	}
 	cookieValue := clearCookie.String()
+	cacheControl := "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
 
 	// Check if we're on HTTPS and add Secure flag if needed
 	// Note: We can't access the request.TLS directly here as we only have the context
@@ -47,9 +51,9 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 	// Return a 302 response with the Set-Cookie header
 	return api.LogoutUser302Response{
 		Headers: api.LogoutUser302ResponseHeaders{
-			Location:     *redirectURL,
-			CacheControl: "no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
-			SetCookie:    cookieValue,
+			Location:     redirectURL,
+			CacheControl: &cacheControl,
+			SetCookie:    &cookieValue,
 		},
 	}, nil
 }

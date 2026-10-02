@@ -12,11 +12,16 @@ on:
         type: string
 
 jobs:
-  publish-react-sdk:
+  # Runs unconditionally (release or workflow_dispatch dry run), with no
+  # access to NPM_TOKEN — everything here is safe for anyone who can
+  # trigger this workflow to see run.
+  build-and-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      tag: ${{ steps.release_version.outputs.tag }}
+      version: ${{ steps.release_version.outputs.version }}
     defaults:
       run:
         shell: bash
@@ -28,17 +33,21 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
           cache-dependency-path: sdk/package-lock.json
 
       - name: Derive release version
         id: release_version
+        # See clients.yml's identical step for why these are passed via
+        # env rather than interpolated directly into the script.
+        env:
+          RAW_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          RAW_INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if [[ "${{ github.event_name }}" == 'release' ]]; then
-            TAG_NAME="${{ github.event.release.tag_name }}"
+            TAG_NAME="$RAW_RELEASE_TAG_NAME"
           else
-            TAG_NAME="${{ inputs.release_tag }}"
+            TAG_NAME="$RAW_INPUT_RELEASE_TAG"
           fi
 
           VERSION="${TAG_NAME#v}"
@@ -62,7 +71,9 @@ jobs:
 
       - name: Stamp package version from release tag
         working-directory: ./sdk
-        run: npm version "${{ steps.release_version.outputs.version }}" --no-git-tag-version
+        env:
+          RELEASE_VERSION: ${{ steps.release_version.outputs.version }}
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version
 
       - name: Test and build package
         working-directory: ./sdk
@@ -71,15 +82,72 @@ jobs:
           npm run build
           npm pack --dry-run
 
+  # Separate job, not just a conditional step in build-and-test, because
+  # GitHub Environment protection rules (required reviewers) only ever
+  # gate at the job level. Rebuilds from scratch rather than sharing
+  # build-and-test's workspace (a fresh runner starts with nothing) —
+  # simpler and more robust than passing build output between jobs via
+  # actions/upload-artifact for a build this fast.
+  #
+  # environment: npm-publish only actually gates anything once a required
+  # reviewer is configured for that environment name in this repo's
+  # Settings -> Environments -> npm-publish -> "Required reviewers". Until
+  # that one-time setup happens, referencing an environment with no
+  # protection rules has no effect and this job runs immediately, same as
+  # before this existed — see the needs-validation item this closes in the
+  # security audit for why Write-level repo access (not just Admin) can
+  # trigger this today, and why that setup is worth doing.
+  publish:
+    needs: build-and-test
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./sdk
+        run: npm install
+
+      - name: Stamp package version from release tag
+        working-directory: ./sdk
+        env:
+          RELEASE_VERSION: ${{ needs.build-and-test.outputs.version }}
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version
+
+      - name: Build package
+        working-directory: ./sdk
+        run: npm run build
+
       - name: Publish package to npm
-        if: ${{ github.event_name == 'release' }}
         working-directory: ./sdk
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  report-dry-run:
+    needs: build-and-test
+    if: ${{ github.event_name != 'release' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Report dry run result
-        if: ${{ github.event_name != 'release' }}
+        env:
+          RELEASE_TAG: ${{ needs.build-and-test.outputs.tag }}
         run: |
-          echo "Dry run completed for ${{ steps.release_version.outputs.tag }}"
+          echo "Dry run completed for $RELEASE_TAG"
           echo "npm publish was skipped because this was a manual workflow run"

@@ -1,13 +1,10 @@
 import { useParams, Link } from 'react-router-dom'; 
-import { UserTokensSection } from '../components/UserTokensSection'; 
-import { useUser } from '@/services/services';
+import { UserTokensSection } from '../components/UserTokensSection';
+import { UserNotificationsSection } from '../components/UserNotificationsSection';
+import { useUser } from '@/services/users';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 
-interface UserInfoPageProps {
-  // Props are empty for now
-}
-
-export function UserInfoPage({}: UserInfoPageProps) {
+export function UserInfoPage() {
   const { userId } = useParams<{ userId: string }>(); 
   
   const {data:user, isLoading, isError, error} = useUser(userId || '');
@@ -75,6 +72,9 @@ export function UserInfoPage({}: UserInfoPageProps) {
 
             {/* User Tokens Section */}
             <UserTokensSection userId={user.id} />
+
+            {/* User Notifications Section */}
+            <UserNotificationsSection userId={user.id} />
           </div>
         )}
 

@@ -1,13 +1,6 @@
 package middleware
 
-import (
-	"net/http"
-
-	"github.com/jmaister/taronja-gateway/auth"
-	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
-)
+import "net/http"
 
 // ChainBuilder provides a fluent interface for building middleware chains
 type ChainBuilder struct {
@@ -37,76 +30,6 @@ func (c *ChainBuilder) Build(handler http.Handler) http.Handler {
 		handler = c.middlewares[i](handler)
 	}
 	return handler
-}
-
-// BuildGlobalChain builds the global middleware chain based on gateway configuration
-func BuildGlobalChain(
-	gatewayConfig *config.GatewayConfig,
-	sessionStore session.SessionStore,
-	tokenService *auth.TokenService,
-	trafficMetricRepo db.TrafficMetricRepository,
-	rateLimiter *RateLimiter,
-) *ChainBuilder {
-	chain := NewChainBuilder()
-
-	// rate limiter should run first, even before analytics
-	if rateLimiter != nil {
-		chain.Add(rateLimiter.Handler)
-	} else if gatewayConfig.Management.RateLimiter.IsEnabled() {
-		chain.Add(RateLimiterMiddleware(gatewayConfig.Management.RateLimiter))
-	}
-
-	// Add middlewares conditionally based on configuration
-	if gatewayConfig.Management.Analytics {
-		// JA4H fingerprinting middleware (first so fingerprint is available for other middlewares)
-		// chain.Add(JA4Middleware)
-		chain.Add(OptimizedJA4Middleware(true))
-
-		// Session extraction middleware (before traffic metrics to capture user info)
-		chain.Add(SessionExtractionMiddleware(sessionStore, tokenService))
-
-		// Traffic metrics middleware
-		chain.Add(TrafficMetricMiddleware(trafficMetricRepo))
-	}
-
-	// Logging middleware (if enabled)
-	if gatewayConfig.Management.Logging {
-		chain.Add(LoggingMiddleware)
-	}
-
-	return chain
-}
-
-// RouteChainBuilder builds middleware chains for individual routes
-type RouteChainBuilder struct {
-	authMiddleware  *AuthMiddleware
-	cacheMiddleware *HttpCacheMiddleware
-}
-
-// NewRouteChainBuilder creates a new route chain builder
-func NewRouteChainBuilder(authMiddleware *AuthMiddleware, cacheMiddleware *HttpCacheMiddleware) *RouteChainBuilder {
-	return &RouteChainBuilder{
-		authMiddleware:  authMiddleware,
-		cacheMiddleware: cacheMiddleware,
-	}
-}
-
-// BuildRouteChain builds a middleware chain for a specific route using the same pattern as global chain
-func (r *RouteChainBuilder) BuildRouteChain(handler http.HandlerFunc, routeConfig config.RouteConfig) http.HandlerFunc {
-	chain := NewChainBuilder()
-
-	// Authentication middleware (if enabled for this route)
-	if routeConfig.Authentication.Enabled {
-		// Redirect to login page for static routes and SPA proxy routes (browser-facing),
-		// return 401 for plain proxy/API routes.
-		shouldRedirect := routeConfig.Static || routeConfig.IsSPA
-		chain.Add(r.authMiddleware.AuthMiddlewareFunc(shouldRedirect))
-	}
-
-	// Cache control middleware (always applied)
-	chain.Add(r.cacheMiddleware.CacheControlMiddlewareFunc(routeConfig))
-
-	return chain.Build(handler).(http.HandlerFunc)
 }
 
 // Chain is a simple utility function to chain middlewares without using a builder

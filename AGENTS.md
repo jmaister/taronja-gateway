@@ -14,15 +14,16 @@
 taronja-gateway/
 ├── main.go                     # CLI entry point (Cobra: run, adduser, version commands)
 ├── Makefile                    # Build/dev/test automation
-├── go.mod, go.sum              # Go module def (1.26)
+├── go.mod, go.sum              # Go module def (1.27)
 ├── .env, .env.sample           # Environment (OAuth secrets, SMTP config)
 ├── modd.conf                   # Dev file-watch config
 ├── .goreleaser.yml             # Release build (cross-platform binaries)
 │
 ├── gateway/                    # HTTP server assembly, routing, reverse proxy
 ├── handlers/                   # OpenAPI handler implementations (one per resource)
-├── middleware/                 # Chain builder, auth, cache, logging, rate limit, metrics, JA4H
+├── middleware/                 # Plumbing: Registry, ChainBuilder, factory interface, health, metrics; builtin/ holds the implementations
 ├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
+├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -33,7 +34,7 @@ taronja-gateway/
 │
 ├── sdk/                        # Published npm package: taronja-gateway-react-sdk
 ├── webapp/                     # React/Vite/TS admin dashboard (built into binary)
-├── examples/                   # Example client apps (astro-hockey, react-newspaper)
+├── examples/                   # Example client apps (astro-hockey, react-newspaper) + middleware-plugin (Go) + docker-demo/docker-image (docker compose)
 ├── sample/                     # Sample config.yaml, example configs
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
@@ -49,12 +50,25 @@ taronja-gateway/
 
 ### `main.go` — CLI Entry Point
 
-- **Cobra CLI** with three subcommands:
-  - `run --config <path>` — starts the gateway server (config file path required)
+- **Cobra CLI** with six subcommands:
+  - `run --config <path>` — starts the gateway server (config file path required); handles `SIGINT`/`SIGTERM` by calling `http.Server.Shutdown()` with a `gracefulShutdownTimeout` (15s) deadline instead of dying mid-request — see "Graceful shutdown" below. `SIGHUP` is explicitly ignored (`signal.Ignore`), since its OS default would terminate the process outright
   - `adduser <username> <email> <password>` — direct CLI user creation
   - `version` — displays version/commit/build date (injected by GoReleaser)
+  - `middleware list --config <path>` — prints the resolved global middleware chain and status for a config file, without starting the server (see Phase 4 notes in the `middleware/` section below)
+  - `migrate --config <path>` — prints a config file migrated to the version this build requires on stdout (unchanged if already current); writes nothing itself — redirect the output (`> config-v2.yaml`) to save it. Never touches the original. `run` and `middleware list` both refuse to load a config file older than current and point here (see "Config file versioning" in the `config/` section below)
+  - `validate --config <path>` — loads and validates a config file (`config.LoadConfig` + `middleware.ValidateConfigOnly`) and reports success/failure, without starting the server, opening a database connection, or making any network calls — same no-side-effects contract as `middleware list`/`migrate`. Prints a one-line summary on success (route count, prefix); a validation failure prints `FATAL: <error>` to stderr and exits 1
 - Embeds the built React dashboard (`webapp/dist`) into the binary using `//go:embed`
+
+**Graceful shutdown (`main.go`'s `runGateway`):** `gateway.Server.ListenAndServe()` runs in a goroutine so `runGateway` can `select` between it exiting on its own (a real startup/runtime error) and a `SIGINT`/`SIGTERM` arriving (`signal.Notify`). On a signal, it calls `gateway.Server.Shutdown(ctx)` with a `gracefulShutdownTimeout`-bounded context, which lets `net/http` drain in-flight requests before the process exits — previously `ListenAndServe()` was simply never asked to stop, so every deploy/restart/Ctrl+C dropped whatever was mid-flight. `Server.Shutdown` was already used throughout the test suite (`gateway/gateway_test.go`); this just wires the same call into the actual `run` command.
 - Loads environment variables from `.env` via `godotenv`
+
+- `runGateway`'s own `godotenv.Load()` call used to `log.Fatal` on *any* error, including a merely-missing `.env` — meaning the gateway refused to start at all with no `.env` present (`addUser`'s own `godotenv.Load()` call, right below it, only ever warned). Found while building `examples/docker-demo` (a container with no `.env` file, relying on real environment variables via `docker-compose.yml`'s `environment:` block, wouldn't start). Fixed via the extracted, directly-testable `dotEnvLoadIsFatal(err)` — `main_test.go`'s `TestDotEnvLoadIsFatal`.
+
+**The reduced-entropy "stable" fingerprint (`middleware/fingerprint/stable.go`):** added alongside JA4H in the same `ja4_fingerprint` middleware call (`middleware/builtin/ja4.go`'s `JA4Middleware`, `middleware/builtin/performance.go`'s `OptimizedJA4Middleware`) rather than as a separate middleware, since it's cheap (a handful of header reads plus one SHA256, no cache needed unlike JA4H) and conceptually the same concern: computing something from request headers. `StableFingerprint` hashes only `User-Agent`/`Accept-Encoding`/`Accept-Language`/`Sec-Ch-Ua*` — deliberately excluding everything that makes JA4H noisy (header count, the header-name-set hash, method, cookie/referer presence, `Accept`, and even HTTP version, which JA4H uses but this doesn't, since some CDNs route static assets over a different HTTP version than the main document). Returns `""` if none of those headers are present at all, rather than hashing down to one fixed value for every such client. Not part of the JA4 spec family — named `StableFingerprint`, not anything JA4-prefixed, specifically so it's never mistaken for a standard this project doesn't actually implement.
+
+**Fingerprint selection (`middleware/fingerprint/select.go`, `db.ClientInfo`):** the `ja4_fingerprint` middleware calls `fingerprint.Assign(req, ja4h)`, which stores exactly one fingerprint in the single `X-Taronja-Fingerprint` request header as `<type>:<value>`, overwriting anything the client sent. Priority is `TypeStable` ("stable") > `TypeJA4H` ("ja4h"); the header is cleared if none is available. `fingerprint.SelectFingerprint(req)` parses it back to `(value, type)`, and `session.NewClientInfo` stores those as `db.ClientInfo.Fingerprint`/`FingerprintType` — so every `Session`/`TrafficMetric` row and `X-User-Data` carries only those two fields.
+- This is a genuine schema/API change, not just an internal rename: `db.TrafficMetricRepository.GetRequestCountByJA4Fingerprint` became `GetRequestCountByFingerprint` (same grouping, now on the consolidated column) plus a new `GetRequestCountByFingerprintType`; the OpenAPI spec's `RequestStatistics.requestsByJA4Fingerprint` became `requestsByFingerprint` + a new `requestsByFingerprintType`, and `RequestDetail` gained `fingerprint`/`fingerprint_type` (previously not surfaced there at all). `webapp/src/pages/RequestSummaryPage.tsx` and the hand-maintained `sdk/src/types.ts` (not auto-generated — see the "Duplicate API types" note in this file's frontend section) were updated to match by hand.
+- While making this change, `db.Session`/`db.ClientInfo` also picked up proper `json:"..."` struct tags for the first time — every field there was previously untagged, so `X-User-Data` (built via a bare `json.Marshal(sessionObject)` in gateway.go) actually emitted Go's default PascalCase field names (`"JA4Fingerprint"`, `"IPAddress"`, ...), silently contradicting README.md's always-camelCase documented example. The new tags make the real output match the documented `fingerprint`/`fingerprintType`/`ipAddress`/etc. shape. Not fixed: `gorm.Model`'s own embedded fields (`ID`, `CreatedAt`, `UpdatedAt`, `DeletedAt`) still have no tags and so still leak into `X-User-Data` in PascalCase — suppressing an embedded struct's own fields from JSON requires shadowing it entirely, out of scope for what was actually asked here.
 
 ### `gateway/` and `gateway/deps/`
 
@@ -77,17 +91,23 @@ taronja-gateway/
 - **Defaults applied** then validated post-unmarshal (port required, admin credentials required if admin enabled)
 - **Main config sections:**
   - `server` — host, port, external URL
-  - `management` — API prefix (default `/_`), admin credentials, session config, rate limiter rules, geolocation provider
+  - `management` — API prefix (default `/_`), admin credentials, session config, rate limiter rules, CORS settings, geolocation provider
   - `routes` — list of `RouteConfig` (reverse proxy, static file, SPA routes)
   - `authenticationProviders` — Basic, Google OAuth2, GitHub OAuth2 config
   - `branding`, `geolocation`, `notification.email.smtp`
-- **Examples:** [`sample/config.yaml`](./sample/config.yaml), inline in [`README.md`](./README.md), auto-generated reference in [`doc/CONFIG.md`](./doc/CONFIG.md)
+  - `version` — config schema version (see below)
+- **Examples:** [`sample/config.yaml`](./sample/config.yaml), inline in [`README.md`](./README.md), auto-generated reference in [`doc/CONFIG.md`](./doc/CONFIG.md) (regenerate with `make config-docs`, which runs `gomarkdoc` via `go run` — no separate install step, and no `@latest`: it's a pinned `tool (...)` dependency in `go.mod`, same as `oapi-codegen` below, specifically so a new gomarkdoc release can't reformat this committed file and fail CI's "generated files up to date" check with no actual doc-comment change behind it — this happened once already)
+
+**Config file versioning (`config/version.go`):** `GatewayConfig.Version` (yaml `version:`) declares the config schema version; `config.CurrentConfigVersion` is what this build expects. `LoadConfig` always logs the detected version (`Config file version: %d (current: %d)`). An absent/zero `version:` field is treated as `legacyConfigVersion` (1) — every file written before this feature existed.
+- **`LoadConfig` refuses to run against an outdated config file** — `checkConfigVersion` returns an error (not just a log line) if the file's version is older than `CurrentConfigVersion`, naming `tg migrate --config <path>` in the error text so the failure is actionable. This is deliberate: an earlier version of this feature migrated the file automatically on every load, but a config silently rewritten out from under someone (even non-destructively) is worse than a hard failure telling them exactly what to run. A version *newer* than `CurrentConfigVersion` is still just a logged warning, not fatal — there's no way to downgrade a config, and refusing to start over an unrecognized-but-harmless newer field would be more disruptive than useful.
+- **`tg migrate --config <path>`** (`main.go`'s `migrateConfigFile`, calling `config.MigrateConfigContent`) is the only supported way to move an outdated config forward, and it never writes a file — it prints the result to stdout, the same way any Unix filter would, and leaves saving it (via `> file`) entirely up to the caller. It reads the file, and — if older than current — migrates its *original, pre-`${VAR}`-expansion* bytes (`configMigrations`, one step per version, chained by `migrateConfigToCurrent`); already-current (or newer) input comes back unchanged (`fromVersion >= CurrentConfigVersion`), which the CLI reports as a note on stderr so it doesn't pollute a redirected stdout. `versionedConfigPath` (`config.yaml` → `config-v2.yaml`) now only suggests a filename in messages — nothing enforces it, since the user names the output themselves.
+- The only migration today (`migrateV1ToV2`) just stamps the `version:` field via a **text-level** edit (`setTopLevelVersionField`, regex-matched at column 0 so it can't match a same-named key nested under another section) rather than an `Unmarshal`-then-`Marshal` round trip through `GatewayConfig` — that would silently drop every comment and reorder every key in the user's file. A future migration that needs to restructure the document, not just add/update a field, will need a different strategy (e.g. `yaml.Node` AST editing) to keep that property. `configMigrations` is a `map[int]configMigration` keyed by the version being migrated *from*, applied sequentially by `migrateConfigToCurrent` — a config several versions behind steps through each intervening migration in one `tg migrate` run (v1→v2→v3→...), not just the first one.
 
 ### `db/` — Database Layer (GORM + SQLite)
 
 **ORM & Driver:**
 - GORM (`gorm.io/gorm`) with pure-Go SQLite driver (`modernc.org/sqlite` — **no CGO**, builds with `CGO_ENABLED=0`)
-- Auto-migration on init; no separate migration files (schema-as-code via GORM struct tags)
+- Schema migrations via [golang-migrate](https://github.com/golang-migrate/migrate) (`db/migrate.go`), not GORM's AutoMigrate on every startup — see "Data migrations" below for why, and for the one thing golang-migrate's plain-SQL model can't do (rewriting values already on disk) that this project still handles separately
 
 **Models** (`db/schema.go`):
 - `User` — username, email, password hash, OAuth provider identity, email confirmation flag
@@ -100,6 +120,23 @@ taronja-gateway/
 **Repositories** (`db/*repository.go` + `_test.go`):
 - One interface + GORM implementation per model (`UserRepository`, `SessionRepository`, `TokenRepository`, `TrafficMetricRepository`, `CountersRepository`)
 - Each has unit tests; no mocks — tests use the in-memory SQLite DB
+
+**Data migrations (`db/migrate.go` + `db/migrations/*.sql` + `db/legacy_migrations.go`):** answers "how does an existing database behave when opened by a newer version of the gateway." Schema changes going forward — new tables, columns, indexes — are plain, numbered SQL files under `db/migrations/` (embedded into the binary via `//go:embed`), applied and tracked by [golang-migrate](https://github.com/golang-migrate/migrate)'s own `schema_migrations` table via `runMigrations`. This replaced a hand-rolled system: GORM's `AutoMigrate` (schema-as-code from Go struct tags, called unconditionally on every startup) plus an indefinitely-growing, hand-written list of Go functions, each tracked by SQLite's `PRAGMA user_version`, for anything `AutoMigrate` couldn't do — it never renames a column, changes an existing column's stored values, or otherwise transforms data already on disk. `AutoMigrate` itself isn't gone, but it no longer runs on every startup: it's now one step inside `applyLegacyDataMigrations`, a one-time bridge `runMigrations` runs only the first time it ever sees a given database (detected via `needsLegacyBridge` — `PRAGMA user_version` not already at the sentinel `legacyBridgeDoneVersion`, a value neither a brand-new database (`0`) nor any real database that finished under the old system (`1`-`4`) could already be at). That bridge runs *before* golang-migrate's own `0001_initial_schema.up.sql`, not after: SQLite has no "`ALTER TABLE ADD COLUMN IF NOT EXISTS`", so a `CREATE TABLE IF NOT EXISTS`/`CREATE INDEX IF NOT EXISTS` migration can create a table that doesn't exist at all, but can't retrofit a missing column (or an index on one) onto a table that already exists in some older shape — confirmed directly: reversing this order breaks on `db/testdata/v0.0.24.db`'s genuinely old `sessions` table with `SQL logic error: no such column: fingerprint`, since AutoMigrate hadn't had a chance to add it yet. `AutoMigrate` remains the one thing here that knows how to diff a live struct against an existing table and add what's missing; running it first means `0001_initial_schema.up.sql`'s `IF NOT EXISTS` clauses only ever see an already-current schema in practice, whichever path got a given database there — which also means that file never does real work today, and exists as an explicit, readable baseline instead (the same reason a codebase migrating onto a real migration tool usually writes one).
+- After AutoMigrate, the bridge runs the same three data-repair functions the old system did, unchanged, in their original order — `migrateTimestampsToUTC`, `migrateLegacyFingerprintColumns`, `migrateSessionTokensToHashed` — the exact thing neither `AutoMigrate` nor a plain SQL migration file can express: rewriting values already on disk in a way that depends on runtime schema introspection (does this table still have a column the current release doesn't declare?). `db/legacy_migrations.go` (what this file used to be called `db/migrations.go`) still holds all three. Recorded as done (`PRAGMA user_version = legacyBridgeDoneVersion`) only after every step succeeds, so a process killed mid-bridge, or a step that errors outright, retries the *entire* bridge wholesale on the next startup rather than silently treating partial work as complete — safe, since every step already guards itself against work it's already done (the exact bug this replaces: a shipped version of `migrateSessionTokensToHashed` backfilled `token_hash` but never dropped the legacy `token` column, and the old fine-grained per-migration `PRAGMA` tracking recorded that as done anyway, permanently — see `TestRunMigrations_HealsDatabaseStuckMidOldSystem`).
+- `runMigrations` is called from `Init`, on a short-lived connection dedicated to migrating and closed before the real, long-lived, pooled serving connection ever opens (`db.go`) — the gateway never has a connection open against the database for anything else while it runs. Also called from `SetupTestDB`, on the *same* connection about to be used for serving, deliberately not a separate one: a `file::memory:` test database only exists for as long as at least one connection to it stays open, so migrating on a connection that's closed afterward would silently discard the schema. Tests exercise one migration function directly after seeding legacy-shaped data (see `migrations_test.go`) rather than going through the full bridge. `db/migration_v0_fixture_test.go` complements those with a real, historical SQLite file (`db/testdata/v0.0.24.db`, carved out of the top-level `.gitignore`'s `*.db` rule specifically for that directory) built by actually running the v0.0.24 tagged release and generating real traffic — running `runMigrations` against genuine old data catches shapes nobody would think to reproduce synthetically (the `storedTimestampOffsetPrefix` fallback in `db/timeformat.go`, and the SQL-migration-ordering bug above, both exist because of exactly this). See `db/testdata/README.md` for how to regenerate or extend it.
+- **`migrateTimestampsToUTC`** backfills every pre-existing row in `utcTimestampColumns` (one entry per timestamp column across `User`, `Session`, `TrafficMetric`, `Token`, `Counter`) to UTC. This exists because `db.utcNowFunc` and `db/schema.go`'s `BeforeSave` hooks (see the UTC bullet below) only change what gets *written from now on* — a database with rows from before upgrading keeps them in whatever zone the host's `time.Now()` returned at the time, and left alone, that reintroduces the exact `BETWEEN`-is-a-text-comparison bug those fixes exist to prevent, just at the boundary between old and new data instead of within one call site. Reads each column via a plain `SELECT` into a string (not straight into `time.Time` — see the function's own comment for exactly why) and reparses it with `parseStoredTimestamp` (`db/timeformat.go`, shared with `CountersRepositoryDB.toUserCounterSummary`'s identical parsing need), which needed two real fixes of its own, both confirmed against an actual pre-upgrade database created by literally checking out the last pre-UTC-fix commit and running it, not synthesized: a real system zone's abbreviation (e.g. `"BST"`) round-trips through this driver's own decode-and-reformat-to-RFC3339 step fine, but `Token.ExpiresAt` — API-caller-supplied, from request JSON — commonly carries a bare numeric offset with no named zone at all (`"+05:00"`), which Go represents as a `FixedZone` whose name is the offset text itself; that shape breaks the driver's decode heuristic, which falls back to returning the *raw* stored text verbatim instead of a normalized string, so `parseStoredTimestamp` needs `storedTimestampOffsetPrefix`, a regex fallback that extracts just the `"date time[.fraction] ±HHMM"` prefix and ignores whatever trailing zone-name text follows (real, synthetic, or absent) — the numeric offset alone already fully determines the correct instant. A genuinely old database (built and run from a commit predating this project's UTC work entirely) surfaced a second variant of the same problem: a `time.Time` that still carries its monotonic clock reading (any value built from a bare `time.Now()` that was never subjected to an operation stripping it) renders that as a trailing `" m=±<seconds>"` suffix after the zone name — `storedTimestampOffsetPrefix`'s prefix-only match handles this the same way, for free, since it already discards everything after the numeric offset regardless of shape. A row that still fails to parse is logged and left as-is rather than aborting the whole migration.
+- **A genuinely old database (checked out from `f765cbe`, July 2025 — before `Token`/`Counter` existed, before the fingerprint consolidation, before `TrafficMetric.IsStaticAsset`) surfaced an unrelated, far more serious bug during this same review: `AutoMigrate` panicked the whole gateway on startup**, not a soft failure — `ALTER TABLE traffic_metrics ADD is_static_asset NOT NULL` fails outright on SQLite ("Cannot add a NOT NULL column with default value NULL") the moment the table already has one row, since `IsStaticAsset`'s gorm tag was `not null` with no `default`. Any deployment with existing `traffic_metrics` data upgrading past the commit that introduced `IsStaticAsset` would have hit this and been completely unable to start. Fixed by adding `default:false` to the tag — SQLite's `ALTER TABLE` only accepts a `NOT NULL` column addition on a non-empty table when a default is present to backfill existing rows with, and `false` is the semantically correct backfill value here (every pre-existing row predates this column, when every request was still recorded). `TestAutoMigrate_AddingNotNullColumnToExistingRows_NeedsADefault` (`db/automigrate_compat_test.go`) guards this specifically — AutoMigrate an old-shaped `TrafficMetric` (a copy of the struct from before `IsStaticAsset`, defined in the test), insert a row, then `AutoMigrate` the real current struct and confirm it doesn't error. Still directly relevant even though `AutoMigrate` no longer runs on every startup: it's the one call site (inside `applyLegacyDataMigrations`) this hazard can still happen at. This is a general hazard, not specific to this one column: **any future `not null` field added to an already-shipped table needs an explicit `default:...` tag**, or it reproduces this exact startup panic for anyone with existing data — AutoMigrate itself gives no warning at write-the-struct-tag time, only a runtime failure against a populated table.
+- **Separately, that same old database exposed a real data-completeness gap from the earlier fingerprint-consolidation commit (`a559a93`)**: old `Session`/`TrafficMetric`/`Token` rows had their historical value sitting in the now-unused `ja4_fingerprint`/`ja4_tls_fingerprint`/`stable_fingerprint` columns, while the new `fingerprint`/`fingerprint_type` columns AutoMigrate added for them were `NULL` — `AutoMigrate` only ever adds columns, never migrates data between them, so nothing carried the old values over, and the application only ever reads `fingerprint`/`fingerprint_type` now. **`migrateLegacyFingerprintColumns`** fixes this: for each of `sessions`/`traffic_metrics`/`tokens` (every table `ClientInfo` has ever been embedded in), a single `UPDATE ... SET fingerprint = CASE ... END, fingerprint_type = CASE ... END WHERE fingerprint IS NULL OR fingerprint = ''` picks the first non-empty of `ja4_tls_fingerprint` (`fingerprint.TypeJA4TLS`) / `stable_fingerprint` (`fingerprint.TypeStable`) / `ja4_fingerprint` (`fingerprint.TypeJA4H`) — the same priority order `fingerprint.SelectFingerprint` itself uses, so a backfilled row gets the same choice the application would have made had it processed that request after the consolidation. Pure SQL, not a row-by-row Go loop like the UTC migration: this is just picking among already-stored strings, none of the timezone-parsing concerns that one has. Guarded per column with `Migrator().HasColumn` — a table created after `a559a93` never had any of the three old columns at all, and this must no-op cleanly for it rather than erroring on a nonexistent column. Confirmed against the same real pre-consolidation database: a session's real captured JA4H value round-tripped into `fingerprint`/`fingerprint_type="ja4h"` correctly, leaving the orphaned `ja4_fingerprint` column (harmlessly) in place.
+- Adding a future *schema* change means a new numbered SQL file under `db/migrations/` (e.g. `0002_something.up.sql`) — never edit an already-released one, the same rule as any migration tool. Adding a future *data repair* that genuinely needs runtime schema introspection (the one thing a SQL file can't express) means a new Go function called from `applyLegacyDataMigrations` — but that function only ever runs again for a database that hasn't finished the legacy bridge at all (`PRAGMA user_version != legacyBridgeDoneVersion`); a database already past it needs a real, normal migration instead, the same as any schema change from here on.
+
+**Time-series bucketing (`db/timeseries.go`):** `TrafficMetricRepositoryDB.GetTimeSeries(start, end, granularity)` powers the `/api/statistics/timeseries` endpoint's "traffic over time" graphs — one `TimeSeriesPoint` (request count, unique fingerprints, new vs. returning visitors, unique authenticated users, error count, average response time) per bucket, backfilled with zero-valued points for buckets with no data so the series has no gaps for a chart to render oddly. Aggregation (`COUNT`/`COUNT DISTINCT`/`SUM`/`AVG`, `GROUP BY` bucket) happens in SQL, not by fetching every matching row into Go — an earlier version did the latter, and it doesn't scale: it pulls every matching row across the wire and holds a per-bucket hash set in application memory for every distinct-count field, when the database can compute the same result set-side and transfer only a handful of aggregated rows.
+- **Getting SQL-side bucketing to actually work took two real fixes, both confirmed by hand against a live DB before trusting either — this is the one thing to know before touching this file.** The obvious approach (`strftime(...)` on the `timestamp` column in a `GROUP BY`) silently returns `NULL`/empty for every row: `modernc.org/sqlite` stores a `time.Time` as Go's default `.String()` representation (`"2026-06-10 08:00:00 +0200 CEST"` — offset and zone name included), which isn't a format any of SQLite's date/time functions recognize. `sqliteBucketExpr`/`stripUTCFormatSuffix` fix this by taking `substr(timestamp, 1, 19)` first — stripping the offset/zone suffix leaves `"YYYY-MM-DD HH:MM:SS"`, a format SQLite does parse — but that only gives the *correct* bucket if the stripped prefix is already UTC wall-clock time, which is the second fix: `TrafficMetric.BeforeCreate` (`db/schema.go`) normalizes every stored `Timestamp` to UTC, and `session.NewTrafficMetric` calls `.UTC()` explicitly too, belt-and-suspenders. Skipping either half of this reintroduces a real bug, not a theoretical one — see the next point.
+- **`WHERE timestamp BETWEEN ? AND ?` has the exact same string-comparison fragility, in the other direction, and it bit this codebase for real**: the `timestamp` column has TEXT affinity, `modernc.org/sqlite` binds a `time.Time` query parameter as that same default `.String()` form, and SQLite compares TEXT operands lexicographically — there is no numeric/chronological comparison happening underneath a `BETWEEN` on this column, ever, in any version of this code. Once `TrafficMetric.BeforeCreate` started normalizing *storage* to UTC without every query's *bounds* getting the same treatment, comparing a UTC-stored row's `"...+0000 UTC"` string against a caller's un-normalized `"...+0100 BST"` bound (anything built from a plain `time.Now()`, which carries the server process's local zone) silently matched the wrong rows. This broke three existing tests immediately (`TestBatchingTrafficMetricRepository_Flushes*`, three `handlers/api_statistics_test.go` cases) the moment it was introduced — caught by the existing real-SQLite test suite, running in this environment's actual non-UTC system timezone (`Europe/London`), not by reasoning about it. The fix is `.UTC()` at the top of every `TrafficMetricRepositoryDB` method that takes a date range (all of them — see `FindByDateRange`'s comment, which the rest point back to) — normalizing centrally via a GORM callback/plugin was considered and rejected: mutating already-built query parameters correctly requires depending on GORM internals (exactly when `Statement.Vars` is populated relative to a hookable callback phase) that are much easier to get subtly wrong than 13 one-line, individually-testable fixes.
+- **This whole schema now stores every timestamp as UTC, not just `TrafficMetric.Timestamp`** — auditing the rest of `db/schema.go` after fixing the two points above found `gorm.Model`'s `CreatedAt`/`UpdatedAt`/`DeletedAt` (on every model that embeds it: `User`, `Session`, `TrafficMetric`, `Counter`), `Token`'s `autoCreateTime`/`autoUpdateTime` fields, `Session.ValidUntil`/`LastActivity`/`ClosedOn`, `User.PasswordResetExpires`/`EmailConfirmationExpires`, and `Token.ExpiresAt`/`LastUsedAt`/`RevokedAt` were all still stored in whatever zone `time.Now()` (or GORM's own default clock, itself `time.Now()`) returned on the host — no active bug from this specifically (every comparison against these fields happens in Go via `.Before()`/`.After()`, correct regardless of zone), but a real inconsistency and foot-gun for the next raw SQL comparison someone adds. Fixed in two layers: `db/db.go`'s `gorm.Config.NowFunc` is now `utcNowFunc` (`time.Now().UTC()`) on both the production and `SetupTestDB` connections, covering every `gorm.Model`/`autoCreateTime`/`autoUpdateTime` field automatically (including future models, with no per-model hook needed); and new `BeforeSave` hooks on `Session` and `Token` (plus an extension of `User`'s existing one) normalize the fields the application sets itself outside GORM's own clock — `NowFunc` never touches those. `Token.ExpiresAt` is the one that actually matters most in practice: it's API-caller-supplied (`handlers/api_tokens.go`, from request JSON), not always a server-side `time.Now()`, so this hook is what normalizes whatever offset a client sends. Three raw single-column/map-based `Update`s bypass hooks entirely — a hook fires against an empty `&Model{}` that never sees the value actually being set — so `SessionRepository.CloseSession`, `TokenRepository.RevokeToken`, and `TokenRepository.IncrementUsageCount` normalize their own values at the call site instead. `db/schema_test.go` has one test per hook/call-site fix, each building a `time.Time` in a fixed `+05:00` zone (deliberately neither UTC nor this host's own local zone) and asserting it round-trips out of a real SQLite connection with a zero UTC offset. This only changes what gets written from here on — a database with rows from before this change needs the "Data migrations" section above to actually fix those.
+- **New vs. returning visitors** (`NewVisitors`/`ReturningVisitors` on `TimeSeriesPoint`) needs a second query, `getNewVisitorsByBucket`: "how many fingerprints active in this bucket were seen for the very first time, ever" isn't answerable from rows inside `[start, end]` alone, since a fingerprint's true first appearance can be arbitrarily far in the past. That query is a CTE — `WITH first_seen AS (SELECT fingerprint, MIN(timestamp) ... GROUP BY fingerprint) SELECT bucket(first_seen.first_ts), COUNT(*) ... WHERE first_ts BETWEEN ? AND ? GROUP BY bucket` — necessarily scanning the *entire* table's fingerprint/timestamp history, not just the requested range; `ReturningVisitors` is then just `UniqueFingerprints - NewVisitors` per bucket, needing no query of its own. This is why `ClientInfo.Fingerprint` is now indexed (`gorm:"index"`, applies to both `sessions` and `traffic_metrics` since `ClientInfo` is embedded in both — harmless on `sessions`, meaningful on `traffic_metrics`): without it, the one part of this feature whose cost doesn't shrink with a narrower requested range would also be an unindexed full scan.
+- `ValidateTimeSeriesRange` caps how large a `[start, end]` span each granularity accepts (minute: 24h, hour: 31d, day: 366d, week: 2y, month: 5y) so a minute-bucketed request over a year can't backfill hundreds of thousands of empty points — called from the handler, not enforced by `GetTimeSeries` itself.
+- Week buckets start on Monday (`truncateToBucket`'s ISO-week alignment: back up `(weekday+6)%7` days from the given date), matching common convention over Sunday-first weeks. `truncateToBucket`/`nextBucket` are only used to generate the Go-side list of expected bucket boundaries for backfilling — the actual aggregation grouping is `sqliteBucketExpr`'s SQL expression, not these.
+- `db.TimeSeriesGranularity` is a plain string type, not the OpenAPI-generated `api.TimeSeriesGranularity` — keeping `db` from depending on `api` (which itself already depends on nothing in `db` beyond what's needed for generated types); `handlers/api_statistics.go`'s `GetRequestTimeSeries` converts between the two at the boundary.
 
 ### `auth/` — API Token Service
 
@@ -118,7 +155,8 @@ taronja-gateway/
 
 **`clientinfo.go`:**
 - Parses User-Agent via `github.com/ua-parser/uap-go` to extract browser, OS, device type
-- JA4H fingerprinting support (via `middleware/ja4.go`)
+- JA4H fingerprinting support (via `middleware/builtin/ja4.go`)
+- `GetClientIP` only honors `X-Forwarded-For`/`X-Real-IP`/`X-Client-IP` when the request's actual TCP peer (`r.RemoteAddr`) is loopback or an RFC 1918/RFC 4193 private-range address (`isTrustedProxy`, via stdlib `net.IP.IsLoopback()`/`IsPrivate()` — the same default Rails' `ActionDispatch::RemoteIp` uses, no configuration involved). This used to trust those headers from any client unconditionally, which is a real, previously-shipped bug: it let any direct client spoof its own IP for geolocation, logging, and `middleware/builtin/ratelimiter.go`'s IP-based rate limiting, all at once — traced back from a real deployment's logs showing a JNDI-exploit probe's own crafted string logged as the "client IP". A configurable `server.trustedProxies` allowlist was tried first and scrapped: the deployment shapes it needed to cover (a proxy on the same host or same private network) are exactly what loopback-or-private already answers for free, with nothing for an operator to understand or configure.
 
 **`ipgeo.go`:**
 - IP geolocation via `iplocate.io` or fallback `freeipapi.com`
@@ -139,21 +177,213 @@ taronja-gateway/
 2. Session-based authentication/authorization (`auth.go`)
 
 **Notable middlewares:**
-- **Rate limiter** (`ratelimiter.go`) — in-memory IP-based rate limiting, configurable per route/path, scanner detection (blocks known scanner User-Agents)
+- **Rate limiter** (`ratelimiter.go`) — in-memory IP-based rate limiting, configurable per route/path, scanner detection (blocks known scanner User-Agents). Every block it imposes (rate-limit, max-errors, or vulnerability-scan) is also written to `db.BlockedClient` (`db/blockedclientrepository.go`) as a persistent record — unlike the in-memory state itself, which `cleanupLoop` deletes once a block expires and the IP goes quiet. Exposed via `GET <prefix>/api/rate-limiter/blocked` and the "Blocked Clients History" table on `RateLimiterStatsPage.tsx`. See `doc/middleware/rate-limiter.md`.
 - **Cache control** (`cache.go`) — sets HTTP cache-control headers on responses
 - **Traffic metrics** (`trafficmetric.go`) — records each request as a `TrafficMetric` row for analytics
 - **Auth** (`auth.go`) — enforces route-level auth (redirects to login for static/SPA, 401 for API)
+
+**Factory + Registry pattern (Phases 1–3 of `doc/refactor01.md`):** the global chain is built declaratively via `Registry` (`middleware/registry.go`) instead of a hardcoded `if` ladder:
+- Each existing global middleware (`rate_limiter`, `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`, `cors`, `compression`) has a `MiddlewareFactory` implementation in `factory.go`, exposing `Create()`, `GetName()`, `GetDescription()`, `GetDependencies()`, `GetDefaultConfig()`. Middleware names are shared constants in `config` (`config.MiddlewareNameRateLimiter`, etc.) so `config` can validate them without importing `middleware`.
+- `Registry.BuildChain([]MiddlewareSpec)` looks up each spec's factory, verifies its declared `GetDependencies()` were already built earlier in the same call (e.g. `traffic_metrics` depends on `ja4_fingerprint` — it reads the JA4H header via `session.NewClientInfo` — and on `session_extraction`, which puts the session on the request context that `traffic_metrics` also reads), wraps the created middleware with request-metrics instrumentation (see below), and appends it to a `ChainBuilder`. `ValidateSpecs`/`ValidateGlobalChainSpecs` run the same name+dependency check without instantiating anything, so config can be validated before real dependencies (session store, DB repos, rate limiter instance) exist. `session_extraction`'s own declared dependency on `ja4_fingerprint` preserves the original hardcoded chain's ordering rather than a verified direct read — see the comment on `NewSessionExtractionFactory` in `factory.go`.
+- `Registry.GetStatus()` reports each registered factory as `"active"` (included in the last `BuildChain` call) or `"available"` (registered but not built), plus a `Health` (nil unless the factory implements `HealthChecker`).
+- `ResolveGlobalChainSpecs(gatewayConfig)` turns config into an ordered `[]MiddlewareSpec`: if `gatewayConfig.Middleware.Global` is **non-nil** (a `middleware:` section with a `global:` key present — this checks nil, not length, since YAML unmarshals an absent section to `nil` but an explicit `global: []` to a non-nil empty slice, letting a config explicitly declare zero global middleware rather than that being indistinguishable from "no section") it's used directly, entry order and `enabled` flags respected, and a per-entry `rateLimiter:` override takes priority over `management.rateLimiter`; otherwise it falls back to translating the legacy `management.analytics`/`logging`/`rateLimiter` flags, so existing config files are unaffected. `builtin.NewGlobalChain` resolves specs through this.
+- `gateway/setup.go`'s `buildRuntime()` calls `builtin.NewGlobalChain()`, the single entry point, which returns both the registry and the chain so the registry can be kept — stored on `Gateway.MiddlewareRegistry` and passed into `handlers.NewStrictApiServer` for the status/metrics endpoints below. `RateLimiterFactory` reuses the gateway's existing `*RateLimiter` instance (via its `Handler` method) when one is supplied, rather than constructing a new stateless middleware, so request stats stay consistent with what the management API reports. Because of that reuse, the shared instance's *own* config — not whatever `cfg` `Create` receives — is what actually takes effect; `createHTTPServer` builds it with `middleware.EffectiveRateLimiterConfig(config)` (which resolves a per-entry override the same way `ResolveGlobalChainSpecs` does) rather than `config.Management.RateLimiter` directly, or a per-entry override would be silently ignored (this was a real bug — see `TestCreateHTTPServer_RateLimiterHonorsPerEntryOverride` in `gateway/middleware_wiring_test.go`).
+- `builtin.ValidateMiddlewareChainConfig()` (called from `ValidateAllMiddleware`) resolves and validates the chain spec at startup, so a typo'd middleware name or a missing dependency (e.g. `session_extraction` without `ja4_fingerprint`) fails fast with a clear error instead of at request time.
+- Only `rate_limiter` has real per-entry YAML configuration (`config.MiddlewareEntryConfig.RateLimiter`) today, since it's the only middleware with tunable runtime options; the others just take `name`/`enabled`. New middleware should get a factory + a name constant in `config`, not another `if` branch.
+- `BuildChain` resets `r.built`/`r.metrics` at the start of every call, so `GetStatus`/`GetMetrics`/`GetAllMetrics` always reflect only the most recently built chain — calling `BuildChain` again on the same registry (there's no current caller that does, but nothing stops one) does not leave middleware dropped from the new spec list still reporting "active" from an earlier call.
+
+**Health checks and metrics (Phase 3):**
+- `health.go` defines `HealthChecker` (`HealthCheck() MiddlewareHealth`), an interface a `MiddlewareFactory` can optionally implement. Most built-ins are stateless per request and have nothing to check, so `Registry.GetHealth(name)`/`GetStatus()` report `Status: "unknown"` for those rather than a fabricated "healthy" — only `RateLimiterFactory` implements it today, reporting `"healthy"` plus the tracked/blocked IP counts from `RateLimiter.Stats()`.
+- `metrics.go` wraps every middleware `BuildChain` creates with `instrumentMiddleware`, which records request count, error count (status ≥ 500), and elapsed wall-clock time per middleware name (in-memory only, reset on restart). Because middlewares nest, a given middleware's `averageDurationMs` includes everything downstream of it too — it isn't an isolated cost. `GetMetrics(name)`/`GetAllMetrics()` read the counters back as a `MiddlewareMetricsSnapshot`.
+- `GET <prefix>/api/middleware` (`handlers/api_middleware.go`, admin-only, same pattern as the rate-limiter stats/config endpoints) returns `GetStatus()` as a list. `GET <prefix>/api/middleware/{name}/metrics` returns one middleware's `MiddlewareMetricsSnapshot`, 404 for an unknown name. Both are defined in `api/taronja-gateway-api.yaml` and generated via `make generate` (`oapi-codegen`) into `api/api.gen.go`.
+- No dashboard UI was added for these endpoints (Phase 3's "if applicable" dashboard task was left for whenever the webapp actually needs it) — they're consumable today via the API directly.
+
+**Documentation and tooling (Phase 4):**
+- [`doc/middleware_development.md`](../doc/middleware_development.md) is the guide for implementing a new `MiddlewareFactory` (and optionally `HealthChecker`), registering it, and wiring it into a gateway instance either as a built-in (`middleware/builtin/` + `newGlobalRegistry`) or as a separate module.
+- [`examples/middleware-plugin/`](../examples/middleware-plugin/) is a complete, compiled, tested third-party-style example (`request_id`, an `X-Request-Id` tracing middleware) that only imports `middleware`'s public API — proof the extension path in the guide actually works, not just prose. Run with `go test ./examples/middleware-plugin/...`.
+- [`examples/docker-demo/`](../examples/docker-demo/) is a `docker compose` stack (`docker compose up --build`) with everything running at once: a static route, an authenticated static route, a proxy route to a separate container (`traefik/whoami`), the declarative `middleware:` chain, and Google/GitHub OAuth wired to `.env`. Built from the repo-root `Dockerfile` (multi-stage: webapp build → Go build with `webapp/dist` embedded → minimal alpine runtime) — the same Dockerfile `.github/workflows/docker-release.yml` builds and pushes to `ghcr.io/jmaister/taronja-gateway` on every GitHub Release, independently of `.goreleaser.yml`'s own (unused) `dockers:` integration — see that workflow and `.goreleaser.yml`'s comment for why. Its `config/` directory is bind-mounted.
+- [`examples/docker-image/`](../examples/docker-image/) is docker-demo's `image:`-not-`build:` counterpart: pulls `ghcr.io/jmaister/taronja-gateway` instead of compiling the `Dockerfile`, one proxy route to a second container standing in for "one of your other services" — the shape an actual deployment (Dokploy, Coolify, Kubernetes, a bare `docker run`) takes, not a feature tour. Verified end-to-end (all three routes, admin login) against a locally-built-and-tagged image before this was committed, since no image was actually published to GHCR yet at the time.
+- `tg middleware list --config <path>` (new Cobra command in `main.go`, implemented by `listMiddleware`) prints the resolved chain and `GetStatus()` for a config file. It builds a `Registry` with every dependency `nil` (session store, repos, rate limiter) since introspection never calls into them — safe against a real config file, opens no DB connection, starts no server.
+- [`doc/refactor01-release-notes.md`](../doc/refactor01-release-notes.md) is a human-readable summary of the whole refactor (all 4 phases) suitable for a PR description or release notes — GoReleaser generates its own changelog from commit messages at release time (see `.goreleaser.yml`), so this file exists for the case that needs more than a commit list.
+- `CLAUDE.md` intentionally stays a one-line pointer to this file rather than duplicating any of the above.
+
+**Follow-ups from self-review (Phase 5):** two gaps found by re-auditing phases 3–4 (see `doc/refactor01.md` Phase 5) rather than bugs:
+- `GET <prefix>/api/middleware/metrics` (`handlers/api_middleware.go`'s `GetAllMiddlewareMetrics`) returns every middleware's `MiddlewareMetricsSnapshot` in one call via `Registry.GetAllMetrics()`, which existed since Phase 3 but had no endpoint — a dashboard previously needed one request per middleware.
+- `webapp/src/pages/MiddlewarePage.tsx` (route `/middleware`, nav entry in `Sidebar.tsx`) is the dashboard page Phase 3 marked "(if applicable)" and skipped; modeled directly on `RateLimiterStatsPage.tsx`'s layout/auto-refresh pattern. Uses `useMiddlewareStatus()` + `useMiddlewareMetrics()` (`services/services.ts`), merging the two responses client-side by middleware name.
+- Two other gaps found in the same review — per-middleware YAML config beyond `rate_limiter`, and a dedicated dependency-graph data structure — are deliberately **not** implemented; see Phase 5 in `doc/refactor01.md` for why.
+
+**CORS middleware (`middleware/builtin/cors.go`, `config/cors.go`):** the sixth built-in global middleware, added when a later architecture review flagged that nothing added CORS response headers at all. `config.CORSConfig` (`management.cors`, and per-entry `middleware.global[].cors`, same override pattern as `rateLimiter`) is disabled by default — `IsEnabled()` is false unless `allowedOrigins` is non-empty, matching the pre-CORS behavior exactly when the section is omitted. `CORSMiddleware` handles both real cross-origin requests (adds `Access-Control-Allow-Origin`/`-Credentials`) and preflight `OPTIONS` requests (also adds `-Methods`/`-Headers`/`-Max-Age` and responds `204` directly, never reaching the wrapped handler). `ValidateCORSMiddleware` (`middleware/builtin/validation.go`) rejects `allowedOrigins: ["*"]` combined with `allowCredentials: true` at config-load time — browsers reject that combination outright, so it's caught before deploy rather than silently not working in any browser. In the legacy (non-`middleware:`-section) config path, CORS runs *first among the request-rejecting middlewares*, before rate limiting or auth — a preflight request is never meant to reach application logic, so it needs to be answered before anything that might reject it.
+
+**Compression middleware (`middleware/builtin/compression.go`):** the seventh built-in global middleware, `management.compression` (default `false`). Deliberately option-free (see the doc comment on `CompressionMiddleware` — no algorithm choice, no level, no threshold, no per-route opt-out), it compresses response bodies with brotli, zstd, gzip, or deflate via standard `Accept-Encoding` content negotiation — `supportedEncodings` lists them in tie-break priority order (`br > zstd > gzip > deflate`: brotli/zstd generally compress typical HTTP payloads more tightly than gzip/deflate for comparable CPU cost, and gzip keeps its long-standing edge over the weaker, older deflate). Brotli (`github.com/andybalholm/brotli`) and zstd (`github.com/klauspost/compress/zstd`) are both pure-Go, no-CGO libraries, matching this project's `modernc.org/sqlite`-driven no-CGO build; zstd's writer is constructed with `WithEncoderConcurrency(1)` since its default of `GOMAXPROCS` background goroutines per `Writer` is wasteful for the one-writer-per-response pattern this middleware uses. It runs *before* CORS — outermost of everything except tracing (added later, see below) in the legacy chain — because it works entirely by wrapping the `http.ResponseWriter` passed down through every other middleware and the final route handler; being outermost (of what's left) is what lets it compress the bytes that actually reach the socket regardless of which inner middleware or handler produced them, while `traffic_metrics`/`logging` (which also wrap the writer, further in) still observe the *uncompressed* byte count the handler produced, since compression only affects what gets forwarded past them, not what they record. `compressingResponseWriter` defers the compress/don't-compress decision to the first `Write`/`WriteHeader` call, so it can see whatever `Content-Type`/`Content-Length`/`Content-Encoding` the handler already set. Requests that must never be touched — `Range`, `HEAD`, `Connection: Upgrade` (would break `http.Hijacker` access for WebSocket) — bypass the wrapper entirely rather than being handled by it and declining to compress, so those capabilities are never at risk of being silently dropped.
+
+**Tracing middleware (`middleware/builtin/tracing.go`):** the eighth built-in global middleware, top-level `tracing.enabled` (default `false`, note: not under `management` — see `config.TracingConfig`'s doc comment for why), added after compression but running *before* it — the true outermost middleware in the chain. Wraps `otelhttp.NewHandler` (the standard `go.opentelemetry.io/contrib` instrumentation, not custom span-management code) to create an OpenTelemetry span per request, extracting any incoming W3C `traceparent` to continue a caller's trace rather than always starting a new one — its span needs to cover the entire request lifecycle (compression time included) and see the incoming trace context before anything else touches the request, which is why it goes even further out than compression. `gateway.InitTracing` (called once from `main.go`, before the gateway is built) does the actual exporter/`TracerProvider` setup: an OTLP/HTTP exporter (`otlptracehttp`) targeting `tracing.endpoint`, registered as the *global* `TracerProvider` — this middleware itself holds no state and doesn't check whether tracing is enabled; it's simply never added to the chain when it isn't (middleware/builtin/global.go), the same convention every other optional global middleware here follows. Distributed (not just per-hop) tracing also needs the reverse-proxy transport instrumented: `gateway/gateway.go`'s `createProxyHandlerFunc` wraps the proxy's `http.RoundTripper` with `otelhttp.NewTransport` when tracing is enabled, so a proxied backend call gets its own child span and carries `traceparent` forward. Tested without any real collector: `middleware/builtin/tracing_test.go` uses the OTel SDK's own in-memory exporter (`sdk/trace/tracetest`) to assert on span names/attributes/parent-child relationships; `gateway/tracing_test.go` verifies real OTLP/HTTP export and real cross-hop `traceparent` propagation against a plain `httptest.Server` standing in for a collector — both confirmed end-to-end against a real `tg` binary and a throwaway fake-collector process too, not just these unit tests.
+
+**`tg validate` (`main.go`'s `validateConfigFile`):** loads a config via `config.LoadConfig`, then additionally runs `middleware.ValidateConfigOnly` — the subset of `ValidateAllMiddleware`'s checks that validate the config file itself (routes, admin, rate limiter, CORS, the middleware dependency graph) without dereferencing `deps.Dependencies`, since `tg validate` (like `middleware list` and `migrate`) never opens a database connection. `ValidateAllMiddleware`'s other checks (`ValidateAnalyticsMiddleware`, `ValidateAuthenticationMiddleware`, `ValidateDependencies`) are deliberately excluded — they check that dependency injection wired real objects, not a property of the config file, so they're meaningless without a real `deps.Dependencies`.
+
+**Declarative `middleware:` config example** (opt-in; omit this section entirely to keep using `management.analytics`/`logging`/`rateLimiter`/`cors`):
+```yaml
+middleware:
+  global:
+    - name: cors
+      cors:
+        allowedOrigins: ["https://app.example.com"]
+    - name: rate_limiter
+      rateLimiter:
+        requestsPerMinute: 1000
+        maxErrors: 10
+        blockMinutes: 5
+    - name: ja4_fingerprint
+    - name: session_extraction
+    - name: traffic_metrics
+    - name: logging
+      enabled: false
+```
 
 ### `providers/` — Authentication Providers
 
 **`providers.go`:**
 - `AuthenticationProvider` interface with Login/Callback/Logout flow
 - OAuth2 lifecycle: state + redirect cookies → provider redirect → code exchange → fetch user info → find-or-create `User` by email → create `Session` → set cookie
+- `UserDataFetcher.FetchUserData(r *http.Request, token *oauth2.Token)` — takes the whole request and token, not just an access-token string, so a provider without a REST "get current user" endpoint can instead decode/verify an ID token and read a one-time extra form value off the callback request itself; every provider currently registered ignores both extra parameters and just uses `token.AccessToken`.
+- Two optional `AuthenticationProvider` fields, both nil/empty for every provider currently registered: `ClientSecretFunc func() (string, error)` — called to (re)generate `OAuthConfig.ClientSecret` immediately before every token exchange, for a provider whose secret isn't a static string; `ResponseMode string` — sent as the OAuth2 `response_mode` authorization parameter when non-empty. `Callback` reads `state`/`code` via `r.FormValue` (populated from the URL query for a GET callback, or a POST body for `response_mode=form_post`), so both callback shapes go through the same code path.
 
 **Implementations:**
 - `basicAuthentication.go` — username/password against `User.PasswordHash`
 - `google.go` — Google OAuth2 (redirect to Google, callback at `/_/callback`, exchanges auth code for user info)
 - `github.go` — GitHub OAuth2 (similar flow)
+
+Microsoft, Facebook, and Apple ("Sign in with Apple") providers
+(`microsoft.go`/`facebook.go`/`apple.go`) existed here too, but moved to
+the `wip/microsoft-apple-facebook-auth` branch — implemented but untested,
+to come back to later. That branch's `apple.go` is the worked example for
+a provider needing the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-
+of-REST shape above (its client secret is a JWT the gateway signs itself,
+`ResponseMode: "form_post"`, and no REST "get current user" call at all —
+`FetchUserData` decodes the ID token from the exchange response instead,
+verified against Apple's published public keys); `microsoft.go`/
+`facebook.go` are the "normal-shaped" examples alongside `google.go`.
+
+**Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`github.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape, the wip branch's `apple.go`):
+1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
+2. A `UserDataFetcher` implementation: normally one HTTP call to the provider's own "get current user" API, mapping its response into the shared `UserInfo` struct.
+3. `RegisterXxxAuth(mux, sessionStore, gatewayConfig, userRepo)`: builds the `oauth2.Config` (ClientID/Secret from a new `config.AuthenticationProviders` field, RedirectURL, Scopes, and an `oauth2.Endpoint`) and wires it through `NewAuthenticationProvider`/`RegisterEndpoints`. `golang.org/x/oauth2/endpoints` ships ready-made `AuthURL`/`TokenURL` pairs for 40+ services (Microsoft, GitLab, Discord, Slack, Facebook, LinkedIn, Spotify, ...), and several (Google, GitHub, Microsoft, Slack, GitLab, ...) get their own dedicated subpackage instead — check both before hand-writing an endpoint.
+4. Wire the new config field into `providers.RegisterProviders`, `config.GatewayConfig.HasAnyAuthentication`, `config.AuthenticationProviders.PrintOAuthCallbackURLs`, and `config.loginPageData`/`NewLoginPageData`.
+5. A login button in `static/login.html` (a `{{if .AuthenticationProviders.Xxx.Enabled}}` block, a brand SVG in `static/` — embedded automatically via `static.StaticAssetsFS`'s `//go:embed *`) and a `.oauth-xxx` CSS rule.
+6. Docs: README's "Authentication Providers" section and `sample/config.yaml`.
+
+None of this touches the OAuth2 flow itself for a "normal-shaped" provider — see `google.go`/`github.go` for a complete example of exactly this list.
+
+### `notification/` — Generic Notification System
+
+Full reference: [doc/notifications.md](./doc/notifications.md). Same
+shared-interface-plus-registry shape as `providers/`: notification.Service
+owns storage/business logic, and a small `Provider` interface
+(`Channel() string`, `Send(ctx, req) (externalRef string, err error)`) is
+implemented once per external delivery channel — `email.go` (SMTP,
+`net/smtp`), `telegram.go` (Telegram Bot API over plain HTTP, plus
+`TelegramPoller` long-polling `getUpdates` for account-linking `/start`
+messages and inline-keyboard button taps — no webhook, so no inbound
+network exposure is required), and `webhook.go`'s `ResponseWebhookProvider`
+— an *outbound* HTTP callback (HMAC-signed if `config.ResponseWebhookConfig.Secret`
+is set) fired once when a user responds to a notification, on any channel,
+so the app that created it learns about the response without polling —
+there's no admin-readable "check a notification's state" endpoint, so this
+webhook is deliberately implemented as an ordinary `Provider` specifically
+to inherit `deliver`/`recordDelivery`'s retry-with-backoff and delivery-
+history treatment for free, rather than needing its own weaker reliability
+story. It's excluded from `resolveChannelsForUser`'s "every configured
+channel" default (see `db.NotificationChannelResponseWebhook`'s doc
+comment) since it isn't a channel a notification is ever delivered *to* —
+it's only ever invoked directly, once, from
+`Service.recordValidatedResponse`, right after a response is recorded (the
+in-memory `Notification` is updated with the new `RespondedActionID`/
+`RespondedVia`/`RespondedAt` there, since `RecordResponse` only wrote them
+to the database, not this copy — `ResponseWebhookProvider.Send` reads them
+straight off `req.Notification`).
+
+- `notification.go` — the `Action` type (one possible answer to a
+  notification) and JSON (un)marshaling helpers for the caller-opaque
+  `Metadata`/`Actions` fields `db.Notification` stores as raw strings.
+- `provider.go` — the `Provider` interface, `SendRequest`, and
+  `generateOpaqueToken`/`hashToken` (the same random-bytes-then-hash
+  pattern `auth.TokenService` uses for API tokens — used for the
+  Telegram-linking code and the email respond-link token, both of which
+  need to hand a raw secret to something outside the gateway's own auth
+  while only ever persisting its hash).
+- `service.go` — `Service.Create` takes `CreateInput.UserIDs []string`, not
+  a single ID, and returns `(notifications, batchID, err)`: it stores one
+  `db.Notification` per recipient (all sharing the same type/title/body/
+  actions plus one freshly generated `BatchID` — even a single-recipient
+  call gets one, "a batch of one" — each independently read/answered/
+  delivered), collecting per-recipient DB failures via `errors.Join` rather
+  than letting one bad row abort the whole batch.
+  `GetNotificationStatus`/`GetBatchStatus` compute a rolled-up
+  sent/failed/pending `Status` on demand from `ListDeliveries`'s raw
+  attempts (worst-first: `StatusPending` beats `StatusFailed` beats
+  `StatusSent`; a `db.NotificationDeliveryStatusSkipped` channel is
+  excluded from the rollup entirely rather than counting as a failure) —
+  see `channelStatus`/`overallStatus`. `StatusPending` has two origins:
+  a raw `db.NotificationDeliveryStatusPending` row (delivery in-flight,
+  provider Send not yet returned) and a `db.NotificationDeliveryStatusFailed`
+  row whose retry is still scheduled. `GetBatchStatus` is admin-only (a
+  batch can span several different users' own notifications, so there's no
+  single owning user to scope it to the way `GetNotificationStatus` is).
+  For each recipient it
+  then attempts delivery on `resolveChannelsForUser`'s answer: the request's
+  explicit `Channels` if given, else that *recipient's own* preferred
+  channel (`SetPreferredChannel`/`GetPreferredChannel`,
+  `db.NotificationPreference` — "each user can decide to receive
+  notifications by one different provider") if they've set one, else every
+  configured channel — the pre-preferences default. A channel that isn't
+  configured, or that the user has no recipient for, is recorded as
+  `db.NotificationDeliveryStatusSkipped` rather than failing `Create`. A
+  failed delivery isn't final: `RetryFailedDeliveries` (polled every 30s by
+  `RunRetryWorker`, started unconditionally in `gateway.InitNotifications`)
+  resends anything past its `NextRetryAt`, appending a *new*
+  `NotificationDelivery` row each time (`AttemptNumber` incrementing) —
+  deliveries are an append-only log, never mutated in place, so the full
+  history survives every retry. `retryBackoffSchedule` (1m/5m/30m/2h, not
+  config-exposed) bounds how many times and how far apart; past the last
+  entry a delivery just stays `failed`. `RespondViaWeb`/`RespondViaToken`/
+  `RespondViaTelegram` are the three ways a response gets recorded (in-app
+  session, email link, Telegram button), converging on the same
+  `recordValidatedResponse` — first response wins,
+  `db.NotificationRepository.RecordResponse` rejects a second one.
+- `db/notificationrepository.go` — the repository interface/impl, plus
+  `NotificationChannelLink` (user ↔ external chat ID),
+  `NotificationLinkCode` (the short-lived `/start <code>` linking code),
+  and `NotificationPreference` (one row per user with a stored channel
+  preference — `GetPreferredChannel` returns `""`, never
+  `gorm.ErrRecordNotFound`, for "no row" and "empty preference" alike, so
+  `resolveChannelsForUser` doesn't need a not-found special case)
+  persistence. `FindDeliveriesDueForRetry`/`ClearNextRetry` rely on an
+  invariant documented on `db.NotificationDelivery`: at most one row per
+  (NotificationID, Channel) ever has a non-null `NextRetryAt` at a time,
+  which keeps the due-retry query a plain index scan instead of a
+  latest-row-per-group query.
+- `handlers/api_notifications.go` — the OpenAPI `StrictApiServer` methods.
+  `CreateNotification` (server-to-server) is admin-only, checked the same
+  way `CreateToken`/`ListTokens` are (`sessionObj.IsAdmin`), reusing the
+  existing admin-owned API token mechanism rather than a new auth concept.
+  `RespondToNotificationByToken` (the public email answer link) is listed
+  in `middleware.OperationWithNoSecurity` since it has no session to check —
+  the opaque `token` query parameter is the credential instead, verified
+  inside the handler. `ListNotificationDeliveries` (owner or admin) exposes
+  the full retry/delivery history built above. `GetNotificationStatus`
+  (owner or admin) and `GetNotificationBatchStatus` (admin only) expose
+  `Service`'s computed status rollup. `GetNotificationPreference`/
+  `SetNotificationPreference` are self-service (the caller's own session,
+  no admin check) — a user manages only their own preference, never
+  someone else's.
+
+**Adding a new delivery channel** (WhatsApp, Slack, SMS, ...) means writing
+a new `Provider` implementation and registering it in
+`notification.NewService` — no change to `db.Notification`, the OpenAPI
+spec, or any other provider. If the channel needs its own account-linking
+step (most will, the way Telegram does — there's no notion of "this
+gateway user's WhatsApp number" otherwise), mirror
+`NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
+`telegram.go`.
 
 ### `handlers/` and `api/` — OpenAPI API Implementation
 
@@ -168,6 +398,8 @@ taronja-gateway/
 - One file per major resource: `api_users.go`, `api_tokens.go`, `api_me.go`, `api_logout.go`, `api_health.go`, `api_statistics.go`, `api_counters.go`, `api_openapi.go`
 - `api_impl.go` defines `StrictApiServer` struct with all repo/service/store dependencies; each handler method signature satisfies the generated interface
 - **API-first workflow:** when adding a new endpoint, edit the OpenAPI spec first, regenerate with `make gen`, then implement in a handler file
+
+**`GET <prefix>/api/statistics/timeseries`** (`handlers/api_statistics.go`'s `GetRequestTimeSeries`, admin-only): request/visitor counts bucketed over time — see `db/timeseries.go` for the bucketing implementation. Defaults `granularity` to `"day"` and, when `start_date` is also omitted, picks a default span proportional to the chosen granularity (24h for minute/hour/day, ~12 weeks for week, 12 months for month) rather than one fixed "last 30 days" default like `GetRequestStatistics` uses — a fixed 30-day default would be a near-single-point series at month granularity. Validates the resolved range via `db.ValidateTimeSeriesRange` before querying, returning `400` (not `500`) for an unrecognized granularity or a span too large for it. Powers `webapp/src/pages/RequestSummaryPage.tsx`'s "Traffic Over Time" section (`TrafficOverTimeSection`, using the new `webapp/src/components/charts/TimeSeriesChart.tsx`) — a preset dropdown (Last hour/24h/7d/30d/12mo, each with its own matching granularity, the same pattern Grafana/Cloudflare/Vercel Analytics use) driving three charts: requests+unique-fingerprints+unique-users, errors, and average response time. The chart itself uses chart.js's plain `CategoryScale` with pre-formatted date-fns labels rather than the built-in `TimeScale`, since this project doesn't have `chartjs-adapter-date-fns` as a dependency and adding one wasn't necessary to get a correct axis.
 
 ### `encryption/` — Password Hashing
 
@@ -232,14 +464,15 @@ webapp/src/
 │   ├── layout/                 # Sidebar.tsx, Header.tsx, MainLayout.tsx (app shell)
 │   ├── ui/                     # Design system: Badge, Button, Card, FormField, Input, PageHeader, StatusPill
 │   ├── theme/                  # ThemeSwitcher.tsx (light/dark + color palette selection)
-│   ├── charts/                 # SampleBarChart.tsx (chart.js 4 + react-chartjs-2)
+│   ├── charts/                 # TimeSeriesChart.tsx (chart.js 4 + react-chartjs-2, real data); SampleBarChart.tsx (unused hardcoded-data demo, predates TimeSeriesChart)
 │   ├── RequestsWorldMap.tsx, LazyRequestsWorldMap.tsx  # maplibre-gl world map
 │   └── [other components]
 ├── pages/                      # One file per route
 │   ├── HomePage, ProfilePage, NotFoundPage
 │   ├── RequestSummaryPage, RequestsDetailsPage, RateLimiterStatsPage
 │   ├── UsersListPage, CreateUserPage, UserInfoPage
-│   └── CountersManagementPage
+│   ├── CountersManagementPage
+│   └── MiddlewarePage             # status/health/metrics for the global middleware chain (doc/refactor01.md Phase 5)
 ├── contexts/
 │   └── ThemeContext.tsx        # Light/dark mode + color palette provider (drives html[data-theme]/[data-palette])
 ├── lib/, utils/                # cn() classnames helper, formatting helpers, coordinates
@@ -270,8 +503,11 @@ webapp/src/
 **API Client Generation:**
 - OpenAPI spec: [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml)
 - Tool: `@hey-api/openapi-ts` (via `make gen`, executed in root Makefile)
-- Command: `npx @hey-api/openapi-ts -i ./api/taronja-gateway-api.yaml -o webapp/src/apiclient -c @hey-api/client-fetch`
+- Command (`make gen`'s actual recipe): `cd webapp && npm install && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch` — run from inside `webapp/`, not the repo root
 - Regenerated whenever the spec changes; files carry auto-generated headers (`// This file is auto-generated`)
+- `webapp/src/apiclient` is gitignored (a generated artifact, same as `webapp/dist`), so a fresh checkout has no client at all until `make gen` (or the command above) is run once
+- **Fixed toolchain gotcha, keep it fixed**: `@hey-api/openapi-ts` is a pinned `devDependency` in `webapp/package.json` (not invoked via bare `npx --yes` from the repo root) specifically because that resolves its own isolated `typescript` dependency — which as of writing pulls in `typescript@7.x`, the from-scratch Go-based compiler rewrite, incompatible with `@hey-api/openapi-ts`'s TS AST codegen (`Cannot read properties of undefined (reading 'SyntaxKind')` / `'LineFeed'`, across multiple `@hey-api/openapi-ts` versions). Running it from inside `webapp/` as a local devDependency makes npm resolve its `typescript` peer against the workspace's own pinned `typescript` (6.0.3, which works) instead. If this starts failing again after a `@hey-api/openapi-ts` or `typescript` version bump, that's almost certainly the same class of issue recurring — don't revert to bare `npx --yes` from root as a "fix." `.github/workflows/ci.yml` and `.github/workflows/release.yml` both had this exact bare `npx --yes` bug live (unnoticed since it happened to work on whatever GitHub Actions' runners resolved) until they were fixed to match — see their "Generate API client"/"Generate Go API code and TypeScript client" steps.
+- **CI enforces more than it used to**: `ci.yml` now also runs `gofmt -l` (against `git ls-files '*.go'`, not a bare recursive `gofmt -l .`, since that would also pick up vendored `.go` files under `webapp/node_modules` that aren't ours to reformat), `go vet ./...`, `npm run lint`, and `npx tsc --noEmit` for webapp — and a "Check generated files are up to date" step that regenerates `api/api.gen.go` and `doc/CONFIG.md` and fails the build on any diff. None of these existed before; concretely, `tsc --noEmit` would have caught two real bugs (a missing `UserResponse.createdAt`/`updatedAt` mapping, a JSON-import type error) that shipped silently earlier in this project's history because nothing ran it.
 
 **Dependencies** (key packages in [`webapp/package.json`](./webapp/package.json)):
 - React 19, react-dom 19, TypeScript 6
@@ -317,9 +553,12 @@ webapp/src/
 ### CI/CD
 
 - **GitHub Actions** (`.github/workflows/`):
-  - `ci.yml` — on push/PR: setup Go 1.26 + Node 22, regenerate API clients, build SDK/webapp, `go build`, `go test -cover`, post coverage table as PR comment, run `goreleaser check`
+  - `ci.yml` — on push/PR: setup Go 1.27 + Node 22, regenerate API clients, build SDK/webapp, `go build`, `go test -cover`, post coverage table as PR comment, run `goreleaser check`
   - `sdk-release.yml` — publish SDK to npm (triggered on tag or manual workflow dispatch)
-  - `release.yml` — build release binaries and Docker images via GoReleaser (disabled/commented out Docker section)
+  - `clients.yml` — generate and push the OpenAPI-generated clients to a separate repo (triggered on tag or manual workflow dispatch)
+  - `release.yml` — build release binaries via GoReleaser (its own `dockers:` integration is unused — see `.goreleaser.yml`'s comment; the image is built separately, below)
+  - `docker-release.yml` — build and push `ghcr.io/jmaister/taronja-gateway:<version>`/`:latest` on every GitHub Release, with a `workflow_dispatch` build-only dry run
+  - `docker-pr.yml` — build and push `ghcr.io/jmaister/taronja-gateway:pr-<number>` on every push to a same-repo (non-fork) PR, plus a daily job that deletes `pr-*` images older than 5 days (needs a `GHCR_CLEANUP_TOKEN` repo secret — see the workflow's own comment for why `GITHUB_TOKEN` isn't enough for this specific operation)
 
 ---
 
@@ -371,7 +610,7 @@ For more detailed information on specific areas:
 - **SDK documentation:** [`sdk/README.md`](./sdk/README.md)
 - **SDK release process:** [`doc/SDK_RELEASE.md`](./doc/SDK_RELEASE.md)
 - **Auth header contract:** [`README.md`](./README.md) section "Using the Gateway" (detailed header formats, backend integration examples in Node/Go/Python/JS)
-- **Performance notes:** [`PERFORMANCE_ANALYSIS.md`](./PERFORMANCE_ANALYSIS.md)
+- **Performance notes:** [`doc/PERFORMANCE_ANALYSIS.md`](./doc/PERFORMANCE_ANALYSIS.md)
 
 ---
 
@@ -383,6 +622,7 @@ For more detailed information on specific areas:
 | Add a database model | Add struct to [`db/schema.go`](./db/schema.go) + repository interface/impl in [`db/*repository.go`](./db/) |
 | Add a route (proxy/static) | Edit config YAML, see [`sample/config.yaml`](./sample/config.yaml) and [`config/config.go`](./config/config.go) for schema |
 | Configure auth provider | Edit config YAML `authenticationProviders` section; implementations in [`providers/*.go`](./providers/) |
+| Add a notification delivery channel | Implement `notification.Provider` in [`notification/*.go`](./notification/), register it in `notification.NewService`; see [doc/notifications.md](./doc/notifications.md) |
 | Build for release | `make release-local` (GoReleaser, cross-platform binaries); requires version tag |
 | Publish SDK to npm | `.github/workflows/sdk-release.yml` (automated on tag or manual dispatch); details in [`doc/SDK_RELEASE.md`](./doc/SDK_RELEASE.md) |
 | Add a UI component | Create in [`webapp/src/components/`](./webapp/src/components/), use in pages under [`webapp/src/pages/`](./webapp/src/pages/) |

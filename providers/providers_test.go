@@ -12,6 +12,7 @@ import (
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 )
 
@@ -219,6 +220,39 @@ func TestLogoutCookieSecureFlag(t *testing.T) {
 	assert.False(t, sessionCookie2.Secure)
 }
 
+// TestLogoutCookieSecureFlag_TrustedProxyHTTPS is the regression test for
+// the needs-validation item this closes: a deployment that terminates TLS
+// upstream of this gateway (a cloud load balancer, another reverse proxy)
+// never sets req.TLS on the request this gateway itself receives — only a
+// bare req.TLS check (as TestLogoutCookieSecureFlag's own "without TLS"
+// case exercises for the opposite, correct case: a genuinely plain-HTTP,
+// untrusted-peer request) would incorrectly omit Secure on a connection
+// that was actually HTTPS end-to-end. See session.RequestIsSecure's doc
+// comment for the full reasoning, including why the claim is only honored
+// from a trusted peer.
+func TestLogoutCookieSecureFlag_TrustedProxyHTTPS(t *testing.T) {
+	authProvider := createTestAuthProvider()
+
+	req := httptest.NewRequest("GET", "/logout", nil)
+	req.RemoteAddr = "127.0.0.1:12345" // the trusted-proxy peer session.IsTrustedProxy recognizes
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.AddCookie(&http.Cookie{Name: session.SessionCookieName, Value: "some-token"})
+
+	w := httptest.NewRecorder()
+	authProvider.Logout(w, req)
+
+	cookies := w.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == session.SessionCookieName {
+			sessionCookie = cookie
+			break
+		}
+	}
+	assert.NotNil(t, sessionCookie)
+	assert.True(t, sessionCookie.Secure, "a trusted upstream's X-Forwarded-Proto: https claim should set Secure even with no local req.TLS")
+}
+
 func TestLogoutMultipleSessionsForUser(t *testing.T) {
 	authProvider := createTestAuthProvider()
 
@@ -407,6 +441,7 @@ func TestCallbackWithStateCookieAndRedirectUrlCookie(t *testing.T) {
 		assert.Equal(t, -1, stateCookie.MaxAge, "State cookie should be set to expire immediately")
 		assert.True(t, stateCookie.HttpOnly, "State cookie should be HttpOnly")
 		assert.Equal(t, "/", stateCookie.Path, "State cookie path should be /")
+		assert.Equal(t, http.SameSiteLaxMode, stateCookie.SameSite, "Lax, not Strict — this cookie must survive the OAuth provider's own cross-site redirect back here")
 	})
 
 	t.Run("callback with redirect URL cookie", func(t *testing.T) {
@@ -507,7 +542,7 @@ type MockUserDataFetcher struct {
 	err      error
 }
 
-func (m *MockUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (m *MockUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -610,11 +645,19 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		assert.Equal(t, "/", sessionCookie.Path)
 		assert.True(t, sessionCookie.HttpOnly)
 		assert.Equal(t, 86400, sessionCookie.MaxAge) // 24 hours
+		// SameSite=Lax (not Strict): this response is itself the arrival
+		// leg of a cross-site top-level navigation (the OAuth provider
+		// redirecting back here), and Lax — unlike Strict — still lets a
+		// cookie set here be sent on the very next same-site request, which
+		// is all a session cookie actually needs going forward.
+		assert.Equal(t, http.SameSiteLaxMode, sessionCookie.SameSite)
 
 		// Check that redirect cookie is cleared
 		assert.NotNil(t, redirectCookie, "Redirect cookie should be cleared")
 		assert.Equal(t, "", redirectCookie.Value)
 		assert.Equal(t, -1, redirectCookie.MaxAge)
+		assert.True(t, redirectCookie.HttpOnly, "the clearing Set-Cookie must match the original's attributes to reliably overwrite it")
+		assert.Equal(t, http.SameSiteLaxMode, redirectCookie.SameSite)
 
 		// Verify user was created in repository
 		createdUser, err := testUserRepo.FindUserByIdOrUsername("", "", "newuser@example.com")
@@ -624,6 +667,32 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		assert.Equal(t, "newuser", createdUser.Username)
 		assert.Equal(t, "test", createdUser.Provider)
 		assert.True(t, createdUser.EmailConfirmed)
+	})
+
+	// TestCallbackWithMockedOAuthFlow/successful_OAuth_callback_flow_rejects_an_open_redirect_cookie
+	// is the regression test for the vulnerability: Callback used to read
+	// the RedirectUrlCookieName cookie and redirect to its value with no
+	// validation at all — and since cookies aren't signed, nothing stops a
+	// client from setting an absolute-URL value in it before completing a
+	// real OAuth round trip, bouncing the browser to an attacker-controlled
+	// page right after a genuine successful login.
+	t.Run("successful OAuth callback flow rejects an open redirect cookie", func(t *testing.T) {
+		state := "test-state-value-openredirect"
+		redirectURL := "https://evil.example/phish"
+		code := "test-auth-code-openredirect"
+
+		mockFetcher.userInfo.Email = "openredirect-user@example.com"
+		mockFetcher.userInfo.Username = "openredirectuser"
+
+		req := httptest.NewRequest("GET", "/_/auth/test/callback?state="+state+"&code="+code, nil)
+		req.AddCookie(&http.Cookie{Name: StateCookieName, Value: state})
+		req.AddCookie(&http.Cookie{Name: RedirectUrlCookieName, Value: redirectURL})
+
+		w := httptest.NewRecorder()
+		authProvider.Callback(w, req)
+
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/", w.Header().Get("Location"), "an absolute-URL redirect cookie must be rejected, not forwarded to the client")
 	})
 
 	t.Run("successful OAuth callback flow without redirect URL cookie", func(t *testing.T) {
@@ -657,5 +726,43 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 
 		assert.NotNil(t, sessionCookie, "Session cookie should be set")
 		assert.NotEmpty(t, sessionCookie.Value)
+	})
+
+	// TestCallbackWithMockedOAuthFlow/OAuth_callback_rejects_login_when_the_
+	// provider_reports_an_unverified_email is the regression test for the
+	// account-creation path unconditionally setting EmailConfirmed: true
+	// regardless of what the provider actually reported — an unverified
+	// email from a provider that can return one would otherwise create an
+	// immediately-usable, "confirmed" account, letting anyone claim any
+	// email address. A new user is still created (so its state is
+	// inspectable/fixable by an admin), but login itself is rejected via
+	// validateUserLogin, same as it already is for an unconfirmed local
+	// account.
+	t.Run("OAuth callback rejects login when the provider reports an unverified email", func(t *testing.T) {
+		state := "test-state-value-unverified"
+		code := "test-auth-code-unverified"
+
+		mockFetcher.userInfo.Email = "unverified-user@example.com"
+		mockFetcher.userInfo.Username = "unverifieduser"
+		mockFetcher.userInfo.VerifiedEmail = false
+		defer func() { mockFetcher.userInfo.VerifiedEmail = true }() // restore for any test added after this one
+
+		req := httptest.NewRequest("GET", "/_/auth/test/callback?state="+state+"&code="+code, nil)
+		req.AddCookie(&http.Cookie{Name: StateCookieName, Value: state})
+
+		w := httptest.NewRecorder()
+		authProvider.Callback(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code, "login must be rejected when the provider's email isn't verified")
+
+		cookies := w.Result().Cookies()
+		for _, cookie := range cookies {
+			assert.NotEqual(t, session.SessionCookieName, cookie.Name, "no session must be issued for an unverified-email login")
+		}
+
+		createdUser, err := testUserRepo.FindUserByIdOrUsername("", "", "unverified-user@example.com")
+		require.NoError(t, err)
+		require.NotNil(t, createdUser, "the account should still be created, just not usable to log in yet")
+		assert.False(t, createdUser.EmailConfirmed)
 	})
 }

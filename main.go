@@ -1,17 +1,25 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"sort"
+	"strings"
+	"syscall"
+	"text/tabwriter"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -28,6 +36,13 @@ var (
 	buildOS   = "unknown"
 	buildArch = "unknown"
 )
+
+// gracefulShutdownTimeout bounds how long runGateway waits, after receiving
+// SIGINT/SIGTERM, for in-flight requests to finish before forcing the
+// process to exit anyway. Matches the http.Server's own ReadTimeout/
+// WriteTimeout (gateway/gateway.go) as the project's established "how long
+// is too long for one request" convention.
+const gracefulShutdownTimeout = 15 * time.Second
 
 var rootCmd = &cobra.Command{
 	Use:   "tg",
@@ -62,6 +77,32 @@ var addUserCmd = &cobra.Command{
 	},
 }
 
+var middlewareCmd = &cobra.Command{
+	Use:   "middleware",
+	Short: "Introspect the gateway's global middleware chain",
+	Long:  `Commands for inspecting the global middleware chain defined by a config file, without starting the gateway.`,
+}
+
+var middlewareListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List global middleware and their status for a config file",
+	Long: `Loads a gateway config file and prints every built-in global middleware:
+its position in the resolved chain, whether it's active or merely available,
+its dependencies, and (where implemented) its health.
+
+Does not start the HTTP server, open a database connection, or make any
+network calls — safe to run against a real config file to check what a
+change would do before deploying it.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		configFilePath, err := cmd.Flags().GetString("config")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
+			os.Exit(1)
+		}
+		listMiddleware(configFilePath)
+	},
+}
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Display version information",
@@ -74,15 +115,83 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var migrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Print a config file migrated to the version this gateway requires",
+	Long: `Reads a config file and prints it migrated to the version this gateway
+requires (unchanged if it's already current) on stdout. This command never
+writes a file itself — redirect the output to save it:
+
+    tg migrate --config config.yaml > config-v2.yaml
+
+The migration is applied one version step at a time (v1->v2, v2->v3, ...),
+same as if you'd run this once per intervening version, so a config several
+versions behind is fully upgraded in a single run.
+
+The gateway refuses to start ("run") against an outdated config file
+specifically so upgrading it is a deliberate step you take (and can review
+the result of) rather than something that happens silently on every
+startup. Run this whenever "tg run" tells you to.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		configFilePath, err := cmd.Flags().GetString("config")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
+			os.Exit(1)
+		}
+		migrateConfigFile(configFilePath)
+	},
+}
+
+var validateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Validate a config file without starting the gateway",
+	Long: `Loads a config file and reports whether it's valid: parses successfully,
+declares a supported schema version, has well-formed routes and admin
+settings, and — if it has a middleware: section or the legacy analytics/
+logging/rateLimiter/cors flags — resolves to a global middleware chain with
+no unmet dependencies.
+
+Does not start the HTTP server, open a database connection, or make any
+network calls — safe to run in CI, or before deploying a config change, the
+same way "tg middleware list" and "tg migrate" are.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		configFilePath, err := cmd.Flags().GetString("config")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting config flag: %v\n", err)
+			os.Exit(1)
+		}
+		validateConfigFile(configFilePath)
+	},
+}
+
 func init() {
 	runCmd.Flags().String("config", "", "Path to the configuration file")
 	if err := runCmd.MarkFlagRequired("config"); err != nil {
 		log.Fatalf("Failed to mark 'config' flag as required for runCmd: %v", err)
 	}
+	middlewareListCmd.Flags().String("config", "", "Path to the configuration file")
+	if err := middlewareListCmd.MarkFlagRequired("config"); err != nil {
+		log.Fatalf("Failed to mark 'config' flag as required for middlewareListCmd: %v", err)
+	}
+	middlewareCmd.AddCommand(middlewareListCmd)
+
+	migrateCmd.Flags().String("config", "", "Path to the configuration file to migrate")
+	if err := migrateCmd.MarkFlagRequired("config"); err != nil {
+		log.Fatalf("Failed to mark 'config' flag as required for migrateCmd: %v", err)
+	}
+
+	validateCmd.Flags().String("config", "", "Path to the configuration file to validate")
+	if err := validateCmd.MarkFlagRequired("config"); err != nil {
+		log.Fatalf("Failed to mark 'config' flag as required for validateCmd: %v", err)
+	}
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(addUserCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(middlewareCmd)
+	rootCmd.AddCommand(migrateCmd)
+	rootCmd.AddCommand(validateCmd)
+	rootCmd.AddCommand(openapiCmd)
 }
 
 func main() {
@@ -92,10 +201,42 @@ func main() {
 	}
 }
 
+var openapiCmd = &cobra.Command{
+	Use:   "openapi",
+	Short: "Print the OpenAPI specification file",
+	Long: `Prints the OpenAPI specification embedded in this binary (the same
+YAML served at GET <prefix>/openapi.yaml). Does not start the server or
+need a config file — redirect stdout to save it:
+
+    tg openapi > taronja-gateway-api.yaml`,
+	Run: func(cmd *cobra.Command, args []string) {
+		printOpenAPISpec()
+	},
+}
+
+// printOpenAPISpec writes the embedded OpenAPI YAML to stdout and nothing
+// else. Same split as migrateConfigFile: informational notes would go to
+// stderr if we ever had any; stdout must stay a clean YAML document so
+// `tg openapi > file.yaml` is a valid spec.
+func printOpenAPISpec() {
+	fmt.Print(string(api.OpenApiSpecYaml))
+}
+
+// dotEnvLoadIsFatal reports whether an error from godotenv.Load() should
+// stop the gateway from starting: a missing .env is never fatal — see
+// runGateway's call site — only a present-but-unreadable/malformed one is.
+func dotEnvLoadIsFatal(err error) bool {
+	return err != nil && !os.IsNotExist(err)
+}
+
 func runGateway(configFilePath string) {
-	err := godotenv.Load() // 👈 load .env file
-	if err != nil {
-		log.Fatal(err)
+	// A missing .env is fine — plenty of deployments (this project's own
+	// Docker demo among them) rely on real environment variables only and
+	// never have one; only a present-but-unreadable/malformed one is worth
+	// stopping for — same distinction the one addUser already makes below.
+	// This was the one call site treating "no .env" as fatal.
+	if err := godotenv.Load(); dotEnvLoadIsFatal(err) {
+		log.Fatalf("FATAL: failed to load .env: %v", err)
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -109,8 +250,25 @@ func runGateway(configFilePath string) {
 
 	session.SetGeolocationConfig(&config.Geolocation)
 
+	// Called via the package name, not the "gateway" identifier that
+	// shadows it just below (gateway, err := gateway.NewGatewayWithDependencies(...)) —
+	// this has to happen first, while "gateway" still refers to the package.
+	shutdownTracing, err := gateway.InitTracing(context.Background(), config.Tracing, config.Name)
+	if err != nil {
+		log.Fatalf("FATAL: failed to initialize tracing: %v", err)
+	}
+
 	// Initialize dependencies for production
 	gatewayDeps := deps.NewProduction()
+
+	// Needs gatewayDeps (NotificationRepo, UserRepo) — must come after the
+	// line above — and needs to be set before NewGatewayWithDependencies
+	// wires up the OpenAPI routes below, which read gatewayDeps.
+	// NotificationService at route-registration time.
+	shutdownNotifications, err := gateway.InitNotifications(context.Background(), config.Notification, config.Server, config.Management, gatewayDeps)
+	if err != nil {
+		log.Fatalf("FATAL: failed to initialize notifications: %v", err)
+	}
 
 	gateway, err := gateway.NewGatewayWithDependencies(config, &webappEmbedFS, gatewayDeps)
 	if err != nil {
@@ -124,18 +282,65 @@ func runGateway(configFilePath string) {
 	// Print OAuth callback URLs if configured
 	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
 
-	err = gateway.Server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		log.Fatalf("FATAL: Failed to start server: %v", err)
+	// Serve in the background so this goroutine can wait for either a
+	// server error or an interrupt/terminate signal.
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- gateway.Server.ListenAndServe()
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// An unhandled SIGHUP falls through to the OS default, which kills the
+	// process with no graceful shutdown.
+	signal.Ignore(syscall.SIGHUP)
+
+	select {
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("FATAL: Failed to start server: %v", err)
+		}
+	case sig := <-stop:
+		// Drain in-flight requests instead of dropping them.
+		log.Printf("Received %s, shutting down gracefully (waiting up to %s for in-flight requests to finish)...", sig, gracefulShutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+		defer cancel()
+		if err := gateway.Server.Shutdown(ctx); err != nil {
+			log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
+		}
+	}
+
+	// The server has stopped accepting new requests either way (a clean
+	// Shutdown, or ListenAndServe returning on its own) — nothing is still
+	// calling Dependencies.TrafficMetricRepo.Create concurrently by this
+	// point, so it's safe to flush and stop its batching goroutine (see
+	// Dependencies.Close and doc/PERFORMANCE_ANALYSIS.md).
+	gateway.Dependencies.Close()
+
+	// A fresh context, since the shutdown one above may already be expired.
+	// Flushes spans still queued in the batch exporter; no-op when tracing
+	// is disabled.
+	tracingShutdownCtx, tracingShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer tracingShutdownCancel()
+	if err := shutdownTracing(tracingShutdownCtx); err != nil {
+		log.Printf("Warning: failed to flush tracing exporter cleanly: %v", err)
+	}
+
+	// Stops the Telegram long-polling goroutine, if one was started (see
+	// InitNotifications) — no-op otherwise.
+	notificationsShutdownCtx, notificationsShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer notificationsShutdownCancel()
+	if err := shutdownNotifications(notificationsShutdownCtx); err != nil {
+		log.Printf("Warning: failed to stop notification delivery cleanly: %v", err)
 	}
 
 	log.Println("API Gateway shut down gracefully.")
 }
 
 func addUser(username, email, password string) {
-	// Load .env file
-	err := godotenv.Load()
-	if err != nil {
+	// Load .env file — a missing one is fine, see dotEnvLoadIsFatal.
+	if err := godotenv.Load(); dotEnvLoadIsFatal(err) {
 		log.Printf("Warning: Failed to load .env file: %v", err)
 	}
 
@@ -148,10 +353,147 @@ func addUser(username, email, password string) {
 		EmailConfirmed: false,
 	}
 
-	err = appDependencies.UserRepo.CreateUser(newUser)
-	if err != nil {
+	if err := appDependencies.UserRepo.CreateUser(newUser); err != nil {
 		log.Fatalf("Failed to create user: %v", err)
 	}
 
 	log.Printf("User '%s' created successfully with email '%s'.", username, email)
+}
+
+// listMiddleware loads a config file and prints the resolved global middleware
+// chain (see doc/refactor01.md Phase 4). It builds the registry via builtin.NewGlobalChain with
+// no real dependencies (nil session store, repositories, rate limiter) since
+// introspection only needs each factory's name/description/dependencies —
+// Create() never actually invokes them — so this never opens a database
+// connection or starts a server.
+func listMiddleware(configFilePath string) {
+	cfg, err := config.LoadConfig(configFilePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	specs, err := builtin.ResolveGlobalChainSpecs(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: Failed to resolve middleware chain: %v\n", err)
+		os.Exit(1)
+	}
+
+	registry, _, err := builtin.NewGlobalChain(cfg, nil, nil, nil, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: Failed to build middleware chain: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Global middleware chain for %q:\n\n", cfg.Name)
+	if len(specs) == 0 {
+		fmt.Println("  (none active — no middleware: section and no management.analytics/logging/rateLimiter flags enabled)")
+	} else {
+		for i, spec := range specs {
+			fmt.Printf("  %d. %s\n", i+1, spec.Name)
+		}
+	}
+	fmt.Println()
+
+	status := registry.GetStatus()
+	names := make([]string, 0, len(status))
+	for name := range status {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tSTATUS\tHEALTH\tDEPENDENCIES\tDESCRIPTION")
+	for _, name := range names {
+		s := status[name]
+		dependsOn := "-"
+		if len(s.Dependencies) > 0 {
+			dependsOn = strings.Join(s.Dependencies, ", ")
+		}
+		health := "-"
+		if s.Health != nil {
+			health = s.Health.Status
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, s.Status, health, dependsOn, s.Description)
+	}
+	tw.Flush()
+}
+
+// migrateConfigFile implements `tg migrate`: it prints configFilePath
+// migrated to the version this gateway requires (config.CurrentConfigVersion)
+// on stdout, stepping through each intervening version's migration in turn
+// (config.MigrateConfigContent). It never writes a file itself — the caller
+// decides whether and where to save the output, typically via shell
+// redirection. This is the only supported way to move an outdated config
+// forward — config.LoadConfig (used by "tg run" and "tg middleware list")
+// refuses to run against one at all.
+func migrateConfigFile(configFilePath string) {
+	content, fromVersion, err := config.MigrateConfigContent(configFilePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Informational note only for the no-op case: someone redirecting this to
+	// a "new" file should know it's actually identical to the source, since
+	// that's not otherwise obvious from the output. Otherwise stay quiet on
+	// stderr so the command composes cleanly in a pipeline. fromVersion is
+	// nil when the file has no version: field at all — that's no longer a
+	// no-op case (see config.legacyConfigVersion's doc comment), so it falls
+	// through to the "migrated" case below like any other outdated version.
+	// The comparison itself goes through config.CompareConfigVersions rather
+	// than a bare string >= — these are MAJOR.MINOR version strings, and
+	// e.g. "10.0" sorts before "9.0" lexicographically. A parse failure here
+	// shouldn't happen (fromVersion, when non-nil, is exactly what
+	// MigrateConfigContent already parsed successfully to produce content
+	// at all) but falls through to the "migrated" case rather than crashing
+	// on a message that's purely informational anyway.
+	alreadyCurrent := fromVersion != nil
+	if alreadyCurrent {
+		if cmp, err := config.CompareConfigVersions(*fromVersion, config.CurrentConfigVersion); err != nil || cmp < 0 {
+			alreadyCurrent = false
+		}
+	}
+	switch {
+	case alreadyCurrent:
+		fmt.Fprintf(os.Stderr, "Note: '%s' is already version %s (current: %s) — printing it unchanged.\n",
+			configFilePath, *fromVersion, config.CurrentConfigVersion)
+	case fromVersion == nil:
+		fmt.Fprintf(os.Stderr, "'%s' had no declared version (treated as pre-v1.0.0) — migrated to version %s.\n",
+			configFilePath, config.CurrentConfigVersion)
+	default:
+		fmt.Fprintf(os.Stderr, "'%s' migrated from version %s to %s.\n",
+			configFilePath, *fromVersion, config.CurrentConfigVersion)
+	}
+
+	os.Stdout.Write(content)
+}
+
+// validateConfigFile implements `tg validate`: it reports whether
+// configFilePath is a valid config the gateway could actually run, without
+// starting anything. config.LoadConfig already validates most of the file
+// (schema version, server/admin/route settings, the middleware: section's
+// names); middleware.ValidateConfigOnly additionally checks the global
+// middleware chain's dependency graph (e.g. session_extraction without
+// ja4_fingerprint) and a few settings LoadConfig doesn't cover (rate
+// limiter/CORS value sanity) — all without needing a database connection or
+// any other real dependency, the same way "tg middleware list" doesn't.
+func validateConfigFile(configFilePath string) {
+	cfg, err := config.LoadConfig(configFilePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := builtin.ValidateConfigOnly(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	versionDesc := "no declared version"
+	if cfg.Version != nil {
+		versionDesc = fmt.Sprintf("version %s", *cfg.Version)
+	}
+	fmt.Printf("'%s' is valid (%s): %d route(s), management prefix %q.\n",
+		configFilePath, versionDesc, len(cfg.Routes), cfg.Management.Prefix)
 }

@@ -308,7 +308,7 @@ type MockGoogleUserDataFetcher struct {
 	err      error
 }
 
-func (m *MockGoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (m *MockGoogleUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
