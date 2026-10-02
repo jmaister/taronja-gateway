@@ -34,7 +34,7 @@ type TrafficMetricRepository interface {
 	// if the algorithm breakdown matters.
 	GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error)
 	// GetRequestCountByFingerprintType groups by ClientInfo.FingerprintType
-	// ("ja4_tls"/"stable"/"ja4h") — how many recorded requests got each
+	// ("stable"/"ja4h") — how many recorded requests got each
 	// algorithm, independent of the specific fingerprint values.
 	GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error)
 	ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error)
@@ -361,7 +361,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate tim
 
 // GetRequestCountByFingerprint returns request counts grouped by the
 // consolidated client fingerprint (ClientInfo.Fingerprint) within a date
-// range. A given key may be a JA4H, TLS JA4, or stable-fingerprint value
+// range. A given key may be a JA4H or stable-fingerprint value
 // depending on what was available per request — see
 // fingerprint.SelectFingerprint and GetRequestCountByFingerprintType if the
 // algorithm breakdown matters.
@@ -393,7 +393,7 @@ func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprint(startDate, endD
 
 // GetRequestCountByFingerprintType returns request counts grouped by which
 // fingerprinting algorithm actually produced a value
-// (ClientInfo.FingerprintType — fingerprint.TypeJA4TLS/TypeStable/TypeJA4H)
+// (ClientInfo.FingerprintType — fingerprint.TypeStable/TypeJA4H)
 // within a date range.
 func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error) {
 	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment

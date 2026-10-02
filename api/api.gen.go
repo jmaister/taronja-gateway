@@ -660,7 +660,7 @@ type RequestDetail struct {
 	// Fingerprint The single consolidated client fingerprint value for this request (ClientInfo.Fingerprint) — see fingerprint_type for which algorithm produced it. Empty if none was available.
 	Fingerprint string `json:"fingerprint"`
 
-	// FingerprintType Which fingerprinting algorithm produced the value in fingerprint: "ja4_tls" (TLS-level JA4, only possible when the gateway terminates TLS itself), "stable" (reduced-entropy header-based fingerprint), "ja4h" (HTTP-header JA4H fingerprint — the noisiest of the three), or "" if fingerprint is empty too.
+	// FingerprintType Which fingerprinting algorithm produced the value in fingerprint: "stable" (reduced-entropy header-based fingerprint), "ja4h" (HTTP-header JA4H fingerprint — the noisier of the two), or "" if fingerprint is empty too. "ja4_tls" appears only on rows stored by earlier versions.
 	FingerprintType RequestDetailFingerprintType `json:"fingerprint_type"`
 	Id              string                       `json:"id"`
 
@@ -691,7 +691,7 @@ type RequestDetail struct {
 	Username *string `json:"username,omitempty"`
 }
 
-// RequestDetailFingerprintType Which fingerprinting algorithm produced the value in fingerprint: "ja4_tls" (TLS-level JA4, only possible when the gateway terminates TLS itself), "stable" (reduced-entropy header-based fingerprint), "ja4h" (HTTP-header JA4H fingerprint — the noisiest of the three), or "" if fingerprint is empty too.
+// RequestDetailFingerprintType Which fingerprinting algorithm produced the value in fingerprint: "stable" (reduced-entropy header-based fingerprint), "ja4h" (HTTP-header JA4H fingerprint — the noisier of the two), or "" if fingerprint is empty too. "ja4_tls" appears only on rows stored by earlier versions.
 type RequestDetailFingerprintType string
 
 // RequestDetailsResponse defines model for RequestDetailsResponse.
@@ -731,9 +731,9 @@ type RequestStatistics struct {
 	// Example: {"8eeef6e7162cf91b":500,"ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac":1500,"t13i1311h2_f57a46bbacb6_e5728521abd4":800}
 	RequestsByFingerprint map[string]int `json:"requestsByFingerprint"`
 
-	// RequestsByFingerprintType Number of requests grouped by which fingerprinting algorithm actually produced the value in requestsByFingerprint for that request: "ja4_tls" (TLS-level JA4, only possible when the gateway terminates TLS itself), "stable" (reduced-entropy header-based fingerprint), or "ja4h" (the noisiest, HTTP-header JA4H fingerprint).
+	// RequestsByFingerprintType Number of requests grouped by which fingerprinting algorithm actually produced the value in requestsByFingerprint for that request: "stable" (reduced-entropy header-based fingerprint) or "ja4h" (the noisier, HTTP-header JA4H fingerprint).
 	//
-	// Example: {"ja4_tls":1200,"ja4h":200,"stable":600}
+	// Example: {"ja4h":200,"stable":600}
 	RequestsByFingerprintType map[string]int `json:"requestsByFingerprintType"`
 
 	// RequestsByPlatform Number of requests grouped by platform

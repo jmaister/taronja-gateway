@@ -16,7 +16,6 @@ require (
 	github.com/andybalholm/brotli v1.2.3
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/exaring/ja4plus v0.0.3
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.20.0

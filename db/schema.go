@@ -47,14 +47,11 @@ type ClientInfo struct {
 	// request/session — see FingerprintType for which algorithm produced
 	// it. Only one is ever stored, chosen by priority among the available
 	// signals (most reliable wins) via fingerprint.SelectFingerprint:
-	// TLS-level JA4 (fingerprint.TypeJA4TLS, only available when the
-	// gateway terminates TLS itself — see gateway/ja4tls.go) over the
-	// reduced-entropy "stable" fingerprint (fingerprint.TypeStable, works
-	// without TLS but still request-type-independent — see
-	// middleware/fingerprint.StableFingerprint) over JA4H
-	// (fingerprint.TypeJA4H, always available but the noisiest of the
-	// three — see doc/middleware/ja4-fingerprint.md). Empty if none of the
-	// three produced anything at all. Indexed (on whichever table embeds
+	// the reduced-entropy "stable" fingerprint (fingerprint.TypeStable,
+	// request-type-independent — see middleware/fingerprint.StableFingerprint)
+	// over JA4H (fingerprint.TypeJA4H, always available but noisier — see
+	// doc/middleware/ja4-fingerprint.md). Empty if neither produced
+	// anything at all. Indexed (on whichever table embeds
 	// ClientInfo) since db/timeseries.go's new-vs-returning-visitor
 	// calculation does a MIN(timestamp) GROUP BY fingerprint over the
 	// entire TrafficMetric table — an unindexed scan of that would get
@@ -62,8 +59,8 @@ type ClientInfo struct {
 	// entire point.
 	Fingerprint string `gorm:"type:varchar(100);index" json:"fingerprint"`
 	// FingerprintType names which algorithm produced Fingerprint —
-	// fingerprint.TypeJA4TLS ("ja4_tls"), fingerprint.TypeStable
-	// ("stable"), or fingerprint.TypeJA4H ("ja4h"). Empty exactly when
+	// fingerprint.TypeStable ("stable") or fingerprint.TypeJA4H ("ja4h")
+	// (rows stored by earlier versions may also say "ja4_tls"). Empty exactly when
 	// Fingerprint is empty too.
 	FingerprintType string `gorm:"type:varchar(20)" json:"fingerprintType"`
 }

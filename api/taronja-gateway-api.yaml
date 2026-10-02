@@ -2238,16 +2238,13 @@ components:
           additionalProperties:
             type: integer
           example:
-            ja4_tls: 1200
             stable: 600
             ja4h: 200
           description: >-
             Number of requests grouped by which fingerprinting algorithm
             actually produced the value in requestsByFingerprint for that
-            request: "ja4_tls" (TLS-level JA4, only possible when the
-            gateway terminates TLS itself), "stable" (reduced-entropy
-            header-based fingerprint), or "ja4h" (the noisiest, HTTP-header
-            JA4H fingerprint).
+            request: "stable" (reduced-entropy header-based fingerprint) or
+            "ja4h" (the noisier, HTTP-header JA4H fingerprint).
       required:
         - totalRequests
         - requestsByStatus
@@ -2323,11 +2320,10 @@ components:
           enum: ["ja4_tls", "stable", "ja4h", ""]
           description: >-
             Which fingerprinting algorithm produced the value in
-            fingerprint: "ja4_tls" (TLS-level JA4, only possible when the
-            gateway terminates TLS itself), "stable" (reduced-entropy
-            header-based fingerprint), "ja4h" (HTTP-header JA4H
-            fingerprint — the noisiest of the three), or "" if fingerprint
-            is empty too.
+            fingerprint: "stable" (reduced-entropy header-based
+            fingerprint), "ja4h" (HTTP-header JA4H fingerprint — the
+            noisier of the two), or "" if fingerprint is empty too. "ja4_tls"
+            appears only on rows stored by earlier versions.
       required:
         - id
         - timestamp

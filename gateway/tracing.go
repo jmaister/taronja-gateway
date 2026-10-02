@@ -28,9 +28,8 @@ import (
 // project also never adds TracingMiddleware to the chain (or wraps the
 // proxy transport) unless tracing is enabled — see middleware/builtin/global.go — so in
 // practice a disabled config touches none of this machinery at all; this
-// no-op path exists for the same reason as the disabled paths in
-// gateway/tls.go and gateway/ja4tls.go: correct behavior if something ever
-// does call otel directly regardless.
+// no-op path exists so that correct behavior holds if something ever does
+// call otel directly regardless.
 //
 // Returns a shutdown func that flushes any pending, not-yet-exported spans
 // and closes the exporter — call it during graceful shutdown (see

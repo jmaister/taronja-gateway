@@ -275,18 +275,7 @@ func runGateway(configFilePath string) {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}
 
-	switch {
-	case config.Server.TLS.Enabled && config.Server.TLS.ACME != nil:
-		log.Printf("API Gateway '%s' listening on %s (TLS via ACME for domain(s): %s; certificates cached under %s)",
-			config.Name, gateway.Server.Addr, strings.Join(config.Server.TLS.ACME.Domains, ", "), config.Server.TLS.ACME.CacheDir)
-		if config.Server.TLS.ACME.DirectoryURL != "" {
-			log.Printf("Using non-default ACME directory URL: %s (remove server.tls.acme.directoryURL once testing is done, to get a browser-trusted certificate)", config.Server.TLS.ACME.DirectoryURL)
-		}
-	case config.Server.TLS.Enabled:
-		log.Printf("API Gateway '%s' listening on %s (TLS)", config.Name, gateway.Server.Addr)
-	default:
-		log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
-	}
+	log.Printf("API Gateway '%s' listening on %s", config.Name, gateway.Server.Addr)
 	log.Printf("Gateway public URL set to: %s", config.Server.URL)
 	log.Printf("Management API prefix: %s", config.Management.Prefix)
 
@@ -294,33 +283,11 @@ func runGateway(configFilePath string) {
 	config.AuthenticationProviders.PrintOAuthCallbackURLs(config.Server.URL, config.Management.Prefix)
 
 	// Serve in the background so this goroutine can wait for either a
-	// server error or an interrupt/terminate signal. Buffered for 2 because
-	// the redirect server (when TLS is enabled) sends into the same channel,
-	// and only the first send is ever read.
-	serverErr := make(chan error, 2)
+	// server error or an interrupt/terminate signal.
+	serverErr := make(chan error, 1)
 	go func() {
-		if config.Server.TLS.Enabled {
-			// Empty certFile/keyFile: the cert comes from
-			// gateway.Server.TLSConfig.GetCertificate (see gateway/tls.go's
-			// staticCert), not from files ListenAndServeTLS itself opens.
-			serverErr <- gateway.Server.ListenAndServeTLS("", "")
-		} else {
-			serverErr <- gateway.Server.ListenAndServe()
-		}
+		serverErr <- gateway.Server.ListenAndServe()
 	}()
-
-	// The plain-HTTP redirect listener (server.tls.redirectPort, default 80)
-	// is just as much a startup requirement as the main listener when TLS is
-	// enabled — if it can't bind (e.g. port 80 already in use, or requires a
-	// privilege this process doesn't have), that's worth failing loudly for
-	// rather than silently running without the redirect the config asked
-	// for. Set server.tls.redirectPort: 0 to opt out of it entirely instead.
-	if gateway.RedirectServer != nil {
-		log.Printf("HTTP->HTTPS redirect listening on %s", gateway.RedirectServer.Addr)
-		go func() {
-			serverErr <- gateway.RedirectServer.ListenAndServe()
-		}()
-	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -341,11 +308,6 @@ func runGateway(configFilePath string) {
 		defer cancel()
 		if err := gateway.Server.Shutdown(ctx); err != nil {
 			log.Printf("Warning: graceful shutdown did not complete cleanly within %s: %v", gracefulShutdownTimeout, err)
-		}
-		if gateway.RedirectServer != nil {
-			if err := gateway.RedirectServer.Shutdown(ctx); err != nil {
-				log.Printf("Warning: HTTP->HTTPS redirect listener did not shut down cleanly within %s: %v", gracefulShutdownTimeout, err)
-			}
 		}
 	}
 

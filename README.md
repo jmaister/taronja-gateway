@@ -65,9 +65,6 @@ Features table, shows what is implemented and what is planned.
 | Load Balancing                | ✅       | v1.0.0 |
 | - Round-robin across multiple `to` backends | ✅ | v1.0.0 |
 | - Automatic failover on connection failure | ✅ | v1.0.0 |
-| TLS Termination (HTTPS)       | ✅       | v1.0.0 |
-| - Automatic HTTP → HTTPS redirect | ✅  | v1.0.0 |
-| - Automatic certificates via ACME / Let's Encrypt | ✅ | v1.0.0 |
 | robots.txt                    | 🚧       |        |
 | more...                       | 🚧       |        |
 
@@ -225,15 +222,8 @@ The config file declares a schema version in `MAJOR.MINOR` format (`version: "1.
 Defines the gateway server settings.
 
 - `host`: The host address to bind to (default: 127.0.0.1)
-- `port`: The port number to listen on (default: 8080). The HTTPS port when `tls.enabled` is true.
+- `port`: The port number to listen on (default: 8080).
 - `url`: The full URL where the gateway is accessible
-- `tls`: HTTPS termination settings — see [TLS / HTTPS](#tls--https) below
-
-### TLS / HTTPS
-
-The gateway can terminate HTTPS itself on `server.port`, using either your own certificate files (`certFile` / `keyFile`) or automatic Let's Encrypt certificates (`acme`). The two options are mutually exclusive. Terminating TLS yourself also enables TLS-level JA4 client fingerprinting with no extra config.
-
-See [doc/tls.md](doc/tls.md) for both options, the certificate file format, and ACME requirements.
 
 ### Tracing
 

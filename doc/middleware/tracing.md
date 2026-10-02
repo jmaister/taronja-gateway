@@ -153,8 +153,7 @@ go test ./gateway/... -run TestGatewayTracing_DistributedSpanLinkageOverRealOTLP
 | `insecure` | No | `false` | Send spans over plain HTTP instead of HTTPS to `endpoint`. Most self-hosted local collectors (a Jaeger or OTel Collector container on the same host or network) don't terminate TLS at all, so this commonly needs setting to `true` for those; a managed backend reachable over the public internet (Honeycomb, Grafana Cloud, ...) almost always wants it left `false`. |
 
 `enabled: true` with no `endpoint` fails config validation (and `tg
-validate`) immediately, the same way an incomplete `server.tls` section
-does — there's nothing more to check locally than the config's own shape;
+validate`) immediately — there's nothing more to check locally than the config's own shape;
 actually reaching the collector is a network operation that can only
 happen at real gateway startup.
 

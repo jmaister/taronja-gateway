@@ -112,30 +112,22 @@ explicit chain with `traffic_metrics` but not `ja4_fingerprint` fails fast
 at startup with a clear dependency error instead of silently recording
 metrics with an empty fingerprint.
 
-## Three signals, one header
+## Two signals, one header
 
 `fingerprint.Assign` computes the signals and stores exactly one of them,
 most reliable first:
 
-1. **TLS JA4** (`fingerprint.TypeJA4TLS`, `"ja4_tls"`) — the real TLS-level
-   JA4 fingerprint (cipher suites, extensions, ALPN, TLS version from the
-   `ClientHello`), the most stable by a wide margin since it's a property
-   of the client's TLS stack rather than of any HTTP request. Only
-   available when the gateway terminates TLS itself (`server.tls.enabled`)
-   — see [TLS / HTTPS](../../README.md#tls--https) and `gateway/ja4tls.go`,
-   which captures it per connection and exposes it on the request context.
-2. **Stable fingerprint** (`fingerprint.TypeStable`, `"stable"`) — a
+1. **Stable fingerprint** (`fingerprint.TypeStable`, `"stable"`) — a
    deliberately reduced-entropy fingerprint built only from request
    properties that don't vary by request type: `User-Agent`,
    `Accept-Encoding`, `Accept-Language`, and the low-entropy User-Agent
    Client Hints (`Sec-Ch-Ua*`). It answers "how do I reduce JA4H's
-   volatility" without waiting for TLS. It is **not** part of the JA4 spec
+   volatility". It is **not** part of the JA4 spec
    family — a custom, project-specific signal — and being coarser by
    design, it's easier for a deliberately evasive client to fake. See
-   `middleware/fingerprint/stable.go`. In practice this is the type most
-   rows end up with on a plain-HTTP gateway.
-3. **JA4H** (`fingerprint.TypeJA4H`, `"ja4h"`) — the fallback when neither
-   of the above produced anything.
+   `middleware/fingerprint/stable.go`.
+2. **JA4H** (`fingerprint.TypeJA4H`, `"ja4h"`) — the fallback when the
+   stable fingerprint produced nothing.
 
 `db.ClientInfo` (and so every `Session`/`TrafficMetric` row, and
 `X-User-Data`) carries exactly two fields: **`Fingerprint`** and
@@ -151,6 +143,3 @@ most reliable first:
 - [doc/middleware/session-extraction.md](session-extraction.md) and
   [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the rest of the
   "analytics" group, run immediately after this one.
-- [README.md's TLS / HTTPS section](../../README.md#tls--https) — TLS JA4
-  fingerprinting, the more reliable alternative available whenever the
-  gateway terminates TLS itself.

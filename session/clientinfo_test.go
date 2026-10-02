@@ -54,16 +54,6 @@ func TestNewClientInfo_Fingerprint(t *testing.T) {
 			expectedFingerprint: "stable-value",
 			expectedType:        fingerprint.TypeStable,
 		},
-		{
-			name: "TLS JA4",
-			setupRequest: func() *http.Request {
-				req := httptest.NewRequest("GET", "/test", nil)
-				fingerprint.Set(req, fingerprint.TypeJA4TLS, "t13i1311h2_f57a46bbacb6_e5728521abd4")
-				return req
-			},
-			expectedFingerprint: "t13i1311h2_f57a46bbacb6_e5728521abd4",
-			expectedType:        fingerprint.TypeJA4TLS,
-		},
 	}
 
 	for _, tt := range tests {

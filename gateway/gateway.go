@@ -29,7 +29,6 @@ import (
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"golang.org/x/crypto/acme/autocert"
 )
 
 // --- Gateway Struct ---
@@ -38,29 +37,6 @@ type Gateway struct {
 	GatewayConfig *config.GatewayConfig
 	Mux           *http.ServeMux
 	Dependencies  *deps.Dependencies
-	// RedirectServer is the plain-HTTP listener that redirects every request
-	// to HTTPS on Server's port, when TLS is enabled — see gateway/tls.go.
-	// nil when TLS is disabled or the redirect listener is turned off
-	// (server.tls.redirectPort: 0).
-	RedirectServer *http.Server
-	// staticCert holds the TLS certificate when TLS is enabled with a
-	// static certFile/keyFile — see gateway/tls.go's staticCert. nil when
-	// TLS is disabled or using ACME (acmeManager manages its own
-	// certificate lifecycle instead).
-	staticCert *staticCert
-	// acmeManager obtains and renews the gateway's certificate automatically
-	// via ACME when TLS is enabled with server.tls.acme — see
-	// gateway/tls.go's newACMEManager. nil when TLS is disabled or using a
-	// static certFile/keyFile.
-	acmeManager *autocert.Manager
-	// tlsJA4 captures a TLS-level JA4 fingerprint per connection when TLS is
-	// enabled (either certificate source) — see gateway/ja4tls.go. nil when
-	// TLS is disabled, since JA4 needs the ClientHello, only visible at the
-	// TLS layer this gateway itself terminates. Must be set before the
-	// setup call below (which wraps the built handler with
-	// tlsJA4.middleware), independent of gateway.Server's own construction
-	// further below — see the comment at its construction site.
-	tlsJA4 *tlsJA4
 	// Middleware components (created during gateway initialization)
 	AuthMiddleware      *builtin.AuthMiddleware
 	HttpCacheMiddleware *builtin.HttpCacheMiddleware
@@ -95,17 +71,6 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		StartTime:     time.Now(),
 	}
 
-	// Built before setup (which wraps its built handler with
-	// tlsJA4.middleware — see setup.go) even though the TLS-specific
-	// *tls.Config/ConnState wiring below needs gateway.Server to already
-	// exist and so has to happen after it. The tlsJA4 value itself doesn't
-	// depend on Server at all — only StoreFingerprintFromClientHello does,
-	// wired in further down — so splitting its construction from that
-	// wiring is what lets setup run in between.
-	if cfg.Server.TLS.Enabled {
-		gateway.tlsJA4 = newTLSJA4()
-	}
-
 	// Validates, builds the middleware chain/mux/rate limiter, registers all
 	// routes, and ensures the admin user.
 	if err := gateway.setup(cfg); err != nil {
@@ -118,40 +83,6 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		Handler:      gateway.handler,
-	}
-
-	if cfg.Server.TLS.Enabled {
-		gateway.RedirectServer = buildRedirectServer(cfg)
-
-		if cfg.Server.TLS.ACME != nil {
-			manager := newACMEManager(cfg.Server.TLS.ACME)
-			gateway.acmeManager = manager
-			gateway.Server.TLSConfig = acmeTLSConfig(manager)
-			if gateway.RedirectServer != nil {
-				// http-01 domain validation needs to answer plain HTTP
-				// requests under /.well-known/acme-challenge/ on this
-				// listener; everything else still gets the normal redirect
-				// (manager.HTTPHandler falls through to it unchanged). If
-				// the redirect listener is disabled (redirectPort: 0),
-				// tls-alpn-01 (answered automatically via TLSConfig above,
-				// no extra port needed) is the only challenge type left
-				// available — see ACMEConfig's doc comment.
-				gateway.RedirectServer.Handler = manager.HTTPHandler(gateway.RedirectServer.Handler)
-			}
-		} else {
-			cert, err := newStaticCert(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
-			if err != nil {
-				return nil, err
-			}
-			gateway.staticCert = cert
-			gateway.Server.TLSConfig = newTLSConfig(cert)
-		}
-
-		// Wired the same way regardless of which certificate source just
-		// set gateway.Server.TLSConfig above: JA4 capture only needs the
-		// ClientHello, which every TLS connection presents either way.
-		gateway.tlsJA4.configureTLSConfig(gateway.Server.TLSConfig)
-		gateway.Server.ConnState = gateway.tlsJA4.connStateCallback
 	}
 
 	return gateway, nil

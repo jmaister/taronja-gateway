@@ -4,7 +4,7 @@
 **Scope:** All five phases — Foundation, Config Integration, Monitoring & Observability, Documentation & Tooling, and the Follow-ups from Self-Review phase added afterward.
 **Part of a bigger release:** this refactor is one section of v1.0.0, which
 also picked up several unrelated features developed alongside it on the
-same branch (new OAuth2 providers, TLS termination, tracing, response
+same branch (new OAuth2 providers, tracing, response
 compression, load balancing, the notification system, and more) — see
 [`doc/v1.0.0-release-notes.md`](./v1.0.0-release-notes.md) for the release
 as a whole.

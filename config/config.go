@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -19,10 +18,9 @@ import (
 // ServerConfig defines the gateway server's network configuration.
 // All fields are required.
 type ServerConfig struct {
-	Host string    `yaml:"host"`          // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
-	Port int       `yaml:"port"`          // Server port number (e.g., 8080). Required. The HTTPS port when tls.enabled is true.
-	URL  string    `yaml:"url"`           // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
-	TLS  TLSConfig `yaml:"tls,omitempty"` // HTTPS termination. Optional; disabled by default (plain HTTP).
+	Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
+	Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
+	URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
 }
 
 // AuthenticationConfig controls whether authentication is required for a specific route.
@@ -425,56 +423,6 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	log.Printf("Current working directory: %s", currentDir)
-
-	// Validate TLS config. Resolving paths and confirming a static cert/key
-	// pair actually parses here (not just deferring to the gateway's own
-	// startup) means "tg validate" catches a bad cert/key pair before
-	// deploy, the same way it already catches a bad admin/CORS/route
-	// config — this is a pure local file read, no network call, so it's
-	// safe for validate's no-side-effects contract. The gateway loads the
-	// pair again for real at startup (config doesn't hold a
-	// *tls.Certificate itself); the point here is catching the error early
-	// with a clear message, not caching it. ACME's equivalent — actually
-	// obtaining a certificate — is inherently a network operation and can
-	// only happen at real gateway startup (see gateway/tls.go), so there's
-	// nothing more to check here than the config's own shape.
-	if config.Server.TLS.Enabled {
-		usingFiles := config.Server.TLS.CertFile != "" || config.Server.TLS.KeyFile != ""
-		usingACME := config.Server.TLS.ACME != nil
-
-		switch {
-		case usingFiles && usingACME:
-			return nil, fmt.Errorf("server.tls: certFile/keyFile and acme are mutually exclusive — configure one certificate source, not both")
-
-		case usingACME:
-			if len(config.Server.TLS.ACME.Domains) == 0 {
-				return nil, fmt.Errorf("server.tls.acme.domains must list at least one domain")
-			}
-			if config.Server.TLS.ACME.CacheDir == "" {
-				config.Server.TLS.ACME.CacheDir = defaultACMECacheDir
-			}
-			if !filepath.IsAbs(config.Server.TLS.ACME.CacheDir) {
-				config.Server.TLS.ACME.CacheDir = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.ACME.CacheDir))
-			}
-
-		case usingFiles:
-			if config.Server.TLS.CertFile == "" || config.Server.TLS.KeyFile == "" {
-				return nil, fmt.Errorf("server.tls.enabled is true but certFile and/or keyFile is not set")
-			}
-			if !filepath.IsAbs(config.Server.TLS.CertFile) {
-				config.Server.TLS.CertFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.CertFile))
-			}
-			if !filepath.IsAbs(config.Server.TLS.KeyFile) {
-				config.Server.TLS.KeyFile = filepath.Clean(filepath.Join(currentDir, config.Server.TLS.KeyFile))
-			}
-			if _, err := tls.LoadX509KeyPair(config.Server.TLS.CertFile, config.Server.TLS.KeyFile); err != nil {
-				return nil, fmt.Errorf("server.tls: failed to load certificate/key pair (certFile=%q, keyFile=%q): %w", config.Server.TLS.CertFile, config.Server.TLS.KeyFile, err)
-			}
-
-		default:
-			return nil, fmt.Errorf("server.tls.enabled is true but neither certFile/keyFile nor acme is set")
-		}
-	}
 
 	// Validate tracing config. Nothing more to check than the config's own
 	// shape here — like ACME, actually reaching the collector is a network

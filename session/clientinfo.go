@@ -180,7 +180,7 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 
 	// Pick the single best available client fingerprint — see
 	// fingerprint.SelectFingerprint's doc comment for the priority order
-	// (TLS JA4 > stable > JA4H) and why only one is ever stored.
+	// (stable > JA4H) and why only one is ever stored.
 	fingerprintValue, fingerprintType := fingerprint.SelectFingerprint(req)
 
 	return &db.ClientInfo{
