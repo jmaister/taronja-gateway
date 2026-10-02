@@ -215,7 +215,7 @@ func TestService_ResponseWebhook(t *testing.T) {
 
 		deliveries, err := repo.ListDeliveries(n.ID)
 		require.NoError(t, err)
-		require.Len(t, deliveries, 1)
+		require.Len(t, deliveries, 2, "one pending row plus one final failed row")
 		assert.Equal(t, db.NotificationChannelResponseWebhook, deliveries[0].Channel)
 		assert.Equal(t, db.NotificationDeliveryStatusFailed, deliveries[0].Status)
 		require.NotNil(t, deliveries[0].NextRetryAt, "a failed webhook call must be scheduled for retry, same as any other channel")
@@ -239,7 +239,7 @@ func TestService_ResponseWebhook(t *testing.T) {
 
 		deliveries, err = repo.ListDeliveries(n.ID)
 		require.NoError(t, err)
-		require.Len(t, deliveries, 2)
+		require.Len(t, deliveries, 4, "each attempt records a pending row plus its outcome")
 		assert.Equal(t, db.NotificationDeliveryStatusSent, deliveries[0].Status)
 		assert.Equal(t, "approve", received.RespondedActionID, "the retry must still report the actual response, not an empty one")
 	})

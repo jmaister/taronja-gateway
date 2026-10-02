@@ -187,7 +187,7 @@ func TestService_Create(t *testing.T) {
 
 		deliveries, err := repo.ListDeliveries(n.ID)
 		require.NoError(t, err)
-		require.Len(t, deliveries, 1)
+		require.Len(t, deliveries, 2, "one pending row plus one final row")
 		assert.Equal(t, db.NotificationChannelEmail, deliveries[0].Channel, "the caller's explicit Channels list wins over the stored preference")
 	})
 
@@ -228,42 +228,6 @@ func TestService_Create(t *testing.T) {
 		service.providers[db.NotificationChannelEmail] = blockingProvider
 		user := &db.User{Username: "pending-u", Email: "pending@example.com"}
 		require.NoError(t, userRepo.CreateUser(user))
-
-		// Create spawns delivery goroutines but returns immediately.
-		notifications, _, err := service.Create(context.Background(), CreateInput{
-			UserIDs: []string{user.ID}, Type: "t", Title: "T", Body: "B",
-			Channels: []string{db.NotificationChannelEmail},
-		})
-		require.NoError(t, err)
-		require.Len(t, notifications, 1)
-
-		// Wait until the delivery goroutine has recorded the pending
-		// row and is now blocked on provider.Send.
-		require.Eventually(t, func() bool {
-			deliveries, err := repo.ListDeliveries(notifications[0].ID)
-			if err != nil || len(deliveries) == 0 {
-				return false
-			}
-			for _, d := range deliveries {
-				if d.Status == db.NotificationDeliveryStatusPending {
-					return true
-				}
-			}
-			return false
-		}, 5*time.Second, 10*time.Millisecond, "a pending row should exist while the provider Send is in-flight")
-
-		// Release the provider so the delivery completes (SMTP server
-		// rejects the connection → failed).
-		close(release)
-		waitForPendingDeliveries(service)
-
-		// The pending row is still in the history; the latest is failed.
-		deliveries, err := repo.ListDeliveries(notifications[0].ID)
-		require.NoError(t, err)
-		require.Len(t, deliveries, 2, "one pending row plus one final failed row")
-		latest := deliveries[0] // ordered DESC by ListDeliveries
-		assert.Equal(t, db.NotificationDeliveryStatusFailed, latest.Status, "the final row is failed")
-	})
 
 		// Create spawns delivery goroutines but returns immediately.
 		notifications, _, err := service.Create(context.Background(), CreateInput{
@@ -642,7 +606,7 @@ func TestService_RetryFailedDeliveries(t *testing.T) {
 
 		deliveries, err := repo.ListDeliveries(n.ID)
 		require.NoError(t, err)
-		require.Len(t, deliveries, 1)
+		require.Len(t, deliveries, 2, "one pending row plus one final failed row")
 		assert.Equal(t, db.NotificationDeliveryStatusFailed, deliveries[0].Status)
 		assert.Equal(t, 1, deliveries[0].AttemptNumber)
 		require.NotNil(t, deliveries[0].NextRetryAt, "a failed first attempt must schedule a retry")
@@ -662,11 +626,11 @@ func TestService_RetryFailedDeliveries(t *testing.T) {
 
 		deliveries, err = repo.ListDeliveries(n.ID)
 		require.NoError(t, err)
-		require.Len(t, deliveries, 2, "a retry appends a new row, it doesn't overwrite the failed one")
+		require.Len(t, deliveries, 4, "a retry appends a pending row and an outcome row, it doesn't overwrite the failed one")
 		assert.Equal(t, db.NotificationDeliveryStatusSent, deliveries[0].Status, "newest first")
 		assert.Equal(t, 2, deliveries[0].AttemptNumber)
 		assert.Nil(t, deliveries[0].NextRetryAt)
-		assert.Equal(t, db.NotificationDeliveryStatusFailed, deliveries[1].Status, "the original failed attempt is preserved as history")
+		assert.Equal(t, db.NotificationDeliveryStatusFailed, deliveries[2].Status, "the original failed attempt is preserved as history")
 	})
 
 	t.Run("stops retrying once the schedule is exhausted", func(t *testing.T) {
