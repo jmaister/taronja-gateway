@@ -412,7 +412,7 @@ go test ./handlers/... -run Notification -v
 
 - **Setup.** `notification.NewService`, the retry worker, and the
   Telegram poller (if configured) are constructed once, from
-  `notification.*` (`gateway.InitNotifications`, called from `main.go`).
+  `notification.*` (`gateway.InitNotifications`, called from `cli/run.go`).
 - **Delivery failures never fail creation.** The in-app record is the
   source of truth and always succeeds if the database write does; each
   channel's outcome is recorded on its own `NotificationDelivery` row,

@@ -597,7 +597,7 @@ top of this document, implemented for real.
   background goroutine flushes the buffer via a new `CreateBatch` method
   once it reaches 100 records or 500ms elapses, whichever comes first.
   `Close()` does one final flush and stops the goroutine; wired into
-  `gateway/deps.Dependencies.Close()`, called from `main.go` right after
+  `gateway/deps.Dependencies.Close()`, called from `cli/run.go` right after
   the HTTP server stops accepting requests on both shutdown paths (signal
   and `ListenAndServe` returning on its own).
 - `TrafficMetricRepositoryDB.CreateBatch` uses GORM's `CreateInBatches`

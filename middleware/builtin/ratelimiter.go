@@ -60,19 +60,9 @@ const defaultBlockedClientRetentionDays = 90
 // gateway's tightest cleanup loop.
 const blockedClientPruneInterval = time.Hour
 
-// scanPattern holds the precomputed forms of one
-// config.VulnerabilityScanConfig.URLs entry that matches actually needs:
-// the backslash-normalized pattern, and — only when applicable — the
-// "expanded" form that also matches the bare pattern at any nesting depth
-// (see matches' doc comment). Both depend only on the pattern string, never
-// on the request, so computing them here, once per pattern when the
-// RateLimiter is built, replaces work matchesVulnerabilityScanPath used to
-// redo on every single matching attempt: normalizing the pattern's
-// backslashes, checking it for "**", and building the expanded string via
-// strings.ReplaceAll, all from scratch, for every configured pattern, on
-// every 404 response. That's exactly the traffic this feature exists to
-// handle efficiently — a scanner generating many rapid 404s — so redoing
-// static, pattern-only work on that hot path was self-defeating.
+// scanPattern holds the per-pattern forms matches needs (the backslash-normalized
+// pattern and, where applicable, the expanded form), computed once at construction
+// instead of on every 404.
 type scanPattern struct {
 	normalized string
 	expanded   string // "" if this pattern has no bare "*" to expand (see newScanPattern)
@@ -125,15 +115,9 @@ type rateEntry struct {
 	blockedUntil time.Time   // if in the future, requests should be rejected
 }
 
-// RateLimiterMiddleware creates a middleware function configured with the
-// supplied settings. If both RequestsPerMinute and MaxErrors are zero the
-// returned middleware is a no-op and simply invokes the next handler.
-//
-// Built with no BlockedClientRepository — this standalone constructor has
-// no database connection to hand it one, so block events it enforces are
-// never persisted to the registry (see RateLimiter.blockedClientRepo).
-// The real gateway runtime always goes through NewRateLimiter directly
-// instead (see gateway/setup.go's buildRuntime), supplying one.
+// RateLimiterMiddleware creates a middleware from cfg; it is a no-op if both
+// RequestsPerMinute and MaxErrors are zero. It has no BlockedClientRepository, so
+// blocks are not persisted; the gateway uses NewRateLimiter instead.
 func RateLimiterMiddleware(cfg config.RateLimiterConfig) func(http.Handler) http.Handler {
 	rl := NewRateLimiter(cfg, nil)
 	return rl.Handler
@@ -291,17 +275,9 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	})
 }
 
-// recordBlock persists one block event to the registry (blockedClientRepo)
-// — a no-op if none was supplied (see that field's doc comment). Building
-// the db.BlockedClient (including session.NewClientInfo's User-Agent
-// parse and geolocation lookup) happens synchronously, on the same
-// goroutine handling this request — mirroring exactly how
-// middleware/builtin/trafficmetric.go's TrafficMetricMiddleware already builds
-// its own per-request record for every single request, not just blocked
-// ones, deferring only the database write itself to a goroutine. Every
-// call site above only calls this after the response has already been
-// written, so none of this synchronous work adds latency to what the
-// client actually experiences.
+// recordBlock persists one block event if a repository was supplied. The
+// ClientInfo is built synchronously (only the write is deferred), which costs
+// nothing because callers have already written the response.
 func (rl *RateLimiter) recordBlock(r *http.Request, reason, path string, triggerCount int, blockedAt, blockedUntil time.Time) {
 	if rl.blockedClientRepo == nil {
 		return
@@ -462,14 +438,8 @@ func (rl *RateLimiter) cleanupLoop() {
 	}
 }
 
-// pruneBlockedClientsLoop periodically deletes db.BlockedClient rows past
-// rl.blockedClientRetention, until Close is called — the persisted
-// counterpart to cleanupLoop's in-memory pruning. Without this, every block
-// event recordBlock ever wrote stays in the database forever: unlike the
-// in-memory rateEntry a block expires out of, nothing else ever removes
-// these rows, so a gateway that stays up (or under scanner/attack traffic)
-// long enough grows this table without bound. Only started when
-// blockedClientRepo is non-nil (see NewRateLimiter).
+// pruneBlockedClientsLoop deletes db.BlockedClient rows older than
+// rl.blockedClientRetention until Close; only started when blockedClientRepo is set.
 func (rl *RateLimiter) pruneBlockedClientsLoop() {
 	ticker := time.NewTicker(blockedClientPruneInterval)
 	defer ticker.Stop()

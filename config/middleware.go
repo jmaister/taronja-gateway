@@ -46,17 +46,9 @@ type TrafficMetricsConfig struct {
 	ExcludeStaticAssets bool `yaml:"excludeStaticAssets"` // See ManagementConfig.ExcludeStaticAssets; same meaning, per-entry override.
 }
 
-// MiddlewareEntryConfig declares one middleware in the `middleware.global`
-// list, in the order it should run.
-//
-// rate_limiter, cors, and traffic_metrics have their own typed per-entry
-// configuration; the other built-in middlewares (ja4_fingerprint,
-// session_extraction, logging, compression) take no options today, so
-// listing them just enables/positions them. compression in particular is
-// deliberately option-free — see middleware.CompressionMiddleware's doc
-// comment for why. Per-middleware config for the rest is future work (see
-// doc/refactor01.md Improvement 4) — adding it here without matching
-// runtime support would be misleading.
+// MiddlewareEntryConfig declares one middleware in the `middleware.global` list,
+// in run order. rate_limiter, cors and traffic_metrics have typed per-entry config;
+// the others take no options, so listing them only enables and positions them.
 type MiddlewareEntryConfig struct {
 	Name           string                `yaml:"name"`                     // Middleware identifier. Must be one of KnownMiddlewareNames.
 	Enabled        *bool                 `yaml:"enabled,omitempty"`        // Enable/disable this middleware. Default: true (listing it implies enabled).
@@ -71,18 +63,10 @@ func (e MiddlewareEntryConfig) IsEnabled() bool {
 	return e.Enabled == nil || *e.Enabled
 }
 
-// MiddlewareSection declares the global middleware chain explicitly, in
-// execution order. When Global is nil — i.e. there's no `middleware:`
-// section at all, the common case for existing config files — the gateway
-// falls back to the legacy management.analytics / management.logging /
-// management.rateLimiter flags. See middleware.ResolveGlobalChainSpecs.
-//
-// Once a `middleware:` section with a `global:` key is present, it takes
-// over entirely and the legacy flags are ignored — including when it's
-// explicitly listed empty (`global: []`), which means "no global middleware
-// at all" rather than falling back. This relies on Global being nil (unset)
-// vs. a non-nil empty slice (explicitly `[]`), a distinction YAML
-// unmarshaling already preserves correctly (verified in middleware_test.go).
+// MiddlewareSection declares the global chain explicitly, in execution order.
+// When Global is nil (no `middleware:` section) the legacy management flags are
+// used; see middleware.ResolveGlobalChainSpecs. When present it takes over entirely,
+// and `global: []` means no middleware (a non-nil empty slice, which YAML preserves).
 type MiddlewareSection struct {
 	Global []MiddlewareEntryConfig `yaml:"global,omitempty"`
 }

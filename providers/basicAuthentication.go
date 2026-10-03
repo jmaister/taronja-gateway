@@ -12,17 +12,9 @@ import (
 	// For session.ExtractClientInfo, session.SessionCookieName
 )
 
-// dummyPasswordHash is a fixed, valid argon2id hash of an arbitrary
-// placeholder value nobody's real password will ever be — compared
-// against (and always discarded) when no matching user was found, so a
-// login attempt for a nonexistent username still pays the same
-// argon2id computation as one for a real username with a wrong password.
-// Without this, RegisterBasicAuth's login handler returned "Invalid
-// credentials" for an unknown username immediately, skipping
-// encryption.ComparePassword's hashing work entirely — a real user
-// enumeration side channel: a nonexistent username responds near-
-// instantly, a real one pays argon2id's full ~tens-of-milliseconds cost
-// first, and that gap is trivially measurable over the network.
+// dummyPasswordHash is compared against (and discarded) when no user matches, so an
+// unknown username costs the same argon2id time as a wrong password and response
+// time cannot be used to enumerate usernames.
 const dummyPasswordHash = "$argon2id$v=19$m=19456,t=2,p=1$Kv75i1B3Xx82V25DUgi+ig$PfmOrccHiXOZi6RZ6WOPNuh9Gaab+Fg0fIRe0hOUR4s"
 
 // parseLoginCredentials parses username and password from form data (both URL-encoded and multipart)
@@ -127,15 +119,8 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		}
 
 		if user == nil {
-			// Compare against a fixed dummy hash rather than returning
-			// immediately — see dummyPasswordHash's doc comment for why:
-			// this keeps a nonexistent-username response taking as long as
-			// a real-username-wrong-password one, so response time can't
-			// be used to enumerate which usernames exist. The result is
-			// always discarded (comparing against a hash nothing will ever
-			// match by construction); only the error is worth checking,
-			// and even that only to avoid silently swallowing a real bug
-			// in ComparePassword itself.
+			// Equalize timing with dummyPasswordHash; the result is discarded and only an
+			// error from ComparePassword itself matters.
 			if _, err := encryption.ComparePassword(password, dummyPasswordHash); err != nil {
 				log.Printf("Dummy password comparison failed unexpectedly: %v", err)
 			}

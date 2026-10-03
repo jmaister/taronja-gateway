@@ -24,26 +24,13 @@ type MiddlewareStatus struct {
 	Health       *MiddlewareHealth `json:"health,omitempty"` // nil if the factory doesn't implement HealthChecker
 }
 
-// Registry builds middleware chains from declarative MiddlewareSpec
-// lists. Factories must be registered before BuildChain is called; BuildChain
-// validates that every spec's dependencies were already satisfied earlier in
-// the same chain and returns a ready-to-use ChainBuilder.
+// Registry builds middleware chains from declarative MiddlewareSpec lists.
+// Factories must be registered before BuildChain, which checks that every spec's
+// dependencies were built earlier in the same chain.
 //
-// Every method takes mu — currently, in this codebase's actual gateway/
-// setup.go, a registry is always fresh-built (builtin.NewGlobalChain),
-// have BuildChain called on it once, and only then published where a
-// concurrent GetStatus/GetMetrics/GetAllMetrics call (the admin dashboard's
-// middleware-status/metrics endpoints) could ever reach it — so no two
-// goroutines actually touch factories/built/metrics at once today. But
-// BuildChain's own doc comment documents calling it again on an
-// already-published, already-live registry (e.g. rebuilding one chain's
-// specs in place, rather than replacing the whole registry) as supported,
-// legitimate reuse — a future caller relying on that documented contract
-// while requests are concurrently hitting the admin endpoints above would
-// hit Go's classic unsynchronized-concurrent-map-access crash
-// ("fatal error: concurrent map read and map write"), not a data race
-// subtle enough to go unnoticed. Guarding every access is the difference
-// between a documented capability and a landmine sitting behind it.
+// Every method takes mu: BuildChain may be called again on a live registry while
+// the admin endpoints read status and metrics, which would otherwise crash on
+// concurrent map access.
 type Registry struct {
 	mu        sync.RWMutex
 	factories map[string]MiddlewareFactory
@@ -73,18 +60,10 @@ func (r *Registry) RegisterFactory(factory MiddlewareFactory) error {
 	return nil
 }
 
-// BuildChain builds a ChainBuilder from an ordered list of MiddlewareSpec.
-// For each spec, it looks up the registered factory, verifies all of the
-// factory's declared dependencies were built by an earlier spec in the same
-// call, creates the middleware instance, and appends it to the chain.
-//
-// Returns an error if a spec names an unregistered middleware or if a
-// dependency is not satisfied by an earlier spec.
-//
-// Calling BuildChain again on the same registry
-// discards the built/metrics state of any previous call first, so GetStatus
-// and GetMetrics/GetAllMetrics always reflect only the most recently built
-// chain rather than accumulating "active" middleware across calls.
+// BuildChain builds a ChainBuilder from an ordered list of specs, creating each
+// middleware from its factory. It errors on an unregistered name or a dependency
+// not built by an earlier spec. Each call discards the previous call's
+// built/metrics state.
 func (r *Registry) BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

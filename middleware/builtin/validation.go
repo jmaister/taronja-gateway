@@ -136,15 +136,9 @@ func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.Ga
 	return nil
 }
 
-// ValidateRateLimiterMiddleware validates the rate limiter configuration.
-//
-// This reads EffectiveRateLimiterConfig rather than config.Management.RateLimiter
-// directly, so an explicit `middleware: global` rate_limiter entry's own
-// override (see specsFromMiddlewareSection) gets validated too — otherwise an
-// invalid per-entry override (e.g. a negative requestsPerMinute) would sail
-// through startup validation untouched, since it never lives under
-// management.rateLimiter at all, and only misbehave once the chain actually
-// builds.
+// ValidateRateLimiterMiddleware validates the rate limiter configuration, reading
+// EffectiveRateLimiterConfig so per-entry overrides in `middleware: global` are
+// checked too.
 func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	rl := EffectiveRateLimiterConfig(config)
 	// if neither mode is enabled, nothing to check
@@ -179,17 +173,9 @@ func ValidateRateLimiterMiddleware(deps *deps.Dependencies, config *config.Gatew
 	return nil
 }
 
-// ValidateCORSMiddleware validates the CORS configuration.
-//
-// This reads EffectiveCORSConfig rather than config.Management.CORS
-// directly, so an explicit `middleware: global` cors entry's own override
-// (see specsFromMiddlewareSection) gets validated too — otherwise a config
-// combining a wildcard origin with allowCredentials via that path would
-// sail through startup validation untouched (Management.CORS itself would
-// look disabled, since the operator configured CORS the other way) and
-// only defeat the credentialed-request protection once the chain actually
-// builds and starts serving traffic. See EffectiveRateLimiterConfig's own
-// doc comment for the identical class of gap this mirrors.
+// ValidateCORSMiddleware validates the CORS configuration, reading
+// EffectiveCORSConfig so per-entry overrides in `middleware: global` are checked
+// too (a wildcard origin with allowCredentials must not slip through).
 func ValidateCORSMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
 	cors := EffectiveCORSConfig(config)
 	if !cors.IsEnabled() {
@@ -215,15 +201,9 @@ func ValidateCORSMiddleware(deps *deps.Dependencies, config *config.GatewayConfi
 	return nil
 }
 
-// ValidateMiddlewareChainConfig validates the global middleware chain
-// configuration — the explicit `middleware:` section if present, otherwise
-// the legacy management.analytics/logging/rateLimiter flags — by resolving it
-// to the same ordered MiddlewareSpec list NewGlobalChain will use
-// (ResolveGlobalChainSpecs) and checking every spec's name and dependency
-// graph (ValidateGlobalChainSpecs). This runs before real dependencies
-// (session store, DB repositories, rate limiter instance) exist, so it
-// catches mistakes like enabling session_extraction without ja4_fingerprint,
-// or a typo'd middleware name, at startup instead of at request time.
+// ValidateMiddlewareChainConfig resolves the global chain (ResolveGlobalChainSpecs)
+// and checks every spec's name and dependencies (ValidateGlobalChainSpecs). It runs
+// before real dependencies exist, so mistakes surface at startup.
 func ValidateMiddlewareChainConfig(config *config.GatewayConfig) error {
 	specs, err := ResolveGlobalChainSpecs(config)
 	if err != nil {
@@ -358,18 +338,9 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 	return nil
 }
 
-// ValidateConfigOnly runs every ValidateAllMiddleware check that validates
-// the config file itself and never dereferences deps (ValidateRouteConfiguration,
-// ValidateAdminAccess, ValidateRateLimiterMiddleware, ValidateCORSMiddleware,
-// ValidateMiddlewareChainConfig) — deliberately skipping
-// ValidateAnalyticsMiddleware/ValidateAuthenticationMiddleware/ValidateDependencies,
-// which check that dependency injection wired real objects (a session store,
-// a DB-backed user repository, ...), not a property of the config file.
-//
-// This is what `tg validate` calls: it needs to check the config is well
-// formed without opening a database connection or constructing a real
-// deps.Dependencies, the same way `tg middleware list` and `tg migrate`
-// don't either.
+// ValidateConfigOnly runs the ValidateAllMiddleware checks that only inspect the
+// config and never dereference deps. It is what `tg validate` calls, since that
+// opens no database.
 func ValidateConfigOnly(config *config.GatewayConfig) error {
 	if err := ValidateRouteConfiguration(nil, config); err != nil {
 		return err

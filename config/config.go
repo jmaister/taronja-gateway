@@ -33,20 +33,10 @@ type RouteOptions struct {
 	CacheControlSeconds *int `yaml:"cacheControlSeconds,omitempty"` // Cache control in seconds. Optional. nil = no cache header, 0 = "no-cache", >0 = "max-age=N"
 }
 
-// RouteTargets is one or more backend URLs a proxy route sends requests to.
-// A `to:` field accepts either a single scalar string (the original,
-// still-most-common form: one backend, no load balancing) or a YAML list
-// (multiple backends: the gateway round-robins across them per request and
-// fails over to the next one if a backend's connection attempt fails — see
-// gateway.newRoundRobinTransport). Both forms unmarshal into this same
-// []string-backed type, so every existing single-backend config keeps
-// working unchanged.
-//
-// Multiple targets are assumed to be interchangeable replicas of the same
-// backend (same path structure, differing only in scheme/host) — this is
-// what "load balancing" means here, not a way to route different paths to
-// different places. Use separate route entries (with different `from:`
-// patterns) for that instead.
+// RouteTargets is one or more backend URLs for a proxy route. `to:` accepts a
+// scalar or a list; lists are round-robined with failover (see
+// gateway.newRoundRobinTransport). Targets must be interchangeable replicas; use
+// separate routes to send different paths elsewhere.
 type RouteTargets []string
 
 // UnmarshalYAML implements custom decoding so `to:` accepts a bare string
@@ -105,15 +95,8 @@ type BasicAuthenticationConfig struct {
 	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
 }
 
-// AuthenticationProviders defines all available authentication methods.
-// At least one provider should be enabled if authentication is required on any route.
-//
-// Microsoft, Facebook, and Apple ("Sign in with Apple") providers existed
-// here but moved to the wip/microsoft-apple-facebook-auth branch, untested
-// — to come back to later. That branch also has
-// MicrosoftAuthProviderCredentials/AppleAuthProviderCredentials (Apple's
-// credential shape is four fields, none of them a plain client secret
-// string — see that branch's own doc comment) if this is reintroduced.
+// AuthenticationProviders defines the available authentication methods.
+// At least one should be enabled if any route requires authentication.
 type AuthenticationProviders struct {
 	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
 	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
@@ -139,14 +122,9 @@ type BrandingConfig struct {
 	LogoUrl string `yaml:"logoUrl,omitempty"` // URL or path to custom logo image for login page. Optional.
 }
 
-// NotificationConfig defines notification system settings: the gateway
-// stores every notification regardless of configuration (that part needs no
-// setup), and additionally delivers it over zero or more external channels.
-// Each channel is its own independent, optional block — a deployment can
-// enable email, Telegram, both, or neither. See notification.Provider for
-// the interface every channel implements, kept deliberately generic so a
-// future channel (WhatsApp, Slack, SMS, ...) only needs a new block here and
-// a new Provider, not a change to the notification data model or API.
+// NotificationConfig defines notification settings. Notifications are always
+// stored; delivery over each independent, optional channel block (email,
+// Telegram) is added on top. See notification.Provider for adding a channel.
 type NotificationConfig struct {
 	Email           EmailNotificationConfig    `yaml:"email"`           // Email delivery via SMTP. Optional; disabled by default.
 	Telegram        TelegramNotificationConfig `yaml:"telegram"`        // Telegram delivery via a bot. Optional; disabled by default.
@@ -175,15 +153,9 @@ func (e EmailNotificationConfig) IsConfigured() bool {
 	return e.Enabled && e.Host != "" && e.From != ""
 }
 
-// TelegramNotificationConfig configures notification delivery via a
-// Telegram bot. Unlike email, there's no per-recipient address the gateway
-// already knows — a user links their gateway account to a Telegram chat
-// once, via GET /_/notifications/telegram/link's deep link (see
-// doc/notifications.md), and delivery only happens for users who've done
-// that. The bot receives updates by long-polling Telegram's API rather
-// than a webhook, deliberately: it means zero inbound network exposure is
-// required, so this works the same whether the gateway is reachable from
-// the internet or only from a private network.
+// TelegramNotificationConfig configures delivery via a Telegram bot. Users link
+// their account once through the deep link (see doc/notifications.md); only
+// linked users receive messages. The bot long-polls, so no inbound exposure is needed.
 type TelegramNotificationConfig struct {
 	Enabled  bool   `yaml:"enabled"`  // Enable Telegram delivery. Default: false. Requires botToken.
 	BotToken string `yaml:"botToken"` // Bot token from @BotFather (e.g., "123456:ABC-DEF..."). Can use environment variables. Required when enabled.
@@ -195,16 +167,9 @@ func (t TelegramNotificationConfig) IsConfigured() bool {
 	return t.Enabled && t.BotToken != ""
 }
 
-// ResponseWebhookConfig configures an outbound HTTP callback the gateway
-// fires when a user responds to a notification (from any channel — the
-// in-app list, an email link, or a Telegram button) — so the app that
-// created the notification learns about the response without polling for
-// it. Unlike Email/Telegram, this isn't a delivery channel a notification
-// can be sent *to*; it's a one-time event fired once a response is
-// recorded, always POSTed to this single configured URL regardless of
-// which notification or user it's about — the same one-gateway-per-app
-// assumption every other part of this feature already makes (see
-// doc/notifications.md's "No multi-tenancy / multi-app scoping" note).
+// ResponseWebhookConfig configures the HTTP callback POSTed to a single URL when
+// a user responds to a notification, so the creating app need not poll. It is
+// not a delivery channel.
 type ResponseWebhookConfig struct {
 	Enabled bool   `yaml:"enabled"` // Enable the response webhook. Default: false. Requires url.
 	URL     string `yaml:"url"`     // Absolute URL to POST the response event to. Can use environment variables. Required when enabled.
@@ -255,14 +220,10 @@ type ManagementConfig struct {
 	CORS                CORSConfig        `yaml:"cors"`                // Cross-origin request settings. Optional; empty allowedOrigins disables CORS entirely (no headers added — the pre-CORS-support behavior).
 }
 
-// RateLimiterConfig contains simple in-memory rate limiting settings.
-// All values are positive integers; zero means the feature is disabled.
-// A single configuration block keeps the gateway easy to configure.
-// The middleware applies limits per client IP address.
-// VulnerabilityScanConfig contains a simple list of URL paths that are
-// likely to be probed by automated scanners. When a client triggers too many
-// 404 responses for those paths within the configured window, the IP is
-// temporarily blocked. This is a lightweight signature‑free scanner detector.
+// RateLimiterConfig contains per-client-IP in-memory rate limiting settings.
+// Values are positive integers; zero disables the feature.
+// VulnerabilityScanConfig lists URL paths likely to be probed by scanners; an IP
+// that triggers too many 404s on them within the window is temporarily blocked.
 type VulnerabilityScanConfig struct {
 	URLs         []string `yaml:"urls"`         // paths to watch (supports wildcard patterns)
 	Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
@@ -277,17 +238,9 @@ type RateLimiterConfig struct {
 	RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
 	MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
 	BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
-	// BlockedClientRetentionDays bounds how long a persisted block event
-	// (db.BlockedClient — the admin-visible history behind the in-memory
-	// limiter's own short-lived state) is kept before middleware.RateLimiter
-	// prunes it. Unlike the in-memory entries cleanupLoop discards once a
-	// block expires, nothing else ever removes these rows, so left
-	// unbounded this table grows forever on any gateway that stays up and
-	// under attack (or scanner traffic) long enough. 0 (the default) means
-	// "use the built-in default" (see
-	// middleware.defaultBlockedClientRetentionDays), not "keep forever" —
-	// an operator who genuinely wants unbounded history can still get it by
-	// setting this to a very large number.
+	// BlockedClientRetentionDays is how long persisted block events
+	// (db.BlockedClient) are kept before pruning. 0 means the built-in default, not
+	// forever.
 	BlockedClientRetentionDays int `yaml:"blockedClientRetentionDays"`
 
 	VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector

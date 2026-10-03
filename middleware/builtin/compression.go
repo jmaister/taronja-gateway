@@ -46,23 +46,10 @@ var incompressibleContentTypes = map[string]bool{
 	"application/octet-stream":     true,
 }
 
-// CompressionMiddleware transparently compresses response bodies with
-// brotli, zstd, gzip, or deflate, following standard content negotiation
-// (RFC 9110 §12.5.3) against the request's Accept-Encoding header.
-//
-// It is deliberately built with no configuration at all: no algorithm
-// choice, no compression level, no size threshold, no per-route opt-out.
-// Every response is compressed whenever the client accepts one of the four
-// supportedEncodings, except for cases where compressing would be actively
-// wrong or pointless — a body under compressionMinBytes (when its size is
-// known up front), a
-// Content-Type that's already compressed (incompressibleContentTypePrefixes/
-// incompressibleContentTypes), a response that already set its own
-// Content-Encoding, a byte-range request (compressing would change what
-// "byte 0" refers to), a HEAD request (no body to compress), or a
-// Connection: Upgrade request (WebSocket and similar — the bytes after the
-// 101 response aren't HTTP payload at all). Those are fixed correctness
-// rules, not options: this middleware is either enabled or it isn't.
+// CompressionMiddleware compresses response bodies with brotli, zstd, gzip or
+// deflate per Accept-Encoding (RFC 9110 §12.5.3). It has no configuration. It skips
+// bodies under compressionMinBytes, already-compressed content types, responses
+// that set Content-Encoding, range requests, HEAD, and Connection: Upgrade.
 func CompressionMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
@@ -101,17 +88,8 @@ func isUpgradeRequest(r *http.Request) bool {
 	return false
 }
 
-// supportedEncodings lists every coding this middleware can produce, in
-// preference order used to break a tie between codings the client accepts
-// equally (an explicit q value shared with another coding, or neither
-// listed explicitly and both falling back to "*"'s q-value). brotli and
-// zstd generally compress typical HTTP payloads (HTML/CSS/JS/JSON) more
-// tightly than gzip/deflate for comparable CPU cost, so they're preferred
-// once a client has actually advertised support for one — universality
-// isn't a concern at that point, since the client already said it
-// understands it. gzip keeps its existing edge over the older, weaker
-// deflate for the same reason it always did: the more battle-tested
-// client/intermediary support of the two.
+// supportedEncodings lists the codings in tie-break preference order: brotli and
+// zstd compress typical payloads better than gzip, which has better support than deflate.
 var supportedEncodings = []string{"br", "zstd", "gzip", "deflate"}
 
 // negotiateEncoding parses an Accept-Encoding header (RFC 9110 §12.5.3) and
@@ -201,24 +179,9 @@ func isIncompressibleContentType(ct string) bool {
 	return false
 }
 
-// compressorPools holds one sync.Pool per supported encoding, each pooling
-// the writer type that encoding's case in decide() constructs (gzip.Writer,
-// *flate.Writer, brotli.Writer, *zstd.Encoder). All four expose a
-// Reset(io.Writer) method that fully re-initializes their internal state
-// for a new stream, which is what lets a pooled instance move from one
-// request's ResponseWriter to the next's safely.
-//
-// This exists because every one of these constructors allocates real
-// working memory up front — gzip/flate their sliding-window and Huffman
-// tables, brotli its larger internal buffers, zstd its encoder state and
-// (per compression.go's own WithEncoderConcurrency(1) comment) goroutine
-// bookkeeping — and a gateway compressing every eligible response would
-// otherwise pay that allocation on every single request, only to throw it
-// away a few milliseconds later once Close() finishes flushing the body.
-// Pooling turns that into "allocate once, Reset() many times." Each pool's
-// New func builds against io.Discard purely as a placeholder destination —
-// decide() immediately Resets to the real cw.ResponseWriter before any byte
-// is written to it.
+// compressorPools pools one compressor writer per encoding; their constructors
+// allocate real working memory, and Reset(io.Writer) reinitializes them for the
+// next response. Each New builds against io.Discard; decide() resets to the real writer.
 var (
 	gzipWriterPool = sync.Pool{
 		New: func() interface{} { return gzip.NewWriter(io.Discard) },
@@ -366,15 +329,9 @@ func (cw *compressingResponseWriter) decide() {
 	cw.compress = true
 }
 
-// Close flushes and closes the compressor, if one was created, then returns
-// it to its encoding's pool (see compressorPools) — safe the moment Close
-// returns, since nothing holds a reference to cw.compressor afterwards and
-// every supported compressor's Reset fully re-initializes it for the next
-// request that pulls it back out. It's a no-op if the response was never
-// written to (decide never ran) or wasn't compressed. Must be called after
-// the wrapped handler returns — every compressor this middleware uses
-// buffers internally and won't emit its final bytes (including gzip's
-// trailer/checksum) until Close.
+// Close flushes and closes the compressor and returns it to its pool. It is a
+// no-op if nothing was compressed. It must be called after the handler returns,
+// since compressors emit their final bytes (e.g. the gzip trailer) on Close.
 func (cw *compressingResponseWriter) Close() error {
 	if cw.compressor == nil {
 		return nil

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -16,11 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// captureOutput redirects os.Stdout and os.Stderr for the duration of fn,
-// returning what was written to each separately. This exists specifically to
-// verify migrateConfigFile's stdout/stderr split: `tg migrate --config x >
-// y` only composes cleanly in a shell pipeline if actual config content ever
-// only goes to stdout, and everything informational goes to stderr.
+// captureOutput redirects os.Stdout/os.Stderr while fn runs and returns each.
 func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	t.Helper()
 
@@ -34,11 +30,7 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 
 	os.Stdout, os.Stderr = outW, errW
 
-	// Drain both pipes while fn writes. A sequential write-then-read
-	// deadlocks on Windows (and anywhere the write exceeds the pipe
-	// buffer) — `tg openapi` prints ~85KB of YAML, which is past that
-	// limit. The migrate/validate tests only ever printed a few hundred
-	// bytes, so they never hit it.
+	// Drain concurrently: large writes (the OpenAPI spec) deadlock a write-then-read on Windows.
 	var outBuf, errBuf bytes.Buffer
 	done := make(chan error, 2)
 	go func() {
@@ -60,15 +52,7 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return outBuf.String(), errBuf.String()
 }
 
-// TestMigrateConfigFile_AbsentVersion_ActuallyMigrates covers a config file
-// with no `version:` field at all — treated as config.legacyConfigVersion,
-// not as already-current (see its doc comment for why: some pre-v1.0.0
-// configs have real content, like notification.email.smtp.*, that needs an
-// actual rewrite to keep working). `tg migrate` must print the migrated
-// content to stdout and note on stderr that it migrated, distinctly from
-// the "already version N" no-op note
-// TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout below
-// covers for a file that's already current.
+// A config with no version is migrated, not treated as current.
 func TestMigrateConfigFile_AbsentVersion_ActuallyMigrates(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -84,10 +68,7 @@ func TestMigrateConfigFile_AbsentVersion_ActuallyMigrates(t *testing.T) {
 	assert.Contains(t, stderr, "no declared version", "a real migration still gets an informational note, distinct from the no-op notes below")
 }
 
-// TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout guards
-// the other half of the split: the "nothing to migrate" note must go to
-// stderr, never mixed into stdout, or it would corrupt a redirected file —
-// stdout must be exactly the (unchanged) config content on its own.
+// The "already current" note goes to stderr so a redirected stdout stays a clean config.
 func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -102,12 +83,6 @@ func TestMigrateConfigFile_AlreadyCurrent_NotePrintedToStderrNotStdout(t *testin
 	assert.Contains(t, stderr, fmt.Sprintf("already version %s", config.CurrentConfigVersion))
 }
 
-// TestValidateConfigFile_ValidConfig_PrintsSuccess covers validateConfigFile's
-// success path (tg validate). Its failure path — like migrateConfigFile's —
-// calls os.Exit(1) directly and isn't covered here for the same reason (see
-// the note below); config.LoadConfig's and middleware.ValidateConfigOnly's
-// own error cases (what validateConfigFile just forwards) are covered
-// directly in config/version_test.go and middleware/builtin/validation_test.go.
 func TestValidateConfigFile_ValidConfig_PrintsSuccess(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -135,17 +110,7 @@ routes:
 	assert.Empty(t, stderr)
 }
 
-// Note: migrateConfigFile's and validateConfigFile's error paths (a missing/
-// unparseable/invalid config file) call os.Exit(1) directly, which would
-// kill the test process, so neither is covered here. This file has no other
-// tests: main.go otherwise has no existing test coverage in this repo (it's
-// a thin Cobra wrapper, manually verified against the built binary), and
-// that's unchanged here except for these specific properties.
-
-// TestPrintOpenAPISpec_WritesEmbeddedYamlToStdout is `tg openapi`: stdout
-// must be exactly the embedded spec (nothing mixed in), so redirecting it
-// produces a valid OpenAPI file. Uses api.OpenApiSpecYaml — the same bytes
-// GET <prefix>/openapi.yaml serves — rather than a second copy in main.
+// stdout must be exactly the embedded spec so redirecting it yields a valid file.
 func TestPrintOpenAPISpec_WritesEmbeddedYamlToStdout(t *testing.T) {
 	stdout, stderr := captureOutput(t, printOpenAPISpec)
 
@@ -155,15 +120,14 @@ func TestPrintOpenAPISpec_WritesEmbeddedYamlToStdout(t *testing.T) {
 	assert.Contains(t, stdout, "\n  /openapi.yaml:")
 }
 
-// TestRunCommandOwnsConfigFlag is the regression test for a real bug that
-// made `tg openapi` (and every other subcommand, including `version` and
-// `help`) die in init(): MarkFlagRequired("config") was called on rootCmd,
-// which has no such flag, so cobra fatals "no such flag -config" before
-// Execute ever runs. --config belongs on run/migrate/validate/middleware
-// list, not on the root.
+// --config belongs on run/migrate/validate/middleware list, never on the root (a required root flag broke every subcommand).
 func TestRunCommandOwnsConfigFlag(t *testing.T) {
+	rootCmd := newRootCmd(&app{})
 	assert.Nil(t, rootCmd.Flags().Lookup("config"), "root must not own --config")
-	require.NotNil(t, runCmd.Flags().Lookup("config"))
+
+	run, _, err := rootCmd.Find([]string{"run"})
+	require.NoError(t, err)
+	require.NotNil(t, run.Flags().Lookup("config"))
 
 	cmd, _, err := rootCmd.Find([]string{"openapi"})
 	require.NoError(t, err)
@@ -171,16 +135,7 @@ func TestRunCommandOwnsConfigFlag(t *testing.T) {
 	assert.Nil(t, cmd.Flags().Lookup("config"), "openapi must not require --config")
 }
 
-// TestDotEnvLoadIsFatal is the regression test for a real bug found while
-// building examples/docker-demo: runGateway used to call log.Fatal on *any*
-// godotenv.Load() error, including the plain-missing-file case — which
-// meant the gateway refused to start at all in an environment with no .env
-// (a fresh clone, or a container relying on real environment variables
-// only, as the Docker demo does), even though .env is meant to be optional
-// (addUser already only warned, never fatally, on the same error). Testing
-// runGateway itself isn't practical (log.Fatalf calls os.Exit, which would
-// kill the test process — see the note above), so this tests the extracted
-// decision function directly instead.
+// A missing .env must not stop startup; a malformed or unreadable one must.
 func TestDotEnvLoadIsFatal(t *testing.T) {
 	assert.False(t, dotEnvLoadIsFatal(nil), "no error at all must never be fatal")
 

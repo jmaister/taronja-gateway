@@ -13,17 +13,8 @@ import (
 	"github.com/ua-parser/uap-go/uaparser"
 )
 
-// uaParser is a package-level singleton. uaparser.New (and the deprecated
-// NewFromSaved it replaces) parses the entire embedded uap-core regex
-// database — several hundred patterns — from scratch on every call, which
-// costs on the order of 100ms+ and tens of MB of garbage per call. Building
-// it once and reusing it is essential: NewClientInfo runs on every request
-// that goes through the traffic-metrics/session-extraction middleware, so
-// constructing a parser per call (as this code used to do) turned every
-// analytics-tracked request into a ~200ms, ~45MB operation. *uaparser.Parser
-// itself holds an internal mutex-guarded LRU cache of parsed results and is
-// documented as safe for concurrent use, so a single shared instance is the
-// intended usage.
+// uaParser is built once: uaparser.New parses the whole uap-core regex database
+// (~100ms, tens of MB), and the parser is safe for concurrent use.
 var (
 	uaParserOnce sync.Once
 	uaParser     *uaparser.Parser
@@ -46,27 +37,9 @@ func stripPort(ip string) string {
 	return host
 }
 
-// IsTrustedProxy reports whether remoteIP (with any port already
-// stripped) is a peer GetClientIP should trust to supply a client's real
-// IP via a forwarded-for header, with no configuration involved at all: a
-// loopback or RFC 1918/RFC 4193 private-range address. That's the same
-// default Rails' ActionDispatch::RemoteIp (and similar frameworks) use
-// without requiring an operator to configure anything, and it fits this
-// gateway's own most common deployment shapes for free — a reverse proxy
-// or load balancer on the same host (loopback) or in the same private
-// network/Docker/Kubernetes cluster (private range) — while a direct
-// external client can never present a private-range address as its own
-// real TCP peer address in the first place: that's not routable from the
-// public internet, so there's nothing to spoof. See GetClientIP's doc
-// comment for what this replaced and why.
-//
-// Exported (not just used internally by GetClientIP/
-// rightmostUntrustedForwardedFor below) so gateway.go's reverse-proxy
-// director can apply the exact same trust boundary to X-Forwarded-Proto
-// that this file already applies to X-Forwarded-For/X-Real-IP/
-// X-Client-IP — trusting a client-supplied "https" claim from a direct,
-// untrusted connection is the same class of spoofing this function exists
-// to prevent for IP headers.
+// IsTrustedProxy reports whether remoteIP is a loopback or private-range peer,
+// i.e. one whose forwarded-for headers GetClientIP and the reverse proxy may
+// believe. Public peers cannot present a private address as their TCP source.
 func IsTrustedProxy(remoteIP string) bool {
 	ip := net.ParseIP(remoteIP)
 	if ip == nil {
@@ -75,33 +48,10 @@ func IsTrustedProxy(remoteIP string) bool {
 	return ip.IsLoopback() || ip.IsPrivate()
 }
 
-// GetClientIP extracts the request's real client IP: the TCP connection's
-// own peer address (r.RemoteAddr) unless that peer is a loopback/private
-// address (see IsTrustedProxy), in which case the client-supplied
-// X-Forwarded-For/X-Real-IP/X-Client-IP headers are honored instead —
-// the same idea as nginx's set_real_ip_from or Traefik's trustedIPs, just
-// with a fixed, zero-configuration answer for "which peers to trust"
-// instead of asking an operator to list them.
-//
-// This function used to trust those headers from every request
-// unconditionally, regardless of who actually sent it — which meant any
-// direct client, not just a real proxy in front of this gateway, could
-// set its own "IP" to anything at all, including something that isn't an
-// IP address. That's not a theoretical concern: a real deployment's logs
-// showed a JNDI-exploit probe's own crafted string ending up logged as
-// the "client IP" and passed to the geo-lookup API — not because of
-// anything in the request's URL, but because the attacker's own
-// X-Forwarded-For header was trusted at face value. Beyond the log
-// noise, unconditionally trusting these headers also made IP-based rate
-// limiting (middleware/builtin/ratelimiter.go) and analytics trivially spoofable
-// by any client that isn't actually behind a real proxy. An earlier fix
-// made trust explicitly configurable (server.trustedProxies); that was
-// scrapped for this — the deployment shapes it needed to cover (proxy on
-// the same host or same private network) are exactly what
-// loopback-or-private already answers for free, and asking every operator
-// to understand and configure IP trust for a gateway to work correctly
-// behind a reverse proxy was the wrong trade for what's actually a fixed,
-// well-established default elsewhere.
+// GetClientIP returns the request's client IP: the TCP peer, unless that peer
+// is a trusted proxy (see IsTrustedProxy), in which case the forwarded headers
+// are honored. Trusting them from every peer made IP rate limiting and
+// analytics trivially spoofable.
 func GetClientIP(r *http.Request) string {
 	remoteIP := stripPort(r.RemoteAddr)
 
@@ -122,32 +72,10 @@ func GetClientIP(r *http.Request) string {
 	return remoteIP
 }
 
-// rightmostUntrustedForwardedFor walks an X-Forwarded-For header's
-// comma-separated address list from the right — the end a well-behaved
-// proxy appends its own observed peer to (RFC 7239's "for", added by "each
-// successive proxy") — skipping past any entry that is itself a
-// loopback/private address (another trusted hop between the client and
-// this gateway) until it finds the first entry that isn't. That first
-// untrusted entry is the real client's address; every entry to its left
-// was supplied by the client itself (or an untrusted intermediary) and is
-// not proof of anything.
-//
-// Reading the leftmost entry instead, as this used to, assumes the header
-// is only ever written by proxies and never seeded by the client — true
-// only when the front-end proxy replaces any client-supplied
-// X-Forwarded-For rather than appending to it. Several common proxies
-// (plain nginx without a real_ip module, Traefik's default passthrough,
-// a number of load balancers) append instead, which is exactly what RFC
-// 7239 describes: under that topology — common, not universal — a client
-// sending its own fake leading entry got it trusted outright, letting it
-// rotate a fresh "identity" per request to defeat IP-based rate limiting
-// and blocklisting (middleware/builtin/ratelimiter.go), and to poison the IP
-// address recorded against every session/traffic-metric row.
-//
-// Returns "" if every entry is itself trusted (an all-internal chain, e.g.
-// two chained proxies both on the private network) or the header has no
-// usable entries at all, so the caller can fall through to its other
-// signals — same as an empty header would have before.
+// rightmostUntrustedForwardedFor returns the first non-trusted entry of an
+// X-Forwarded-For list, scanning from the right: entries to its left were
+// supplied by the client and prove nothing. Returns "" if every entry is
+// trusted or the header has no usable entry.
 func rightmostUntrustedForwardedFor(xForwardedFor string) string {
 	entries := strings.Split(xForwardedFor, ",")
 	for i := len(entries) - 1; i >= 0; i-- {
@@ -178,9 +106,6 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 		}
 	}
 
-	// Pick the single best available client fingerprint — see
-	// fingerprint.SelectFingerprint's doc comment for the priority order
-	// (stable > JA4H) and why only one is ever stored.
 	fingerprintValue, fingerprintType := fingerprint.SelectFingerprint(req)
 
 	return &db.ClientInfo{
@@ -195,16 +120,15 @@ func NewClientInfo(req *http.Request) *db.ClientInfo {
 		DeviceBrand:    client.Device.Brand,
 		DeviceModel:    client.Device.Model,
 		// Geographic fields populated from geoData
-		GeoLocation: geoData.FormattedLoc,
-		Latitude:    geoData.Latitude,
-		Longitude:   geoData.Longitude,
-		City:        geoData.City,
-		ZipCode:     geoData.ZipCode,
-		Country:     geoData.Country,
-		CountryCode: geoData.CountryCode,
-		Region:      geoData.Region,
-		Continent:   geoData.Continent,
-		// Client fingerprinting — see fingerprint.SelectFingerprint.
+		GeoLocation:     geoData.FormattedLoc,
+		Latitude:        geoData.Latitude,
+		Longitude:       geoData.Longitude,
+		City:            geoData.City,
+		ZipCode:         geoData.ZipCode,
+		Country:         geoData.Country,
+		CountryCode:     geoData.CountryCode,
+		Region:          geoData.Region,
+		Continent:       geoData.Continent,
 		Fingerprint:     fingerprintValue,
 		FingerprintType: fingerprintType,
 	}
@@ -218,11 +142,7 @@ func NewTrafficMetric(req *http.Request) *db.TrafficMetric {
 		Path:           req.URL.Path,
 		HttpStatus:     0,
 		ResponseTimeNs: 0,
-		// UTC explicitly, not just relying on TrafficMetric.BeforeCreate's
-		// defensive normalization: db/timeseries.go's SQL-side bucketing
-		// interprets the stored value as UTC wall-clock time directly, so
-		// this is the one call site that actually needs to get it right,
-		// not just eventually-corrected before it hits the database.
+		// UTC: db/timeseries.go buckets the stored value as UTC wall-clock time.
 		Timestamp:     time.Now().UTC(),
 		ResponseSize:  0,
 		Error:         "",

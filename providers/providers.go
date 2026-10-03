@@ -36,15 +36,8 @@ type UserInfo struct {
 	Provider      string `json:"provider"`
 }
 
-// UserDataFetcher turns a completed OAuth2 token exchange into UserInfo.
-// Every provider currently registered here does this via one authenticated
-// REST call using the access token (r is unused, kept only so the
-// interface has one shape) — but not every OAuth2 provider has such a
-// REST endpoint: Apple's user info instead comes from decoding+verifying
-// the ID token already present in token, plus, on the user's very first
-// authorization only, a one-time JSON payload it includes in the callback
-// request itself (why r is needed here rather than just the token) — see
-// apple.go on the wip/microsoft-apple-facebook-auth branch.
+// UserDataFetcher turns a completed OAuth2 token exchange into UserInfo. The
+// request is passed for providers that need data from the callback itself.
 type UserDataFetcher interface {
 	FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error)
 }
@@ -54,14 +47,8 @@ type AuthProvider interface {
 	Name() string
 }
 
-// RegisterProviders registers all enabled authentication providers.
-// It now accepts db.SessionRepository.
-//
-// ctx governs the lifetime of any background goroutine a provider starts
-// during registration (e.g. a JWKS refresh loop for a provider that
-// verifies signed ID tokens, the way the Microsoft/Facebook/Apple
-// providers on the wip/microsoft-apple-facebook-auth branch do — none of
-// the providers currently registered here start one).
+// RegisterProviders registers all enabled authentication providers. ctx bounds
+// any background goroutine a provider starts during registration.
 func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
@@ -114,14 +101,8 @@ type AuthenticationProvider struct {
 	SessionStore  session.SessionStore
 	GatewayConfig *config.GatewayConfig
 
-	// ClientSecretFunc, when set, is called to (re)generate
-	// OAuthConfig.ClientSecret immediately before every token exchange.
-	// Every provider currently registered leaves this nil and keeps a
-	// static ClientSecret set once at registration — Apple's "client
-	// secret" is instead a short-lived JWT it signs itself (see apple.go's
-	// buildAppleClientSecret on the wip/microsoft-apple-facebook-auth
-	// branch), which would go stale if only ever built once at gateway
-	// startup.
+	// ClientSecretFunc, when set, regenerates OAuthConfig.ClientSecret before every
+	// token exchange, for providers whose secret is short-lived. Otherwise nil.
 	ClientSecretFunc func() (string, error)
 
 	// ResponseMode, when set, is sent as the OAuth2 response_mode
@@ -183,18 +164,8 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 	// whatever it finds in it.
 	originalURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 
-	// Set cookie for the redirect URL
-	//
-	// SameSite=Lax, not Strict, deliberately: both this cookie and the
-	// state cookie below must still be sent when the browser lands back
-	// on Callback, and that arrival is itself a cross-site top-level
-	// navigation — the OAuth provider's own redirect back to this
-	// gateway. Strict would drop the cookie on exactly that request,
-	// breaking every OAuth login. Lax permits a cross-site top-level GET
-	// navigation while still blocking the cross-site POST/embedded cases
-	// SameSite exists to stop — the same trade-off already made for the
-	// session cookie itself (see providers/basicAuthentication.go and
-	// middleware/session.go).
+	// SameSite=Lax, not Strict: the provider's redirect back is a cross-site top-level
+	// navigation, and Strict would drop these cookies and break every OAuth login.
 	http.SetCookie(w, &http.Cookie{
 		Name:     RedirectUrlCookieName,
 		Value:    originalURL,
@@ -307,23 +278,8 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 			Locale:     userInfo.Locale,
 			Provider:   ap.Provider.Name(),
 			ProviderId: userInfo.ID,
-			// EmailConfirmed follows the provider's own verified-email
-			// signal (see UserInfo.VerifiedEmail) rather than being
-			// unconditionally true. Every currently configured provider
-			// (see each FetchUserData) already only ever reports Email
-			// non-empty when it's effectively verified — Apple/Google read
-			// a genuine verification claim from the provider itself,
-			// Facebook/Microsoft/GitHub's own APIs only ever hand back a
-			// usable email once it's confirmed — so this gate is dormant
-			// in practice today, not a behavior change for any real user.
-			// It exists for the provider that doesn't hold to that: an
-			// OAuth provider whose Email can be genuinely unverified would
-			// otherwise let anyone claim any email address and get an
-			// immediately-usable, "confirmed" account under it — the
-			// account-takeover-by-email-spoofing path this closes. A user
-			// this actually blocks has no in-app recovery (no confirmation
-			// email is ever sent for OAuth signups) and needs to verify
-			// their email with the provider itself, then sign in again.
+			// EmailConfirmed follows the provider's verified-email signal, so a provider
+			// reporting unverified emails cannot be used to claim someone else's address.
 			EmailConfirmed: userInfo.VerifiedEmail,
 		}
 		if user.Username == "" { // Fallback for username if not provided

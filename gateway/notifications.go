@@ -14,7 +14,7 @@ import (
 // d.NotificationService, and starts its background goroutines: the retry
 // worker (unconditionally — retries apply to any channel) and, if
 // Telegram is configured, its long-polling update loop. Called once at
-// startup (see main.go), after deps.NewProduction (needs
+// startup (see cli/run.go), after deps.NewProduction (needs
 // d.NotificationRepo/d.UserRepo) and before NewGatewayWithDependencies
 // (registerOpenAPIRoutes reads d.NotificationService when wiring up
 // StrictApiServer).

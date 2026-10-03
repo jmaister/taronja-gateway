@@ -50,21 +50,10 @@ func ValidateTimeSeriesRange(start, end time.Time, granularity TimeSeriesGranula
 	return nil
 }
 
-// sqliteBucketExpr returns the SQL expression that truncates timeColumn
-// (a column or expression yielding a value in the format
-// stripUTCFormatSuffix expects) down to the start of its bucket for the
-// given granularity, formatted as an RFC 3339 UTC string.
-//
-// timeColumn is always wrapped in stripUTCFormatSuffix first — see that
-// function's doc comment for why: the pure-Go SQLite driver this project
-// uses (modernc.org/sqlite) stores a Go time.Time as its default
-// .String() representation ("2026-06-10 08:00:00 +0000 UTC"), which none
-// of SQLite's date/time functions (strftime and friends) parse as-is.
-//
-// Safe to build with fmt.Sprintf directly into a SELECT (not a bound
-// parameter) because granularity is always one of the fixed constants
-// above and timeColumn is always one of a small set of column names this
-// package controls — never raw user input.
+// sqliteBucketExpr returns the SQL that truncates timeColumn to its bucket start as
+// an RFC 3339 UTC string. timeColumn is wrapped in stripUTCFormatSuffix because
+// SQLite's date functions cannot parse the driver's time.Time format. Built with
+// Sprintf, which is safe: both arguments come from fixed constants in this package.
 func sqliteBucketExpr(timeColumn string, g TimeSeriesGranularity) (string, error) {
 	col := stripUTCFormatSuffix(timeColumn)
 	switch g {
@@ -87,22 +76,10 @@ func sqliteBucketExpr(timeColumn string, g TimeSeriesGranularity) (string, error
 	}
 }
 
-// stripUTCFormatSuffix returns a SQL expression that extracts just the
-// "YYYY-MM-DD HH:MM:SS" prefix (the first 19 characters) of timeColumn —
-// one of the date-time formats SQLite's own functions do recognize —
-// discarding the trailing offset/zone-name suffix
-// (" +0000 UTC"/" +0200 CEST"/...) that modernc.org/sqlite's stored
-// representation of a Go time.Time always has.
-//
-// This treats the extracted "YYYY-MM-DD HH:MM:SS" as UTC wall-clock time
-// directly, with no offset conversion — correct only because every
-// TrafficMetric.Timestamp is normalized to UTC before it's ever written
-// (see TrafficMetric.BeforeCreate and session.NewTrafficMetric). A
-// non-UTC stored timestamp would silently bucket at its own local
-// wall-clock hour instead of the equivalent UTC one; confirmed by hand
-// against a real DB before relying on this, alongside confirming the raw
-// stored format itself (this function's whole reason to exist) the same
-// way — see the commit that introduced this file for both repros.
+// stripUTCFormatSuffix extracts the first 19 characters ("YYYY-MM-DD HH:MM:SS") of
+// timeColumn, dropping the offset/zone suffix the driver stores. The value is then
+// read as UTC, which is only correct because timestamps are normalized to UTC
+// before writing (TrafficMetric.BeforeCreate, session.NewTrafficMetric).
 func stripUTCFormatSuffix(timeColumn string) string {
 	return fmt.Sprintf("substr(%s, 1, 19)", timeColumn)
 }
@@ -178,32 +155,11 @@ type TimeSeriesPoint struct {
 	AverageResponseTimeMs float64
 }
 
-// GetTimeSeries returns one TimeSeriesPoint per bucket across
-// [startDate, endDate] at the given granularity, in chronological order,
-// including zero-valued buckets for windows with no recorded requests at
-// all — a continuous series is much easier to chart correctly than one
-// with gaps every time a quiet minute/hour/day happens to fall in range.
-//
-// The per-bucket counts (requests, distinct fingerprints, distinct users,
-// errors, average response time) are computed with a single grouped SQL
-// query — not by fetching matching rows and aggregating them in Go, which
-// an earlier version of this method did and which doesn't scale: it pulls
-// every matching row's data across the wire and holds it (plus a
-// per-bucket hash set for each distinct-count field) in application
-// memory, when the database can compute the same result set-side, transfer
-// only the (small, one-row-per-bucket) aggregated result, and use an index
-// on top of it.
-//
-// NewVisitors needs a second query: "how many fingerprints active in this
-// bucket were seen for the very first time, ever" isn't answerable from
-// rows inside [startDate, endDate] alone — a fingerprint's true first
-// appearance can be arbitrarily far in the past. That query
-// (MIN(timestamp) GROUP BY fingerprint over the whole table) is why
-// ClientInfo.Fingerprint is indexed.
-//
-// Callers must validate the range against ValidateTimeSeriesRange first;
-// this method does not itself enforce a maximum number of buckets, so an
-// unvalidated huge range could produce an equally huge backfilled slice.
+// GetTimeSeries returns one point per bucket in [startDate, endDate],
+// chronologically, with zero-valued buckets filled in. Counts come from a single
+// grouped query. NewVisitors needs a second query (MIN(timestamp) GROUP BY
+// fingerprint over the whole table), hence the fingerprint index. Callers must
+// first check the range with ValidateTimeSeriesRange.
 func (r *TrafficMetricRepositoryDB) GetTimeSeries(startDate, endDate time.Time, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error) {
 	// See trafficmetricrepository.go's FindByDateRange comment for why:
 	// `timestamp BETWEEN ? AND ?` is a text comparison against
@@ -283,20 +239,10 @@ func (r *TrafficMetricRepositoryDB) GetTimeSeries(startDate, endDate time.Time, 
 	return points, nil
 }
 
-// getNewVisitorsByBucket returns, for each bucket in [startDate, endDate],
-// how many distinct fingerprints had their first-ever appearance (across
-// the whole TrafficMetric table's history, not just this range) fall in
-// that bucket. Buckets with zero new visitors are simply absent from the
-// result map — GetTimeSeries's backfill loop treats a missing key as 0.
-//
-// The inner query (MIN(timestamp) GROUP BY fingerprint) necessarily scans
-// the entire table's fingerprint/timestamp columns, not just the
-// requested range — a fingerprint's true first-ever appearance can't be
-// known from a date-filtered scan alone. This is the one part of
-// GetTimeSeries whose cost doesn't shrink with a narrower requested
-// range, which is why ClientInfo.Fingerprint is indexed: the index lets
-// SQLite compute the per-fingerprint minimum without reading full row
-// data for every historical request.
+// getNewVisitorsByBucket counts, per bucket, fingerprints whose first-ever
+// appearance falls in it; absent buckets mean 0. The inner query scans the whole
+// table, since a first appearance cannot be found from a date-filtered scan, so
+// its cost does not shrink with the range; the fingerprint index helps.
 func (r *TrafficMetricRepositoryDB) getNewVisitorsByBucket(startDate, endDate time.Time, granularity TimeSeriesGranularity) (map[time.Time]int, error) {
 	bucketExpr, err := sqliteBucketExpr("first_ts", granularity)
 	if err != nil {

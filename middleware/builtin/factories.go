@@ -147,16 +147,9 @@ type SessionExtractionFactory struct {
 	tokenService session.TokenService
 }
 
-// NewSessionExtractionFactory declares a dependency on ja4_fingerprint,
-// preserving the gateway's original chain order (JA4H fingerprinting first so
-// the fingerprint is available to other middlewares). Note this is a conservative choice,
-// not a verified direct read: SessionExtractionMiddleware itself doesn't
-// read the JA4H header. The actual consumer is session.NewClientInfo
-// (session/clientinfo.go), invoked later during login/session creation —
-// outside this middleware entirely. The dependency stays declared because
-// removing it without being certain nothing else relies on JA4H already
-// being on the request by this point in the chain isn't worth the risk for
-// a purely cosmetic simplification.
+// NewSessionExtractionFactory declares a dependency on ja4_fingerprint to keep the
+// original chain order. The middleware does not read the fingerprint itself
+// (session.NewClientInfo does, later); the dependency is kept as a safe choice.
 func NewSessionExtractionFactory(sessionStore session.SessionStore, tokenService session.TokenService) *SessionExtractionFactory {
 	return &SessionExtractionFactory{
 		ConcreteFactory: middleware.NewConcreteFactory(config.MiddlewareNameSessionExtraction, "Resolves the authenticated session/user and attaches it to the request context", config.MiddlewareNameJA4Fingerprint),
@@ -181,22 +174,11 @@ type TrafficMetricsFactory struct {
 	trafficMetricRepo db.TrafficMetricRepository
 }
 
-// NewTrafficMetricsFactory declares two dependencies, both verified reads
-// (not just preserved ordering, unlike session_extraction's — see
-// NewSessionExtractionFactory):
-//   - session_extraction: TrafficMetricMiddleware reads the session from the
-//     request context (middleware/builtin/trafficmetric.go), which
-//     SessionExtractionMiddleware puts there.
-//   - ja4_fingerprint: TrafficMetricMiddleware calls session.NewTrafficMetric,
-//     which calls session.NewClientInfo, which reads the JA4H fingerprint
-//     header (session/clientinfo.go) that JA4Middleware/OptimizedJA4Middleware
-//     set. This is declared explicitly, even though building a chain with
-//     session_extraction already transitively guarantees ja4_fingerprint ran
-//     first (session_extraction itself declares that dependency, if only to
-//     preserve the original chain's ordering) — spelling it out here means
-//     traffic_metrics's real requirement doesn't silently break if
-//     session_extraction's dependency list is ever "cleaned up" by someone
-//     who (reasonably) can't find a direct read to justify it.
+// NewTrafficMetricsFactory declares two dependencies, both real reads:
+//   - session_extraction: the middleware reads the session from the request context.
+//   - ja4_fingerprint: session.NewTrafficMetric -> NewClientInfo reads the
+//     fingerprint header. Declared explicitly so it survives any cleanup of
+//     session_extraction's own dependency.
 func NewTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *TrafficMetricsFactory {
 	return &TrafficMetricsFactory{
 		ConcreteFactory:   middleware.NewConcreteFactory(config.MiddlewareNameTrafficMetrics, "Records per-request traffic metrics (status, size, duration, user)", config.MiddlewareNameSessionExtraction, config.MiddlewareNameJA4Fingerprint),

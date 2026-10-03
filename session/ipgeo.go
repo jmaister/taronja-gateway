@@ -21,20 +21,9 @@ func SetGeolocationConfig(geoConfig *config.GeolocationConfig) {
 	globalGeoConfig = geoConfig
 }
 
-// geoSuccessTTL and geoFailureTTL are how long GetGeoDataFromIP trusts a
-// cached result before calling the geolocation API again. A successful
-// lookup is cached for a long time — an IP's location essentially never
-// changes. A *failed* lookup — the API unreachable, rate-limiting, timing
-// out — is cached too, but only briefly: long enough that repeated
-// requests from the same client during an outage don't each pay the full
-// network timeout (5s, see getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate),
-// short enough that service recovers within a minute of the API coming
-// back. Before this, a failure was never cached at all, so every single
-// request from an IP the API couldn't be reached for paid that 5s penalty
-// — confirmed directly: 1,000 requests from the same test IP, with the
-// free API unreachable from the sandbox this was found in, turned
-// gateway/performance_test.go's TestMemoryUsage into an 80+ minute hang
-// instead of a sub-second test.
+// geoSuccessTTL and geoFailureTTL bound how long a cached lookup is trusted.
+// Failures are cached briefly so an API outage does not cost every request the
+// full 5s timeout.
 const (
 	geoSuccessTTL = 7 * 24 * time.Hour
 	geoFailureTTL = time.Minute
@@ -65,19 +54,9 @@ type IPGeoCache struct {
 	mutex sync.RWMutex
 }
 
-// ipCacheMaxEntries bounds ipCache.cache's size. Before this, nothing ever
-// removed an entry from the map at read or write time — every distinct
-// value GetGeoDataFromIP was ever called with stayed cached forever — so a
-// remote, unauthenticated client could grow it without limit simply by
-// presenting many distinct "client IP" values: trivial over IPv6, or via a
-// spoofed X-Forwarded-For entry in the common reverse-proxy topology this
-// gateway documents as normal (see GetClientIP's own doc comment). 50,000
-// entries is generous for any real deployment's distinct-visitor diversity
-// — a few tens of MB at worst, not unbounded — while giving an attacker
-// nothing to gain by exceeding it: once full, a genuinely new value simply
-// isn't cached rather than displacing something else, and
-// ipCacheCleanupInterval's periodic sweep reclaims room from real, expired
-// traffic on an ordinary schedule.
+// ipCacheMaxEntries bounds the cache so a client presenting many distinct IPs
+// cannot grow it without limit. When full, new values are not cached; the
+// periodic sweep reclaims expired entries.
 const ipCacheMaxEntries = 50_000
 
 // ipCacheCleanupInterval is how often the background sweep (see
@@ -122,14 +101,8 @@ func sweepExpiredGeoCacheEntries(now time.Time) {
 	}
 }
 
-// cacheGeoResult records the outcome of looking up ip — success or failure
-// alike, see geoSuccessTTL/geoFailureTTL — unless ip is a genuinely new key
-// and the cache is already at ipCacheMaxEntries, in which case the result is
-// still returned to this one caller but not retained for the next. See that
-// constant's doc comment for why a full cache drops new entries instead of
-// evicting an old one to make room. Split out from GetGeoDataFromIP so a
-// test can exercise the capping behavior directly, without needing a real
-// network call to produce a genuine cache miss.
+// cacheGeoResult records a lookup result unless the cache is full and ip is new
+// (it is still returned to the caller). Split out so tests can exercise the cap.
 func cacheGeoResult(ip string, geoData GeoData, err error) {
 	ipCache.mutex.Lock()
 	defer ipCache.mutex.Unlock()
@@ -156,23 +129,9 @@ var ipCache = &IPGeoCache{
 	cache: make(map[string]geoCacheEntry),
 }
 
-// isNonRoutable reports whether ip is loopback, private (RFC 1918 /
-// RFC 4193), link-local, or unspecified ("0.0.0.0"/"::") — none of which a
-// public geolocation API can meaningfully answer for, and none of which
-// should ever be sent to one. Parses the address with net.ParseIP rather
-// than matching a string prefix: the "127."/"localhost" check this
-// replaced only ever caught IPv4 loopback, so a deployment behind a
-// reverse proxy on the same private network — a normal, common shape for
-// this gateway — sent every internal client's real RFC 1918 address
-// (192.168.x.x, 10.x.x.x, 172.16-31.x.x) straight to the geolocation API,
-// which naturally has no idea what to do with a non-routable address and
-// returned an error for every single one of them, logged on every request.
-// A malformed value (not a real IP at all) falls through to a real lookup
-// attempt rather than being silently treated as non-routable here — in
-// practice GetGeoDataFromIP, this function's only caller, already rejects
-// a malformed value itself before ever reaching this check (see its own
-// net.ParseIP validation), so this only matters to a caller that skips
-// that validation and calls isNonRoutable directly.
+// isNonRoutable reports whether ip is loopback, private, link-local or
+// unspecified, none of which a public geolocation API can answer. A malformed
+// value is not treated as non-routable.
 func isNonRoutable(ip string) bool {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
@@ -190,16 +149,8 @@ func GetGeoDataFromIP(ip string) (GeoData, error) {
 	if ip == "" {
 		return GeoData{}, fmt.Errorf("IP address is empty")
 	}
-	// getGeoDataFromFreeIPAPI/getGeoDataFromIPLocate build their request
-	// URL with fmt.Sprintf, embedding ip verbatim — without this check, a
-	// caller-supplied value that isn't a real IP address at all (e.g.
-	// containing "/", "?", or "#") would be sent straight into that URL
-	// instead of being rejected up front, letting whatever produced it
-	// redirect this gateway's own outbound request to an unintended path
-	// or host on the geolocation API's domain. Validating it's a
-	// syntactically real IP address first closes that off regardless of
-	// where ip originated (GetClientIP's XFF handling, a caller passing
-	// one through directly, etc.).
+	// Both providers embed ip in a URL, so reject anything that is not a real IP
+	// address (e.g. containing "/", "?" or "#").
 	if net.ParseIP(ip) == nil {
 		return GeoData{}, fmt.Errorf("invalid IP address: %q", ip)
 	}

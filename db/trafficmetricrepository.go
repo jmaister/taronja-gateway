@@ -10,11 +10,9 @@ import (
 // TrafficMetricRepository interface defines methods for managing request statistics.
 type TrafficMetricRepository interface {
 	Create(stat *TrafficMetric) error
-	// CreateBatch stores multiple request statistic records in a single
-	// database transaction. Used directly by callers that already have a
-	// batch on hand, and by BatchingTrafficMetricRepository to flush what
-	// it has coalesced from many individual Create calls. A nil or empty
-	// slice is a no-op.
+	// CreateBatch stores records in chunked INSERTs (createBatchChunkSize), each in its
+	// transaction, so N records cost close to one writer-lock acquisition. A batch
+	// larger than one chunk is valid input: the background flusher can fall behind.
 	CreateBatch(stats []*TrafficMetric) error
 	FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error)
 	FindByPath(path string, limit int) ([]TrafficMetric, error)
@@ -63,14 +61,8 @@ func (r *TrafficMetricRepositoryDB) Create(stat *TrafficMetric) error {
 	return nil
 }
 
-// createBatchChunkSize bounds how many TrafficMetric rows CreateBatch puts
-// in a single INSERT statement. TrafficMetric has ~30 columns (it embeds
-// ClientInfo), and SQLite rejects a statement with more than a fixed number
-// of bound parameters — 32766 on recent builds, as low as 999 on older
-// ones (modernc.org/sqlite, this project's driver, uses the low default).
-// Above that limit the whole INSERT fails, not just the rows past the
-// limit, so this needs to stay comfortably under it regardless of which
-// limit is in effect: 30 columns × 100 rows = 3000 parameters.
+// createBatchChunkSize bounds the rows per INSERT. SQLite fails the whole statement
+// above its bound-parameter limit (as low as 999); 30 columns x 100 rows = 3000.
 const createBatchChunkSize = 100
 
 // CreateBatch stores multiple request statistic records in as few
@@ -104,20 +96,9 @@ func (r *TrafficMetricRepositoryDB) CreateBatch(stats []*TrafficMetric) error {
 
 // FindByDateRange retrieves statistics within a date range.
 func (r *TrafficMetricRepositoryDB) FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error) {
-	// .UTC() here, and at the top of every other method in this file that
-	// takes a date range: `timestamp BETWEEN ? AND ?` compares the stored
-	// value's text representation against these bound parameters' own text
-	// representation (modernc.org/sqlite's driver binds a time.Time as its
-	// default .String() form, and the `timestamp` column has TEXT affinity
-	// — there's no numeric/chronological comparison happening underneath).
-	// TrafficMetric.BeforeCreate always normalizes what gets *stored* to
-	// UTC; without normalizing the query bounds the same way, a caller
-	// passing a non-UTC time.Time (e.g. plain time.Now(), which carries the
-	// server's local zone) would compare "2026-...+0000 UTC" stored values
-	// against "2026-...+0100 BST" bounds — different strings for the same
-	// instant, silently matching the wrong rows (confirmed by hand: this
-	// caused three existing tests to fail the moment BeforeCreate started
-	// normalizing storage without this normalizing the read side too).
+	// .UTC(): BETWEEN compares TEXT, and stored values are UTC, so non-UTC bounds
+	// would compare different strings for the same instant and match the wrong rows.
+	// Every date-range method does this.
 	startDate, endDate = startDate.UTC(), endDate.UTC()
 	var stats []TrafficMetric
 	err := r.DB.Where("timestamp BETWEEN ? AND ?", startDate, endDate).Find(&stats).Error

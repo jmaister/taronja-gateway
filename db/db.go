@@ -12,16 +12,9 @@ import (
 
 var conn *gorm.DB
 
-// utcNowFunc replaces GORM's default clock (a bare time.Now(), which carries
-// the server process's local zone) so every timestamp GORM sets on our
-// behalf — gorm.Model's CreatedAt/UpdatedAt/DeletedAt on every model that
-// embeds it, and any autoCreateTime/autoUpdateTime-tagged field (Token's
-// CreatedAt/UpdatedAt) — is stored as UTC, consistently, regardless of what
-// timezone the host machine happens to be running in. This doesn't cover
-// fields the application sets explicitly outside GORM's own create/update
-// bookkeeping (e.g. Session.ValidUntil, Token.ExpiresAt) — those are
-// normalized individually, at the model's BeforeSave hook or the call site
-// that constructs them, since GORM's clock never touches them.
+// utcNowFunc replaces GORM's clock so timestamps it sets (gorm.Model fields,
+// autoCreateTime/autoUpdateTime) are UTC. Fields the application sets itself, such
+// as Session.ValidUntil, are normalized in BeforeSave hooks or at the call site.
 func utcNowFunc() time.Time {
 	return time.Now().UTC()
 }
@@ -112,24 +105,9 @@ func SetupTestDB(testName string) {
 		panic("Failed to get underlying sql.DB: " + err.Error())
 	}
 
-	// A "file::memory:" DSN without cache=shared gives every pooled
-	// connection its own independent, empty in-memory database — only the
-	// one connection migrations ran on has the schema. With MaxOpenConns >
-	// 1, any query the pool hands to a different connection then fails
-	// with "no such table: ...", intermittently and only under enough
-	// concurrent load to actually check out a second connection (e.g. the
-	// async traffic-metrics write racing a session lookup). A single
-	// connection makes that impossible: there is only ever one in-memory
-	// database for this test to talk to. (cache=shared would be the other
-	// fix, but is deliberately not used here — see the comment above on
-	// dbName.) Set before migrating, not after: the in-memory database
-	// only exists for as long as at least one connection to it stays
-	// open, so this must already be the one and only connection
-	// runMigrations below uses too, not a second, throwaway one that's
-	// closed afterward (fine for Init's real file, where the schema
-	// persists on disk regardless of which connection wrote it, but fatal
-	// here — closing the only connection to a "file::memory:" database
-	// destroys it, schema included).
+	// Without cache=shared, each pooled connection to "file::memory:" gets its own
+	// empty database, so extra connections fail with "no such table". Use one
+	// connection, set before migrating: the database dies when its last connection closes.
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite

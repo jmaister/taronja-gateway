@@ -71,9 +71,7 @@ const (
 )
 ```
 
-<a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build of the gateway expects a config file to declare via its top\-level \`version:\` field, in MAJOR.MINOR format \(see parseConfigVersion\) — e.g. "1.0", not "1.0.0": a config file's schema doesn't need a third, patch\-level component, since every actual change to it is either "the structure changed, bump MAJOR and add a migration" or "a field was added/removed with no migration needed, bump MINOR" — see configVersionSequence and configMigrations for how those two cases are told apart. Bump this, add the new version to the END of configVersionSequence, and add a corresponding entry to configMigrations if \(and only if\) the change needs real content transformed, not just the version line stamped forward.
-
-This is "1.0" — not "0.1" or "2.0" — as of the gateway's v1.0.0 release: the \`version:\` field itself was built and tested ahead of ever shipping, so no released config file ever declared an explicit version to migrate away from. That does NOT mean an undeclared version is already current, though — see legacyConfigVersion, which is what an absent field actually means.
+<a name="CurrentConfigVersion"></a>CurrentConfigVersion is the config schema version this build requires, as MAJOR.MINOR. When bumping it, append the new version to configVersionSequence and add a configMigrations entry only if content must be transformed.
 
 ```go
 const CurrentConfigVersion = "1.0"
@@ -97,13 +95,13 @@ var KnownMiddlewareNames = []string{
 ```
 
 <a name="CompareConfigVersions"></a>
-## func [CompareConfigVersions](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L134>)
+## func [CompareConfigVersions](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L87>)
 
 ```go
 func CompareConfigVersions(a, b string) (int, error)
 ```
 
-CompareConfigVersions compares two config schema version strings \(MAJOR or MAJOR.MINOR, see parseConfigVersion\), returning \-1, 0, or 1 as a is less than, equal to, or greater than b, or an error if either fails to parse. Exported for main.go's \`tg migrate\` command, which needs to tell whether a file's declared version is already at or past CurrentConfigVersion without duplicating this package's version\-parsing rules.
+CompareConfigVersions returns \-1, 0 or 1 as a is less than, equal to or greater than b, or an error if either fails to parse.
 
 <a name="IsMiddlewareNameKnown"></a>
 ## func [IsMiddlewareNameKnown](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L34>)
@@ -115,18 +113,16 @@ func IsMiddlewareNameKnown(name string) bool
 IsMiddlewareNameKnown reports whether name is a recognized global middleware.
 
 <a name="MigrateConfigContent"></a>
-## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L449>)
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L314>)
 
 ```go
 func MigrateConfigContent(path string) (content []byte, fromVersion *string, err error)
 ```
 
-MigrateConfigContent reads the config file at path and returns its content migrated up to CurrentConfigVersion \(migrateConfigToCurrent\) — unchanged only if it's already at CurrentConfigVersion or newer. It never writes anything: this is what \`tg migrate\` calls to produce the output it prints to stdout, leaving it up to the caller \(a shell redirect, in the CLI's case\) to decide whether and where to save it. See checkConfigVersion for why the gateway doesn't migrate a config file automatically or write one on its own anymore.
-
-fromVersion is the file's declared version exactly as read from it — nil if it has no \`version:\` field. That's still migrated \(from legacyConfigVersion, internally\), it's just reported to the caller as nil rather than "0.0", so a caller distinguishing "this file predates versioning entirely" from "this file explicitly declared some old version" \(main.go's migrateConfigFile does, for its own message\) can tell them apart.
+MigrateConfigContent returns the file at path migrated to CurrentConfigVersion \(unchanged if already current or newer\) and never writes anything. fromVersion is the declared version, nil if the file has none.
 
 <a name="AdminConfig"></a>
-## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L228-L233>)
+## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L193-L198>)
 
 AdminConfig configures administrative access to the management dashboard. When enabled, allows a single admin user to access the dashboard at \<management.prefix\>/admin/
 
@@ -140,7 +136,7 @@ type AdminConfig struct {
 ```
 
 <a name="AuthProviderCredentials"></a>
-## type [AuthProviderCredentials](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L98-L101>)
+## type [AuthProviderCredentials](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L88-L91>)
 
 AuthProviderCredentials contains OAuth2 provider credentials. Required for OAuth2 authentication providers \(Google, GitHub\).
 
@@ -163,11 +159,9 @@ type AuthenticationConfig struct {
 ```
 
 <a name="AuthenticationProviders"></a>
-## type [AuthenticationProviders](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L117-L121>)
+## type [AuthenticationProviders](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L100-L104>)
 
-AuthenticationProviders defines all available authentication methods. At least one provider should be enabled if authentication is required on any route.
-
-Microsoft, Facebook, and Apple \("Sign in with Apple"\) providers existed here but moved to the wip/microsoft\-apple\-facebook\-auth branch, untested — to come back to later. That branch also has MicrosoftAuthProviderCredentials/AppleAuthProviderCredentials \(Apple's credential shape is four fields, none of them a plain client secret string — see that branch's own doc comment\) if this is reintroduced.
+AuthenticationProviders defines the available authentication methods. At least one should be enabled if any route requires authentication.
 
 ```go
 type AuthenticationProviders struct {
@@ -178,7 +172,7 @@ type AuthenticationProviders struct {
 ```
 
 <a name="AuthenticationProviders.PrintOAuthCallbackURLs"></a>
-### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L124>)
+### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L107>)
 
 ```go
 func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPrefix string)
@@ -187,7 +181,7 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
 
 <a name="BasicAuthenticationConfig"></a>
-## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L104-L106>)
+## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L94-L96>)
 
 BasicAuthenticationConfig controls basic authentication provider.
 
@@ -198,7 +192,7 @@ type BasicAuthenticationConfig struct {
 ```
 
 <a name="BrandingConfig"></a>
-## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L138-L140>)
+## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L121-L123>)
 
 BrandingConfig contains visual customization options for the gateway UI.
 
@@ -261,7 +255,7 @@ func (c CORSConfig) IsEnabled() bool
 IsEnabled reports whether CORS handling should run at all: only when at least one allowed origin is configured.
 
 <a name="EmailNotificationConfig"></a>
-## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L162-L170>)
+## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L140-L148>)
 
 EmailNotificationConfig configures the SMTP relay notifications with sendEmail: true are delivered through. This is a plain synchronous SMTP send per notification \(net/smtp\) — no queue, no retry — appropriate for the low volume a per\-user notification system produces; a high\-volume deployment should put a relay with its own queuing in front of this instead of expecting the gateway to grow one.
 
@@ -278,7 +272,7 @@ type EmailNotificationConfig struct {
 ```
 
 <a name="EmailNotificationConfig.IsConfigured"></a>
-### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L174>)
+### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L152>)
 
 ```go
 func (e EmailNotificationConfig) IsConfigured() bool
@@ -287,7 +281,7 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L311-L323>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L264-L276>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -308,7 +302,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L326>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L279>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -317,7 +311,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L493>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L446>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -326,7 +320,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L304-L306>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L257-L259>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -337,7 +331,7 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L246-L256>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L211-L221>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
@@ -356,11 +350,9 @@ type ManagementConfig struct {
 ```
 
 <a name="MiddlewareEntryConfig"></a>
-## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L60-L66>)
+## type [MiddlewareEntryConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L52-L58>)
 
-MiddlewareEntryConfig declares one middleware in the \`middleware.global\` list, in the order it should run.
-
-rate\_limiter, cors, and traffic\_metrics have their own typed per\-entry configuration; the other built\-in middlewares \(ja4\_fingerprint, session\_extraction, logging, compression\) take no options today, so listing them just enables/positions them. compression in particular is deliberately option\-free — see middleware.CompressionMiddleware's doc comment for why. Per\-middleware config for the rest is future work \(see doc/refactor01.md Improvement 4\) — adding it here without matching runtime support would be misleading.
+MiddlewareEntryConfig declares one middleware in the \`middleware.global\` list, in run order. rate\_limiter, cors and traffic\_metrics have typed per\-entry config; the others take no options, so listing them only enables and positions them.
 
 ```go
 type MiddlewareEntryConfig struct {
@@ -373,7 +365,7 @@ type MiddlewareEntryConfig struct {
 ```
 
 <a name="MiddlewareEntryConfig.IsEnabled"></a>
-### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L70>)
+### func \(MiddlewareEntryConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L62>)
 
 ```go
 func (e MiddlewareEntryConfig) IsEnabled() bool
@@ -382,11 +374,9 @@ func (e MiddlewareEntryConfig) IsEnabled() bool
 IsEnabled reports whether this entry is enabled. An absent Enabled field defaults to true: appearing in the list is enough to opt in.
 
 <a name="MiddlewareSection"></a>
-## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L86-L88>)
+## type [MiddlewareSection](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L70-L72>)
 
-MiddlewareSection declares the global middleware chain explicitly, in execution order. When Global is nil — i.e. there's no \`middleware:\` section at all, the common case for existing config files — the gateway falls back to the legacy management.analytics / management.logging / management.rateLimiter flags. See middleware.ResolveGlobalChainSpecs.
-
-Once a \`middleware:\` section with a \`global:\` key is present, it takes over entirely and the legacy flags are ignored — including when it's explicitly listed empty \(\`global: \[\]\`\), which means "no global middleware at all" rather than falling back. This relies on Global being nil \(unset\) vs. a non\-nil empty slice \(explicitly \`\[\]\`\), a distinction YAML unmarshaling already preserves correctly \(verified in middleware\_test.go\).
+MiddlewareSection declares the global chain explicitly, in execution order. When Global is nil \(no \`middleware:\` section\) the legacy management flags are used; see middleware.ResolveGlobalChainSpecs. When present it takes over entirely, and \`global: \[\]\` means no middleware \(a non\-nil empty slice, which YAML preserves\).
 
 ```go
 type MiddlewareSection struct {
@@ -395,9 +385,9 @@ type MiddlewareSection struct {
 ```
 
 <a name="NotificationConfig"></a>
-## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L150-L154>)
+## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L128-L132>)
 
-NotificationConfig defines notification system settings: the gateway stores every notification regardless of configuration \(that part needs no setup\), and additionally delivers it over zero or more external channels. Each channel is its own independent, optional block — a deployment can enable email, Telegram, both, or neither. See notification.Provider for the interface every channel implements, kept deliberately generic so a future channel \(WhatsApp, Slack, SMS, ...\) only needs a new block here and a new Provider, not a change to the notification data model or API.
+NotificationConfig defines notification settings. Notifications are always stored; delivery over each independent, optional channel block \(email, Telegram\) is added on top. See notification.Provider for adding a channel.
 
 ```go
 type NotificationConfig struct {
@@ -408,7 +398,7 @@ type NotificationConfig struct {
 ```
 
 <a name="RateLimiterConfig"></a>
-## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L276-L294>)
+## type [RateLimiterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L237-L247>)
 
 RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address.
 
@@ -417,17 +407,9 @@ type RateLimiterConfig struct {
     RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
     MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
     BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
-    // BlockedClientRetentionDays bounds how long a persisted block event
-    // (db.BlockedClient — the admin-visible history behind the in-memory
-    // limiter's own short-lived state) is kept before middleware.RateLimiter
-    // prunes it. Unlike the in-memory entries cleanupLoop discards once a
-    // block expires, nothing else ever removes these rows, so left
-    // unbounded this table grows forever on any gateway that stays up and
-    // under attack (or scanner traffic) long enough. 0 (the default) means
-    // "use the built-in default" (see
-    // middleware.defaultBlockedClientRetentionDays), not "keep forever" —
-    // an operator who genuinely wants unbounded history can still get it by
-    // setting this to a very large number.
+    // BlockedClientRetentionDays is how long persisted block events
+    // (db.BlockedClient) are kept before pruning. 0 means the built-in default, not
+    // forever.
     BlockedClientRetentionDays int `yaml:"blockedClientRetentionDays"`
 
     VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
@@ -435,7 +417,7 @@ type RateLimiterConfig struct {
 ```
 
 <a name="RateLimiterConfig.IsEnabled"></a>
-### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L297>)
+### func \(RateLimiterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L250>)
 
 ```go
 func (r RateLimiterConfig) IsEnabled() bool
@@ -444,9 +426,9 @@ func (r RateLimiterConfig) IsEnabled() bool
 IsEnabled reports whether any rate\-limiting or vulnerability\-scan feature is active.
 
 <a name="ResponseWebhookConfig"></a>
-## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L208-L218>)
+## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L173-L183>)
 
-ResponseWebhookConfig configures an outbound HTTP callback the gateway fires when a user responds to a notification \(from any channel — the in\-app list, an email link, or a Telegram button\) — so the app that created the notification learns about the response without polling for it. Unlike Email/Telegram, this isn't a delivery channel a notification can be sent \*to\*; it's a one\-time event fired once a response is recorded, always POSTed to this single configured URL regardless of which notification or user it's about — the same one\-gateway\-per\-app assumption every other part of this feature already makes \(see doc/notifications.md's "No multi\-tenancy / multi\-app scoping" note\).
+ResponseWebhookConfig configures the HTTP callback POSTed to a single URL when a user responds to a notification, so the creating app need not poll. It is not a delivery channel.
 
 ```go
 type ResponseWebhookConfig struct {
@@ -463,7 +445,7 @@ type ResponseWebhookConfig struct {
 ```
 
 <a name="ResponseWebhookConfig.IsConfigured"></a>
-### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L222>)
+### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L187>)
 
 ```go
 func (w ResponseWebhookConfig) IsConfigured() bool
@@ -472,7 +454,7 @@ func (w ResponseWebhookConfig) IsConfigured() bool
 IsConfigured reports whether the response webhook has a URL to actually POST to.
 
 <a name="RouteConfig"></a>
-## type [RouteConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L83-L94>)
+## type [RouteConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L73-L84>)
 
 RouteConfig defines a single routing rule for the gateway. Routes can proxy to remote servers or serve static files.
 
@@ -492,7 +474,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L552>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L505>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -501,7 +483,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L560>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L513>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -521,18 +503,16 @@ type RouteOptions struct {
 ```
 
 <a name="RouteTargets"></a>
-## type [RouteTargets](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L50>)
+## type [RouteTargets](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L40>)
 
-RouteTargets is one or more backend URLs a proxy route sends requests to. A \`to:\` field accepts either a single scalar string \(the original, still\-most\-common form: one backend, no load balancing\) or a YAML list \(multiple backends: the gateway round\-robins across them per request and fails over to the next one if a backend's connection attempt fails — see gateway.newRoundRobinTransport\). Both forms unmarshal into this same \[\]string\-backed type, so every existing single\-backend config keeps working unchanged.
-
-Multiple targets are assumed to be interchangeable replicas of the same backend \(same path structure, differing only in scheme/host\) — this is what "load balancing" means here, not a way to route different paths to different places. Use separate route entries \(with different \`from:\` patterns\) for that instead.
+RouteTargets is one or more backend URLs for a proxy route. \`to:\` accepts a scalar or a list; lists are round\-robined with failover \(see gateway.newRoundRobinTransport\). Targets must be interchangeable replicas; use separate routes to send different paths elsewhere.
 
 ```go
 type RouteTargets []string
 ```
 
 <a name="RouteTargets.UnmarshalYAML"></a>
-### func \(\*RouteTargets\) [UnmarshalYAML](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L56>)
+### func \(\*RouteTargets\) [UnmarshalYAML](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L46>)
 
 ```go
 func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error
@@ -554,7 +534,7 @@ type ServerConfig struct {
 ```
 
 <a name="SessionConfig"></a>
-## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L236-L238>)
+## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L201-L203>)
 
 SessionConfig defines session lifetime for authenticated users.
 
@@ -565,7 +545,7 @@ type SessionConfig struct {
 ```
 
 <a name="SessionConfig.GetDuration"></a>
-### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L240>)
+### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L205>)
 
 ```go
 func (s *SessionConfig) GetDuration() time.Duration
@@ -574,9 +554,9 @@ func (s *SessionConfig) GetDuration() time.Duration
 
 
 <a name="TelegramNotificationConfig"></a>
-## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L187-L190>)
+## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L159-L162>)
 
-TelegramNotificationConfig configures notification delivery via a Telegram bot. Unlike email, there's no per\-recipient address the gateway already knows — a user links their gateway account to a Telegram chat once, via GET /\_/notifications/telegram/link's deep link \(see doc/notifications.md\), and delivery only happens for users who've done that. The bot receives updates by long\-polling Telegram's API rather than a webhook, deliberately: it means zero inbound network exposure is required, so this works the same whether the gateway is reachable from the internet or only from a private network.
+TelegramNotificationConfig configures delivery via a Telegram bot. Users link their account once through the deep link \(see doc/notifications.md\); only linked users receive messages. The bot long\-polls, so no inbound exposure is needed.
 
 ```go
 type TelegramNotificationConfig struct {
@@ -586,7 +566,7 @@ type TelegramNotificationConfig struct {
 ```
 
 <a name="TelegramNotificationConfig.IsConfigured"></a>
-### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L194>)
+### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L166>)
 
 ```go
 func (t TelegramNotificationConfig) IsConfigured() bool
@@ -631,9 +611,9 @@ type TrafficMetricsConfig struct {
 ```
 
 <a name="VulnerabilityScanConfig"></a>
-## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L266-L270>)
+## type [VulnerabilityScanConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L227-L231>)
 
-RateLimiterConfig contains simple in\-memory rate limiting settings. All values are positive integers; zero means the feature is disabled. A single configuration block keeps the gateway easy to configure. The middleware applies limits per client IP address. VulnerabilityScanConfig contains a simple list of URL paths that are likely to be probed by automated scanners. When a client triggers too many 404 responses for those paths within the configured window, the IP is temporarily blocked. This is a lightweight signature‑free scanner detector.
+RateLimiterConfig contains per\-client\-IP in\-memory rate limiting settings. Values are positive integers; zero disables the feature. VulnerabilityScanConfig lists URL paths likely to be probed by scanners; an IP that triggers too many 404s on them within the window is temporarily blocked.
 
 ```go
 type VulnerabilityScanConfig struct {

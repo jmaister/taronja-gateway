@@ -13,66 +13,24 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-// CurrentConfigVersion is the config schema version this build of the
-// gateway expects a config file to declare via its top-level `version:`
-// field, in MAJOR.MINOR format (see parseConfigVersion) — e.g. "1.0", not
-// "1.0.0": a config file's schema doesn't need a third, patch-level
-// component, since every actual change to it is either "the structure
-// changed, bump MAJOR and add a migration" or "a field was added/removed
-// with no migration needed, bump MINOR" — see configVersionSequence and
-// configMigrations for how those two cases are told apart. Bump this, add
-// the new version to the END of configVersionSequence, and add a
-// corresponding entry to configMigrations if (and only if) the change
-// needs real content transformed, not just the version line stamped
-// forward.
-//
-// This is "1.0" — not "0.1" or "2.0" — as of the gateway's v1.0.0 release:
-// the `version:` field itself was built and tested ahead of ever shipping,
-// so no released config file ever declared an explicit version to migrate
-// away from. That does NOT mean an undeclared version is already current,
-// though — see legacyConfigVersion, which is what an absent field actually
-// means.
+// CurrentConfigVersion is the config schema version this build requires, as
+// MAJOR.MINOR. When bumping it, append the new version to configVersionSequence
+// and add a configMigrations entry only if content must be transformed.
 const CurrentConfigVersion = "1.0"
 
-// legacyConfigVersion is the version an absent `version:` field is treated
-// as: every config file written before v1.0.0 (when the field was
-// introduced), regardless of which pre-1.0.0 release wrote it. It's
-// "0.0" — strictly below CurrentConfigVersion — not because a real
-// "version 0.0" was ever declared anywhere, but because that's genuinely a
-// different, older config shape with real content to migrate: v0.0.24 (the
-// last tag before this field existed) shipped notification.email.smtp.* as
-// a nested block, later flattened to notification.email.* directly (see
-// migrateLegacyToV1) with nothing else changed. A config missing the
-// version: field could be from any release before that flattening, so it's
-// treated as needing that migration — running it again on a file that
-// never had the nested smtp: block to begin with is a safe no-op (see
-// flattenNotificationEmailSMTP). Deliberately its own named constant
-// rather than a literal "0.0" inline: it must keep meaning exactly this
-// even after a future schema change moves CurrentConfigVersion further.
+// legacyConfigVersion is what an absent `version:` field means: any pre-v1.0.0
+// config. It is older than current because some of those configs need real
+// migration (notification.email.smtp.* was flattened; see migrateLegacyToV1).
 const legacyConfigVersion = "0.0"
 
-// configVersion is a config schema version broken into its MAJOR/MINOR
-// components for numeric comparison — see parseConfigVersion for how a
-// declared version string becomes one of these, and compare for how two
-// are ordered. Comparing the raw declared strings directly (e.g. via
-// strings.Compare) would be wrong the moment either component reaches two
-// digits ("10.0" sorts before "9.0" lexicographically) — parsing first,
-// like any other version scheme, avoids that.
+// configVersion is a parsed MAJOR/MINOR pair; raw strings must not be compared
+// ("10.0" sorts before "9.0").
 type configVersion struct {
 	major, minor int
 }
 
-// parseConfigVersion parses s as a config schema version: "MAJOR" or
-// "MAJOR.MINOR", each component a non-negative integer. A bare "MAJOR"
-// (no dot) is treated as "MAJOR.0" — accepted specifically because every
-// config migrated under this project's original, pre-semver single-integer
-// scheme already declares e.g. "version: 1", not "version: 1.0", and those
-// files must keep comparing exactly equal to "1.0" without needing yet
-// another migration just to add the ".0". A version with more than two
-// components, a negative number, or a non-numeric component is rejected —
-// this project's config versions are deliberately not full three-component
-// semver (see CurrentConfigVersion's doc comment for why a patch component
-// would never mean anything here).
+// parseConfigVersion parses "MAJOR" or "MAJOR.MINOR". A bare "1" equals "1.0"
+// so configs from the old single-integer scheme still compare equal.
 func parseConfigVersion(s string) (configVersion, error) {
 	parts := strings.Split(s, ".")
 	if len(parts) > 2 {
@@ -124,13 +82,8 @@ func mustParseConfigVersion(s string) configVersion {
 	return v
 }
 
-// CompareConfigVersions compares two config schema version strings
-// (MAJOR or MAJOR.MINOR, see parseConfigVersion), returning -1, 0, or 1 as
-// a is less than, equal to, or greater than b, or an error if either
-// fails to parse. Exported for main.go's `tg migrate` command, which needs
-// to tell whether a file's declared version is already at or past
-// CurrentConfigVersion without duplicating this package's version-parsing
-// rules.
+// CompareConfigVersions returns -1, 0 or 1 as a is less than, equal to or greater
+// than b, or an error if either fails to parse.
 func CompareConfigVersions(a, b string) (int, error) {
 	pa, err := parseConfigVersion(a)
 	if err != nil {
@@ -155,43 +108,18 @@ func declaredOrLegacyVersion(v *string) string {
 	return *v
 }
 
-// configVersionSequence lists every config schema version that has ever
-// existed, in ascending order: legacyConfigVersion (0.0, what an absent
-// version: field means) first, then every version CurrentConfigVersion has
-// ever been bumped to since, in the order it happened. migrateConfigToCurrent
-// walks this list step by step from a file's version to CurrentConfigVersion
-// — see that function and configMigrations for what happens at each step.
-// The last entry must always equal CurrentConfigVersion; TestConfigVersionSequence_EndsAtCurrent
-// enforces this so the two can never silently drift apart.
-//
-// Add the next real version to the end of this list whenever
-// CurrentConfigVersion changes — whether or not that version actually
-// needs an entry in configMigrations (see that map's doc comment for why
-// not every step does).
+// configVersionSequence lists every config version in ascending order, starting
+// with legacyConfigVersion. Its last entry must equal CurrentConfigVersion
+// (enforced by a test).
 var configVersionSequence = []string{legacyConfigVersion, CurrentConfigVersion}
 
-// configMigration transforms the raw YAML bytes of a config file written for
-// one version into the equivalent content for the next version up. It
-// operates on raw bytes, not the parsed GatewayConfig struct, specifically
-// so it can preserve everything a full unmarshal-then-marshal round trip
-// would silently drop — comments, blank lines, key ordering, and
-// environment-variable placeholders like ${VAR_NAME} (which must never be
-// resolved into a file written back to disk).
+// configMigration upgrades raw config bytes by one version. It works on bytes, not
+// the parsed struct, to keep comments, ordering and ${VAR} placeholders.
 type configMigration func(raw []byte) []byte
 
-// configMigrations maps a version in configVersionSequence to the
-// migration that upgrades a config written for that version to the next
-// one in the sequence. Not every version in configVersionSequence needs an
-// entry here — a version bump with no actual content change (a new
-// optional field with a sensible zero-value default, say) doesn't need one
-// at all: migrateConfigToCurrent stamps the new version straight onto the
-// file with no other change whenever a step has no registered migration.
-// This is the normal, expected case for most version bumps, not a
-// fallback for a bug — real content migrations (a field renamed or moved,
-// like legacyConfigVersion's below) are the exception, not the rule.
-//
-// legacyConfigVersion (0.0) is the only entry today, migrating every
-// pre-v1.0.0 config up to version 1.0 — see migrateLegacyToV1.
+// configMigrations maps a version to the migration that upgrades it to the next.
+// A step with no entry just gets the new version stamped on. Today only
+// legacyConfigVersion has one (migrateLegacyToV1).
 var configMigrations = map[string]configMigration{
 	legacyConfigVersion: migrateLegacyToV1,
 }
@@ -204,25 +132,10 @@ func migrateLegacyToV1(raw []byte) []byte {
 	return setTopLevelVersionField(flattenNotificationEmailSMTP(raw), "1.0")
 }
 
-// flattenNotificationEmailSMTP rewrites a config's notification.email.smtp
-// block, if present, into fields directly on notification.email — the
-// shape EmailNotificationConfig has used since the generic notification
-// system replaced the original, v0.0.24-era email-only implementation.
-// Every field smtp.* named (host, port, username, password, from,
-// fromName) is renamed straight to email.* with no other change; a config
-// with no notification.email.smtp block at all (most of them — email
-// notifications were opt-in even before v1.0.0) passes through this
-// function untouched.
-//
-// Unlike setTopLevelVersionField's line-level text edit, this genuinely
-// restructures the document, which needs parsing — done here via
-// yaml.Node so comments, key order, and unresolved ${VAR_NAME} placeholders
-// elsewhere in the file survive, the same guarantee configMigration's own
-// doc comment promises. The cost: yaml.v3 may reformat quoting/indentation
-// on re-marshal in ways a byte-for-byte diff would notice, even though the
-// content is unchanged — an unavoidable tradeoff of actually moving keys
-// around, not something a text-level edit like setTopLevelVersionField
-// could do at all.
+// flattenNotificationEmailSMTP moves notification.email.smtp.* up to
+// notification.email.*; configs without the block pass through untouched. It
+// edits via yaml.Node to keep comments and placeholders, but yaml.v3 may
+// reformat quoting and indentation.
 func flattenNotificationEmailSMTP(raw []byte) []byte {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
@@ -311,20 +224,9 @@ func indexOfConfigVersion(v string) (int, error) {
 	return -1, fmt.Errorf("unrecognized config schema version %q", v)
 }
 
-// migrateConfigToCurrent steps raw config bytes forward from fromVersion to
-// toVersion, one entry of configVersionSequence at a time, applying each
-// step's registered migration (configMigrations) in turn — or, for a step
-// with none registered, just stamping the next version onto the file with
-// no other change (see configMigrations' doc comment for why that's the
-// normal case, not a fallback). Returns raw unchanged if fromVersion is
-// already at or past toVersion. Errors if either version isn't one this
-// build recognizes (see indexOfConfigVersion).
-//
-// toVersion is a parameter rather than always CurrentConfigVersion so tests
-// can exercise the step-through-multiple-versions logic with a synthetic
-// configVersionSequence/configMigrations too, not just the one real step
-// they hold today. MigrateConfigContent, the only production caller,
-// always passes CurrentConfigVersion.
+// migrateConfigToCurrent applies each step from fromVersion to toVersion, or
+// returns raw unchanged if already there. It errors on an unknown version.
+// toVersion is a parameter so tests can use a synthetic sequence.
 func migrateConfigToCurrent(raw []byte, fromVersion, toVersion string) ([]byte, error) {
 	fromIdx, err := indexOfConfigVersion(fromVersion)
 	if err != nil {
@@ -363,35 +265,11 @@ func setTopLevelVersionField(raw []byte, version string) []byte {
 	return append([]byte(line+"\n"), raw...)
 }
 
-// checkConfigVersion logs cfg's declared config schema version — or that
-// none was declared, in which case it's treated as legacyConfigVersion, not
-// ignored — and returns an error if that doesn't exactly match
-// CurrentConfigVersion, in either direction: the gateway must not run
-// against a config file it can't be sure it fully understands. The error
-// message tells the user what to do — run `tg migrate` for an older file,
-// upgrade the gateway binary for a newer one — rather than leaving them to
-// guess.
-//
-// An undeclared version is NOT accepted as "already fine": every config
-// file written before v1.0.0 has no version field at all, and some of
-// those really do need the one real migration that exists today (the
-// notification.email.smtp.* flattening — see migrateLegacyToV1) to keep
-// working correctly under this schema. Treating "no version field" the
-// same as "already current" would mean that flattening never runs for
-// exactly the files that need it, silently leaving email notifications
-// misconfigured with no error anywhere. See GatewayConfig.Version's doc
-// comment for why nil and an explicit "version: 1.0" are still tracked as
-// distinct states even though both compare the same way here.
-//
-// A version *newer* than this build supports refuses to start too, not
-// just a warning: an older binary has no way to know it actually honors
-// every field a newer config relies on, so proceeding risks silently
-// ignoring a setting the config author expected to take effect — exactly
-// the failure mode a declared schema version exists to catch. There's no
-// `tg migrate`-style fix for this direction, though — a migration only
-// ever moves a config forward, so nothing can downgrade one — the only
-// real remedy is upgrading the gateway binary itself to one that
-// recognizes the file's version.
+// checkConfigVersion errors unless the declared version equals
+// CurrentConfigVersion exactly. An absent version counts as legacy, not current,
+// because pre-v1.0.0 configs may need migration. A newer version also refuses to
+// start, since this binary cannot know it honors every field; the fix is
+// upgrading the binary, not `tg migrate`.
 func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 	fileVersionStr := declaredOrLegacyVersion(cfg.Version)
 	if cfg.Version == nil {
@@ -430,22 +308,9 @@ func checkConfigVersion(configPath string, cfg *GatewayConfig) error {
 	return nil
 }
 
-// MigrateConfigContent reads the config file at path and returns its content
-// migrated up to CurrentConfigVersion (migrateConfigToCurrent) — unchanged
-// only if it's already at CurrentConfigVersion or newer. It never writes
-// anything: this is what `tg migrate` calls to produce the output it prints
-// to stdout, leaving it up to the caller (a shell redirect, in the CLI's
-// case) to decide whether and where to save it. See checkConfigVersion for
-// why the gateway doesn't migrate a config file automatically or write one
-// on its own anymore.
-//
-// fromVersion is the file's declared version exactly as read from it — nil
-// if it has no `version:` field. That's still migrated (from
-// legacyConfigVersion, internally), it's just reported to the caller as nil
-// rather than "0.0", so a caller distinguishing "this file predates
-// versioning entirely" from "this file explicitly declared some old
-// version" (main.go's migrateConfigFile does, for its own message) can
-// tell them apart.
+// MigrateConfigContent returns the file at path migrated to CurrentConfigVersion
+// (unchanged if already current or newer) and never writes anything.
+// fromVersion is the declared version, nil if the file has none.
 func MigrateConfigContent(path string) (content []byte, fromVersion *string, err error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -477,14 +342,8 @@ func MigrateConfigContent(path string) (content []byte, fromVersion *string, err
 	return migrated, probe.Version, nil
 }
 
-// versionedConfigPath returns a conventional suggested filename for a
-// migrated config, used only in messages (checkConfigVersion's error, the
-// CLI's usage text) since `tg migrate` no longer writes a file itself: the
-// same directory and extension as originalPath, with the target version's
-// suffix appended to the base filename — e.g. "config.yaml" becomes
-// "config-v1.0.yaml" for version "1.0", "/etc/gateway/prod.yml" becomes
-// "/etc/gateway/prod-v1.0.yml". Nothing stops a user from redirecting `tg
-// migrate`'s output to a different name.
+// versionedConfigPath suggests a filename for a migrated config, e.g.
+// "config.yaml" becomes "config-v1.0.yaml". Used only in messages.
 func versionedConfigPath(originalPath string, version string) string {
 	dir := filepath.Dir(originalPath)
 	ext := filepath.Ext(originalPath)

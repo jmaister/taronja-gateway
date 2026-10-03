@@ -46,37 +46,16 @@ const (
 	MaxListLimit     = 100
 )
 
-// MaxRecipientsPerCreate bounds CreateInput.UserIDs — see Create's doc
-// comment for why: each recipient can fan out into several delivery
-// goroutines (one per channel), so a caller supplying an unbounded UserIDs
-// list would let a single request spawn an unbounded number of them.
-// 1,000 recipients comfortably covers any real notification this gateway
-// sends (an operational alert, an announcement to a team) while keeping a
-// single Create call's worst-case resource use bounded; a caller needing
-// to notify more people than that should split it into multiple calls.
+// MaxRecipientsPerCreate bounds CreateInput.UserIDs; each recipient can spawn
+// several delivery goroutines. Larger sets must be split into several calls.
 const MaxRecipientsPerCreate = 1000
 
-// maxConcurrentDeliveries bounds how many of Create's per-recipient/channel
-// goroutines are actually sending (deliver's SMTP/webhook/Telegram call) at
-// once, process-wide, across every Create call in flight — deliverySem is
-// acquired around that call, not around the goroutine's whole lifetime, so
-// a goroutine waiting for a slot costs only its (cheap) stack, never an
-// open outbound connection. Independent of MaxRecipientsPerCreate: that
-// bounds one call's total goroutine count outright, this bounds how many
-// of them do real work simultaneously, including across concurrent Create
-// calls from different requests.
+// maxConcurrentDeliveries bounds simultaneous provider sends process-wide.
+// Goroutines waiting for a slot hold no outbound connection.
 const maxConcurrentDeliveries = 25
 
-// retryBackoffSchedule bounds how many times a failed delivery is retried
-// and how long after each failure the next attempt waits. Not
-// user-configurable (the same reasoning as gateway/deps' trafficMetrics
-// batch settings) — this gateway's own delivery volume is far too low for
-// the exact numbers to matter to an operator; the shape (a handful of
-// attempts, a growing gap between them) is the only thing that does.
-// Index 0 is the wait after the *first* attempt fails, before the 2nd is
-// tried; the schedule is exhausted (no further retries, the delivery
-// stays "failed" permanently) once an attempt number exceeds
-// len(retryBackoffSchedule).
+// retryBackoffSchedule is the wait after each failed attempt (index 0 follows
+// the first). Once an attempt number exceeds its length the delivery stays failed.
 var retryBackoffSchedule = []time.Duration{
 	1 * time.Minute,
 	5 * time.Minute,
@@ -119,15 +98,8 @@ type Service struct {
 	// it just can't offer clickable email actions (see deliver).
 	respondBaseURL string
 
-	// pendingDeliveries tracks the in-flight background goroutines Create
-	// spawns for each recipient/channel delivery attempt (see Create's doc
-	// comment for why those run in the background rather than inline).
-	// Production code never waits on it — delivery outcomes are meant to
-	// be inspected later via GetNotificationStatus/GetBatchStatus/
-	// ListDeliveries, never by blocking on this. Tests that need a
-	// deterministic point to assert on a delivery row use
-	// waitForPendingDeliveries (service_test.go) instead of sleeping or
-	// polling.
+	// pendingDeliveries tracks the background delivery goroutines. Production code
+	// never waits on it; tests use waitForPendingDeliveries.
 	pendingDeliveries sync.WaitGroup
 	// deliverySem bounds how many deliveries run concurrently — see
 	// maxConcurrentDeliveries.
@@ -193,44 +165,17 @@ type CreateInput struct {
 	Channels []string
 }
 
-// Create stores one notification per recipient, all sharing one freshly
-// generated batchID — even a single-recipient call gets one, a "batch of
-// one" (see db.Notification.BatchID's doc comment) — and kicks off delivery
-// on each recipient's own resolved channels (see resolveChannelsForUser) in
-// the background, one goroutine per recipient/channel pair, up to
-// MaxRecipientsPerCreate recipients (rejected outright above that, before
-// any database write, so an oversized request can't itself become the
-// resource exhaustion it's meant to prevent). Actual concurrent sends are
-// further bounded by deliverySem — see maxConcurrentDeliveries — so even a
-// call at the recipient cap can't open an unbounded number of simultaneous
-// SMTP/webhook/Telegram connections. Create itself returns as soon as the
-// in-app records are written, without waiting for any of those deliveries
-// to finish: handlers.CreateNotification calls this directly from an HTTP
-// handler, and a caller notifying many recipients over a slow channel (an
-// SMTP server with a slow greeting, a flaky webhook) would otherwise hold
-// that request open for as long as every send takes, combined. Each
-// delivery uses a context detached from ctx (context.WithoutCancel) for
-// exactly this reason — ctx is usually an *http.Request's, which is
-// canceled the moment the handler returns, and a canceled context would
-// abort an in-flight send that Create no longer waits for anyway.
+// Create stores one notification per recipient under a fresh batchID and starts
+// delivery in the background, one goroutine per recipient/channel pair, bounded
+// by deliverySem. More than MaxRecipientsPerCreate recipients is rejected before
+// any write.
 //
-// Delivery failures never fail Create itself — the in-app record is the
-// source of truth and always succeeds if its database write does; each
-// channel's outcome is recorded on its own NotificationDelivery row
-// instead (see deliver), inspectable independently of whether Create
-// returned an error, or in aggregate via GetBatchStatus. Because delivery
-// is now asynchronous, a NotificationDelivery row for a given recipient
-// may not exist yet the instant Create returns — callers that need to
-// observe the outcome of a specific send (rather than just that Create
-// accepted the notification) should poll GetNotificationStatus/
-// GetBatchStatus rather than assume delivery is complete.
+// It returns once the in-app records are written, so deliveries may not exist yet;
+// poll GetNotificationStatus/GetBatchStatus for outcomes. Each delivery uses a
+// context detached from ctx, since the request context is canceled on return.
 //
-// One recipient's notification failing to be stored (a rare DB-level
-// failure — there's no per-recipient validation that could fail first)
-// doesn't stop the rest: Create keeps going and returns every
-// notification that *did* get created, alongside the joined set of
-// per-recipient errors, if any — a caller notifying five people shouldn't
-// lose the other four over one bad row.
+// Delivery failures never fail Create. A recipient whose row cannot be stored does
+// not stop the others: the created notifications are returned with the joined errors.
 func (s *Service) Create(ctx context.Context, in CreateInput) (notifications []*db.Notification, batchID string, err error) {
 	if len(in.UserIDs) > MaxRecipientsPerCreate {
 		return nil, "", fmt.Errorf("too many recipients: %d exceeds the limit of %d per Create call", len(in.UserIDs), MaxRecipientsPerCreate)
@@ -285,14 +230,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (notifications []*
 	return notifications, batchID, errors.Join(errs...)
 }
 
-// resolveChannelsForUser decides which external channels to attempt
-// delivery on for one recipient: explicit, when the caller named one in
-// CreateInput.Channels (applies to every recipient of that Create call
-// alike); else that recipient's own preferred channel, so "each user can
-// decide to receive notifications by one different provider" holds even
-// when several recipients are notified in the same call; else every
-// channel this gateway has configured — the original default from before
-// per-user preferences existed.
+// resolveChannelsForUser picks the channels for one recipient: the explicit list
+// if given, else their preferred channel, else every configured channel.
 func (s *Service) resolveChannelsForUser(userID string, explicit []string) []string {
 	if len(explicit) > 0 {
 		return explicit
@@ -315,14 +254,8 @@ func (s *Service) resolveChannelsForUser(userID string, explicit []string) []str
 	return channels
 }
 
-// SetPreferredChannel sets (or, with channel == "", clears) userID's
-// preferred delivery channel — consulted by Create whenever a caller
-// doesn't name explicit Channels (see resolveChannelsForUser). Not
-// validated against which channels this gateway currently has configured:
-// the same "an unknown/unconfigured channel is recorded as skipped, not
-// rejected" philosophy Create's own Channels list already follows (see
-// db.NotificationDeliveryStatusSkipped), so a preference set today keeps
-// working unchanged if the gateway's configuration changes later.
+// SetPreferredChannel sets (or with "" clears) userID's preferred channel. It is
+// not validated against configured channels; unknown ones are recorded as skipped.
 func (s *Service) SetPreferredChannel(userID, channel string) error {
 	return s.repo.SetPreferredChannel(userID, channel)
 }
@@ -333,15 +266,9 @@ func (s *Service) GetPreferredChannel(userID string) (string, error) {
 	return s.repo.GetPreferredChannel(userID)
 }
 
-// deliver attempts the first delivery of n on channel and always records
-// the outcome, even when the channel is unknown or the user has no
-// recipient for it — see db.NotificationDeliveryStatusSkipped's doc
-// comment for why that's worth recording rather than silently doing
-// nothing. A failure here doesn't end the story: RetryFailedDeliveries
-// picks it up later if the schedule allows (see recordDelivery).
-// Before calling the provider the delivery is recorded as
-// NotificationDeliveryStatusPending (in-flight) so the status
-// API can reflect that a send is currently in progress.
+// deliver attempts the first delivery of n on channel and always records the
+// outcome, including skipped. It records a pending row before calling the provider.
+// Failures are picked up later by RetryFailedDeliveries.
 func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Action, channel string) {
 	const firstAttempt = 1
 
@@ -367,13 +294,8 @@ func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Act
 	s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSent, "", externalRef, firstAttempt)
 }
 
-// buildSendRequest assembles a SendRequest for one delivery attempt,
-// shared between deliver (attempt 1) and retryOne (every attempt after).
-// For an email with actions, this generates a *fresh* respond token every
-// single attempt, retries included — the raw token only ever exists in
-// memory for the duration of one Send call (only its hash is persisted),
-// so a retried send needs its own new one rather than reusing whatever the
-// failed attempt tried to use.
+// buildSendRequest assembles a SendRequest for one attempt. Email with actions gets
+// a fresh respond token every attempt, since only its hash is persisted.
 func (s *Service) buildSendRequest(n *db.Notification, actions []Action, channel, recipient string) SendRequest {
 	req := SendRequest{Notification: n, Actions: actions, Recipient: recipient}
 	if len(actions) > 0 && channel == db.NotificationChannelEmail {
@@ -391,14 +313,8 @@ func (s *Service) buildSendRequest(n *db.Notification, actions []Action, channel
 	return req
 }
 
-// recordDelivery persists one delivery attempt. When status is "failed"
-// and the retry schedule isn't exhausted yet, this also sets NextRetryAt —
-// the only place that field is ever set — so RetryFailedDeliveries picks
-// it up later without deliver/retryOne needing to know anything about
-// scheduling themselves. A "pending" status (NotificationDeliveryStatusPending)
-// records that the delivery has been accepted and is in-flight; it is
-// followed by a final record (sent/failed/skipped) once the provider
-// responds — see deliver and retryOne.
+// recordDelivery persists one attempt. A failed attempt with retries left also
+// sets NextRetryAt, the only place it is set.
 func (s *Service) recordDelivery(notificationID, channel, status, errMsg, externalRef string, attemptNumber int) {
 	delivery := &db.NotificationDelivery{
 		NotificationID: notificationID,
@@ -584,29 +500,18 @@ func (s *Service) ListDeliveries(notificationID, userID string, isAdmin bool) ([
 	return s.repo.ListDeliveries(notificationID)
 }
 
-// Status values GetNotificationStatus/GetBatchStatus report —
-// distinct from the raw, per-attempt db.NotificationDeliveryStatus*
-// values a NotificationDelivery row itself takes. StatusPending has
-// two origins: a raw NotificationDeliveryStatusPending row
-// (the delivery is in-flight, provider Send has not yet returned)
-// OR a db.NotificationDeliveryStatusFailed row whose retry is
-// still scheduled (a retry is pending). It never appears as a raw
-// db.NotificationDeliveryStatusSkipped; skipped channels are
-// reported as skipped, not as pending or sent.
+// Status values reported by GetNotificationStatus/GetBatchStatus. StatusPending
+// means either an in-flight send or a failed one with a retry scheduled; skipped
+// channels are reported as skipped.
 const (
 	StatusSent    = "sent"
 	StatusFailed  = "failed"
 	StatusPending = "pending"
 )
 
-// channelStatus reduces one channel's most recent delivery attempt to a
-// single status: the outcome of that attempt, with a failed one
-// promoted to StatusPending if a retry is still scheduled, and a
-// raw NotificationDeliveryStatusPending row interpreted as
-// StatusPending (delivery in-flight). Returns
-// db.NotificationDeliveryStatusSkipped (not a Status constant above) for a
-// skipped attempt — skipped channels are reported in the per-channel
-// breakdown but deliberately excluded from overallStatus's rollup.
+// channelStatus reduces a channel's latest attempt to one status: a failed attempt
+// with a retry scheduled and an in-flight row both become StatusPending. Skipped
+// is returned as-is and excluded from overallStatus.
 func channelStatus(latest *db.NotificationDelivery) string {
 	switch latest.Status {
 	case db.NotificationDeliveryStatusSent:
@@ -623,16 +528,8 @@ func channelStatus(latest *db.NotificationDelivery) string {
 	}
 }
 
-// overallStatus rolls up a set of per-channel statuses (as channelStatus
-// produces — "skipped" included) into one Status, worst-first: pending
-// beats failed beats sent. Skipped channels are excluded from the rollup
-// entirely — a channel the gateway never had a working recipient or
-// config for shouldn't make an otherwise-successful notification look
-// failed, or an otherwise-pending one look worse. A notification with no
-// non-skipped channels at all — including one with no external delivery
-// ever attempted — rolls up to StatusSent: the in-app record, which
-// always exists regardless of configuration, is the baseline success
-// every external channel is additive to.
+// overallStatus rolls channel statuses up worst-first (pending, failed, sent),
+// ignoring skipped. With no non-skipped channel the in-app record counts as sent.
 func overallStatus(channelStatuses map[string]string) string {
 	sawFailed := false
 	for _, status := range channelStatuses {
@@ -697,15 +594,8 @@ type BatchStatusCounts struct {
 	Pending int
 }
 
-// GetBatchStatus rolls up every notification created together in one
-// Create call (see db.Notification.BatchID) into counts of how many are
-// Sent/Failed/Pending overall. Admin-only: a batch can span several
-// different users' own notifications (that's the whole point of a
-// multi-recipient Create), so there's no single owning user this could be
-// scoped to the way GetNotificationStatus/ListDeliveries are — only the
-// caller who created the batch (necessarily an admin, since
-// CreateNotification itself is admin-only) is in a position to ask "how
-// did the whole thing go."
+// GetBatchStatus counts sent/failed/pending notifications of one Create call.
+// Admin-only: a batch spans several users.
 func (s *Service) GetBatchStatus(batchID string, isAdmin bool) (BatchStatusCounts, error) {
 	if !isAdmin {
 		return BatchStatusCounts{}, ErrForbidden
@@ -783,13 +673,9 @@ func (s *Service) RespondViaTelegram(ctx context.Context, notificationID, action
 	return s.recordValidatedResponse(ctx, n, actionID, db.NotificationChannelTelegram)
 }
 
-// recordValidatedResponse records a response (from any of the three
-// Respond* entry points above) and, if a response webhook is configured,
-// fires it — see notification.ResponseWebhookProvider. The webhook fire
-// is best-effort and never changes what's returned to the caller who
-// actually answered the notification: a failure there gets Service's
-// normal retry-with-backoff treatment (recordDelivery/RetryFailedDeliveries),
-// same as any other delivery failure, not surfaced as an error here.
+// recordValidatedResponse records a response and fires the response webhook if
+// configured. The webhook is best-effort and gets the normal retry treatment; its
+// failure is never returned to the answering caller.
 func (s *Service) recordValidatedResponse(ctx context.Context, n *db.Notification, actionID, via string) (label string, err error) {
 	actions, err := DecodeActions(n.Actions)
 	if err != nil {
@@ -860,14 +746,8 @@ func (s *Service) LinkTelegramChat(code, chatID string) error {
 	return s.repo.UpsertChannelLink(linkCode.UserID, db.NotificationChannelTelegram, chatID)
 }
 
-// GetTelegramLinkStatus reports whether userID currently has a linked
-// Telegram chat, and if so, when the link was established — what a
-// frontend needs to show "Connected since <date>" vs. a "Connect"
-// button/deep-link (see GetTelegramLinkCode) instead. Returns
-// ErrChannelNotConfigured the same way GetTelegramLinkCode does when
-// Telegram delivery isn't set up on this gateway at all, rather than
-// reporting "not linked" for a channel that was never available to link
-// in the first place.
+// GetTelegramLinkStatus reports whether userID has a linked Telegram chat and since
+// when. It returns ErrChannelNotConfigured if Telegram is not set up at all.
 func (s *Service) GetTelegramLinkStatus(userID string) (linked bool, linkedAt time.Time, err error) {
 	if s.telegram == nil {
 		return false, time.Time{}, ErrChannelNotConfigured
@@ -918,22 +798,10 @@ type ChannelStatus struct {
 	LinkedAt *time.Time
 }
 
-// ChannelStatuses reports, for every channel this gateway has configured,
-// whether userID can currently be reached on it: ChannelStatusActive for
-// a channel that works the moment the gateway itself is configured (e.g.
-// email), or ChannelStatusConnected/ChannelStatusNotConnected for a
-// channel implementing ConnectableProvider (e.g. Telegram), where
-// delivery also depends on this specific user having linked their
-// account. This is the generic form of GetTelegramLinkStatus — a frontend
-// wanting one settings screen listing every channel's status doesn't need
-// to hardcode which channels exist or which of them need connecting;
-// adding a new ConnectableProvider (WhatsApp, Slack, ...) shows up here
-// automatically. response_webhook is deliberately excluded: it isn't a
-// channel a notification is ever delivered *to* (see
-// resolveChannelsForUser's identical exclusion), so it has no per-user
-// status to report. The result is sorted by channel name for a stable,
-// deterministic order — s.providers is a map, so iteration order alone
-// isn't.
+// ChannelStatuses reports, for each configured channel, whether userID can be
+// reached on it: active (works once configured), or connected/not connected for
+// ConnectableProviders such as Telegram. response_webhook is excluded because
+// nothing is delivered to it. Sorted by channel name.
 func (s *Service) ChannelStatuses(userID string) ([]ChannelStatus, error) {
 	statuses := make([]ChannelStatus, 0, len(s.providers))
 	for channel, p := range s.providers {

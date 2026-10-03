@@ -78,26 +78,12 @@ func ValidateGlobalChainSpecs(specs []middleware.MiddlewareSpec) error {
 	return registry.ValidateSpecs(specs)
 }
 
-// ResolveGlobalChainSpecs translates gateway configuration into an ordered
-// list of MiddlewareSpec describing the global chain.
+// ResolveGlobalChainSpecs translates configuration into the ordered global chain.
 //
-// If gatewayConfig.Middleware.Global is non-nil (a `middleware:` section with
-// a `global:` key is present in the config file, even if listed as an empty
-// array to explicitly mean "no global middleware at all"), it is used
-// directly: each entry becomes a spec, in the order listed, skipping entries
-// with Enabled=false. This is the Phase 2 declarative path (see
-// doc/refactor01.md). Note this checks for nil, not length: config.LoadConfig
-// (via YAML) and a literal Go struct both leave Global nil when no section is
-// present, but `global: []` unmarshals to a non-nil empty slice — that
-// distinction is what lets a config explicitly disable every global
-// middleware, rather than an empty list being indistinguishable from an
-// absent section and silently falling back to the legacy flags below.
-//
-// Otherwise (Global is nil), the legacy management.analytics /
-// management.logging / management.rateLimiter / management.cors /
-// management.compression flags are translated into the equivalent specs —
-// the same chain the gateway always built — so existing config files keep
-// working unchanged.
+// If Middleware.Global is non-nil (even an empty list, meaning no middleware)
+// it is used as listed, skipping disabled entries. Otherwise the legacy
+// management.analytics/logging/rateLimiter/cors/compression flags are
+// translated into the equivalent specs.
 func ResolveGlobalChainSpecs(gatewayConfig *config.GatewayConfig) ([]middleware.MiddlewareSpec, error) {
 	if gatewayConfig.Middleware.Global != nil {
 		return specsFromMiddlewareSection(gatewayConfig)
@@ -105,28 +91,12 @@ func ResolveGlobalChainSpecs(gatewayConfig *config.GatewayConfig) ([]middleware.
 	return legacySpecsFromConfig(gatewayConfig), nil
 }
 
-// EffectiveRateLimiterConfig returns the config.RateLimiterConfig that
-// resolving the global chain (ResolveGlobalChainSpecs) would actually use to
-// build the rate_limiter middleware: a per-entry override from an explicit
-// `middleware.global` rate_limiter entry if one is present, otherwise
-// management.rateLimiter (which is also what an explicit entry with no
-// override falls back to, and what's used when there's no explicit
-// `middleware:` section at all).
-//
-// This exists because the gateway constructs its shared *RateLimiter
-// instance (see gateway.go's createHTTPServer) before the registry is built,
-// so it can't just rely on RateLimiterFactory.Create's cfg argument — that
-// instance is reused directly by RateLimiterFactory whenever one is supplied
-// (see factory.go), so whatever config *it* was built with is what actually
-// takes effect, regardless of any per-entry override in the spec. Callers
-// that construct the shared instance need to resolve the effective config
-// with this function first, rather than reading gatewayConfig.Management.RateLimiter
-// directly, or a per-entry override would be silently ignored.
-//
-// If gatewayConfig.Middleware.Global is invalid (e.g. an unknown middleware
-// name), this returns gatewayConfig.Management.RateLimiter rather than an
-// error; the real error will surface when NewGlobalChain is called
-// against the same config.
+// EffectiveRateLimiterConfig returns the rate limiter config the resolved chain
+// will use: a per-entry override from middleware.global, else
+// management.rateLimiter. The gateway builds its shared RateLimiter before the
+// registry, so it must resolve the config with this rather than reading
+// Management.RateLimiter or an override would be ignored. If Middleware.Global is
+// invalid it falls back to Management.RateLimiter; NewGlobalChain reports the error.
 func EffectiveRateLimiterConfig(gatewayConfig *config.GatewayConfig) config.RateLimiterConfig {
 	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
 	if err != nil {
@@ -143,29 +113,11 @@ func EffectiveRateLimiterConfig(gatewayConfig *config.GatewayConfig) config.Rate
 	return gatewayConfig.Management.RateLimiter
 }
 
-// EffectiveCORSConfig returns the config.CORSConfig that resolving the
-// global chain (ResolveGlobalChainSpecs) would actually use to build the
-// cors middleware: a per-entry override from an explicit `middleware.global`
-// cors entry if one is present, otherwise management.cors (which is also
-// what an explicit entry with no override falls back to, and what's used
-// when there's no explicit `middleware:` section at all).
-//
-// This exists for the same reason EffectiveRateLimiterConfig does: a
-// validator that only ever reads gatewayConfig.Management.CORS directly
-// silently misses a per-entry override in the `middleware:` section — which
-// is exactly what let a config combining a wildcard origin with
-// allowCredentials pass ValidateCORSMiddleware and then serve
-// Access-Control-Allow-Credentials: true while reflecting any Origin back
-// verbatim, completely defeating the one thing that check exists to
-// prevent. Callers validating (or otherwise needing to know) the CORS
-// config that will actually take effect at runtime must resolve it with
-// this function first, not by reading gatewayConfig.Management.CORS
-// directly.
-//
-// If gatewayConfig.Middleware.Global is invalid (e.g. an unknown middleware
-// name), this returns gatewayConfig.Management.CORS rather than an error;
-// the real error will surface when NewGlobalChain is called
-// against the same config.
+// EffectiveCORSConfig returns the CORS config the resolved chain will use: a
+// per-entry override from middleware.global, else management.cors. Validators
+// must use it, or a per-entry wildcard origin with allowCredentials would pass
+// validation. If Middleware.Global is invalid it falls back to Management.CORS;
+// NewGlobalChain reports the error.
 func EffectiveCORSConfig(gatewayConfig *config.GatewayConfig) config.CORSConfig {
 	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
 	if err != nil {
@@ -241,14 +193,8 @@ func legacySpecsFromConfig(gatewayConfig *config.GatewayConfig) []middleware.Mid
 		specs = append(specs, middleware.MiddlewareSpec{Name: config.MiddlewareNameTracing})
 	}
 
-	// Compression runs next (outermost of what's left): it wraps the ResponseWriter that
-	// every other middleware and the final route handler write through, so
-	// it must sit at the very edge of the chain to compress the bytes that
-	// actually reach the socket. Middlewares added after it (traffic_metrics,
-	// logging) still observe the uncompressed status/byte count the handler
-	// produced, since compression only affects what compressingResponseWriter
-	// forwards to the real ResponseWriter beneath it, not what gets recorded
-	// by wrappers above it in the chain.
+	// Compression wraps the ResponseWriter, so it sits at the edge of the chain.
+	// Wrappers after it still record the uncompressed status and size.
 	if gatewayConfig.Management.Compression {
 		specs = append(specs, middleware.MiddlewareSpec{Name: config.MiddlewareNameCompression})
 	}

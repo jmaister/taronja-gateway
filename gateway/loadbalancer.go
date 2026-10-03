@@ -10,24 +10,10 @@ import (
 	"sync/atomic"
 )
 
-// roundRobinTransport is an http.RoundTripper that distributes requests
-// across multiple backend targets (config.RouteTargets — see its doc
-// comment for the "interchangeable replicas" assumption this relies on)
-// and fails over to the next target if a backend's RoundTrip returns an
-// error (connection refused, DNS failure, timeout — the same class of
-// error httputil.ReverseProxy's own ErrorHandler reacts to), rather than
-// failing the whole request on the first backend that happens to be down.
-//
-// It never inspects the response status code to decide whether to retry —
-// only a transport-level error triggers a failover attempt, the same
-// distinction httputil.ReverseProxy itself draws between "the round trip
-// failed" (ErrorHandler) and "the backend responded, however unhappily"
-// (ModifyResponse, or nothing). Retrying because a backend returned a 5xx
-// is a materially different, riskier feature (repeating a request a
-// backend already executed) that this deliberately doesn't attempt.
-//
-// Built once per proxy route at registration time (see
-// createProxyHandlerFunc), not per request.
+// roundRobinTransport distributes requests across config.RouteTargets (assumed
+// interchangeable replicas) and fails over to the next target when RoundTrip
+// returns an error. It never retries on a response status: repeating a request a
+// backend already executed is riskier. Built once per route at registration.
 type roundRobinTransport struct {
 	targets   []*url.URL
 	next      atomic.Uint64
@@ -61,14 +47,8 @@ func (t *roundRobinTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		return t.base.RoundTrip(req)
 	}
 
-	// req.Body is a single-use io.ReadCloser, and a failed attempt against
-	// one backend may have already consumed part or all of it before the
-	// connection failure surfaced — so it can't just be reused as-is
-	// across attempts. Buffering it once and replaying a fresh reader per
-	// attempt is the standard, if memory-costly, way reverse proxies
-	// support retrying a request with a body; that cost only applies to
-	// load-balanced (multi-target) routes; a single-target route never
-	// reaches this branch at all.
+	// req.Body is single-use and a failed attempt may have consumed it, so buffer it
+	// once and replay per attempt. Only multi-target routes pay this cost.
 	var bodyBytes []byte
 	if req.Body != nil {
 		var err error

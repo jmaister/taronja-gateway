@@ -306,7 +306,7 @@ GET /management/metrics/middleware/ja4_fingerprint
 **Tasks**:
 - [x] Create middleware development guide (`doc/middleware_development.md`)
 - [x] Create middleware plugin template — this codebase has no dynamic-loading Go `plugin` mechanism (middleware is always compiled in and registered via `RegisterFactory`), so "plugin template" means a real, compiling, tested example of that registration pattern rather than a `.so`: [`examples/middleware-plugin/`](../examples/middleware-plugin/) (an `X-Request-Id` tracing middleware, `request_id`)
-- [x] Create CLI tool for middleware introspection (`tg middleware list --config <path>`, in `main.go`)
+- [x] Create CLI tool for middleware introspection (`tg middleware list --config <path>`, in `cli/middleware.go`)
 - [x] Update CLAUDE.md with new patterns — CLAUDE.md is intentionally a one-line pointer to `AGENTS.md` (per this repo's convention, established before this refactor); all patterns are documented there instead, kept current every phase
 - [x] Update repository README with architecture overview (`README.md`: new "Middleware Architecture" section + `middleware:` config subsection + `tg middleware list` in Commands)
 - [x] Create release notes (`doc/refactor01-release-notes.md` — GoReleaser generates its own changelog from commit messages at actual release time; this is a human-readable summary of the whole refactor for a PR description or manual release notes)

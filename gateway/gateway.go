@@ -173,17 +173,8 @@ func (g *Gateway) registerDashboard(prefix string) {
 		// Get the path after stripping the dashboard prefix
 		path := strings.TrimPrefix(r.URL.Path, dashboardPath)
 
-		// A path with a dot might be a real static asset; one without is
-		// certainly a client-side SPA route (e.g. /admin/users) and never
-		// worth an embed.FS lookup. This used to be a fixed 12-extension
-		// whitelist (.js/.css/.json/.png/...), which meant any asset type
-		// Vite happened to emit that wasn't on the list — a .wasm chunk, a
-		// .map source map, a .webmanifest, anything — would never even be
-		// attempted below and would silently always fall back to
-		// index.html instead of being served. The ReadFile attempt right
-		// after this is the real, authoritative check; this is only a
-		// cheap pre-filter to skip that attempt for the common case of an
-		// extensionless route.
+		// A path without a dot is a client-side SPA route; skip the embed.FS lookup.
+		// The ReadFile attempt below is the authoritative check.
 		looksLikeAsset := strings.Contains(path, ".")
 
 		var data []byte
@@ -213,17 +204,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 			}
 		}
 
-		// Determine content type from the final served file's extension.
-		// mime.TypeByExtension is a map lookup (O(1) and complete — every
-		// extension Go/the OS knows about) replacing what used to be a
-		// hand-maintained chain of up to 12 sequential HasSuffix checks
-		// that only covered exactly the same 12 extensions as
-		// looksLikeAsset above; any other real asset type fell through to
-		// "text/html", which is actively wrong for a binary file (a
-		// browser could try to render it as a page) rather than merely
-		// incomplete. index.html resolves correctly through the same
-		// lookup (mime.TypeByExtension(".html")), so it needs no special
-		// case here.
+		// mime.TypeByExtension covers every asset type, including .html.
 		contentType := mime.TypeByExtension(filepath.Ext(finalPath))
 		if contentType == "" {
 			contentType = "application/octet-stream"
@@ -322,29 +303,16 @@ func (g *Gateway) registerLoginRoutes() {
 
 	// Register all providers - basic, OAuth, etc.
 	if cfg.HasAnyAuthentication() {
-		// context.Background(), not a cancelable context tied to some later
-		// "replace this registration" event: registerLoginRoutes only ever
-		// runs once now, at startup, so there is no next registration a
-		// background goroutine (see RegisterProviders' own doc comment for
-		// the kind of provider that starts one) would ever need cancelling
-		// for — the process exiting is what ends it, same as everything
-		// else this gateway starts at startup.
+		// Background context: registration runs once at startup and provider goroutines
+		// live until the process exits.
 		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
 	}
 
 	// Login page handler
 	loginPath := cfg.Management.Prefix + "/login"
 	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		// Populate data from config and request. Reads the *live* config
-		// (not the cfg captured above at route-registration time) since this
-		// closure keeps running against whichever generation is current —
-		// see currentConfig's doc comment. The redirect value is sanitized
-		// here too, not just by the login/logout handlers it eventually
-		// reaches (see session.SanitizeRedirectPath's doc comment) — this
-		// keeps .RedirectURL itself always a safe same-origin path
-		// wherever the template embeds it (the per-provider login links,
-		// the hidden form field), rather than relying on every downstream
-		// consumer to have remembered to sanitize it independently.
+		// Reads the live config. The redirect is sanitized so .RedirectURL is always a
+		// safe same-origin path wherever the template embeds it.
 		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
 
 		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
@@ -469,18 +437,10 @@ func (g *Gateway) configureOAuthCallbackRoute() {
 	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
 }
 
-// --- Route Handler Creation ---
-// createProxyHandlerFunc generates the core handler function for proxy
-// routes (without auth). targetURLs holds one entry for a plain
-// single-backend route, or more than one for a load-balanced route (see
-// config.RouteTargets) — either way, targetURLs[0] is used to build the
-// base httputil.ReverseProxy and for path composition below, since
-// multiple targets are assumed to be interchangeable replicas sharing the
-// same path structure. Backend *selection* per request (round-robin, with
-// failover to the next target if one's connection attempt fails) happens
-// in proxy.Transport (see newRoundRobinTransport), not here — everything
-// in this function runs once, at route-registration time, the same as
-// before targetURLs could hold more than one entry.
+// createProxyHandlerFunc builds the handler for proxy routes (without auth).
+// targetURLs has several entries for a load-balanced route; targetURLs[0] gives
+// the base proxy and path composition, as replicas share a path structure.
+// Backend selection and failover happen per request in proxy.Transport.
 func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetURLs []*url.URL) http.HandlerFunc {
 	targetURL := targetURLs[0]
 
@@ -533,30 +493,16 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 			req.URL.RawPath = req.URL.EscapedPath()
 		}
 
-		// Set forwarded headers
-		//
-		// trustedForwardedHost only forwards req.Host when it's a hostname
-		// this gateway is actually configured to be reached by — otherwise
-		// the header is dropped rather than forwarding whatever a direct
-		// client's own Host header claimed. Without this, any client could
-		// set an arbitrary Host on their request (nothing about routing in
-		// this gateway depends on it — every route matches purely on path)
-		// and have it forwarded to the backend as X-Forwarded-Host
-		// unverified, a live Host-header-poisoning path into any backend
-		// that builds absolute URLs (password-reset links, OAuth
-		// redirects, cache keys) from it.
+		// trustedForwardedHost only forwards hosts this gateway is configured for;
+		// forwarding a client-supplied Host would allow Host-header poisoning of
+		// backends that build absolute URLs from it.
 		if forwardedHost := trustedForwardedHost(req, allowedHosts); forwardedHost != "" {
 			req.Header.Set("X-Forwarded-Host", forwardedHost)
 		} else {
 			req.Header.Del("X-Forwarded-Host")
 		}
-		// session.RequestIsSecure applies the same trusted-proxy boundary
-		// here as GetClientIP already applies to X-Forwarded-For/
-		// X-Real-IP/X-Client-IP — see its doc comment for why a bare
-		// req.TLS != nil check alone isn't enough (an upstream TLS
-		// terminator) and why a client-supplied X-Forwarded-Proto claim
-		// can't just be trusted outright either (a direct, untrusted
-		// client).
+		// session.RequestIsSecure applies the same trusted-proxy boundary as GetClientIP:
+		// neither a bare req.TLS check nor a client-supplied X-Forwarded-Proto suffices.
 		scheme := "http"
 		if session.RequestIsSecure(req) {
 			scheme = "https"
@@ -579,13 +525,8 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				return nil
 			}
 
-			// resp.Request is the request roundRobinTransport actually sent —
-			// for a load-balanced route that's whichever backend answered
-			// this specific request, not necessarily targetURLs[0]. Reusing
-			// its Scheme/Host (and targetURL.Path, the shared base path —
-			// see createProxyHandlerFunc's doc comment) means the SPA
-			// fallback re-fetches from the same backend that returned the
-			// 404, rather than always the first configured target.
+			// resp.Request is what the transport actually sent, so the SPA fallback
+			// re-fetches from the backend that returned the 404.
 			fallbackBaseURL := &url.URL{
 				Scheme: resp.Request.URL.Scheme,
 				Host:   resp.Request.URL.Host,
@@ -628,26 +569,9 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		}
 	}
 
-	// Set up error handler. This fires whenever the round trip to the
-	// upstream fails (connection refused, DNS failure, timeout, etc.).
-	//
-	// Previously this checked rw.(http.Hijacker) and, if the assertion
-	// succeeded, called Hijack() "to check whether the header was already
-	// written" before deciding whether it was safe to call http.Error.
-	// That check has a side effect: Hijack() unconditionally takes the raw
-	// connection away from net/http, and nothing here ever wrote to or
-	// closed it afterwards. Since the plain http.ResponseWriter net/http
-	// hands out implements Hijacker, and neither analytics nor request
-	// logging are wrapping it unless Management.Logging or .Analytics is
-	// turned on (both default false), this fired on essentially every
-	// upstream failure in an out-of-the-box config: the connection was
-	// hijacked and then abandoned, so the client received nothing at all
-	// and simply hung until its own timeout instead of a fast 502.
-	//
-	// http.Error's WriteHeader is safe to call even if a response was
-	// already partially written (net/http logs "superfluous
-	// WriteHeader call" and no-ops) — matching httputil.ReverseProxy's own
-	// default ErrorHandler, which just calls rw.WriteHeader unconditionally.
+	// Fires when the upstream round trip fails. Do not Hijack the connection to
+	// check whether the header was written: nothing closes it afterwards, so clients
+	// would hang instead of getting a 502. http.Error is safe after a partial write.
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("Proxy error for route '%s' (From: %s) to %s: %v", routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), err)
 		http.Error(rw, "Bad Gateway", http.StatusBadGateway)
@@ -655,21 +579,9 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 
 	// Return the handler function
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Discard any client-supplied copy of these two headers
-		// unconditionally, before anything else — including on a route
-		// with authentication.enabled: false, which never reaches the
-		// block below that would otherwise overwrite them from a real
-		// session. Without this, a direct client could set its own
-		// X-User-Id/X-User-Data (a full session JSON dump, including
-		// IsAdmin) on any such route and have it forwarded to the backend
-		// completely unmodified, indistinguishable from a real
-		// gateway-asserted identity to a backend that follows this
-		// gateway's own documented contract of trusting these headers
-		// instead of reimplementing auth itself (see README.md's
-		// "Authentication on the APIs" section). The block below still
-		// re-sets both from a validated session on a route that does
-		// require it, so this only ever removes a forged value, never a
-		// legitimate one.
+		// Always drop client-supplied copies of these headers, including on routes with
+		// authentication disabled, so a client cannot forge a gateway-asserted identity.
+		// Validated sessions re-set them below.
 		r.Header.Del(session.UserIdHeader)
 		r.Header.Del(session.UserDataHeader)
 

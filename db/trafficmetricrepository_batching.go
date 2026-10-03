@@ -7,31 +7,13 @@ import (
 	"time"
 )
 
-// BatchingTrafficMetricRepository wraps a TrafficMetricRepository and
-// coalesces individual Create calls into periodic bulk inserts via
-// CreateBatch. It exists because TrafficMetricMiddleware calls Create once
-// per HTTP request — under real traffic that's many small, separate
-// transactions arriving concurrently, and on SQLite specifically every
-// write transaction takes the single process-wide writer lock, so
-// concurrent single-row inserts serialize against each other for no benefit.
-// Batching them turns N requests' worth of writes into a handful of larger
-// transactions instead of N small ones (see doc/PERFORMANCE_ANALYSIS.md for the
-// measured effect).
+// BatchingTrafficMetricRepository coalesces Create calls into periodic bulk
+// inserts via CreateBatch: every SQLite write takes the process-wide writer lock,
+// so per-request inserts would serialize (see doc/PERFORMANCE_ANALYSIS.md).
 //
-// Create itself never touches the database — it only appends to an
-// in-memory buffer and returns — so it's safe to call synchronously from
-// TrafficMetricMiddleware's goroutine without that goroutine blocking on
-// disk I/O. A background goroutine flushes the buffer to the wrapped
-// repository, via CreateBatch, whenever it reaches maxBatchSize or
-// flushInterval elapses, whichever comes first.
-//
-// The trade-off: up to maxBatchSize records, or flushInterval worth of
-// them, live only in memory at a time. A hard crash (not a graceful
-// shutdown — see Close) loses whatever hadn't been flushed yet. That's an
-// acceptable trade for traffic-metrics analytics data specifically, the
-// same one access-log shippers and APM agents make; it would not be for
-// anything the gateway treats as a durable record (sessions, users,
-// tokens), none of which go through this type.
+// Create only appends to an in-memory buffer. A background goroutine flushes it at
+// maxBatchSize or flushInterval. A hard crash loses unflushed records, which is
+// acceptable for analytics data and not for sessions, users or tokens.
 type BatchingTrafficMetricRepository struct {
 	TrafficMetricRepository // embedded: every read method (ListRequestDetails,
 	// GetTotalRequestCount, ...) and CreateBatch itself just delegate
@@ -40,15 +22,8 @@ type BatchingTrafficMetricRepository struct {
 
 	maxBatchSize  int
 	flushInterval time.Duration
-	// maxPending hard-caps len(pending) — see Create's doc comment for
-	// why: without a ceiling, a sustained burst of requests arriving
-	// faster than the flush goroutine can drain them (a slow disk, a
-	// wrapped repository whose CreateBatch is failing and being retried,
-	// or just genuinely more traffic than the database can absorb) grows
-	// this slice without bound, all in memory, for data this package's
-	// own doc comment already treats as droppable on a hard crash — so
-	// dropping the newest record once the buffer is this full is a
-	// smaller loss than letting the process run out of memory over it.
+	// maxPending hard-caps len(pending): dropping the newest record when full is a
+	// smaller loss than running out of memory over droppable data.
 	maxPending int
 
 	mu      sync.Mutex
@@ -92,17 +67,8 @@ func NewBatchingTrafficMetricRepository(inner TrafficMetricRepository, maxBatchS
 	return b
 }
 
-// Create buffers stat in memory and returns immediately — no database
-// access happens on this call. It's flushed later, along with whatever
-// else has accumulated, by the background goroutine started in
-// NewBatchingTrafficMetricRepository.
-//
-// If pending is already at maxPending — the flush goroutine falling
-// behind whatever's calling Create, for however long — stat is dropped
-// instead of appended, and Create returns an error so the caller's own
-// logging (see middleware/builtin/trafficmetric.go) surfaces that this happened,
-// rather than growing the buffer without bound. See maxPending's doc
-// comment for why dropping is the right trade-off for this specific data.
+// Create buffers stat and returns immediately; the background goroutine flushes it.
+// If the buffer is at maxPending the record is dropped and an error is returned.
 func (b *BatchingTrafficMetricRepository) Create(stat *TrafficMetric) error {
 	b.mu.Lock()
 	if len(b.pending) >= b.maxPending {

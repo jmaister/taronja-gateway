@@ -43,20 +43,9 @@ type ClientInfo struct {
 	Region      string  `gorm:"type:varchar(100)" json:"region"`      // State/Province/Region
 	Continent   string  `gorm:"type:varchar(50)" json:"continent"`    // Continent name
 
-	// Fingerprint is the single client fingerprint value for this
-	// request/session — see FingerprintType for which algorithm produced
-	// it. Only one is ever stored, chosen by priority among the available
-	// signals (most reliable wins) via fingerprint.SelectFingerprint:
-	// the reduced-entropy "stable" fingerprint (fingerprint.TypeStable,
-	// request-type-independent — see middleware/fingerprint.StableFingerprint)
-	// over JA4H (fingerprint.TypeJA4H, always available but noisier — see
-	// doc/middleware/ja4-fingerprint.md). Empty if neither produced
-	// anything at all. Indexed (on whichever table embeds
-	// ClientInfo) since db/timeseries.go's new-vs-returning-visitor
-	// calculation does a MIN(timestamp) GROUP BY fingerprint over the
-	// entire TrafficMetric table — an unindexed scan of that would get
-	// more expensive as the table grows, the opposite of that feature's
-	// entire point.
+	// Fingerprint is the client fingerprint chosen by fingerprint.SelectFingerprint
+	// (stable over JA4H); FingerprintType names the algorithm. Indexed for the
+	// new-vs-returning query in db/timeseries.go.
 	Fingerprint string `gorm:"type:varchar(100);index" json:"fingerprint"`
 	// FingerprintType names which algorithm produced Fingerprint —
 	// fingerprint.TypeStable ("stable") or fingerprint.TypeJA4H ("ja4h")
@@ -123,42 +112,15 @@ func (u *User) BeforeSave(tx *gorm.DB) error {
 	return nil
 }
 
-// Session struct definition for persistent sessions
-//
-// JSON tags on this struct (and the embedded ClientInfo's) are what
-// actually shape the X-User-Data header a backend route receives — see
-// gateway.go's json.Marshal(sessionObject) and README.md's "X-User-Data
-// JSON Structure" reference, which documents the exact camelCase shape
-// these tags produce. Note gorm.Model's own embedded fields (ID,
-// CreatedAt, UpdatedAt, DeletedAt) have no tags of their own and so still
-// serialize in Go's default PascalCase — that's a pre-existing gap in the
-// X-User-Data contract this change doesn't attempt to close, since
-// suppressing an embedded struct's fields from JSON needs shadowing it
-// entirely, a larger change than what was asked for here.
+// Session is a persistent session. The JSON tags (and ClientInfo's) shape the
+// X-User-Data header sent to backends; gorm.Model's own fields stay PascalCase.
 type Session struct {
 	gorm.Model
-	// Token is the raw, bearer-usable session value — the exact string
-	// that lives in the browser's tg_session_token cookie and (per
-	// README.md's X-User-Data field reference) the "token" field backend
-	// routes see. It is deliberately never persisted (gorm:"-"): only its
-	// hash is. Every session-repository method that takes or returns a
-	// raw token is responsible for setting this field itself — see
-	// db/sessionrepository.go and BeforeSave below — since GORM has
-	// nothing to populate it from on a read.
+	// Token is the raw bearer value from the tg_session_token cookie. It is never
+	// persisted (only TokenHash is); session repository methods set it themselves.
 	Token string `gorm:"-" json:"token"`
-	// TokenHash is SHA-256(Token), hex-encoded, and the column actually
-	// used as the primary key / lookup and comparison target. Session
-	// tokens used to be stored verbatim — the one bearer credential in
-	// this codebase that broke the pattern auth/token_service.go's API
-	// tokens and notification/service.go's respond-tokens already
-	// followed. A session defaults to a 24-hour lifetime and can be
-	// configured much longer, so unlike this project's one deliberately
-	// plaintext-stored token (NotificationLinkCode, single-use and
-	// live for minutes), there's no comparable rationale for a session
-	// token to be recoverable from a database dump, a leaked backup, or
-	// an unrelated SQL-injection read: hashing it costs nothing (a SHA-256
-	// hash of 256 bits of crypto/rand entropy is not meaningfully
-	// crackable) and closes that off entirely.
+	// TokenHash is the hex SHA-256 of Token and the primary key, so a database
+	// dump does not expose usable session tokens.
 	TokenHash       string     `gorm:"primaryKey;column:token_hash;type:varchar(64);not null;default:''" json:"-"`
 	UserID          string     `gorm:"column:user_id;type:varchar(255)" json:"userId"`
 	Username        string     `json:"username"`
@@ -186,25 +148,9 @@ func hashSessionToken(token string) string {
 	return fmt.Sprintf("%x", sum)
 }
 
-// BeforeSave computes TokenHash from Token whenever a fresh raw token is
-// present, and normalizes ValidUntil, LastActivity, and ClosedOn to UTC
-// before they're persisted — see TrafficMetric.BeforeCreate's comment for
-// the same UTC reasoning applied here: every one of these is set from a
-// plain time.Now() somewhere (session/session.go), which carries the
-// server process's local zone, and this makes the schema's UTC convention
-// hold regardless of what any given call site remembers to do. Only
-// reaches the paths that pass a full *Session through GORM's Create/Save —
-// the one raw-column update in this codebase (SessionRepository.
-// CloseSession's Update("closed_on", ...)) normalizes its own value at the
-// call site instead, since a hook on an empty *Session{} model can't see
-// it.
-//
-// Leaving TokenHash untouched when Token is empty matters: a *Session just
-// loaded from the database (see FindSessionByToken) never has Token
-// re-populated from anywhere but its caller's own already-known raw value
-// (TokenHash isn't reversible), so a Save call that doesn't happen to set
-// Token — bumping LastActivity is the one real case — must keep whatever
-// TokenHash the read already carried, not blank it out.
+// BeforeSave hashes Token and normalizes the time fields to UTC. Raw-column
+// updates (CloseSession) normalize at the call site. An empty Token leaves
+// TokenHash untouched so a Save that only bumps LastActivity keeps it.
 func (s *Session) BeforeSave(tx *gorm.DB) error {
 	if s.Token != "" {
 		s.TokenHash = hashSessionToken(s.Token)
@@ -235,39 +181,16 @@ type TrafficMetric struct {
 	Error          string    `gorm:"type:text"`                  // Any error message if the request failed
 	UserID         string    `gorm:"type:varchar(255)"`          // ID of the user making the request, if authenticated
 	SessionID      string    `gorm:"type:varchar(255)"`          // ID of the session, if applicable
-	// default:false, not just not null: this column was added after
-	// TrafficMetric already existed in the wild (see AGENTS.md's "Data
-	// migrations" section), and AutoMigrate's ALTER TABLE ADD COLUMN for a
-	// NOT NULL column with no default fails outright on SQLite the moment
-	// the table already has one row — not a soft failure, a startup panic
-	// (confirmed against a real database from before this column existed:
-	// "SQL logic error: Cannot add a NOT NULL column with default value
-	// NULL"). false is the correct backfill value regardless: every
-	// pre-existing row predates this column's introduction, at which point
-	// every request was recorded, static or not (excludeStaticAssets
-	// skipping most static-asset rows came later still), so an old row
-	// having no way to say "this one was static" defaulting to "not
-	// static" undercounts static traffic for that old data, never fabricates
-	// it.
+	// default:false: SQLite cannot ADD COLUMN NOT NULL without a default on a
+	// non-empty table. Old rows predate static-asset tracking, so false is correct.
 	IsStaticAsset bool `gorm:"not null;default:false;index"` // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
 	// Embed common client and geographical information
 	ClientInfo
 }
 
-// BeforeCreate normalizes Timestamp to UTC before it's persisted.
-// db/timeseries.go's SQL-side bucketing (GetTimeSeries) extracts just the
-// "YYYY-MM-DD HH:MM:SS" prefix of the stored value — the pure-Go SQLite
-// driver this project uses stores time.Time as Go's default .String()
-// representation ("2026-06-10 08:00:00 +0200 CEST"), which none of
-// SQLite's date/time functions parse, but stripping the trailing
-// offset/zone leaves a format they do — and interprets that prefix
-// directly as UTC wall-clock time, with no offset conversion applied. A
-// non-UTC Timestamp would silently bucket at the wrong hour (its own local
-// wall-clock hour, not the equivalent UTC one) without this normalization,
-// which is why it happens here — once, defensively, on every insert path
-// (including CreateBatch, since GORM invokes model hooks per-record in a
-// batch create) — rather than trusting every call site that constructs a
-// TrafficMetric to remember `.UTC()` itself.
+// BeforeCreate normalizes Timestamp to UTC (also on CreateBatch):
+// db/timeseries.go buckets the stored wall-clock prefix as UTC, so a non-UTC
+// value would land in the wrong hour.
 func (t *TrafficMetric) BeforeCreate(tx *gorm.DB) error {
 	t.Timestamp = t.Timestamp.UTC()
 	return nil
@@ -316,16 +239,8 @@ func (t *Token) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// BeforeSave normalizes ExpiresAt, LastUsedAt, and RevokedAt to UTC before
-// they're persisted — see TrafficMetric.BeforeCreate's comment for the same
-// reasoning applied here. ExpiresAt in particular is API-caller-supplied
-// (handlers/api_tokens.go, from request JSON) rather than always built from
-// time.Now() server-side, so this is the one place that can normalize it
-// regardless of what offset a client happened to send. Only reaches the
-// paths that pass a full *Token through GORM's Create/Save — the two
-// raw-column updates in this codebase (TokenRepository's RevokeToken and
-// IncrementUsageCount) normalize their own values at the call site instead,
-// since a hook on an empty *Token{} model can't see them.
+// BeforeSave normalizes the time fields to UTC; ExpiresAt comes from API
+// callers with arbitrary offsets. Raw-column updates normalize at the call site.
 func (t *Token) BeforeSave(tx *gorm.DB) error {
 	if t.ExpiresAt != nil {
 		utcExpiresAt := t.ExpiresAt.UTC()
@@ -351,15 +266,8 @@ const (
 	BlockReasonVulnerabilityScan = "vulnerability_scan"
 )
 
-// BlockedClient records one rate-limiter block event: an IP was blocked,
-// for how long, and what triggered it. This is a persistent history —
-// the in-memory RateLimiter itself keeps no such record past the block's
-// own expiry: middleware/builtin/ratelimiter.go's cleanupLoop deletes an IP's
-// entire tracked state (including its block) the moment the block window
-// ends and the IP has gone quiet, so without this, "was this IP blocked
-// last week, and why" had no answer once that happened — only
-// RateLimiter.Stats()'s live snapshot of whatever's still tracked right
-// now.
+// BlockedClient is the persistent history of one rate-limiter block event; the
+// in-memory limiter forgets a block once it expires.
 type BlockedClient struct {
 	gorm.Model
 	// Reason names which counter tripped the block — one of the
@@ -456,31 +364,14 @@ const (
 	NotificationDeliveryStatusPending = "pending" // delivery accepted and in-flight; the provider's Send call has not yet returned
 )
 
-// Notification is one in-app notification for one user. It always exists in
-// the database regardless of configuration — external delivery (email,
-// Telegram, ...) is an optional, best-effort addition on top, recorded per
-// attempt in NotificationDelivery rather than on this row, since one
-// notification can be delivered over several channels independently and
-// each can succeed or fail on its own.
-//
-// Metadata and Actions are both caller-opaque JSON: the gateway never
-// interprets Metadata at all (it's returned as-is to whatever frontend
-// reads the notification back), and only interprets Actions enough to
-// render buttons/links and to validate that a response names a real action
-// — see the notification package's Action type for the structure encoded
-// here, and notification.Service for the (un)marshaling.
+// Notification is one in-app notification for one user. External delivery is
+// recorded per attempt in NotificationDelivery. Metadata is returned as-is;
+// Actions are only parsed to render buttons and validate responses.
 type Notification struct {
 	ID     string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
 	UserID string `gorm:"column:user_id;type:varchar(255);not null;index"`
-	// BatchID groups every recipient's row from one Create call — even a
-	// single-recipient call gets one, a "batch of one", so callers never
-	// need to special-case "was this actually a batch" (see
-	// notification.Service.Create). Not a foreign key to any table of its
-	// own: a batch has no row or metadata beyond "the set of Notification
-	// rows sharing this value" — see
-	// NotificationRepository.ListByBatchID and
-	// notification.Service.GetBatchStatus, the only things that ever
-	// query by it.
+	// BatchID groups the rows from one Create call (a single recipient is a batch
+	// of one). It has no table of its own.
 	BatchID  string `gorm:"type:varchar(255);not null;index"`
 	Type     string `gorm:"type:varchar(255);not null"` // caller-defined, opaque to the gateway, e.g. "music_track_added"
 	Title    string `gorm:"type:text;not null"`
@@ -503,14 +394,8 @@ type Notification struct {
 	RespondedAt       *time.Time
 	RespondedVia      *string // one of the NotificationChannel* constants
 
-	// RespondTokenHash is the sha256 hex of a random, single-use, unguessable
-	// token embedded in the answer links sent by email (there's no session
-	// cookie to authenticate an email click with, so the token in the URL
-	// *is* the credential — see auth.TokenService.GenerateToken for the same
-	// random-bytes-then-hash pattern used for API tokens). Empty when no
-	// email with actions has been sent for this notification yet.
-	// RespondTokenExpiresAt bounds how long a stale, unopened notification
-	// email's links keep working.
+	// RespondTokenHash is the sha256 hex of the single-use token in emailed answer
+	// links; RespondTokenExpiresAt bounds how long those links work.
 	RespondTokenHash      string
 	RespondTokenExpiresAt *time.Time
 }
@@ -545,34 +430,15 @@ func (n *Notification) BeforeSave(tx *gorm.DB) error {
 	return nil
 }
 
-// NotificationDelivery records one attempt to deliver a Notification over
-// one external channel. A single Notification can have zero, one, or
-// several of these (one per channel the caller asked for) — this table,
-// not Notification itself, is what "was this actually emailed?" answers,
-// since a notification can be requested on channels the user has no
-// recipient for (see NotificationDeliveryStatusSkipped) or that fail.
+// NotificationDelivery records one delivery attempt over one channel; the log
+// is append-only.
 //
-// ExternalRef is an opaque, per-channel value a Provider may want
-// remembered for this exact delivery — e.g. Telegram's "chatID:messageID",
-// so a later button tap (which only carries a chat ID and callback data,
-// not which Notification row it came from beyond that) can be matched back
-// to the specific message its buttons were attached to, and that message
-// can be edited once answered. Empty for channels that don't need it
-// (email has nothing analogous to "edit the sent message").
+// ExternalRef is a per-channel value (Telegram "chatID:messageID") used to match
+// a later button tap to its message.
 //
-// AttemptNumber and NextRetryAt implement automatic retry of failed
-// deliveries (see notification.Service.RetryFailedDeliveries): each retry
-// creates a *new* NotificationDelivery row rather than mutating this one —
-// deliveries are an append-only log, so "what actually happened, and when"
-// stays fully reconstructable — with AttemptNumber one higher than the
-// attempt before it. NextRetryAt is set (to now + a backoff interval)
-// exactly on the single most recent row for a given (NotificationID,
-// Channel) pair when that attempt failed and hasn't yet exhausted the
-// retry schedule; every earlier row's NextRetryAt is cleared the moment a
-// new attempt is recorded, maintaining "at most one non-null NextRetryAt
-// per (NotificationID, Channel) at any time" as an invariant the retry
-// worker's query relies on to avoid a more expensive
-// latest-row-per-group query.
+// A retry adds a new row with AttemptNumber+1. NextRetryAt is set only on the
+// latest failed row per (NotificationID, Channel), which the retry worker's
+// query relies on.
 type NotificationDelivery struct {
 	ID             string     `gorm:"primaryKey;column:id;type:varchar(255);not null"`
 	NotificationID string     `gorm:"column:notification_id;type:varchar(255);not null;index"`
@@ -582,16 +448,7 @@ type NotificationDelivery struct {
 	ExternalRef    string     `gorm:"type:text"`
 	AttemptNumber  int        `gorm:"not null;default:1"`
 	NextRetryAt    *time.Time `gorm:"index"`
-	// SentAt is when this attempt actually succeeded — set only when
-	// Status is NotificationDeliveryStatusSent, nil for a failed or
-	// skipped attempt (which never sent anything to have a time for).
-	// Distinct from CreatedAt, which is when this row was recorded
-	// regardless of outcome: for a "sent" row the two are set from the
-	// same time.Now() call at the same call site (see
-	// notification.Service.recordDelivery) and so are always equal in
-	// practice, but CreatedAt exists on every row (including failed/
-	// skipped ones) while SentAt only ever means "delivery succeeded at
-	// this instant."
+	// SentAt is set only when Status is sent; CreatedAt exists on every row.
 	SentAt    *time.Time
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
@@ -645,14 +502,9 @@ func (l *NotificationChannelLink) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// NotificationLinkCode is a short-lived, single-use code that connects one
-// gateway user to one external channel identity — e.g. the code embedded in
-// a Telegram "https://t.me/<bot>?start=<code>" deep link. The Code itself
-// (not a hash of it) is the primary key: unlike an API token, this is
-// deliberately short-lived (minutes, see notification.linkCodeTTL) and
-// consumed the moment it's used (ConsumeLinkCode deletes the row), so the
-// exposure window a stored plaintext code represents is small enough not to
-// warrant hashing it the way a long-lived Token is.
+// NotificationLinkCode connects a gateway user to an external channel identity
+// (e.g. a Telegram deep-link code). It is stored unhashed because it lives
+// minutes and is deleted on use.
 type NotificationLinkCode struct {
 	Code      string    `gorm:"primaryKey;column:code;type:varchar(255);not null"`
 	UserID    string    `gorm:"column:user_id;type:varchar(255);not null"`
@@ -670,24 +522,10 @@ func (l *NotificationLinkCode) BeforeSave(tx *gorm.DB) error {
 	return nil
 }
 
-// NotificationPreference records one user's preferred delivery channel —
-// "each user can decide to receive notifications by one different
-// provider," independently of what any particular caller's
-// CreateInput.Channels asks for. One row per user (UserID is the primary
-// key, not a foreign key constraint — same convention every other table
-// here embedding a bare "user_id" column follows). No row at all, or an
-// empty PreferredChannel, both mean "no preference set" — see
-// NotificationRepository.GetPreferredChannel, which returns "" for
-// either case rather than distinguishing them, since callers never need
-// to.
-//
-// PreferredChannel is deliberately just a string, not validated against
-// which channels this gateway currently has configured (see
-// notification.Service.SetPreferredChannel's doc comment) — the same
-// "unknown/unconfigured channel is skipped, not rejected" philosophy
-// Notification.Actions/CreateInput.Channels already follow, so a user's
-// preference set today keeps working unchanged if the gateway adds a new
-// channel (WhatsApp, Slack, ...) tomorrow and they switch to it.
+// NotificationPreference is one user's preferred delivery channel (UserID is
+// the primary key). A missing row or empty value both mean no preference.
+// The channel is not validated against configured ones, so an unknown channel
+// is skipped rather than rejected.
 type NotificationPreference struct {
 	UserID           string    `gorm:"primaryKey;column:user_id;type:varchar(255);not null"`
 	PreferredChannel string    `gorm:"type:varchar(50)"`
