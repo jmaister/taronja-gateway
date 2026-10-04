@@ -1,3 +1,4 @@
+import { InlineQueryState } from '../components/QueryState';
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -145,17 +146,8 @@ export function RateLimiterStatsPage() {
                     <h3 className="text-base font-semibold">IP Statistics</h3>
                 </CardHeader>
                 <CardContent className="p-0">
-                    {isLoading ? (
-                        <div className="p-6 space-y-3">
-                            {[...Array(4)].map((_, i) => (
-                                <div key={i} className="animate-pulse h-8 rounded bg-muted"></div>
-                            ))}
-                        </div>
-                    ) : error ? (
-                        <div className="p-6 text-sm text-danger" role="alert">
-                            Failed to load rate limiter stats. Make sure the rate limiter is enabled.
-                        </div>
-                    ) : !stats || stats.length === 0 ? (
+                    <InlineQueryState isLoading={isLoading} error={error} errorMessage="Failed to load rate limiter stats. Make sure the rate limiter is enabled.">
+                        {!stats || stats.length === 0 ? (
                         <div className="p-6 text-sm text-muted-fg">
                             No IPs are currently being tracked. Traffic will appear here once requests are received.
                         </div>
@@ -187,7 +179,8 @@ export function RateLimiterStatsPage() {
                                 </tbody>
                             </table>
                         </div>
-                    )}
+                        )}
+                    </InlineQueryState>
                 </CardContent>
             </Card>
 
@@ -206,17 +199,8 @@ export function RateLimiterStatsPage() {
                     </p>
                 </CardHeader>
                 <CardContent className="p-0">
-                    {blockedClientsLoading ? (
-                        <div className="p-6 space-y-3">
-                            {[...Array(4)].map((_, i) => (
-                                <div key={i} className="animate-pulse h-8 rounded bg-muted"></div>
-                            ))}
-                        </div>
-                    ) : blockedClientsError ? (
-                        <div className="p-6 text-sm text-danger" role="alert">
-                            Failed to load blocked clients history.
-                        </div>
-                    ) : !blockedClients || blockedClients.items.length === 0 ? (
+                    <InlineQueryState isLoading={blockedClientsLoading} error={blockedClientsError} errorMessage="Failed to load blocked clients history.">
+                        {!blockedClients || blockedClients.items.length === 0 ? (
                         <div className="p-6 text-sm text-muted-fg">
                             No blocked clients recorded yet.
                         </div>
@@ -240,7 +224,8 @@ export function RateLimiterStatsPage() {
                                 </tbody>
                             </table>
                         </div>
-                    )}
+                        )}
+                    </InlineQueryState>
                 </CardContent>
             </Card>
         </div>

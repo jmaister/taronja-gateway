@@ -1,3 +1,4 @@
+import { InlineQueryState } from '../components/QueryState';
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -140,17 +141,8 @@ export function MiddlewarePage() {
                     <h3 className="text-base font-semibold">Global Middleware Chain</h3>
                 </CardHeader>
                 <CardContent className="p-0">
-                    {isLoading ? (
-                        <div className="p-6 space-y-3">
-                            {[...Array(4)].map((_, i) => (
-                                <div key={i} className="animate-pulse h-8 rounded bg-muted"></div>
-                            ))}
-                        </div>
-                    ) : error ? (
-                        <div className="p-6 text-sm text-danger" role="alert">
-                            Failed to load middleware status. Make sure you're signed in as an admin.
-                        </div>
-                    ) : items.length === 0 ? (
+                    <InlineQueryState isLoading={isLoading} error={error} errorMessage="Failed to load middleware status. Make sure you're signed in as an admin.">
+                        {items.length === 0 ? (
                         <div className="p-6 text-sm text-muted-fg">
                             No middleware registered.
                         </div>
@@ -176,7 +168,8 @@ export function MiddlewarePage() {
                                 </tbody>
                             </table>
                         </div>
-                    )}
+                        )}
+                    </InlineQueryState>
                 </CardContent>
             </Card>
         </div>
