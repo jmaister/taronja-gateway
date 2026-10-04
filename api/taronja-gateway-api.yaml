@@ -412,7 +412,13 @@ paths:
                 items:
                   $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Unauthorized (not logged in or not admin)
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
           content:
             application/json:
               schema:
@@ -464,7 +470,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Unauthorized (not logged in or not admin)
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
           content:
             application/json:
               schema:
@@ -506,7 +518,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Unauthorized (not logged in or not admin)
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
           content:
             application/json:
               schema:
@@ -542,7 +560,13 @@ paths:
         '204':
           description: Token successfully revoked
         '401':
-          description: Unauthorized (not logged in or not admin)
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
           content:
             application/json:
               schema:

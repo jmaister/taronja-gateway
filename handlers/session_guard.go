@@ -29,3 +29,24 @@ func requireAdminSession(ctx context.Context) (*db.Session, bool) {
 	}
 	return sessionObj, true
 }
+
+type adminAccess int
+
+const (
+	accessGranted adminAccess = iota
+	accessUnauthenticated
+	accessForbidden
+)
+
+// requireAdminAccess is requireAdminSession for endpoints that answer 403 to a
+// signed-in non-admin instead of 401.
+func requireAdminAccess(ctx context.Context) (*db.Session, adminAccess) {
+	sessionObj, ok := requireSession(ctx)
+	if !ok || !sessionObj.IsAuthenticated {
+		return nil, accessUnauthenticated
+	}
+	if !sessionObj.IsAdmin {
+		return sessionObj, accessForbidden
+	}
+	return sessionObj, accessGranted
+}

@@ -12,21 +12,18 @@ import (
 // ListTokens handles GET /api/users/{userId}/tokens
 func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokensRequestObject) (api.ListTokensResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := requireSession(ctx)
-	if !ok {
-		log.Printf("ListTokens: No session found in context")
+	sessionObj, access := requireAdminAccess(ctx)
+	switch access {
+	case accessUnauthenticated:
 		return api.ListTokens401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized: No valid session found",
 		}, nil
-	}
-
-	// Check if user is admin
-	if !sessionObj.IsAdmin {
-		log.Printf("ListTokens: Non-admin user %s attempted to access tokens", sessionObj.UserID)
-		return api.ListTokens401JSONResponse{
-			Code:    401,
-			Message: "Unauthorized: Admin access required",
+	case accessForbidden:
+		log.Printf("ListTokens: non-admin user %s denied", sessionObj.UserID)
+		return api.ListTokens403JSONResponse{
+			Code:    403,
+			Message: "Forbidden: Admin access required",
 		}, nil
 	}
 
@@ -62,21 +59,18 @@ func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokens
 // CreateToken handles POST /api/users/{userId}/tokens
 func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTokenRequestObject) (api.CreateTokenResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := requireSession(ctx)
-	if !ok {
-		log.Printf("CreateToken: No session found in context")
+	sessionObj, access := requireAdminAccess(ctx)
+	switch access {
+	case accessUnauthenticated:
 		return api.CreateToken401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized: No valid session found",
 		}, nil
-	}
-
-	// Check if user is admin
-	if !sessionObj.IsAdmin {
-		log.Printf("CreateToken: Non-admin user %s attempted to create token", sessionObj.UserID)
-		return api.CreateToken401JSONResponse{
-			Code:    401,
-			Message: "Unauthorized: Admin access required",
+	case accessForbidden:
+		log.Printf("CreateToken: non-admin user %s denied", sessionObj.UserID)
+		return api.CreateToken403JSONResponse{
+			Code:    403,
+			Message: "Forbidden: Admin access required",
 		}, nil
 	}
 
@@ -144,21 +138,18 @@ func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTok
 // GetToken handles GET /api/tokens/{tokenId}
 func (s *StrictApiServer) GetToken(ctx context.Context, request api.GetTokenRequestObject) (api.GetTokenResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := requireSession(ctx)
-	if !ok {
-		log.Printf("GetToken: No session found in context")
+	sessionObj, access := requireAdminAccess(ctx)
+	switch access {
+	case accessUnauthenticated:
 		return api.GetToken401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized: No valid session found",
 		}, nil
-	}
-
-	// Check if user is admin
-	if !sessionObj.IsAdmin {
-		log.Printf("GetToken: Non-admin user %s attempted to access token", sessionObj.UserID)
-		return api.GetToken401JSONResponse{
-			Code:    401,
-			Message: "Unauthorized: Admin access required",
+	case accessForbidden:
+		log.Printf("GetToken: non-admin user %s denied", sessionObj.UserID)
+		return api.GetToken403JSONResponse{
+			Code:    403,
+			Message: "Forbidden: Admin access required",
 		}, nil
 	}
 
@@ -178,21 +169,18 @@ func (s *StrictApiServer) GetToken(ctx context.Context, request api.GetTokenRequ
 // DeleteToken handles DELETE /api/tokens/{tokenId}
 func (s *StrictApiServer) DeleteToken(ctx context.Context, request api.DeleteTokenRequestObject) (api.DeleteTokenResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := requireSession(ctx)
-	if !ok {
-		log.Printf("DeleteToken: No session found in context")
+	sessionObj, access := requireAdminAccess(ctx)
+	switch access {
+	case accessUnauthenticated:
 		return api.DeleteToken401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized: No valid session found",
 		}, nil
-	}
-
-	// Check if user is admin
-	if !sessionObj.IsAdmin {
-		log.Printf("DeleteToken: Non-admin user %s attempted to delete token", sessionObj.UserID)
-		return api.DeleteToken401JSONResponse{
-			Code:    401,
-			Message: "Unauthorized: Admin access required",
+	case accessForbidden:
+		log.Printf("DeleteToken: non-admin user %s denied", sessionObj.UserID)
+		return api.DeleteToken403JSONResponse{
+			Code:    403,
+			Message: "Forbidden: Admin access required",
 		}, nil
 	}
 

@@ -4587,6 +4587,20 @@ func (response DeleteToken401JSONResponse) VisitDeleteTokenResponse(w http.Respo
 	return err
 }
 
+type DeleteToken403JSONResponse Error
+
+func (response DeleteToken403JSONResponse) VisitDeleteTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteToken404JSONResponse Error
 
 func (response DeleteToken404JSONResponse) VisitDeleteTokenResponse(w http.ResponseWriter) error {
@@ -4647,6 +4661,20 @@ func (response GetToken401JSONResponse) VisitGetTokenResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetToken403JSONResponse Error
+
+func (response GetToken403JSONResponse) VisitGetTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5084,6 +5112,20 @@ func (response ListTokens401JSONResponse) VisitListTokensResponse(w http.Respons
 	return err
 }
 
+type ListTokens403JSONResponse Error
+
+func (response ListTokens403JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTokens404JSONResponse Error
 
 func (response ListTokens404JSONResponse) VisitListTokensResponse(w http.ResponseWriter) error {
@@ -5159,6 +5201,20 @@ func (response CreateToken401JSONResponse) VisitCreateTokenResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateToken403JSONResponse Error
+
+func (response CreateToken403JSONResponse) VisitCreateTokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
