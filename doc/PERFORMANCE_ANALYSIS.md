@@ -60,7 +60,7 @@ Request → RateLimiterMiddleware → JA4Middleware → SessionExtractionMiddlew
 
 ### 3. Session Validation Overhead
 
-**Location**: `middleware/builtin/session_extraction.go`, `middleware/builtin/session_utils.go`
+**Location**: `middleware/builtin/session.go`
 
 **Issues**:
 - Database/memory store lookup on every request (even non-authenticated routes)

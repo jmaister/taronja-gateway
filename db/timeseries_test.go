@@ -222,3 +222,75 @@ func TestGetTimeSeries_NewVsReturningVisitors(t *testing.T) {
 func rangeFilter(start, end time.Time) TrafficFilter {
 	return TrafficFilter{Start: &start, End: &end}
 }
+
+func TestFingerprintFirstSeen_MaintainedOnCreateAndBatch(t *testing.T) {
+	SetupTestDB(t.Name())
+	repo := &TrafficMetricRepositoryDB{DB: GetConnection()}
+	day := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	mk := func(fp string, at time.Time) *TrafficMetric {
+		return &TrafficMetric{HttpMethod: "GET", Path: "/x", HttpStatus: 200, Timestamp: at, ClientInfo: ClientInfo{Fingerprint: fp}}
+	}
+	require.NoError(t, repo.Create(mk("a", day.Add(5*time.Hour))))
+	require.NoError(t, repo.CreateBatch([]*TrafficMetric{
+		mk("a", day.Add(2*time.Hour)), // earlier row arriving later lowers first_timestamp
+		mk("b", day.Add(3*time.Hour)),
+		mk("", day.Add(1*time.Hour)),
+	}))
+
+	var rows []struct {
+		Fingerprint    string
+		FirstTimestamp time.Time
+	}
+	require.NoError(t, GetConnection().Raw("SELECT fingerprint, first_timestamp FROM fingerprint_first_seen ORDER BY fingerprint").Scan(&rows).Error)
+	require.Len(t, rows, 2, "empty fingerprints are not tracked")
+	assert.True(t, rows[0].FirstTimestamp.Equal(day.Add(2*time.Hour)))
+	assert.True(t, rows[1].FirstTimestamp.Equal(day.Add(3*time.Hour)))
+}
+
+func TestGetTimeSeries_NewVisitorsHonorsFilter(t *testing.T) {
+	SetupTestDB(t.Name())
+	repo := &TrafficMetricRepositoryDB{DB: GetConnection()}
+	day := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	seed := []TrafficMetric{
+		{Timestamp: day.Add(1 * time.Hour), ClientInfo: ClientInfo{Fingerprint: "es-user", Country: "ES"}},
+		{Timestamp: day.Add(1 * time.Hour), ClientInfo: ClientInfo{Fingerprint: "us-user", Country: "US"}},
+	}
+	for i := range seed {
+		seed[i].HttpMethod, seed[i].Path, seed[i].HttpStatus = "GET", "/x", 200
+		require.NoError(t, repo.DB.Create(&seed[i]).Error)
+	}
+
+	f := rangeFilter(day, day.Add(2*time.Hour))
+	points, err := repo.GetTimeSeries(f, GranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, 2, points[1].NewVisitors)
+
+	f.Country = "ES"
+	points, err = repo.GetTimeSeries(f, GranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, 1, points[1].UniqueFingerprints)
+	assert.Equal(t, 1, points[1].NewVisitors)
+	assert.Equal(t, 0, points[1].ReturningVisitors)
+}
+
+func TestFingerprintFirstSeenMigration_BackfillsExistingRows(t *testing.T) {
+	SetupTestDB(t.Name())
+	db := GetConnection()
+	day := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, db.Exec("DROP TRIGGER trg_traffic_metrics_first_seen").Error)
+	require.NoError(t, db.Exec("DELETE FROM fingerprint_first_seen").Error)
+	for i, at := range []time.Time{day.Add(4 * time.Hour), day.Add(1 * time.Hour)} {
+		m := &TrafficMetric{HttpMethod: "GET", Path: "/x", HttpStatus: 200, Timestamp: at, ClientInfo: ClientInfo{Fingerprint: "fp"}}
+		require.NoError(t, db.Create(m).Error, i)
+	}
+
+	sqlText, err := migrationFiles.ReadFile("migrations/0002_fingerprint_first_seen.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(sqlText)).Error)
+
+	var first time.Time
+	require.NoError(t, db.Raw("SELECT first_timestamp FROM fingerprint_first_seen WHERE fingerprint = 'fp'").Row().Scan(&first))
+	assert.True(t, first.Equal(day.Add(1*time.Hour)))
+}

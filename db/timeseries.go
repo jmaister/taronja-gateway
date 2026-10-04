@@ -157,10 +157,9 @@ type TimeSeriesPoint struct {
 
 // GetTimeSeries returns one point per bucket in [filter.Start, filter.End],
 // chronologically, with zero-valued buckets filled in. Counts come from a single
-// grouped query. NewVisitors needs a second query (MIN(timestamp) GROUP BY
-// fingerprint over the whole table), hence the fingerprint index; it is
-// clamped to UniqueFingerprints because the other filter fields apply only to
-// the first query. Callers must first check the range with ValidateTimeSeriesRange.
+// grouped query; NewVisitors comes from a second, range-bounded query on the
+// fingerprint_first_seen table. Callers must first check the range with
+// ValidateTimeSeriesRange.
 func (r *TrafficMetricRepositoryDB) GetTimeSeries(filter TrafficFilter, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error) {
 	if filter.Start == nil || filter.End == nil {
 		return nil, fmt.Errorf("time series needs both start and end")
@@ -199,7 +198,7 @@ func (r *TrafficMetricRepositoryDB) GetTimeSeries(filter TrafficFilter, granular
 		return nil, err
 	}
 
-	newVisitorsByBucket, err := r.getNewVisitorsByBucket(startDate, endDate, granularity)
+	newVisitorsByBucket, err := r.getNewVisitorsByBucket(filter, startDate, endDate, granularity)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +210,7 @@ func (r *TrafficMetricRepositoryDB) GetTimeSeries(filter TrafficFilter, granular
 			log.Printf("Error parsing time series bucket %q: %v", row.Bucket, parseErr)
 			continue
 		}
-		newVisitors := min(newVisitorsByBucket[ts], row.UniqueFingerprints)
+		newVisitors := newVisitorsByBucket[ts]
 		byBucket[ts] = TimeSeriesPoint{
 			Timestamp:             ts,
 			RequestCount:          row.RequestCount,
@@ -237,32 +236,38 @@ func (r *TrafficMetricRepositoryDB) GetTimeSeries(filter TrafficFilter, granular
 }
 
 // getNewVisitorsByBucket counts, per bucket, fingerprints whose first-ever
-// appearance falls in it; absent buckets mean 0. The inner query scans the whole
-// table, since a first appearance cannot be found from a date-filtered scan, so
-// its cost does not shrink with the range; the fingerprint index helps.
-func (r *TrafficMetricRepositoryDB) getNewVisitorsByBucket(startDate, endDate time.Time, granularity TimeSeriesGranularity) (map[time.Time]int, error) {
-	bucketExpr, err := sqliteBucketExpr("first_ts", granularity)
+// appearance falls in it; absent buckets mean 0. The first appearance comes from
+// the fingerprint_first_seen table (kept by a trigger on traffic_metrics), so the
+// query is bounded by the range. When filter narrows rows beyond the time range,
+// a fingerprint only counts if it also has a matching row in the bucket.
+func (r *TrafficMetricRepositoryDB) getNewVisitorsByBucket(filter TrafficFilter, startDate, endDate time.Time, granularity TimeSeriesGranularity) (map[time.Time]int, error) {
+	bucketExpr, err := sqliteBucketExpr("fs.first_timestamp", granularity)
 	if err != nil {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`
-		WITH first_seen AS (
-			SELECT fingerprint, MIN(timestamp) as first_ts
-			FROM traffic_metrics
-			WHERE fingerprint != ''
-			GROUP BY fingerprint
-		)
-		SELECT %s as bucket, COUNT(*) as new_visitors
-		FROM first_seen
-		WHERE first_ts BETWEEN ? AND ?
-		GROUP BY bucket`, bucketExpr)
+	q := r.DB.Table("fingerprint_first_seen AS fs").
+		Select(bucketExpr+" AS bucket, COUNT(*) AS new_visitors").
+		Where("fs.first_timestamp BETWEEN ? AND ?", startDate, endDate)
+
+	rowFilter := filter
+	rowFilter.Start, rowFilter.End = nil, nil
+	if rowFilter != (TrafficFilter{}) {
+		rowBucket, err := sqliteBucketExpr("traffic_metrics.timestamp", granularity)
+		if err != nil {
+			return nil, err
+		}
+		matching := filter.Apply(r.DB.Model(&TrafficMetric{}).Select("1").
+			Where("traffic_metrics.fingerprint = fs.fingerprint").
+			Where(rowBucket + " = " + bucketExpr))
+		q = q.Where("EXISTS (?)", matching)
+	}
 
 	var rows []struct {
 		Bucket      string
 		NewVisitors int
 	}
-	if err := r.DB.Raw(query, startDate, endDate).Scan(&rows).Error; err != nil {
+	if err := q.Group("bucket").Scan(&rows).Error; err != nil {
 		log.Printf("Error getting new visitors by bucket: %v", err)
 		return nil, err
 	}

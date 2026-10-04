@@ -214,11 +214,9 @@ middleware/
 ├── validation.go                # ✅ NEW: Configuration validation
 ├── auth.go                      # ✅ NEW: Authentication middleware (from gateway.go)
 ├── cache.go                     # ✅ NEW: Cache control middleware (from gateway.go)
-├── session_utils.go             # ✅ NEW: Shared session validation utilities
 ├── ja4.go                       # JA4H fingerprinting middleware
 ├── logging.go                   # Request logging middleware
-├── session.go                   # Session authentication middleware (✅ refactored)
-├── session_extraction.go        # Session extraction for analytics (✅ refactored)
+├── session.go                   # Session authentication, extraction and admin-access check
 ├── trafficmetric.go             # Request/response metrics middleware
 ├── integration_ja4h_test.go     # Integration tests
 ├── integration_test.go          # Integration tests
