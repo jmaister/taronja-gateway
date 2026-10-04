@@ -72,18 +72,50 @@ func (r *Registry) BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) {
 	r.metrics = make(map[string]*middlewareMetricsCounter)
 
 	chain := NewChainBuilder()
+	err := r.createAll(specs, func(name string, mw Middleware) {
+		// Wrap with request-metrics instrumentation (see metrics.go) before
+		// adding to the chain, so GetMetrics/GetAllMetrics can report on it.
+		counter := &middlewareMetricsCounter{}
+		r.metrics[name] = counter
+		chain.Add(instrumentMiddleware(mw, counter))
+		r.built[name] = true
+		log.Printf("Added middleware to chain: %s", name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return chain, nil
+}
+
+// NewChain is BuildChain without the status side effects: no instrumentation,
+// no log line, and the registry's built/metrics state is left alone. Use it for
+// registries that build many small chains (per-route middleware), where
+// BuildChain's per-call reset would be meaningless.
+func (r *Registry) NewChain(specs []MiddlewareSpec) (*ChainBuilder, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	chain := NewChainBuilder()
+	if err := r.createAll(specs, func(_ string, mw Middleware) { chain.Add(mw) }); err != nil {
+		return nil, err
+	}
+	return chain, nil
+}
+
+// createAll creates each spec's middleware in order, validating names and
+// dependencies, and hands it to add. The caller holds r.mu.
+func (r *Registry) createAll(specs []MiddlewareSpec, add func(name string, mw Middleware)) error {
 	built := make(map[string]bool)
 
 	for _, spec := range specs {
 		factory, exists := r.factories[spec.Name]
 		if !exists {
-			return nil, fmt.Errorf("unknown middleware: %s", spec.Name)
+			return fmt.Errorf("unknown middleware: %s", spec.Name)
 		}
 
-		// Validate dependencies are satisfied by earlier specs in this chain.
 		for _, dep := range factory.GetDependencies() {
 			if !built[dep] {
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"middleware '%s' depends on '%s' which is not enabled",
 					spec.Name, dep,
 				)
@@ -97,21 +129,13 @@ func (r *Registry) BuildChain(specs []MiddlewareSpec) (*ChainBuilder, error) {
 
 		mw, err := factory.Create(cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create middleware '%s': %w", spec.Name, err)
+			return fmt.Errorf("failed to create middleware '%s': %w", spec.Name, err)
 		}
 
-		// Wrap with request-metrics instrumentation (see metrics.go) before
-		// adding to the chain, so GetMetrics/GetAllMetrics can report on it.
-		counter := &middlewareMetricsCounter{}
-		r.metrics[spec.Name] = counter
-		chain.Add(instrumentMiddleware(mw, counter))
-
+		add(spec.Name, mw)
 		built[spec.Name] = true
-		r.built[spec.Name] = true
-		log.Printf("Added middleware to chain: %s", spec.Name)
 	}
-
-	return chain, nil
+	return nil
 }
 
 // GetStatus returns the status of every registered factory: "active" if it
