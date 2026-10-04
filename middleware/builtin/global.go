@@ -113,6 +113,26 @@ func EffectiveRateLimiterConfig(gatewayConfig *config.GatewayConfig) config.Rate
 	return gatewayConfig.Management.RateLimiter
 }
 
+// EffectiveExcludeStaticAssets reports whether the resolved chain skips static
+// assets in traffic_metrics: a per-entry override from middleware.global, else
+// management.excludeStaticAssets. It is false when traffic_metrics is not in
+// the chain, since nothing is recorded then.
+func EffectiveExcludeStaticAssets(gatewayConfig *config.GatewayConfig) bool {
+	specs, err := ResolveGlobalChainSpecs(gatewayConfig)
+	if err != nil {
+		return gatewayConfig.Management.ExcludeStaticAssets
+	}
+	for _, spec := range specs {
+		if spec.Name != config.MiddlewareNameTrafficMetrics {
+			continue
+		}
+		if cfg, ok := spec.Config.(config.TrafficMetricsConfig); ok {
+			return cfg.ExcludeStaticAssets
+		}
+	}
+	return false
+}
+
 // EffectiveCORSConfig returns the CORS config the resolved chain will use: a
 // per-entry override from middleware.global, else management.cors. Validators
 // must use it, or a per-entry wildcard origin with allowCredentials would pass

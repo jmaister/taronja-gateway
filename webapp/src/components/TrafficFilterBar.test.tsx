@@ -36,9 +36,12 @@ describe('TrafficFilterBar', () => {
         expect(renderToStaticMarkup(<TrafficFilterBar controller={controller({ country: 'ES' })} />)).toContain('Clear filters (1)');
     });
 
-    it('warns about unrecorded static assets unless the filter is dynamic-only', () => {
+    it('hides the request type filter when static assets are not recorded', () => {
+        overview.current = { staticAssetsExcluded: false };
+        expect(renderToStaticMarkup(<TrafficFilterBar controller={controller()} />)).toContain('Request type');
         overview.current = { staticAssetsExcluded: true };
-        expect(renderToStaticMarkup(<TrafficFilterBar controller={controller({ requestType: 'static' })} />)).toContain('not being recorded');
-        expect(renderToStaticMarkup(<TrafficFilterBar controller={controller({ requestType: 'dynamic' })} />)).not.toContain('not being recorded');
+        const html = renderToStaticMarkup(<TrafficFilterBar controller={controller({ requestType: 'static' })} />);
+        expect(html).not.toContain('Request type');
+        expect(html).not.toContain('Clear filters');
     });
 });

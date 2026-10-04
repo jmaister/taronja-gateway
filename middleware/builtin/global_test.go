@@ -220,6 +220,38 @@ func TestResolveGlobalChainSpecs_ExplicitTrafficMetricsOverride(t *testing.T) {
 	}
 }
 
+func TestEffectiveExcludeStaticAssets(t *testing.T) {
+	t.Run("management flag without a middleware section", func(t *testing.T) {
+		cfg := &config.GatewayConfig{}
+		cfg.Management.Analytics = true
+		cfg.Management.ExcludeStaticAssets = true
+		if !EffectiveExcludeStaticAssets(cfg) {
+			t.Fatal("expected management.excludeStaticAssets to apply")
+		}
+	})
+
+	t.Run("per-entry override wins over the management flag", func(t *testing.T) {
+		cfg := &config.GatewayConfig{}
+		cfg.Management.ExcludeStaticAssets = true
+		off := config.TrafficMetricsConfig{ExcludeStaticAssets: false}
+		cfg.Middleware.Global = []config.MiddlewareEntryConfig{
+			{Name: config.MiddlewareNameTrafficMetrics, TrafficMetrics: &off},
+		}
+		if EffectiveExcludeStaticAssets(cfg) {
+			t.Fatal("expected the per-entry override to win")
+		}
+	})
+
+	t.Run("false when traffic_metrics is not in the chain", func(t *testing.T) {
+		cfg := &config.GatewayConfig{}
+		cfg.Management.ExcludeStaticAssets = true
+		cfg.Middleware.Global = []config.MiddlewareEntryConfig{{Name: config.MiddlewareNameLogging}}
+		if EffectiveExcludeStaticAssets(cfg) {
+			t.Fatal("nothing is recorded without traffic_metrics")
+		}
+	})
+}
+
 func TestResolveGlobalChainSpecs_RateLimiterFallsBackToManagementConfig(t *testing.T) {
 	gatewayConfig := &config.GatewayConfig{}
 	gatewayConfig.Management.RateLimiter = config.RateLimiterConfig{RequestsPerMinute: 100}

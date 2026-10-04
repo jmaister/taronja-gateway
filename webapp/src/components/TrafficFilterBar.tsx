@@ -28,7 +28,8 @@ export function TrafficFilterBar({ controller }: { controller: TrafficFilterCont
         endDate,
         requestType,
     });
-    const active = activeDimensionCount(filter);
+    const staticExcluded = overview?.staticAssetsExcluded === true;
+    const active = activeDimensionCount(staticExcluded ? { ...filter, requestType: 'all' } : filter);
 
     return (
         <div className="space-y-3">
@@ -39,19 +40,15 @@ export function TrafficFilterBar({ controller }: { controller: TrafficFilterCont
                     selectedPeriod={period}
                     setSelectedPeriod={setPeriod}
                 />
-                <RequestTypeFilter value={requestType} onChange={(v) => update('requestType', v)} />
+                {!staticExcluded && (
+                    <RequestTypeFilter value={requestType} onChange={(v) => update('requestType', v)} />
+                )}
                 {active > 0 && (
                     <Button variant="secondary" size="sm" onClick={clearDimensions}>
                         Clear filters ({active})
                     </Button>
                 )}
             </div>
-            {overview?.staticAssetsExcluded && requestType !== 'dynamic' && (
-                <p className="text-sm text-warning" role="note">
-                    Static asset requests are not being recorded (management.excludeStaticAssets), so only older
-                    records can match "static assets only".
-                </p>
-            )}
             <div className="flex flex-wrap items-end gap-4">
                 {trafficDimensionFields.map((field) => {
                     const source = SUGGESTIONS[field.key];

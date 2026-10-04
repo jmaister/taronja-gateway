@@ -429,6 +429,13 @@ func TestGetRequestDetails_IsStaticFilter(t *testing.T) {
 		}
 	})
 
+	t.Run("is_static is ignored when static assets are excluded", func(t *testing.T) {
+		server.SetExcludeStaticAssets(true)
+		defer server.SetExcludeStaticAssets(false)
+		yes := true
+		assert.Len(t, getDetails(&yes), 2)
+	})
+
 	t.Run("is_static=false returns only the non-static request", func(t *testing.T) {
 		no := false
 		requests := getDetails(&no)

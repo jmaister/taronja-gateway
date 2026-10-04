@@ -18,7 +18,7 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		return api.GetRequestStatistics401JSONResponse{}, nil
 	}
 
-	filter := withDefaultRange(trafficFilterParams(request.Params).filter(), func(end time.Time) time.Time {
+	filter := withDefaultRange(s.filterFrom(trafficFilterParams(request.Params)), func(end time.Time) time.Time {
 		return end.AddDate(0, 0, -30)
 	})
 
@@ -119,7 +119,7 @@ func (s *StrictApiServer) GetRequestDetails(ctx context.Context, req api.GetRequ
 	if _, ok := requireAdminSession(ctx); !ok {
 		return api.GetRequestDetails401JSONResponse{}, nil
 	}
-	metrics, err := s.trafficMetricRepo.ListRequestDetails(trafficFilterParams(req.Params).filter())
+	metrics, err := s.trafficMetricRepo.ListRequestDetails(s.filterFrom(trafficFilterParams(req.Params)))
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (s *StrictApiServer) GetRequestTimeSeries(ctx context.Context, request api.
 		granularity = *request.Params.Granularity
 	}
 
-	filter := withDefaultRange(trafficFilterParamsFromTimeSeries(request.Params).filter(), func(end time.Time) time.Time {
+	filter := withDefaultRange(s.filterFrom(trafficFilterParamsFromTimeSeries(request.Params)), func(end time.Time) time.Time {
 		return defaultTimeSeriesStart(granularity, end)
 	})
 

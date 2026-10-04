@@ -34,6 +34,17 @@ func (p trafficFilterParams) filter() db.TrafficFilter {
 	return f
 }
 
+// filterFrom converts p to a db.TrafficFilter. With static assets excluded no
+// static rows are recorded, so is_static is dropped and every request type
+// returns the same data.
+func (s *StrictApiServer) filterFrom(p trafficFilterParams) db.TrafficFilter {
+	f := p.filter()
+	if s.excludeStaticAssets {
+		f.IsStatic = nil
+	}
+	return f
+}
+
 func trafficFilterParamsFromTimeSeries(p api.GetRequestTimeSeriesParams) trafficFilterParams {
 	return trafficFilterParams{
 		StartDate:       p.StartDate,
