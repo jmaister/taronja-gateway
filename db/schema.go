@@ -57,8 +57,7 @@ type ClientInfo struct {
 // User struct definition
 type User struct {
 	gorm.Model
-	ID string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
-	// TODO: does this unique really work?
+	ID                       string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
 	Email                    string `gorm:"unique"`
 	Username                 string `gorm:"unique"`
 	Picture                  string
@@ -183,7 +182,7 @@ type TrafficMetric struct {
 	SessionID      string    `gorm:"type:varchar(255)"`          // ID of the session, if applicable
 	// default:false: SQLite cannot ADD COLUMN NOT NULL without a default on a
 	// non-empty table. Old rows predate static-asset tracking, so false is correct.
-	IsStaticAsset bool `gorm:"not null;default:false;index"` // Whether Path looks like a static asset (see session.IsStaticAssetPath). Set even when management.excludeStaticAssets skips recording most such requests, so the rows that do exist stay filterable.
+	IsStaticAsset bool `gorm:"not null;default:false;index"` // Path looks like a static asset (see session.IsStaticAssetPath).
 	// Embed common client and geographical information
 	ClientInfo
 }

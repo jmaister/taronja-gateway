@@ -94,24 +94,6 @@ func (g *Gateway) configureUserRoutes() error {
 	return nil
 }
 
-// configureOAuthCallbackRoute remains the same
-func (g *Gateway) configureOAuthCallbackRoute() {
-	g.Mux.HandleFunc("/auth/callback/", func(w http.ResponseWriter, r *http.Request) {
-		pathSegments := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		if len(pathSegments) != 3 || pathSegments[0] != "auth" || pathSegments[1] != "callback" {
-			log.Printf("OAuth Callback: Invalid callback path format: %s", r.URL.Path)
-			http.NotFound(w, r)
-			return
-		}
-		//provider := pathSegments[2]
-
-		// TODO: Check if provider is valid
-
-		//g.authManager.HandleOAuthCallback(provider, w, r)
-	})
-	log.Printf("Registered OAuth Callback Handler: /auth/callback/*")
-}
-
 // convertToServeMuxPattern converts a route "from" glob pattern that contains
 // wildcard "*" segments into a Go 1.22+ net/http.ServeMux named-wildcard pattern.
 //

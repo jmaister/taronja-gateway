@@ -85,9 +85,6 @@ func configureRoutes(gateway *Gateway) error {
 		return fmt.Errorf("error configuring user routes: %w", err)
 	}
 
-	// Configure the OAuth callback handler
-	gateway.configureOAuthCallbackRoute()
-
 	return nil
 }
 

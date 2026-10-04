@@ -287,7 +287,7 @@ GatewayConfig is the root configuration structure for Taronja Gateway. It contai
 
 ```go
 type GatewayConfig struct {
-    Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR or MAJOR.MINOR (e.g. "1.0" — see CurrentConfigVersion). Optional and nil when absent — every config file written before this field existed had no way to declare one, and that's a genuinely different state from declaring "version: 1.0" explicitly, not the same thing spelled two ways. See LoadConfig's version-check behavior in version.go.
+    Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR or MAJOR.MINOR (e.g. "1.0"). Optional; nil when absent. See CurrentConfigVersion and version.go.
     Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
     Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
     Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
@@ -326,7 +326,7 @@ GeolocationConfig defines IP geolocation service settings. Used to enrich analyt
 
 ```go
 type GeolocationConfig struct {
-    IPLocateAPIKey string `yaml:"iplocateApiKey"` // API key for iplocate.io service. Optional. Can use environment variables (e.g., ${IPLOCATE_IO_API_KEY}). Without this, geolocation features are disabled.
+    IPLocateAPIKey string `yaml:"iplocateApiKey"` // iplocate.io API key; may use ${ENV_VAR}. Optional; without it geolocation is disabled.
 }
 ```
 
@@ -339,9 +339,9 @@ ManagementConfig defines the management API and dashboard settings. The manageme
 type ManagementConfig struct {
     Prefix              string            `yaml:"prefix"`              // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
     Logging             bool              `yaml:"logging"`             // Enable request/response logging. Default: false. Logs all HTTP requests.
-    Compression         bool              `yaml:"compression"`         // Enable brotli/zstd/gzip/deflate response compression, negotiated per-request via the client's Accept-Encoding header. Default: false. Has no other options — see middleware.CompressionMiddleware.
+    Compression         bool              `yaml:"compression"`         // Enable brotli/zstd/gzip/deflate response compression, negotiated via Accept-Encoding. Default: false.
     Analytics           bool              `yaml:"analytics"`           // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
-    ExcludeStaticAssets bool              `yaml:"excludeStaticAssets"` // Skip traffic-metrics collection for requests to static assets (by extension/path, see middleware.IsStaticAssetPath). Default: false, so existing configs keep recording everything Analytics already did. Has no effect when Analytics is false. Reduces per-request overhead and stats-table volume on asset-heavy sites; rows already recorded before this is enabled are unaffected and stay filterable by "is it a static asset" in the request-details report.
+    ExcludeStaticAssets bool              `yaml:"excludeStaticAssets"` // Skip traffic-metrics collection for static assets (see middleware.IsStaticAssetPath). Default: false. Only applies when Analytics is true; rows already recorded are kept.
     Admin               AdminConfig       `yaml:"admin"`               // Admin dashboard access configuration
     Session             SessionConfig     `yaml:"session"`             // Session lifetime configuration for authenticated users
     RateLimiter         RateLimiterConfig `yaml:"rateLimiter"`         // Rate limiter settings. Optional; zero values disable.

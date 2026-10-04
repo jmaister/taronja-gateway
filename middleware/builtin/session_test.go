@@ -639,7 +639,6 @@ func TestErrorWithResponse(t *testing.T) {
 func TestOperationWithNoSecurity(t *testing.T) {
 	t.Run("contains expected operations", func(t *testing.T) {
 		expectedOperations := []string{
-			"login",
 			"LogoutUser",
 			"HealthCheck",
 			"GetOpenApiYaml",

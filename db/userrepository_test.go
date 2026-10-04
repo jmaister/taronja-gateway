@@ -236,3 +236,19 @@ func TestUniqueConstraints(t *testing.T) {
 	assert.Error(t, err, "Should fail due to unique username constraint")
 	assert.Contains(t, err.Error(), "UNIQUE constraint failed", "Error should mention UNIQUE constraint")
 }
+
+func TestCreateUser_RejectsDuplicateEmailAndUsername(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewDBUserRepository(db)
+
+	first := createTestUser("dup")
+	assert.NoError(t, repo.CreateUser(first))
+
+	sameEmail := createTestUser("other")
+	sameEmail.Email = first.Email
+	assert.Error(t, repo.CreateUser(sameEmail))
+
+	sameUsername := createTestUser("another")
+	sameUsername.Username = first.Username
+	assert.Error(t, repo.CreateUser(sameUsername))
+}
