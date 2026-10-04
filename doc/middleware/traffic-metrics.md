@@ -75,7 +75,7 @@ rather than gateway-wide.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `management.excludeStaticAssets` (legacy flag path) or `trafficMetrics.excludeStaticAssets` (a `middleware.global[]` entry's block, explicit path) | `bool` | `false` | Skip recording a row at all for a request whose path looks like a static asset (CSS/JS/images/fonts/... — see `session.IsStaticAssetPath`). Has no effect unless analytics/this middleware is also enabled. Reduces per-request overhead and stats-table volume on asset-heavy sites. Every row still records `IsStaticAsset` regardless of this flag, so the [request-details report](#reports) stays filterable by request type either way — flipping this on doesn't affect rows already recorded, only new ones. |
+| `management.excludeStaticAssets` (legacy flag path) or `trafficMetrics.excludeStaticAssets` (a `middleware.global[]` entry's block, explicit path) | `bool` | `false` | Skip recording a row at all for a request whose path looks like a static asset (CSS/JS/images/fonts/... — see `session.IsStaticAssetPath`). Has no effect unless analytics/this middleware is also enabled. Reduces per-request overhead and stats-table volume on asset-heavy sites. Rows still record `IsStaticAsset`. When this is on, the statistics endpoints ignore the `is_static` filter (no static rows are recorded), the summary reports `staticAssetsExcluded: true`, and the dashboard hides the "Request type" dropdown. The dashboard reads the effective value, so a `trafficMetrics.excludeStaticAssets` override is honored. The setting is meant to be chosen before data is collected: turning it on later keeps the static rows already stored but no longer lets the dashboard filter them. |
 
 ## Reports
 
@@ -87,9 +87,30 @@ rather than gateway-wide.
   per-request rows over a date range, with an `is_static` filter
   (`true`/`false`/omitted for both). Backs the **Request Details** page
   (`webapp/src/pages/RequestsDetailsPage.tsx`), which surfaces the filter as
-  a "Request type" dropdown next to the date-range picker, plus a
-  Static/Dynamic badge column so unfiltered results still show which is
-  which.
+  a "Request type" dropdown next to the date-range picker (hidden when
+  `excludeStaticAssets` is on), plus a Static/Dynamic badge column so
+  unfiltered results still show which is which.
+
+### New vs. returning visitors
+
+The time series (`GET <prefix>/api/statistics/timeseries`) splits each
+bucket's unique fingerprints into new and returning visitors. A fingerprint is
+new in the bucket that holds its first-ever request, however old that is.
+
+That first request cannot be found by scanning only the requested date range,
+so the gateway keeps a `fingerprint_first_seen` table (fingerprint, earliest
+timestamp). Migration `0002_fingerprint_first_seen` creates it and backfills it
+from `traffic_metrics`. An `AFTER INSERT` trigger on `traffic_metrics` keeps it
+current, so single and batch inserts both update it without any Go code.
+
+- The query only reads fingerprints whose first request falls inside the
+  requested range, so its cost shrinks with the range.
+- With a filter such as country or browser, a fingerprint counts as new in a
+  bucket only if it also has a matching request in that bucket. `NewVisitors`
+  never exceeds `UniqueFingerprints`.
+- Rows without a fingerprint are not tracked.
+- The table keeps first-seen dates even if old `traffic_metrics` rows are
+  deleted later, so a deleted visitor still counts as "seen before".
 
 ## Dependencies
 

@@ -175,9 +175,9 @@ taronja-gateway/
 3. Traffic metrics recording (`trafficmetric.go`)
 4. Request logging (`logging.go`)
 
-**Per-route chain** (applied selectively):
-1. HTTP cache-control headers (`cache.go`)
-2. Session-based authentication/authorization (`auth.go`)
+**Per-route chain** (`route_chain.go`: `route_auth` factory first when the route has auth, then `route_cache`; built through `Registry.NewChain`, which leaves the global registry's status and metrics untouched):
+1. Session-based authentication/authorization (`auth.go`)
+2. HTTP cache-control headers (`cache.go`)
 
 **Notable middlewares:**
 - **Rate limiter** (`ratelimiter.go`) — in-memory IP-based rate limiting, configurable per route/path, scanner detection (blocks known scanner User-Agents). Every block it imposes (rate-limit, max-errors, or vulnerability-scan) is also written to `db.BlockedClient` (`db/blockedclientrepository.go`) as a persistent record — unlike the in-memory state itself, which `cleanupLoop` deletes once a block expires and the IP goes quiet. Exposed via `GET <prefix>/api/rate-limiter/blocked` and the "Blocked Clients History" table on `RateLimiterStatsPage.tsx`. See `doc/middleware/rate-limiter.md`.
