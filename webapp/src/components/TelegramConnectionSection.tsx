@@ -4,6 +4,7 @@ import { Button } from './ui/Button';
 import { Card, CardContent } from './ui/Card';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { StatusPill } from './ui/StatusPill';
+import { formatDateTime } from '../lib/format';
 
 // TelegramConnectionSection lets the current user connect their account to
 // a Telegram chat (so notifications can be delivered there too) and see/
@@ -99,7 +100,7 @@ export const TelegramConnectionSection = () => {
                                     <StatusPill variant="success">Connected</StatusPill>
                                     {status.linkedAt && (
                                         <p className="mt-2 text-sm text-muted-fg">
-                                            Since {new Date(status.linkedAt).toLocaleString()}
+                                            Since {formatDateTime(status.linkedAt)}
                                         </p>
                                     )}
                                 </div>

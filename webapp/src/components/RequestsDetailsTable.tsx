@@ -1,5 +1,6 @@
 import { RequestDetail } from "@/apiclient";
 import { getSafeLocale } from "../lib/intl";
+import { formatBytes } from "../lib/format";
 
 
 export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }) {
@@ -20,15 +21,6 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
     const totalRequests = requests.length;
     const totalTime = requests.reduce((sum, req) => sum + req.response_time, 0);
     const totalBytes = requests.reduce((sum, req) => sum + req.response_size, 0);
-
-    // Format bytes with appropriate units
-    const formatBytes = (bytes: number): string => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
 
     // Format time with appropriate units
     const formatTime = (ms: number): string => {

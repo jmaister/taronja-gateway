@@ -10,6 +10,7 @@ import { FormField } from '../components/ui/FormField';
 import { Input } from '../components/ui/Input';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StatusPill } from '../components/ui/StatusPill';
+import { formatDate, formatDateTime } from '../lib/format';
 
 export function CountersManagementPage() {
     const [counterId, setCounterId] = useState<string>('credits');
@@ -211,7 +212,7 @@ export function CountersManagementPage() {
                                                 )}
                                             </td>
                                             <td className="border-b border-border px-3 py-3">
-                                                {new Date(user.last_updated).toLocaleDateString()}
+                                                {formatDate(user.last_updated)}
                                             </td>
                                             <td className="border-b border-border px-3 py-3">
                                                 <div className="flex flex-wrap gap-2">
@@ -360,7 +361,7 @@ export function CountersManagementPage() {
                                         {counterHistory.transactions.map((transaction) => (
                                             <tr key={transaction.id} className="hover:bg-muted/40">
                                                 <td className="border-b border-border px-3 py-3">
-                                                    {new Date(transaction.created_at).toLocaleString()}
+                                                    {formatDateTime(transaction.created_at)}
                                                 </td>
                                                 <td className="border-b border-border px-3 py-3">
                                                     <span

@@ -4,6 +4,7 @@ import { Badge } from '../components/ui/Badge';
 import { useRateLimiterStats, useBlockedClients } from '../services/rateLimiter';
 import type { RateLimiterStat, BlockedClient } from '../apiclient/types.gen';
 import { LazyBlockedClientsWorldMap } from '../components/LazyBlockedClientsWorldMap';
+import { formatDateTime } from '../lib/format';
 
 function formatBlockedUntil(ts: string): { label: string; isBlocked: boolean } {
     const d = new Date(ts);
@@ -57,8 +58,8 @@ function BlockedClientRow({ item }: { item: BlockedClient }) {
             </td>
             <td className="px-4 py-3 text-sm text-muted-fg">{item.path ?? '—'}</td>
             <td className="px-4 py-3 text-center text-sm">{item.triggerCount}</td>
-            <td className="px-4 py-3 text-sm">{new Date(item.blockedAt).toLocaleString()}</td>
-            <td className="px-4 py-3 text-sm">{new Date(item.blockedUntil).toLocaleString()}</td>
+            <td className="px-4 py-3 text-sm">{formatDateTime(item.blockedAt)}</td>
+            <td className="px-4 py-3 text-sm">{formatDateTime(item.blockedUntil)}</td>
         </tr>
     );
 }

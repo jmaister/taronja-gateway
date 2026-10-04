@@ -7,6 +7,7 @@ import { FormField } from './ui/FormField';
 import { Input } from './ui/Input';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { StatusPill } from './ui/StatusPill';
+import { formatDateTime } from '../lib/format';
 
 interface UserTokensSectionProps {
     userId: string;
@@ -69,11 +70,6 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
             // revokeTokenMutation.error below) explain what happened.
             console.error('Failed to revoke token:', err);
         }
-    };
-
-    const formatDate = (dateString: string | null | undefined) => {
-        if (!dateString) return 'Never';
-        return new Date(dateString).toLocaleString();
     };
 
     const getStatusBadge = (token: TokenResponse) => {
@@ -172,8 +168,8 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                         <div className="text-xs text-muted-fg">ID: {token.id}</div>
                                     </td>
                                     <td className="px-4 py-3">{getStatusBadge(token)}</td>
-                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDate(token.created_at)}</td>
-                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDate(token.expires_at)}</td>
+                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDateTime(token.created_at)}</td>
+                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDateTime(token.expires_at)}</td>
                                     <td className="px-4 py-3 text-sm text-muted-fg">{token.usage_count} times</td>
                                     <td className="px-4 py-3 text-sm">
                                         {token.is_active && !token.revoked_at && (
@@ -297,10 +293,10 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                     <strong className="text-fg">Token Name:</strong> {newToken.token_info.name}
                                 </p>
                                 <p>
-                                    <strong className="text-fg">Created:</strong> {formatDate(newToken.token_info.created_at)}
+                                    <strong className="text-fg">Created:</strong> {formatDateTime(newToken.token_info.created_at)}
                                 </p>
                                 <p>
-                                    <strong className="text-fg">Expires:</strong> {formatDate(newToken.token_info.expires_at)}
+                                    <strong className="text-fg">Expires:</strong> {formatDateTime(newToken.token_info.expires_at)}
                                 </p>
                             </div>
 

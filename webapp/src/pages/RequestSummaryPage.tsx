@@ -1,5 +1,8 @@
-import { useState } from 'react';
-import { StatisticsDateRange, timePeriods, DateRange } from '../components/StatisticsDateRange';
+import { TrafficFilterBar } from '../components/TrafficFilterBar';
+import { QueryState } from '../components/QueryState';
+import { useTrafficFilter } from '../lib/useTrafficFilter';
+import type { TrafficFilterState } from '../lib/trafficFilter';
+import { formatNumber } from '../lib/format';
 import { useRequestStatistics, useRequestTimeSeries } from '../services/statistics';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
@@ -90,7 +93,7 @@ function DataTable({ title, data, accent = 'primary' }: DataTableProps) {
                         >
                             <span className="text-sm font-medium text-muted-fg">{key}</span>
                             <div className="flex items-center space-x-2">
-                                <span className="text-sm font-semibold">{value.toLocaleString()}</span>
+                                <span className="text-sm font-semibold">{formatNumber(value)}</span>
                                 <div
                                     className={`h-2 w-2 rounded-full ${accentDot[accent]}`}
                                     style={{ opacity: 1 - index * 0.1 }}
@@ -119,9 +122,12 @@ function granularityForRange(start: Date, end: Date): TimeSeriesGranularity {
     return 'month';
 }
 
-function TrafficOverTimeSection({ start, end }: { start: Date; end: Date }) {
-    const granularity = granularityForRange(start, end);
-    const { data, isLoading, error } = useRequestTimeSeries(start.toISOString(), end.toISOString(), granularity);
+function TrafficOverTimeSection({ filter }: { filter: TrafficFilterState }) {
+    const granularity = granularityForRange(
+        new Date(`${filter.startDate}T00:00:00Z`),
+        new Date(`${filter.endDate}T23:59:59Z`),
+    );
+    const { data, isLoading, error } = useRequestTimeSeries(filter, granularity);
 
     return (
         <Card>
@@ -177,47 +183,8 @@ function TrafficOverTimeSection({ start, end }: { start: Date; end: Date }) {
 }
 
 export function RequestSummaryPage() {
-    const [selectedPeriod, setSelectedPeriod] = useState<string>('today');
-    const [dateRange, setDateRange] = useState<DateRange>(() => timePeriods[0].getDateRange());
-
-    const startDateStr = `${dateRange.startDate}T00:00:00Z`;
-    const endDateStr = `${dateRange.endDate}T23:59:59Z`;
-
-    const { data: statistics, isLoading: loading, error, refetch } = useRequestStatistics(startDateStr, endDateStr);
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-20">
-                <div className="text-center">
-                    <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
-                    <p className="text-muted-fg">Loading request summary...</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="flex items-center justify-center py-20">
-                <div className="text-center" role="alert">
-                    <div className="mb-4 text-6xl text-danger">⚠️</div>
-                    <h1 className="mb-2 text-2xl font-semibold">Error Loading Request Summary</h1>
-                    <p className="mb-4 text-muted-fg">{error instanceof Error ? error.message : 'Unknown error'}</p>
-                    <Button onClick={() => refetch()}>Retry</Button>
-                </div>
-            </div>
-        );
-    }
-
-    if (!statistics) {
-        return (
-            <div className="flex items-center justify-center py-20">
-                <div className="text-center">
-                    <p className="text-muted-fg">No request summary available</p>
-                </div>
-            </div>
-        );
-    }
+    const controller = useTrafficFilter();
+    const { data: statistics, isLoading, error, refetch } = useRequestStatistics(controller.filter);
 
     return (
         <div className="mx-auto max-w-7xl space-y-6">
@@ -225,72 +192,73 @@ export function RequestSummaryPage() {
                 title="Request Summary"
                 description="Monitor gateway performance and traffic patterns"
                 actions={
-                    <>
-                        <Button onClick={() => refetch()} disabled={loading}>
-                            <span className={`${loading ? 'animate-spin' : ''}`}>{loading ? '⟳' : '🔄'}</span>
-                            Refresh
-                        </Button>
-                        <StatisticsDateRange
-                            dateRange={dateRange}
-                            setDateRange={setDateRange}
-                            selectedPeriod={selectedPeriod}
-                            setSelectedPeriod={setSelectedPeriod}
-                        />
-                    </>
+                    <Button onClick={() => refetch()} disabled={isLoading}>
+                        <span className={`${isLoading ? 'animate-spin' : ''}`}>{isLoading ? '⟳' : '🔄'}</span>
+                        Refresh
+                    </Button>
                 }
             />
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <StatisticCard
-                    title="Total Requests"
-                    value={statistics.totalRequests.toLocaleString()}
-                    icon="📊"
-                    accent="primary"
-                />
-                <StatisticCard
-                    title="Avg Response Time"
-                    value={`${statistics.averageResponseTime.toFixed(1)}ms`}
-                    icon="⚡"
-                    accent="success"
-                />
-                <StatisticCard
-                    title="Avg Response Size"
-                    value={`${(statistics.averageResponseSize / 1024).toFixed(1)}KB`}
-                    icon="📦"
-                    accent="warning"
-                />
-                <StatisticCard
-                    title="Success Rate"
-                    value={`${(
-                        (Object.entries(statistics.requestsByStatus)
-                            .filter(([status]) => status.startsWith('2') || status.startsWith('3'))
-                            .reduce((sum, [, count]) => sum + count, 0) / statistics.totalRequests) *
-                        100
-                    ).toFixed(1)}%`}
-                    icon="✅"
-                    accent="success"
-                />
-            </div>
-            <TrafficOverTimeSection start={new Date(startDateStr)} end={new Date(endDateStr)} />
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <DataTable title="Requests by Status Code" data={statistics.requestsByStatus} accent="primary" />
-                <DataTable title="Requests by Country" data={statistics.requestsByCountry} accent="primary" />
-                <DataTable title="Requests by Device Type" data={statistics.requestsByDeviceType} accent="primary" />
-                <DataTable title="Requests by Platform" data={statistics.requestsByPlatform} accent="primary" />
-                <DataTable title="Requests by Browser" data={statistics.requestsByBrowser} accent="primary" />
-                {statistics.requestsByUser && (
-                    <DataTable title="Requests by User" data={statistics.requestsByUser} accent="primary" />
+            <TrafficFilterBar controller={controller} />
+            <QueryState isLoading={isLoading} error={error} onRetry={() => refetch()} errorTitle="Error Loading Request Summary" loadingText="Loading request summary...">
+                {!statistics ? (
+                    <p className="py-20 text-center text-muted-fg">No request summary available</p>
+                ) : (
+                    <div className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+                        <StatisticCard
+                            title="Total Requests"
+                            value={formatNumber(statistics.totalRequests)}
+                            icon="📊"
+                            accent="primary"
+                        />
+                        <StatisticCard
+                            title="Avg Response Time"
+                            value={`${statistics.averageResponseTime.toFixed(1)}ms`}
+                            icon="⚡"
+                            accent="success"
+                        />
+                        <StatisticCard
+                            title="Avg Response Size"
+                            value={`${(statistics.averageResponseSize / 1024).toFixed(1)}KB`}
+                            icon="📦"
+                            accent="warning"
+                        />
+                        <StatisticCard
+                            title="Success Rate"
+                            value={`${(
+                                (Object.entries(statistics.requestsByStatus)
+                                    .filter(([status]) => status.startsWith('2') || status.startsWith('3'))
+                                    .reduce((sum, [, count]) => sum + count, 0) / Math.max(statistics.totalRequests, 1)) *
+                                100
+                            ).toFixed(1)}%`}
+                            icon="✅"
+                            accent="success"
+                        />
+                    </div>
+                    <TrafficOverTimeSection filter={controller.filter} />
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <DataTable title="Requests by Status Code" data={statistics.requestsByStatus} accent="primary" />
+                        <DataTable title="Requests by Country" data={statistics.requestsByCountry} accent="primary" />
+                        <DataTable title="Requests by Device Type" data={statistics.requestsByDeviceType} accent="primary" />
+                        <DataTable title="Requests by Platform" data={statistics.requestsByPlatform} accent="primary" />
+                        <DataTable title="Requests by Browser" data={statistics.requestsByBrowser} accent="primary" />
+                        {statistics.requestsByUser && (
+                            <DataTable title="Requests by User" data={statistics.requestsByUser} accent="primary" />
+                        )}
+                        <DataTable
+                            title="Requests by Fingerprint"
+                            data={statistics.requestsByFingerprint}
+                            accent="warning"
+                        />
+                        <DataTable
+                            title="Requests by Fingerprint Type"
+                            data={statistics.requestsByFingerprintType}
+                            accent="warning"
+                        />
+                    </div>
+                    </div>
                 )}
-                <DataTable
-                    title="Requests by Fingerprint"
-                    data={statistics.requestsByFingerprint}
-                    accent="warning"
-                />
-                <DataTable
-                    title="Requests by Fingerprint Type"
-                    data={statistics.requestsByFingerprintType}
-                    accent="warning"
-                />
-            </div>
+            </QueryState>
         </div>
     );
 }

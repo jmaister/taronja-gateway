@@ -1,5 +1,6 @@
 import { StatusPill } from './ui/StatusPill';
 import type { ChannelStatus } from '@/apiclient';
+import { formatDateTime } from '../lib/format';
 
 // statusPillVariant and statusLabel translate a ChannelStatus.status onto
 // StatusPill's variant/label — "active" (a channel that works for every
@@ -40,7 +41,7 @@ export function ChannelStatusList({ statuses }: { statuses: ChannelStatus[] }) {
                     <div>
                         <div className="font-medium capitalize">{cs.channel}</div>
                         {cs.status === 'connected' && cs.linkedAt && (
-                            <div className="mt-1 text-sm text-muted-fg">Since {new Date(cs.linkedAt).toLocaleString()}</div>
+                            <div className="mt-1 text-sm text-muted-fg">Since {formatDateTime(cs.linkedAt)}</div>
                         )}
                     </div>
                     <StatusPill variant={statusPillVariant(cs.status)}>{statusLabel(cs.status)}</StatusPill>

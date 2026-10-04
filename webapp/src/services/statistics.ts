@@ -2,73 +2,61 @@ import { getRequestStatistics, getRequestDetails, getRequestTimeSeries } from '@
 import type { RequestStatistics, RequestDetailsResponse, TimeSeriesResponse, TimeSeriesGranularity } from '@/apiclient';
 import { useQuery } from '@tanstack/react-query';
 import { customApiClient, handleResponse } from './client';
+import { trafficFilterToQuery } from '../lib/trafficFilter';
+import type { TrafficFilterState } from '../lib/trafficFilter';
 
 export const statisticsKeys = {
-  statistics: (startDate?: string, endDate?: string) => ['statistics', { startDate, endDate }] as const,
-  requestDetails: (startDate: string, endDate: string, isStatic?: boolean) =>
-    ['requestDetails', { startDate, endDate, isStatic }] as const,
-  timeSeries: (startDate: string, endDate: string, granularity: TimeSeriesGranularity) =>
-    ['timeSeries', { startDate, endDate, granularity }] as const,
+  statistics: (filter: TrafficFilterState) => ['statistics', filter] as const,
+  requestDetails: (filter: TrafficFilterState) => ['requestDetails', filter] as const,
+  timeSeries: (filter: TrafficFilterState, granularity: TimeSeriesGranularity) =>
+    ['timeSeries', filter, granularity] as const,
 };
 
-export function useRequestStatistics(startDate?: string, endDate?: string) {
+const MINUTE = 60 * 1000;
+
+export function useRequestStatistics(filter: TrafficFilterState) {
   return useQuery({
-    queryKey: statisticsKeys.statistics(startDate, endDate),
+    queryKey: statisticsKeys.statistics(filter),
     queryFn: async () => {
       const response = await getRequestStatistics({
-        query: {
-          start_date: startDate,
-          end_date: endDate,
-        },
+        query: trafficFilterToQuery(filter),
         client: customApiClient,
       });
       return handleResponse<RequestStatistics>(response);
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 5 * MINUTE,
+    gcTime: 10 * MINUTE,
   });
 }
 
-// Powers "traffic over time" style graphs (requests/unique visitors/errors
-// per minute, hour, day, week, or month) — see doc/middleware/ja4-fingerprint.md
-// for what "unique visitors" (fingerprint-based) actually means here.
-export function useRequestTimeSeries(startDate: string, endDate: string, granularity: TimeSeriesGranularity) {
+// Powers "traffic over time" graphs; see doc/middleware/ja4-fingerprint.md for
+// what "unique visitors" (fingerprint-based) means.
+export function useRequestTimeSeries(filter: TrafficFilterState, granularity: TimeSeriesGranularity) {
   return useQuery({
-    queryKey: statisticsKeys.timeSeries(startDate, endDate, granularity),
+    queryKey: statisticsKeys.timeSeries(filter, granularity),
     queryFn: async () => {
       const response = await getRequestTimeSeries({
-        query: {
-          start_date: startDate,
-          end_date: endDate,
-          granularity,
-        },
+        query: { ...trafficFilterToQuery(filter), granularity },
         client: customApiClient,
       });
       return handleResponse<TimeSeriesResponse>(response);
     },
-    staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    staleTime: MINUTE,
+    gcTime: 5 * MINUTE,
   });
 }
 
-// isStatic filters by whether the request was for a static asset (see
-// management.excludeStaticAssets): true for only static-asset requests,
-// false for only non-static requests, undefined for both.
-export function useRequestDetails(startDate: string, endDate: string, isStatic?: boolean) {
+export function useRequestDetails(filter: TrafficFilterState) {
   return useQuery({
-    queryKey: statisticsKeys.requestDetails(startDate, endDate, isStatic),
+    queryKey: statisticsKeys.requestDetails(filter),
     queryFn: async () => {
       const response = await getRequestDetails({
-        query: {
-          start_date: startDate,
-          end_date: endDate,
-          is_static: isStatic,
-        },
+        query: trafficFilterToQuery(filter),
         client: customApiClient,
       });
       return handleResponse<RequestDetailsResponse>(response);
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 5 * MINUTE,
+    gcTime: 10 * MINUTE,
   });
 }
