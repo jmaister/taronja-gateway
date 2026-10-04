@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StatusPill } from '../components/ui/StatusPill';
 import { formatDate, formatDateTime } from '../lib/format';
+import { SkeletonRows } from '../components/QueryState';
 
 export function CountersManagementPage() {
     const [counterId, setCounterId] = useState<string>('credits');
@@ -157,7 +158,7 @@ export function CountersManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {loadingUsers && !allUserCounters && <p className="text-muted-fg">Loading user counters…</p>}
+                    {loadingUsers && !allUserCounters && <SkeletonRows />}
 
                     {!counterId.trim() && (
                         <p className="py-8 text-center text-muted-fg">Please enter a counter ID.</p>
