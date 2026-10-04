@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { TrafficFilterState, trafficFilterToQuery } from './trafficFilter';
+import {
+    TrafficFilterState,
+    activeDimensionCount,
+    filterFromSearchParams,
+    filterToSearchParams,
+    trafficFilterToQuery,
+} from './trafficFilter';
 
 const base: TrafficFilterState = {
     startDate: '2024-03-01',
@@ -51,5 +57,31 @@ describe('trafficFilterToQuery', () => {
 
     it('ignores a non-numeric status code', () => {
         expect(trafficFilterToQuery({ ...base, statusCode: 'abc' }).status_code).toBeUndefined();
+    });
+});
+
+describe('filter <-> search params', () => {
+    it('round-trips a filter and omits defaults', () => {
+        const filter = { ...base, requestType: 'static' as const, country: 'Spain', statusCode: '404' };
+        const params = filterToSearchParams(filter);
+        expect(params.get('country')).toBe('Spain');
+        expect(params.has('browser')).toBe(false);
+        expect(filterFromSearchParams(params)).toEqual(filter);
+    });
+
+    it('returns null when no filter keys are present', () => {
+        expect(filterFromSearchParams(new URLSearchParams('period=today'))).toBeNull();
+    });
+
+    it('ignores malformed dates and request types', () => {
+        const f = filterFromSearchParams(new URLSearchParams('startDate=nope&requestType=bogus&country=ES'));
+        expect(f?.country).toBe('ES');
+        expect(f?.requestType).toBe('all');
+        expect(f?.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('counts active filters', () => {
+        expect(activeDimensionCount(base)).toBe(0);
+        expect(activeDimensionCount({ ...base, requestType: 'static', browser: 'Chrome' })).toBe(2);
     });
 });

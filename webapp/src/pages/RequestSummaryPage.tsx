@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';
 import { TimeSeriesChart } from '../components/charts/TimeSeriesChart';
-import type { TimeSeriesGranularity } from '@/apiclient';
+import type { RequestStatistics, TimeSeriesGranularity } from '@/apiclient';
 
 interface StatCard {
     title: string;
@@ -122,6 +122,14 @@ function granularityForRange(start: Date, end: Date): TimeSeriesGranularity {
     return 'month';
 }
 
+function successRate(statistics: RequestStatistics): string {
+    if (statistics.totalRequests === 0) return '—';
+    const ok = Object.entries(statistics.requestsByStatus)
+        .filter(([status]) => status.startsWith('2') || status.startsWith('3'))
+        .reduce((sum, [, count]) => sum + count, 0);
+    return `${((ok / statistics.totalRequests) * 100).toFixed(1)}%`;
+}
+
 function TrafficOverTimeSection({ filter }: { filter: TrafficFilterState }) {
     const granularity = granularityForRange(
         new Date(`${filter.startDate}T00:00:00Z`),
@@ -202,6 +210,8 @@ export function RequestSummaryPage() {
             <QueryState isLoading={isLoading} error={error} onRetry={() => refetch()} errorTitle="Error Loading Request Summary" loadingText="Loading request summary...">
                 {!statistics ? (
                     <p className="py-20 text-center text-muted-fg">No request summary available</p>
+                ) : statistics.totalRequests === 0 ? (
+                    <p className="py-20 text-center text-muted-fg">No requests match the current filters</p>
                 ) : (
                     <div className="space-y-6">
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -225,12 +235,7 @@ export function RequestSummaryPage() {
                         />
                         <StatisticCard
                             title="Success Rate"
-                            value={`${(
-                                (Object.entries(statistics.requestsByStatus)
-                                    .filter(([status]) => status.startsWith('2') || status.startsWith('3'))
-                                    .reduce((sum, [, count]) => sum + count, 0) / Math.max(statistics.totalRequests, 1)) *
-                                100
-                            ).toFixed(1)}%`}
+                            value={successRate(statistics)}
                             icon="✅"
                             accent="success"
                         />

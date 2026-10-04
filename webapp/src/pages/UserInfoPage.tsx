@@ -1,4 +1,5 @@
 import { useParams, Link } from 'react-router-dom'; 
+import { formatLongDateTime } from '../lib/format';
 import { UserTokensSection } from '../components/UserTokensSection';
 import { UserNotificationsSection } from '../components/UserNotificationsSection';
 import { useUser } from '@/services/users';
@@ -8,19 +9,6 @@ export function UserInfoPage() {
   const { userId } = useParams<{ userId: string }>(); 
   
   const {data:user, isLoading, isError, error} = useUser(userId || '');
-
-  const formatDate = (dateString?: string | null): string => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleDateString(undefined, { 
-        year: 'numeric', month: 'long', day: 'numeric', 
-        hour: '2-digit', minute: '2-digit' 
-      });
-    } catch (e) {
-      console.error("Error formatting date:", e);
-      return dateString; 
-    }
-  };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -64,10 +52,10 @@ export function UserInfoPage() {
               <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Provider:</span> {user.provider}
             </div>
             <div className="mb-2.5">
-              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Created At:</span> {formatDate(user.createdAt)}
+              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Created At:</span> {formatLongDateTime(user.createdAt)}
             </div>
             <div className="mb-2.5">
-              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Updated At:</span> {formatDate(user.updatedAt)}
+              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Updated At:</span> {formatLongDateTime(user.updatedAt)}
             </div>
 
             {/* User Tokens Section */}
