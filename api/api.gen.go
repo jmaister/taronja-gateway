@@ -751,6 +751,9 @@ type RequestStatistics struct {
 	// Example: {"alice":1200,"bob":900,"guest":300}
 	RequestsByUser map[string]int `json:"requestsByUser"`
 
+	// StaticAssetsExcluded True when management.excludeStaticAssets is on, i.e. requests for static assets are no longer recorded, so the static-only request type filter only matches rows recorded before it was enabled.
+	StaticAssetsExcluded *bool `json:"staticAssetsExcluded,omitempty"`
+
 	// TotalRequests Total number of requests
 	//
 	// Example: 12345

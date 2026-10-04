@@ -686,3 +686,22 @@ func TestStatisticsEndpoints_ApplyTrafficFilter(t *testing.T) {
 	}
 	assert.Equal(t, 2, total)
 }
+
+func TestGetRequestStatistics_ReportsStaticAssetsExcluded(t *testing.T) {
+	defer db.ResetConnection()
+
+	server, _ := setupStatsTestServer()
+	adminCtx := context.WithValue(context.Background(), session.SessionKey, &db.Session{
+		UserID: "admin", IsAuthenticated: true, IsAdmin: true, ValidUntil: time.Now().Add(time.Hour),
+	})
+
+	for _, exclude := range []bool{false, true} {
+		server.SetExcludeStaticAssets(exclude)
+		resp, err := server.GetRequestStatistics(adminCtx, api.GetRequestStatisticsRequestObject{})
+		require.NoError(t, err)
+		stats, ok := resp.(api.GetRequestStatistics200JSONResponse)
+		require.True(t, ok)
+		require.NotNil(t, stats.StaticAssetsExcluded)
+		assert.Equal(t, exclude, *stats.StaticAssetsExcluded)
+	}
+}

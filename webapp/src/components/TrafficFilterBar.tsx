@@ -46,6 +46,12 @@ export function TrafficFilterBar({ controller }: { controller: TrafficFilterCont
                     </Button>
                 )}
             </div>
+            {overview?.staticAssetsExcluded && requestType !== 'dynamic' && (
+                <p className="text-sm text-warning" role="note">
+                    Static asset requests are not being recorded (management.excludeStaticAssets), so only older
+                    records can match "static assets only".
+                </p>
+            )}
             <div className="flex flex-wrap items-end gap-4">
                 {trafficDimensionFields.map((field) => {
                     const source = SUGGESTIONS[field.key];

@@ -27,6 +27,7 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 		log.Printf("Error getting request statistics: %v", err)
 		return api.GetRequestStatistics500JSONResponse{}, nil
 	}
+	stats.StaticAssetsExcluded = &s.excludeStaticAssets
 	return api.GetRequestStatistics200JSONResponse(stats), nil
 }
 
