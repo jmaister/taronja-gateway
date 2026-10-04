@@ -12,7 +12,8 @@ import {
     ChartData,
     ChartOptions,
 } from 'chart.js';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns/format';
+import { parseISO } from 'date-fns/parseISO';
 import type { TimeSeriesPoint, TimeSeriesGranularity } from '@/apiclient';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Title, Tooltip, Legend, Filler);
