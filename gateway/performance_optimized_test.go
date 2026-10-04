@@ -87,7 +87,7 @@ func BenchmarkJA4HCaching(b *testing.B) {
 
 // BenchmarkJA4HNoCaching benchmarks JA4H without caching for comparison
 func BenchmarkJA4HNoCaching(b *testing.B) {
-	optimizedMiddleware := builtin.OptimizedJA4Middleware(false)
+	optimizedMiddleware := builtin.JA4Middleware(false)
 
 	// Create a simple handler
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

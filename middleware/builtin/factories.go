@@ -130,7 +130,7 @@ func NewJA4Factory() *JA4Factory {
 }
 
 func (f *JA4Factory) Create(cfg interface{}) (middleware.Middleware, error) {
-	return OptimizedJA4Middleware(true), nil
+	return JA4Middleware(true), nil
 }
 
 func (f *JA4Factory) GetDefaultConfig() interface{} {

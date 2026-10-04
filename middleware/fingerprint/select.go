@@ -12,8 +12,6 @@ const HeaderName = "X-Taronja-Fingerprint"
 // Fingerprint type identifiers — the value db.ClientInfo.FingerprintType
 // takes, naming which algorithm produced db.ClientInfo.Fingerprint.
 const (
-	// TypeJA4TLS only appears on rows stored by earlier versions.
-	TypeJA4TLS = "ja4_tls"
 	TypeStable = "stable"
 	TypeJA4H   = "ja4h"
 )

@@ -35,7 +35,7 @@ func TestFingerprintIntegration(t *testing.T) {
 	})
 
 	// Apply the JA4 middleware
-	middlewareChain := JA4Middleware(handler)
+	middlewareChain := JA4Middleware(true)(handler)
 
 	// Create a test request with realistic headers
 	req := httptest.NewRequest("POST", "/api/login", nil)

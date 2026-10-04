@@ -174,7 +174,7 @@ func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
 		return r
 	}
 
-	assert.Equal(t, result{"ja4tls-value", fingerprint.TypeJA4TLS}, get("all-three-present"), "ja4_tls_fingerprint should win when all three are present")
+	assert.Equal(t, result{"ja4tls-value", "ja4_tls"}, get("all-three-present"), "ja4_tls_fingerprint should win when all three are present")
 	assert.Equal(t, result{"stable-value-2", fingerprint.TypeStable}, get("stable-and-ja4h"), "stable_fingerprint should win over ja4_fingerprint")
 	assert.Equal(t, result{"ja4h-value-3", fingerprint.TypeJA4H}, get("ja4h-only"), "ja4_fingerprint (JA4H) used only when it's the sole source")
 	assert.Equal(t, result{"already-set-value", "ja4h"}, get("none-present"), "a row that already has Fingerprint set must not be overwritten from an old column, even a decoy one (\"should-not-win\")")

@@ -120,8 +120,3 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository, excludeStatic
 		})
 	}
 }
-
-// StatisticsMiddlewareFunc creates an api.MiddlewareFunc for OpenAPI generated handlers
-func StatisticsMiddlewareFunc(statsRepo db.TrafficMetricRepository, excludeStaticAssets bool) func(http.Handler) http.Handler {
-	return TrafficMetricMiddleware(statsRepo, excludeStaticAssets)
-}

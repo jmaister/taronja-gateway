@@ -173,7 +173,7 @@ type legacyFingerprintSource struct {
 }
 
 var legacyFingerprintSources = []legacyFingerprintSource{
-	{"ja4_tls_fingerprint", fingerprint.TypeJA4TLS},
+	{"ja4_tls_fingerprint", "ja4_tls"},
 	{"stable_fingerprint", fingerprint.TypeStable},
 	{"ja4_fingerprint", fingerprint.TypeJA4H},
 }

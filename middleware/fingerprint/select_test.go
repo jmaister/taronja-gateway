@@ -17,7 +17,6 @@ func TestSelectFingerprint(t *testing.T) {
 	}{
 		{"missing", "", "", ""},
 		{"ja4h", "ja4h:ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", "ge11nn05_9c68f7ca5aaf_d4bd6ad6f3ac", TypeJA4H},
-		{"tls", "ja4_tls:t13i1311h2_f57a46bbacb6_e5728521abd4", "t13i1311h2_f57a46bbacb6_e5728521abd4", TypeJA4TLS},
 		{"value keeps later colons", "stable:a:b", "a:b", TypeStable},
 		{"no separator", "garbage", "", ""},
 		{"empty value", "ja4h:", "", ""},

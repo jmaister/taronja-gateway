@@ -61,7 +61,7 @@ func TestJA4MiddlewareIntegration(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middlewareChain := JA4Middleware(handler)
+			middlewareChain := JA4Middleware(true)(handler)
 			req := tt.setupRequest()
 			rr := httptest.NewRecorder()
 

@@ -110,8 +110,8 @@ func getJA4HCache() *JA4HCache {
 	return ja4hCache
 }
 
-// OptimizedJA4Middleware is an optimized version of JA4Middleware with caching
-func OptimizedJA4Middleware(enableCaching bool) func(http.Handler) http.Handler {
+// JA4Middleware computes the JA4H fingerprint per request, optionally cached.
+func JA4Middleware(enableCaching bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var ja4hFingerprint string

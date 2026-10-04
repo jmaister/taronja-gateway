@@ -116,7 +116,7 @@ type MiddlewareFactory interface {
 
 type JA4Factory struct { ... }
 func (f *JA4Factory) Create(cfg interface{}) (Middleware, error) {
-    return OptimizedJA4Middleware(true), nil
+    return JA4Middleware(true), nil
 }
 ```
 
