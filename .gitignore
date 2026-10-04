@@ -27,3 +27,5 @@ coverage.html
 # Node.js dependencies
 webapp/node_modules/
 sdk/node_modules/
+clients-temp/
+clau.sh
