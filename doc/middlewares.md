@@ -21,7 +21,7 @@ The following middleware refactoring has been **successfully implemented**:
 
 #### ✅ Task 4: Consolidate Session Validation Logic
 **Status**: COMPLETED
-- ✅ Created `middleware/session_utils.go` with shared session validation utilities
+- ✅ Created `middleware/builtin/session.go` with shared session validation utilities
 - ✅ Refactored `SessionMiddleware`, `StrictSessionMiddleware`, and `SessionExtractionMiddleware` to use shared validation logic
 - ✅ Eliminated duplicate session validation code across all middleware
 - ✅ Created consistent session context helpers
@@ -140,9 +140,9 @@ The global middleware is applied using the chain builder in the following order:
 
 2. **SessionExtractionMiddleware** (if analytics enabled)
    - Purpose: Extract session information without enforcing authentication
-   - Location: `middleware/session_extraction.go`
+   - Location: `middleware/builtin/session.go`
    - Dependencies: SessionStore, TokenService
-   - Context: Uses shared validation logic from `session_utils.go`
+   - Context: Uses shared validation logic from `session.go`
 
 3. **TrafficMetricMiddleware** (if analytics enabled)
    - Purpose: Collect request/response statistics
@@ -169,7 +169,7 @@ Applied using `RouteChainBuilder` for each individual route:
    - Purpose: Enforce authentication and authorization
    - Location: `middleware/auth.go`
    - Dependencies: SessionStore, TokenService
-   - Context: Uses shared validation logic from `session_utils.go`
+   - Context: Uses shared validation logic from `session.go`
 
 ### API-Specific Middleware
 
@@ -177,9 +177,9 @@ For OpenAPI-generated routes:
 
 1. **StrictSessionMiddleware**
    - Purpose: OpenAPI-compatible session validation
-   - Location: `middleware/session.go`
+   - Location: `middleware/builtin/session.go`
    - Dependencies: SessionStore, TokenService
-   - Context: Uses shared validation logic from `session_utils.go`
+   - Context: Uses shared validation logic from `session.go`
 
 ## Middleware Execution Flow
 

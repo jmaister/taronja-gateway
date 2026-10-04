@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -24,7 +25,7 @@ func requireSession(ctx context.Context) (*db.Session, bool) {
 // "some valid session", so the admin boundary lives in each handler.
 func requireAdminSession(ctx context.Context) (*db.Session, bool) {
 	sessionObj, ok := requireSession(ctx)
-	if !ok || !sessionObj.IsAuthenticated || !sessionObj.IsAdmin {
+	if !ok || !sessionObj.IsAuthenticated || !builtin.CheckAdminAccess(sessionObj, true) {
 		return nil, false
 	}
 	return sessionObj, true
@@ -45,7 +46,7 @@ func requireAdminAccess(ctx context.Context) (*db.Session, adminAccess) {
 	if !ok || !sessionObj.IsAuthenticated {
 		return nil, accessUnauthenticated
 	}
-	if !sessionObj.IsAdmin {
+	if !builtin.CheckAdminAccess(sessionObj, true) {
 		return sessionObj, accessForbidden
 	}
 	return sessionObj, accessGranted
