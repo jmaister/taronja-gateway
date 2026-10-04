@@ -75,12 +75,12 @@ taronja-gateway/
 
 ### `gateway/` and `gateway/deps/`
 
-**`gateway/gateway.go`** — Core HTTP server assembly:
-- Builds `http.Server` on Go 1.22+ `net/http.ServeMux`
-- Registers management API routes (`/​_/me`, `/​_/login`, `/​_/logout`, `/​_/users`, `/​_/tokens`, `/​_/statistics`, `/​_/counters`, etc.)
-- Registers user-defined routes from config (reverse proxy, static file, SPA routes) with pattern conversion for wildcards
-- Implements reverse-proxy logic via `net.http/httputil.ReverseProxy` with path rewriting, SPA 404-fallback, and header injection (`X-Forwarded-*`, `X-User-Id`, `X-User-Data`)
-- Serves admin dashboard at `<management.prefix>/admin/` (default `/_/admin/`) with SPA index.html fallback
+**`gateway/`** — HTTP server assembly, one file per concern:
+- `gateway.go` — `Gateway` struct, constructor, admin-user bootstrap, template parsing; `setup.go` builds the middleware chain, mux and rate limiter
+- `management_routes.go` — management endpoints (`/​_/me`, `/​_/login`, `/​_/logout`, `/​_/users`, `/​_/tokens`, `/​_/statistics`, `/​_/counters`, etc.), the admin dashboard at `<management.prefix>/admin/` and the login routes
+- `routes.go` — user-defined routes from config (proxy, static, SPA) and wildcard pattern conversion
+- `proxy.go` — reverse proxy via `net/http/httputil.ReverseProxy` with path rewriting and header injection (`X-Forwarded-*`, `X-User-Id`, `X-User-Data`); `loadbalancer.go` picks backends
+- `static.go` / `spa.go` — static file handler and SPA 404-fallback to `index.html`
 
 **`gateway/deps/`** — Dependency-injection container:
 - `Dependencies` struct holds DB repositories, session store, token service, rate limiter, cache, geolocation config
