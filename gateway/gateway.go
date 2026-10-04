@@ -64,11 +64,12 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 	}
 
 	gateway.Server = &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  120 * time.Second,
-		Handler:      gateway.handler,
+		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		// No Read/WriteTimeout: they cap whole request bodies and responses,
+		// which would cut uploads, downloads and streams proxied to backends.
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		Handler:           gateway.handler,
 	}
 
 	return gateway, nil
