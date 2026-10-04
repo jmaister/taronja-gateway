@@ -5,8 +5,6 @@ import (
 	"sort"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
 )
 
 // GetMiddlewareStatus implements GET /_/api/middleware — lists every global
@@ -14,9 +12,7 @@ import (
 // doc/refactor01.md Phase 3), with its status, dependencies, and health where
 // a check is implemented.
 func (s *StrictApiServer) GetMiddlewareStatus(ctx context.Context, req api.GetMiddlewareStatusRequestObject) (api.GetMiddlewareStatusResponseObject, error) {
-	// admin check, matching the rate limiter stats/config endpoints
-	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+	if _, ok := requireAdminSession(ctx); !ok {
 		return api.GetMiddlewareStatus401JSONResponse{}, nil
 	}
 
@@ -57,9 +53,7 @@ func (s *StrictApiServer) GetMiddlewareStatus(ctx context.Context, req api.GetMi
 // in-memory request metrics recorded for a single global middleware since the
 // process started (see middleware.Registry.GetMetrics).
 func (s *StrictApiServer) GetMiddlewareMetrics(ctx context.Context, req api.GetMiddlewareMetricsRequestObject) (api.GetMiddlewareMetricsResponseObject, error) {
-	// admin check, matching the rate limiter stats/config endpoints
-	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+	if _, ok := requireAdminSession(ctx); !ok {
 		return api.GetMiddlewareMetrics401JSONResponse{}, nil
 	}
 
@@ -93,9 +87,7 @@ func (s *StrictApiServer) GetMiddlewareMetrics(ctx context.Context, req api.GetM
 // Added in Phase 5 (doc/refactor01.md) so a dashboard doesn't need one
 // request per middleware from the status list.
 func (s *StrictApiServer) GetAllMiddlewareMetrics(ctx context.Context, req api.GetAllMiddlewareMetricsRequestObject) (api.GetAllMiddlewareMetricsResponseObject, error) {
-	// admin check, matching the rate limiter stats/config endpoints
-	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sess == nil || !sess.IsAuthenticated || !sess.IsAdmin {
+	if _, ok := requireAdminSession(ctx); !ok {
 		return api.GetAllMiddlewareMetrics401JSONResponse{}, nil
 	}
 

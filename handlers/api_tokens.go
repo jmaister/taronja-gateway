@@ -7,14 +7,13 @@ import (
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
 )
 
 // ListTokens handles GET /api/users/{userId}/tokens
 func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokensRequestObject) (api.ListTokensResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		log.Printf("ListTokens: No session found in context")
 		return api.ListTokens401JSONResponse{
 			Code:    401,
@@ -63,8 +62,8 @@ func (s *StrictApiServer) ListTokens(ctx context.Context, request api.ListTokens
 // CreateToken handles POST /api/users/{userId}/tokens
 func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTokenRequestObject) (api.CreateTokenResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		log.Printf("CreateToken: No session found in context")
 		return api.CreateToken401JSONResponse{
 			Code:    401,
@@ -145,8 +144,8 @@ func (s *StrictApiServer) CreateToken(ctx context.Context, request api.CreateTok
 // GetToken handles GET /api/tokens/{tokenId}
 func (s *StrictApiServer) GetToken(ctx context.Context, request api.GetTokenRequestObject) (api.GetTokenResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		log.Printf("GetToken: No session found in context")
 		return api.GetToken401JSONResponse{
 			Code:    401,
@@ -179,8 +178,8 @@ func (s *StrictApiServer) GetToken(ctx context.Context, request api.GetTokenRequ
 // DeleteToken handles DELETE /api/tokens/{tokenId}
 func (s *StrictApiServer) DeleteToken(ctx context.Context, request api.DeleteTokenRequestObject) (api.DeleteTokenResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		log.Printf("DeleteToken: No session found in context")
 		return api.DeleteToken401JSONResponse{
 			Code:    401,

@@ -10,7 +10,6 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/notification"
-	"github.com/jmaister/taronja-gateway/session"
 )
 
 // toAPINotification converts a stored db.Notification (with its
@@ -56,21 +55,6 @@ func toAPINotification(n *db.Notification) (api.Notification, error) {
 		result.Actions = &apiActions
 	}
 	return result, nil
-}
-
-// requireSession pulls the authenticated session out of ctx — every
-// notification endpoint that needs one is only ever reached once
-// middleware.StrictSessionMiddleware has already required auth for its
-// operationId, so a missing session here is always an internal
-// inconsistency, not a real client error; still returned as 401 rather
-// than panicking, on the same "fail safe" principle handlers/api_me.go's
-// analogous check follows.
-func requireSession(ctx context.Context) (*db.Session, bool) {
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
-		return nil, false
-	}
-	return sessionObj, true
 }
 
 // CreateNotification handles POST /api/notifications — server-to-server,

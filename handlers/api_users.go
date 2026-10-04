@@ -11,30 +11,9 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
-	"github.com/jmaister/taronja-gateway/session"
 	openapi_types "github.com/oapi-codegen/runtime/types" // Added for openapi_types.Email
 	"gorm.io/gorm"                                        // Added for gorm.ErrRecordNotFound
 )
-
-// requireAdminSession reports whether ctx carries a session belonging to an
-// admin. Every operation in this file manages user *accounts* in aggregate —
-// listing everyone, reading anyone by ID, creating a new one — so unlike a
-// route scoped to "the caller's own resource," there's no legitimate
-// non-admin caller to allow through at all. StrictSessionMiddleware only
-// enforces "some valid session exists" globally
-// (gateway.go's adminRequired: false), leaving the actual admin boundary to
-// each handler — the same convention handlers/api_tokens.go already
-// established for exactly this class of endpoint; this file just never
-// picked it up. Every OpenAPI operation gets its own generated 401 response
-// type, so callers build their own from the boolean rather than this
-// function returning one directly.
-func requireAdminSession(ctx context.Context) (*db.Session, bool) {
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil || !sessionObj.IsAdmin {
-		return nil, false
-	}
-	return sessionObj, true
-}
 
 // dbUserToAPIUserResponse converts a db.User object to an API UserResponse object.
 // It handles the conversion of ID to string and formats timestamps to RFC3339.

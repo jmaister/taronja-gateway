@@ -128,7 +128,7 @@ func TestGetTimeSeries_BucketsAndBackfillsAndCountsDistinctly(t *testing.T) {
 		require.NoError(t, repo.DB.Create(&seed[i]).Error)
 	}
 
-	points, err := repo.GetTimeSeries(day, day.Add(13*time.Hour), GranularityHour)
+	points, err := repo.GetTimeSeries(rangeFilter(day, day.Add(13*time.Hour)), GranularityHour)
 	require.NoError(t, err)
 
 	byHour := make(map[int]TimeSeriesPoint, len(points))
@@ -190,7 +190,7 @@ func TestGetTimeSeries_NewVsReturningVisitors(t *testing.T) {
 		require.NoError(t, repo.DB.Create(&seed[i]).Error)
 	}
 
-	points, err := repo.GetTimeSeries(queryStart, queryStart.Add(4*time.Hour), GranularityHour)
+	points, err := repo.GetTimeSeries(rangeFilter(queryStart, queryStart.Add(4*time.Hour)), GranularityHour)
 	require.NoError(t, err)
 
 	byHour := make(map[int]TimeSeriesPoint, len(points))
@@ -217,4 +217,8 @@ func TestGetTimeSeries_NewVsReturningVisitors(t *testing.T) {
 	assert.Equal(t, 1, hour11.UniqueFingerprints)
 	assert.Equal(t, 0, hour11.NewVisitors, "fp-veteran's true first-ever appearance is 30 days before this query range")
 	assert.Equal(t, 1, hour11.ReturningVisitors)
+}
+
+func rangeFilter(start, end time.Time) TrafficFilter {
+	return TrafficFilter{Start: &start, End: &end}
 }

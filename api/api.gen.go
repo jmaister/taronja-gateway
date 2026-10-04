@@ -926,6 +926,39 @@ type UserResponse struct {
 	Username string `json:"username"`
 }
 
+// TrafficBrowser defines model for TrafficBrowser.
+type TrafficBrowser = string
+
+// TrafficCountry defines model for TrafficCountry.
+type TrafficCountry = string
+
+// TrafficDeviceType defines model for TrafficDeviceType.
+type TrafficDeviceType = string
+
+// TrafficEndDate Example: 2025-12-31T23:59:59Z
+type TrafficEndDate = time.Time
+
+// TrafficFingerprint defines model for TrafficFingerprint.
+type TrafficFingerprint = string
+
+// TrafficFingerprintType Example: ja4h
+type TrafficFingerprintType = string
+
+// TrafficIsStatic defines model for TrafficIsStatic.
+type TrafficIsStatic = bool
+
+// TrafficPlatform defines model for TrafficPlatform.
+type TrafficPlatform = string
+
+// TrafficStartDate Example: 2025-01-01T00:00:00Z
+type TrafficStartDate = time.Time
+
+// TrafficStatusCode defines model for TrafficStatusCode.
+type TrafficStatusCode = int
+
+// TrafficUsername defines model for TrafficUsername.
+type TrafficUsername = string
+
 // GetAllUserCountersParams defines parameters for GetAllUserCounters.
 type GetAllUserCountersParams struct {
 	// Limit Maximum number of users to return
@@ -980,23 +1013,74 @@ type GetBlockedClientsParams struct {
 
 // GetRequestStatisticsParams defines parameters for GetRequestStatistics.
 type GetRequestStatisticsParams struct {
-	// StartDate Start date for filtering results (ISO 8601 format)
-	StartDate *time.Time `form:"start_date,omitempty" json:"start_date,omitempty"`
+	// StartDate Start of the date range (ISO 8601 format).
+	StartDate *TrafficStartDate `form:"start_date,omitempty" json:"start_date,omitempty"`
 
-	// EndDate End date for filtering results (ISO 8601 format)
-	EndDate *time.Time `form:"end_date,omitempty" json:"end_date,omitempty"`
+	// EndDate End of the date range (ISO 8601 format).
+	EndDate *TrafficEndDate `form:"end_date,omitempty" json:"end_date,omitempty"`
+
+	// IsStatic Filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false only non-static requests, omitting it returns both.
+	IsStatic *TrafficIsStatic `form:"is_static,omitempty" json:"is_static,omitempty"`
+
+	// StatusCode Only requests that got this HTTP status code.
+	StatusCode *TrafficStatusCode `form:"status_code,omitempty" json:"status_code,omitempty"`
+
+	// Country Only requests from this country (as reported in requestsByCountry).
+	Country *TrafficCountry `form:"country,omitempty" json:"country,omitempty"`
+
+	// DeviceType Only requests from this device type (as reported in requestsByDeviceType).
+	DeviceType *TrafficDeviceType `form:"device_type,omitempty" json:"device_type,omitempty"`
+
+	// Platform Only requests from this platform (as reported in requestsByPlatform).
+	Platform *TrafficPlatform `form:"platform,omitempty" json:"platform,omitempty"`
+
+	// Browser Only requests from this browser (as reported in requestsByBrowser).
+	Browser *TrafficBrowser `form:"browser,omitempty" json:"browser,omitempty"`
+
+	// Username Only requests made by this user; "guest" selects unauthenticated requests.
+	Username *TrafficUsername `form:"username,omitempty" json:"username,omitempty"`
+
+	// Fingerprint Only requests carrying this client fingerprint value.
+	Fingerprint *TrafficFingerprint `form:"fingerprint,omitempty" json:"fingerprint,omitempty"`
+
+	// FingerprintType Only requests whose fingerprint was produced by this algorithm (stable or ja4h).
+	FingerprintType *TrafficFingerprintType `form:"fingerprint_type,omitempty" json:"fingerprint_type,omitempty"`
 }
 
 // GetRequestDetailsParams defines parameters for GetRequestDetails.
 type GetRequestDetailsParams struct {
-	// StartDate Optional start date for filtering results (ISO 8601 format)
-	StartDate *time.Time `form:"start_date,omitempty" json:"start_date,omitempty"`
+	// StartDate Start of the date range (ISO 8601 format).
+	StartDate *TrafficStartDate `form:"start_date,omitempty" json:"start_date,omitempty"`
 
-	// EndDate Optional end date for filtering results (ISO 8601 format)
-	EndDate *time.Time `form:"end_date,omitempty" json:"end_date,omitempty"`
+	// EndDate End of the date range (ISO 8601 format).
+	EndDate *TrafficEndDate `form:"end_date,omitempty" json:"end_date,omitempty"`
 
-	// IsStatic Optional filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false returns only non-static requests, and omitting it returns both.
-	IsStatic *bool `form:"is_static,omitempty" json:"is_static,omitempty"`
+	// IsStatic Filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false only non-static requests, omitting it returns both.
+	IsStatic *TrafficIsStatic `form:"is_static,omitempty" json:"is_static,omitempty"`
+
+	// StatusCode Only requests that got this HTTP status code.
+	StatusCode *TrafficStatusCode `form:"status_code,omitempty" json:"status_code,omitempty"`
+
+	// Country Only requests from this country (as reported in requestsByCountry).
+	Country *TrafficCountry `form:"country,omitempty" json:"country,omitempty"`
+
+	// DeviceType Only requests from this device type (as reported in requestsByDeviceType).
+	DeviceType *TrafficDeviceType `form:"device_type,omitempty" json:"device_type,omitempty"`
+
+	// Platform Only requests from this platform (as reported in requestsByPlatform).
+	Platform *TrafficPlatform `form:"platform,omitempty" json:"platform,omitempty"`
+
+	// Browser Only requests from this browser (as reported in requestsByBrowser).
+	Browser *TrafficBrowser `form:"browser,omitempty" json:"browser,omitempty"`
+
+	// Username Only requests made by this user; "guest" selects unauthenticated requests.
+	Username *TrafficUsername `form:"username,omitempty" json:"username,omitempty"`
+
+	// Fingerprint Only requests carrying this client fingerprint value.
+	Fingerprint *TrafficFingerprint `form:"fingerprint,omitempty" json:"fingerprint,omitempty"`
+
+	// FingerprintType Only requests whose fingerprint was produced by this algorithm (stable or ja4h).
+	FingerprintType *TrafficFingerprintType `form:"fingerprint_type,omitempty" json:"fingerprint_type,omitempty"`
 }
 
 // GetRequestTimeSeriesParams defines parameters for GetRequestTimeSeries.
@@ -1009,6 +1093,33 @@ type GetRequestTimeSeriesParams struct {
 
 	// Granularity Bucket size. Defaults to "day". Each is capped to a maximum start_date/end_date span, to keep the number of returned points bounded: minute (24 hours), hour (31 days), day (366 days), week (2 years), month (5 years).
 	Granularity *TimeSeriesGranularity `form:"granularity,omitempty" json:"granularity,omitempty"`
+
+	// IsStatic Filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false only non-static requests, omitting it returns both.
+	IsStatic *TrafficIsStatic `form:"is_static,omitempty" json:"is_static,omitempty"`
+
+	// StatusCode Only requests that got this HTTP status code.
+	StatusCode *TrafficStatusCode `form:"status_code,omitempty" json:"status_code,omitempty"`
+
+	// Country Only requests from this country (as reported in requestsByCountry).
+	Country *TrafficCountry `form:"country,omitempty" json:"country,omitempty"`
+
+	// DeviceType Only requests from this device type (as reported in requestsByDeviceType).
+	DeviceType *TrafficDeviceType `form:"device_type,omitempty" json:"device_type,omitempty"`
+
+	// Platform Only requests from this platform (as reported in requestsByPlatform).
+	Platform *TrafficPlatform `form:"platform,omitempty" json:"platform,omitempty"`
+
+	// Browser Only requests from this browser (as reported in requestsByBrowser).
+	Browser *TrafficBrowser `form:"browser,omitempty" json:"browser,omitempty"`
+
+	// Username Only requests made by this user; "guest" selects unauthenticated requests.
+	Username *TrafficUsername `form:"username,omitempty" json:"username,omitempty"`
+
+	// Fingerprint Only requests carrying this client fingerprint value.
+	Fingerprint *TrafficFingerprint `form:"fingerprint,omitempty" json:"fingerprint,omitempty"`
+
+	// FingerprintType Only requests whose fingerprint was produced by this algorithm (stable or ja4h).
+	FingerprintType *TrafficFingerprintType `form:"fingerprint_type,omitempty" json:"fingerprint_type,omitempty"`
 }
 
 // LogoutUserParams defines parameters for LogoutUser.
@@ -1923,6 +2034,123 @@ func (siw *ServerInterfaceWrapper) GetRequestStatistics(w http.ResponseWriter, r
 		return
 	}
 
+	// ------------- Optional query parameter "is_static" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "is_static", r.URL.Query(), &params.IsStatic, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "is_static"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "is_static", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status_code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status_code", r.URL.Query(), &params.StatusCode, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status_code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status_code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "country" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "country", r.URL.Query(), &params.Country, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "country"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "country", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "device_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "device_type", r.URL.Query(), &params.DeviceType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "device_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "device_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "platform" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "platform", r.URL.Query(), &params.Platform, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "platform"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "platform", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "browser" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "browser", r.URL.Query(), &params.Browser, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "browser"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "browser", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "username" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "username", r.URL.Query(), &params.Username, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fingerprint" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fingerprint", r.URL.Query(), &params.Fingerprint, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fingerprint"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fingerprint_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fingerprint_type", r.URL.Query(), &params.FingerprintType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fingerprint_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint_type", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetRequestStatistics(w, r, params)
 	}))
@@ -1982,6 +2210,110 @@ func (siw *ServerInterfaceWrapper) GetRequestDetails(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "status_code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status_code", r.URL.Query(), &params.StatusCode, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status_code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status_code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "country" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "country", r.URL.Query(), &params.Country, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "country"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "country", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "device_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "device_type", r.URL.Query(), &params.DeviceType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "device_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "device_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "platform" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "platform", r.URL.Query(), &params.Platform, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "platform"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "platform", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "browser" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "browser", r.URL.Query(), &params.Browser, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "browser"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "browser", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "username" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "username", r.URL.Query(), &params.Username, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fingerprint" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fingerprint", r.URL.Query(), &params.Fingerprint, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fingerprint"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fingerprint_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fingerprint_type", r.URL.Query(), &params.FingerprintType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fingerprint_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint_type", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetRequestDetails(w, r, params)
 	}))
@@ -2037,6 +2369,123 @@ func (siw *ServerInterfaceWrapper) GetRequestTimeSeries(w http.ResponseWriter, r
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "granularity"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "granularity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "is_static" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "is_static", r.URL.Query(), &params.IsStatic, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "is_static"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "is_static", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status_code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status_code", r.URL.Query(), &params.StatusCode, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status_code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status_code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "country" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "country", r.URL.Query(), &params.Country, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "country"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "country", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "device_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "device_type", r.URL.Query(), &params.DeviceType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "device_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "device_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "platform" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "platform", r.URL.Query(), &params.Platform, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "platform"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "platform", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "browser" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "browser", r.URL.Query(), &params.Browser, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "browser"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "browser", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "username" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "username", r.URL.Query(), &params.Username, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "username"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fingerprint" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fingerprint", r.URL.Query(), &params.Fingerprint, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fingerprint"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fingerprint_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fingerprint_type", r.URL.Query(), &params.FingerprintType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fingerprint_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint_type", Err: err})
 		}
 		return
 	}

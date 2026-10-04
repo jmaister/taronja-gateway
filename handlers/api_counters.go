@@ -5,8 +5,6 @@ import (
 	"errors"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/session"
 	"github.com/oapi-codegen/runtime/types"
 	"gorm.io/gorm"
 )
@@ -14,8 +12,8 @@ import (
 // getUserCounters handles GET /api/counters/{counterId}/{userId}
 func (s *StrictApiServer) GetUserCounters(ctx context.Context, request api.GetUserCountersRequestObject) (api.GetUserCountersResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		return api.GetUserCounters401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized",
@@ -78,8 +76,8 @@ func (s *StrictApiServer) GetUserCounters(ctx context.Context, request api.GetUs
 // adjustUserCounters handles POST /api/counters/{counterId}/{userId}
 func (s *StrictApiServer) AdjustUserCounters(ctx context.Context, request api.AdjustUserCountersRequestObject) (api.AdjustUserCountersResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		return api.AdjustUserCounters401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized",
@@ -156,8 +154,8 @@ func (s *StrictApiServer) AdjustUserCounters(ctx context.Context, request api.Ad
 // getUserCounterHistory handles GET /api/counters/{counterId}/{userId}/history
 func (s *StrictApiServer) GetUserCounterHistory(ctx context.Context, request api.GetUserCounterHistoryRequestObject) (api.GetUserCounterHistoryResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		return api.GetUserCounterHistory401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized",
@@ -239,8 +237,8 @@ func (s *StrictApiServer) GetUserCounterHistory(ctx context.Context, request api
 // getAllUserCounters handles GET /api/admin/counters/{counterId}
 func (s *StrictApiServer) GetAllUserCounters(ctx context.Context, request api.GetAllUserCountersRequestObject) (api.GetAllUserCountersResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		return api.GetAllUserCounters401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized",
@@ -309,8 +307,8 @@ func (s *StrictApiServer) GetAllUserCounters(ctx context.Context, request api.Ge
 // getAvailableCounters handles GET /api/admin/counters
 func (s *StrictApiServer) GetAvailableCounters(ctx context.Context, request api.GetAvailableCountersRequestObject) (api.GetAvailableCountersResponseObject, error) {
 	// Get session from context
-	sessionObj, ok := ctx.Value(session.SessionKey).(*db.Session)
-	if !ok || sessionObj == nil {
+	sessionObj, ok := requireSession(ctx)
+	if !ok {
 		return api.GetAvailableCounters401JSONResponse{
 			Code:    401,
 			Message: "Unauthorized",

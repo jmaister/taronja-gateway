@@ -639,3 +639,50 @@ func TestGetRequestTimeSeries_Success(t *testing.T) {
 	assert.Equal(t, 1, hour2.ErrorCount)
 	assert.InDelta(t, 2.0, hour2.AverageResponseTime, 0.01, "average of 1ms and 3ms")
 }
+
+func TestStatisticsEndpoints_ApplyTrafficFilter(t *testing.T) {
+	defer db.ResetConnection()
+
+	server, repo := setupStatsTestServer()
+	now := time.Now()
+	for _, c := range []struct{ country, browser string }{{"ES", "Chrome"}, {"ES", "Safari"}, {"FR", "Chrome"}} {
+		require.NoError(t, repo.Create(&db.TrafficMetric{
+			HttpMethod: "GET", Path: "/p", HttpStatus: 200, Timestamp: now.Add(-time.Minute),
+			ClientInfo: db.ClientInfo{Country: c.country, BrowserFamily: c.browser},
+		}))
+	}
+	adminCtx := context.WithValue(context.Background(), session.SessionKey, &db.Session{
+		UserID: "admin", IsAuthenticated: true, IsAdmin: true, ValidUntil: now.Add(time.Hour),
+	})
+	spain := "ES"
+	chrome := "Chrome"
+
+	statsResp, err := server.GetRequestStatistics(adminCtx, api.GetRequestStatisticsRequestObject{
+		Params: api.GetRequestStatisticsParams{Country: &spain},
+	})
+	require.NoError(t, err)
+	stats, ok := statsResp.(api.GetRequestStatistics200JSONResponse)
+	require.True(t, ok)
+	assert.Equal(t, 2, stats.TotalRequests)
+	assert.Equal(t, map[string]int{"Chrome": 1, "Safari": 1}, stats.RequestsByBrowser)
+
+	detailsResp, err := server.GetRequestDetails(adminCtx, api.GetRequestDetailsRequestObject{
+		Params: api.GetRequestDetailsParams{Country: &spain, Browser: &chrome},
+	})
+	require.NoError(t, err)
+	details, ok := detailsResp.(api.GetRequestDetails200JSONResponse)
+	require.True(t, ok)
+	assert.Len(t, details.Requests, 1)
+
+	seriesResp, err := server.GetRequestTimeSeries(adminCtx, api.GetRequestTimeSeriesRequestObject{
+		Params: api.GetRequestTimeSeriesParams{Country: &spain},
+	})
+	require.NoError(t, err)
+	series, ok := seriesResp.(api.GetRequestTimeSeries200JSONResponse)
+	require.True(t, ok)
+	total := 0
+	for _, p := range series.Points {
+		total += p.RequestCount
+	}
+	assert.Equal(t, 2, total)
+}

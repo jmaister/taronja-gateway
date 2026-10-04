@@ -1,8 +1,8 @@
 package db
 
 import (
+	"fmt"
 	"log"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -14,32 +14,19 @@ type TrafficMetricRepository interface {
 	// transaction, so N records cost close to one writer-lock acquisition. A batch
 	// larger than one chunk is valid input: the background flusher can fall behind.
 	CreateBatch(stats []*TrafficMetric) error
-	FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error)
 	FindByPath(path string, limit int) ([]TrafficMetric, error)
-	GetAverageResponseTime(startDate, endDate time.Time) (float64, error)
-	GetRequestCountByStatus(startDate, endDate time.Time) (map[int]int, error)
-	GetTotalRequestCount(startDate, endDate time.Time) (int64, error)
-	GetAverageResponseSize(startDate, endDate time.Time) (float64, error)
-	GetRequestCountByCountry(startDate, endDate time.Time) (map[string]int, error)
-	GetRequestCountByDeviceType(startDate, endDate time.Time) (map[string]int, error)
-	GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error)
-	GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error)
-	GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) // NEW
-	// GetRequestCountByFingerprint groups by ClientInfo.Fingerprint — the
-	// single, consolidated fingerprint value (see
-	// fingerprint.SelectFingerprint), which may have come from any of the
-	// three algorithms per row. Pair with GetRequestCountByFingerprintType
-	// if the algorithm breakdown matters.
-	GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error)
-	// GetRequestCountByFingerprintType groups by ClientInfo.FingerprintType
-	// ("stable"/"ja4h") — how many recorded requests got each
-	// algorithm, independent of the specific fingerprint values.
-	GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error)
-	ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error)
+	// The methods below all take a TrafficFilter (see trafficfilter.go).
+	CountRequests(filter TrafficFilter) (int64, error)
+	AverageResponseTimeNs(filter TrafficFilter) (float64, error)
+	AverageResponseSize(filter TrafficFilter) (float64, error)
+	// CountBy groups the filtered requests by dimension. Keys are the
+	// column's values rendered as strings (status codes included).
+	CountBy(dimension Dimension, filter TrafficFilter) (map[string]int, error)
+	ListRequestDetails(filter TrafficFilter) ([]TrafficMetricWithUser, error)
 	// GetTimeSeries returns request/visitor counts bucketed over time — see
-	// db/timeseries.go for the full doc comment, granularity options, and
-	// range validation (ValidateTimeSeriesRange).
-	GetTimeSeries(startDate, endDate time.Time, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error)
+	// db/timeseries.go for granularity options and range validation
+	// (ValidateTimeSeriesRange). filter.Start and filter.End are required.
+	GetTimeSeries(filter TrafficFilter, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error)
 }
 
 // TrafficMetricRepositoryDB implements TrafficMetricRepository using GORM.
@@ -94,21 +81,6 @@ func (r *TrafficMetricRepositoryDB) CreateBatch(stats []*TrafficMetric) error {
 	return nil
 }
 
-// FindByDateRange retrieves statistics within a date range.
-func (r *TrafficMetricRepositoryDB) FindByDateRange(startDate, endDate time.Time) ([]TrafficMetric, error) {
-	// .UTC(): BETWEEN compares TEXT, and stored values are UTC, so non-UTC bounds
-	// would compare different strings for the same instant and match the wrong rows.
-	// Every date-range method does this.
-	startDate, endDate = startDate.UTC(), endDate.UTC()
-	var stats []TrafficMetric
-	err := r.DB.Where("timestamp BETWEEN ? AND ?", startDate, endDate).Find(&stats).Error
-	if err != nil {
-		log.Printf("Error finding statistics by date range: %v", err)
-		return nil, err
-	}
-	return stats, nil
-}
-
 // FindByPath retrieves statistics for a specific path with limit.
 func (r *TrafficMetricRepositoryDB) FindByPath(path string, limit int) ([]TrafficMetric, error) {
 	var stats []TrafficMetric
@@ -120,315 +92,69 @@ func (r *TrafficMetricRepositoryDB) FindByPath(path string, limit int) ([]Traffi
 	return stats, nil
 }
 
-// GetAverageResponseTime calculates the average response time within a date range.
-func (r *TrafficMetricRepositoryDB) GetAverageResponseTime(startDate, endDate time.Time) (float64, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var result struct {
-		Average float64
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("AVG(response_time_ns) as average").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Scan(&result).Error
-
-	if err != nil {
-		log.Printf("Error calculating average response time: %v", err)
-		return 0, err
-	}
-
-	return result.Average, nil
+func (r *TrafficMetricRepositoryDB) filtered(filter TrafficFilter) *gorm.DB {
+	return filter.Apply(r.DB.Model(&TrafficMetric{}))
 }
 
-// GetRequestCountByStatus returns request counts grouped by status code within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByStatus(startDate, endDate time.Time) (map[int]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		HttpStatus int
-		Count      int
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("http_status, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("http_status").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by status: %v", err)
-		return nil, err
-	}
-
-	statusCounts := make(map[int]int)
-	for _, result := range results {
-		statusCounts[result.HttpStatus] = result.Count
-	}
-
-	return statusCounts, nil
-}
-
-// GetTotalRequestCount returns the total number of requests within a date range.
-func (r *TrafficMetricRepositoryDB) GetTotalRequestCount(startDate, endDate time.Time) (int64, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
+// CountRequests returns the number of requests matching filter.
+func (r *TrafficMetricRepositoryDB) CountRequests(filter TrafficFilter) (int64, error) {
 	var count int64
-	err := r.DB.Model(&TrafficMetric{}).
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Count(&count).Error
-
-	if err != nil {
-		log.Printf("Error getting total request count: %v", err)
+	if err := r.filtered(filter).Count(&count).Error; err != nil {
+		log.Printf("Error counting requests: %v", err)
 		return 0, err
 	}
-
 	return count, nil
 }
 
-// GetAverageResponseSize calculates the average response size within a date range.
-func (r *TrafficMetricRepositoryDB) GetAverageResponseSize(startDate, endDate time.Time) (float64, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var result struct {
-		Average float64
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("AVG(response_size) as average").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Scan(&result).Error
-
+func (r *TrafficMetricRepositoryDB) average(column string, filter TrafficFilter) (float64, error) {
+	var result struct{ Average float64 }
+	err := r.filtered(filter).Select("COALESCE(AVG(" + column + "), 0) as average").Scan(&result).Error
 	if err != nil {
-		log.Printf("Error calculating average response size: %v", err)
+		log.Printf("Error calculating average %s: %v", column, err)
 		return 0, err
 	}
-
 	return result.Average, nil
 }
 
-// GetRequestCountByCountry returns request counts grouped by country within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByCountry(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		Country string
-		Count   int
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("country, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("country").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by country: %v", err)
-		return nil, err
-	}
-
-	countryCounts := make(map[string]int)
-	for _, result := range results {
-		countryCounts[result.Country] = result.Count
-	}
-
-	return countryCounts, nil
+// AverageResponseTimeNs returns the average response time, in nanoseconds.
+func (r *TrafficMetricRepositoryDB) AverageResponseTimeNs(filter TrafficFilter) (float64, error) {
+	return r.average("response_time_ns", filter)
 }
 
-// GetRequestCountByDeviceType returns request counts grouped by device type within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByDeviceType(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		DeviceFamily string
-		Count        int
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("device_family, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("device_family").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by device type: %v", err)
-		return nil, err
-	}
-
-	deviceCounts := make(map[string]int)
-	for _, result := range results {
-		deviceCounts[result.DeviceFamily] = result.Count
-	}
-
-	return deviceCounts, nil
+// AverageResponseSize returns the average response size, in bytes.
+func (r *TrafficMetricRepositoryDB) AverageResponseSize(filter TrafficFilter) (float64, error) {
+	return r.average("response_size", filter)
 }
 
-// GetRequestCountByPlatform returns request counts grouped by platform within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByPlatform(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		OSFamily string
-		Count    int
+// CountBy returns request counts per distinct value of dimension.
+func (r *TrafficMetricRepositoryDB) CountBy(dimension Dimension, filter TrafficFilter) (map[string]int, error) {
+	spec, ok := dimensionSpecs[dimension]
+	if !ok {
+		return nil, fmt.Errorf("unknown traffic dimension: %q", dimension)
 	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("os_family, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("os_family").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by platform: %v", err)
+	q := r.filtered(filter).Select("CAST(" + spec.expr + " AS TEXT) as dimension_value, COUNT(*) as count")
+	if spec.join != "" {
+		q = q.Joins(spec.join)
+	}
+	var rows []struct {
+		DimensionValue string
+		Count          int
+	}
+	if err := q.Group("dimension_value").Scan(&rows).Error; err != nil {
+		log.Printf("Error counting requests by %s: %v", dimension, err)
 		return nil, err
 	}
-
-	platformCounts := make(map[string]int)
-	for _, result := range results {
-		platformCounts[result.OSFamily] = result.Count
+	counts := make(map[string]int, len(rows))
+	for _, row := range rows {
+		counts[row.DimensionValue] = row.Count
 	}
-
-	return platformCounts, nil
-}
-
-// GetRequestCountByBrowser returns request counts grouped by browser within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByBrowser(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		BrowserFamily string
-		Count         int
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("browser_family, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("browser_family").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by browser: %v", err)
-		return nil, err
-	}
-
-	browserCounts := make(map[string]int)
-	for _, result := range results {
-		browserCounts[result.BrowserFamily] = result.Count
-	}
-
-	return browserCounts, nil
-}
-
-// GetRequestCountByUser returns request counts grouped by user within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByUser(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		Username string
-		Count    int
-	}
-
-	// Join with users table to get username from user_id
-	err := r.DB.Table("traffic_metrics").
-		Select("COALESCE(users.username, 'guest') as username, COUNT(*) as count").
-		Joins("LEFT JOIN users ON users.id = traffic_metrics.user_id").
-		Where("traffic_metrics.timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("users.username").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by user: %v", err)
-		return nil, err
-	}
-
-	userCounts := make(map[string]int)
-	for _, result := range results {
-		userCounts[result.Username] = result.Count
-	}
-
-	return userCounts, nil
-}
-
-// GetRequestCountByFingerprint returns request counts grouped by the
-// consolidated client fingerprint (ClientInfo.Fingerprint) within a date
-// range. A given key may be a JA4H or stable-fingerprint value
-// depending on what was available per request — see
-// fingerprint.SelectFingerprint and GetRequestCountByFingerprintType if the
-// algorithm breakdown matters.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprint(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		Fingerprint string
-		Count       int
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("fingerprint, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("fingerprint").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by fingerprint: %v", err)
-		return nil, err
-	}
-
-	counts := make(map[string]int)
-	for _, result := range results {
-		counts[result.Fingerprint] = result.Count
-	}
-
 	return counts, nil
 }
 
-// GetRequestCountByFingerprintType returns request counts grouped by which
-// fingerprinting algorithm actually produced a value
-// (ClientInfo.FingerprintType — fingerprint.TypeStable/TypeJA4H)
-// within a date range.
-func (r *TrafficMetricRepositoryDB) GetRequestCountByFingerprintType(startDate, endDate time.Time) (map[string]int, error) {
-	startDate, endDate = startDate.UTC(), endDate.UTC() // see FindByDateRange's comment
-	var results []struct {
-		FingerprintType string
-		Count           int
-	}
-
-	err := r.DB.Model(&TrafficMetric{}).
-		Select("fingerprint_type, COUNT(*) as count").
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
-		Group("fingerprint_type").
-		Scan(&results).Error
-
-	if err != nil {
-		log.Printf("Error getting request count by fingerprint type: %v", err)
-		return nil, err
-	}
-
-	counts := make(map[string]int)
-	for _, result := range results {
-		counts[result.FingerprintType] = result.Count
-	}
-
-	return counts, nil
-}
-
-// ListRequestDetails returns request details in a date range (or all if nil),
-// optionally filtered to only static-asset requests (isStatic true), only
-// non-static requests (isStatic false), or both (isStatic nil).
-func (r *TrafficMetricRepositoryDB) ListRequestDetails(start, end *time.Time, isStatic *bool) ([]TrafficMetricWithUser, error) {
-	// see FindByDateRange's comment for why
-	if start != nil {
-		utcStart := start.UTC()
-		start = &utcStart
-	}
-	if end != nil {
-		utcEnd := end.UTC()
-		end = &utcEnd
-	}
-
+// ListRequestDetails returns the requests matching filter, newest first.
+func (r *TrafficMetricRepositoryDB) ListRequestDetails(filter TrafficFilter) ([]TrafficMetricWithUser, error) {
 	var stats []TrafficMetricWithUser
-	query := r.DB.Model(&TrafficMetric{}).Preload("User")
-	if start != nil && end != nil {
-		query = query.Where("timestamp BETWEEN ? AND ?", *start, *end)
-	} else if start != nil {
-		query = query.Where("timestamp >= ?", *start)
-	} else if end != nil {
-		query = query.Where("timestamp <= ?", *end)
-	}
-	if isStatic != nil {
-		query = query.Where("is_static_asset = ?", *isStatic)
-	}
-	err := query.Order("timestamp DESC").Find(&stats).Error
+	err := r.filtered(filter).Preload("User").Order("timestamp DESC").Find(&stats).Error
 	if err != nil {
 		log.Printf("Error listing request details: %v", err)
 		return nil, err

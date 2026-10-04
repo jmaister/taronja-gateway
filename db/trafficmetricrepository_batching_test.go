@@ -33,7 +33,7 @@ func TestBatchingTrafficMetricRepository_FlushesOnBatchSize(t *testing.T) {
 	// The 3rd Create should have triggered a flush; give the background
 	// goroutine a moment to run it rather than asserting instantaneously.
 	require.Eventually(t, func() bool {
-		count, err := inner.GetTotalRequestCount(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		count, err := inner.CountRequests(db.TrafficFilter{})
 		return err == nil && count == 3
 	}, time.Second, 5*time.Millisecond, "expected all 3 records to be flushed once maxBatchSize was reached")
 }
@@ -47,7 +47,7 @@ func TestBatchingTrafficMetricRepository_FlushesOnInterval(t *testing.T) {
 	require.NoError(t, batched.Create(newTestMetric("/interval-only")))
 
 	require.Eventually(t, func() bool {
-		count, err := inner.GetTotalRequestCount(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		count, err := inner.CountRequests(db.TrafficFilter{})
 		return err == nil && count == 1
 	}, time.Second, 5*time.Millisecond, "expected the record to be flushed once flushInterval elapsed, even though the batch never filled up")
 }
@@ -62,7 +62,7 @@ func TestBatchingTrafficMetricRepository_CloseFlushesRemaining(t *testing.T) {
 
 	batched.Close() // should flush both before returning, with no wait needed
 
-	count, err := inner.GetTotalRequestCount(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	count, err := inner.CountRequests(db.TrafficFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count)
 }
@@ -108,7 +108,7 @@ func TestBatchingTrafficMetricRepository_DropsWhenBufferFull(t *testing.T) {
 
 	close(unblock)
 	require.Eventually(t, func() bool {
-		count, err := inner.GetTotalRequestCount(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+		count, err := inner.CountRequests(db.TrafficFilter{})
 		return err == nil && count > 0
 	}, time.Second, 5*time.Millisecond, "records buffered before the ceiling was hit should still flush normally once unblocked")
 }

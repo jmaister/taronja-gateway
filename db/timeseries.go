@@ -155,19 +155,17 @@ type TimeSeriesPoint struct {
 	AverageResponseTimeMs float64
 }
 
-// GetTimeSeries returns one point per bucket in [startDate, endDate],
+// GetTimeSeries returns one point per bucket in [filter.Start, filter.End],
 // chronologically, with zero-valued buckets filled in. Counts come from a single
 // grouped query. NewVisitors needs a second query (MIN(timestamp) GROUP BY
-// fingerprint over the whole table), hence the fingerprint index. Callers must
-// first check the range with ValidateTimeSeriesRange.
-func (r *TrafficMetricRepositoryDB) GetTimeSeries(startDate, endDate time.Time, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error) {
-	// See trafficmetricrepository.go's FindByDateRange comment for why:
-	// `timestamp BETWEEN ? AND ?` is a text comparison against
-	// modernc.org/sqlite's stored representation, which TrafficMetric.BeforeCreate
-	// always normalizes to UTC — the query bounds need the same treatment,
-	// or a non-UTC caller (e.g. a naive time.Now()) would compare against
-	// the wrong string and silently match nothing (or the wrong rows).
-	startDate, endDate = startDate.UTC(), endDate.UTC()
+// fingerprint over the whole table), hence the fingerprint index; it is
+// clamped to UniqueFingerprints because the other filter fields apply only to
+// the first query. Callers must first check the range with ValidateTimeSeriesRange.
+func (r *TrafficMetricRepositoryDB) GetTimeSeries(filter TrafficFilter, granularity TimeSeriesGranularity) ([]TimeSeriesPoint, error) {
+	if filter.Start == nil || filter.End == nil {
+		return nil, fmt.Errorf("time series needs both start and end")
+	}
+	startDate, endDate := filter.Start.UTC(), filter.End.UTC()
 
 	bucketExpr, err := sqliteBucketExpr("timestamp", granularity)
 	if err != nil {
@@ -191,9 +189,8 @@ func (r *TrafficMetricRepositoryDB) GetTimeSeries(startDate, endDate time.Time, 
 		COUNT(DISTINCT NULLIF(user_id, '')) as unique_users,
 		SUM(CASE WHEN http_status >= 400 THEN 1 ELSE 0 END) as error_count,
 		AVG(response_time_ns) as avg_response_time_ns`, bucketExpr)
-	err = r.DB.Model(&TrafficMetric{}).
+	err = r.filtered(filter).
 		Select(selectExpr).
-		Where("timestamp BETWEEN ? AND ?", startDate, endDate).
 		Group("bucket").
 		Order("bucket").
 		Scan(&rows).Error
@@ -214,7 +211,7 @@ func (r *TrafficMetricRepositoryDB) GetTimeSeries(startDate, endDate time.Time, 
 			log.Printf("Error parsing time series bucket %q: %v", row.Bucket, parseErr)
 			continue
 		}
-		newVisitors := newVisitorsByBucket[ts]
+		newVisitors := min(newVisitorsByBucket[ts], row.UniqueFingerprints)
 		byBucket[ts] = TimeSeriesPoint{
 			Timestamp:             ts,
 			RequestCount:          row.RequestCount,

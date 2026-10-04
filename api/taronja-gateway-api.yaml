@@ -1178,22 +1178,17 @@ paths:
       security:
         - cookieAuth: []
       parameters:
-        - name: start_date
-          in: query
-          required: false
-          description: Start date for filtering results (ISO 8601 format)
-          schema:
-            type: string
-            format: date-time
-            example: "2025-01-01T00:00:00Z"
-        - name: end_date
-          in: query
-          required: false
-          description: End date for filtering results (ISO 8601 format)
-          schema:
-            type: string
-            format: date-time
-            example: "2025-12-31T23:59:59Z"
+        - $ref: '#/components/parameters/TrafficStartDate'
+        - $ref: '#/components/parameters/TrafficEndDate'
+        - $ref: '#/components/parameters/TrafficIsStatic'
+        - $ref: '#/components/parameters/TrafficStatusCode'
+        - $ref: '#/components/parameters/TrafficCountry'
+        - $ref: '#/components/parameters/TrafficDeviceType'
+        - $ref: '#/components/parameters/TrafficPlatform'
+        - $ref: '#/components/parameters/TrafficBrowser'
+        - $ref: '#/components/parameters/TrafficUsername'
+        - $ref: '#/components/parameters/TrafficFingerprint'
+        - $ref: '#/components/parameters/TrafficFingerprintType'
       responses:
         '200':
           description: Request statistics
@@ -1222,33 +1217,17 @@ paths:
       security:
         - cookieAuth: []
       parameters:
-        - in: query
-          name: start_date
-          schema:
-            type: string
-            format: date-time
-          required: false
-          description: Optional start date for filtering results (ISO 8601 format)
-          example: "2025-01-01T00:00:00Z"
-        - in: query
-          name: end_date
-          schema:
-            type: string
-            format: date-time
-          required: false
-          description: Optional end date for filtering results (ISO 8601 format)
-          example: "2025-12-31T23:59:59Z"
-        - in: query
-          name: is_static
-          schema:
-            type: boolean
-          required: false
-          description: >-
-            Optional filter on whether the request was for a static asset
-            (see management.excludeStaticAssets). true returns only static
-            asset requests, false returns only non-static requests, and
-            omitting it returns both.
-          example: false
+        - $ref: '#/components/parameters/TrafficStartDate'
+        - $ref: '#/components/parameters/TrafficEndDate'
+        - $ref: '#/components/parameters/TrafficIsStatic'
+        - $ref: '#/components/parameters/TrafficStatusCode'
+        - $ref: '#/components/parameters/TrafficCountry'
+        - $ref: '#/components/parameters/TrafficDeviceType'
+        - $ref: '#/components/parameters/TrafficPlatform'
+        - $ref: '#/components/parameters/TrafficBrowser'
+        - $ref: '#/components/parameters/TrafficUsername'
+        - $ref: '#/components/parameters/TrafficFingerprint'
+        - $ref: '#/components/parameters/TrafficFingerprintType'
       responses:
         '200':
           description: List of requests with detailed information
@@ -1300,6 +1279,15 @@ paths:
             days), week (2 years), month (5 years).
           schema:
             $ref: '#/components/schemas/TimeSeriesGranularity'
+        - $ref: '#/components/parameters/TrafficIsStatic'
+        - $ref: '#/components/parameters/TrafficStatusCode'
+        - $ref: '#/components/parameters/TrafficCountry'
+        - $ref: '#/components/parameters/TrafficDeviceType'
+        - $ref: '#/components/parameters/TrafficPlatform'
+        - $ref: '#/components/parameters/TrafficBrowser'
+        - $ref: '#/components/parameters/TrafficUsername'
+        - $ref: '#/components/parameters/TrafficFingerprint'
+        - $ref: '#/components/parameters/TrafficFingerprintType'
       responses:
         '200':
           description: Time-bucketed request/visitor counts
@@ -1808,6 +1796,92 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  parameters:
+    TrafficStartDate:
+      name: start_date
+      in: query
+      required: false
+      description: Start of the date range (ISO 8601 format).
+      schema:
+        type: string
+        format: date-time
+        example: "2025-01-01T00:00:00Z"
+    TrafficEndDate:
+      name: end_date
+      in: query
+      required: false
+      description: End of the date range (ISO 8601 format).
+      schema:
+        type: string
+        format: date-time
+        example: "2025-12-31T23:59:59Z"
+    TrafficIsStatic:
+      name: is_static
+      in: query
+      required: false
+      description: >-
+        Filter on whether the request was for a static asset (see
+        management.excludeStaticAssets). true returns only static asset
+        requests, false only non-static requests, omitting it returns both.
+      schema:
+        type: boolean
+    TrafficStatusCode:
+      name: status_code
+      in: query
+      required: false
+      description: Only requests that got this HTTP status code.
+      schema:
+        type: integer
+    TrafficCountry:
+      name: country
+      in: query
+      required: false
+      description: Only requests from this country (as reported in requestsByCountry).
+      schema:
+        type: string
+    TrafficDeviceType:
+      name: device_type
+      in: query
+      required: false
+      description: Only requests from this device type (as reported in requestsByDeviceType).
+      schema:
+        type: string
+    TrafficPlatform:
+      name: platform
+      in: query
+      required: false
+      description: Only requests from this platform (as reported in requestsByPlatform).
+      schema:
+        type: string
+    TrafficBrowser:
+      name: browser
+      in: query
+      required: false
+      description: Only requests from this browser (as reported in requestsByBrowser).
+      schema:
+        type: string
+    TrafficUsername:
+      name: username
+      in: query
+      required: false
+      description: Only requests made by this user; "guest" selects unauthenticated requests.
+      schema:
+        type: string
+    TrafficFingerprint:
+      name: fingerprint
+      in: query
+      required: false
+      description: Only requests carrying this client fingerprint value.
+      schema:
+        type: string
+    TrafficFingerprintType:
+      name: fingerprint_type
+      in: query
+      required: false
+      description: Only requests whose fingerprint was produced by this algorithm (stable or ja4h).
+      schema:
+        type: string
+        example: ja4h
   schemas:
     HealthResponse:
       type: object
