@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -14,13 +15,16 @@ import (
 )
 
 // InitTracing registers an OTLP/HTTP TracerProvider and the W3C tracecontext
-// propagator when cfg.Enabled; otherwise it is a no-op. The returned shutdown
-// func flushes pending spans and must be called on graceful shutdown.
-func InitTracing(ctx context.Context, cfg config.TracingConfig, serviceName string) (shutdown func(context.Context) error, err error) {
+// propagator when the tracing filter is enabled; otherwise it is a no-op. The
+// returned shutdown func flushes pending spans and must be called on graceful
+// shutdown.
+func InitTracing(ctx context.Context, gatewayConfig *config.GatewayConfig) (shutdown func(context.Context) error, err error) {
 	noopShutdown := func(context.Context) error { return nil }
-	if !cfg.Enabled {
-		return noopShutdown, nil
+	cfg, enabled, err := builtin.FilterSettings[builtin.TracingConfig](gatewayConfig, builtin.FilterTracing)
+	if err != nil || !enabled {
+		return noopShutdown, err
 	}
+	serviceName := gatewayConfig.Name
 
 	opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(cfg.Endpoint)}
 	if cfg.Insecure {

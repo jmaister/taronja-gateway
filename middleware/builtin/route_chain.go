@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/middleware"
+	yaml "gopkg.in/yaml.v3"
 )
 
 const (
@@ -38,7 +39,10 @@ func (f *routeAuthFactory) Create(cfg interface{}) (middleware.Middleware, error
 	return f.auth.AuthMiddlewareFunc(c.Redirect), nil
 }
 
-func (f *routeAuthFactory) GetDefaultConfig() interface{} { return RouteAuthConfig{} }
+// DecodeConfig is not used: route filters get their config from the route.
+func (f *routeAuthFactory) DecodeConfig(*yaml.Node) (interface{}, error) {
+	return RouteAuthConfig{}, nil
+}
 
 type routeCacheFactory struct {
 	middleware.ConcreteFactory
@@ -53,7 +57,10 @@ func (f *routeCacheFactory) Create(cfg interface{}) (middleware.Middleware, erro
 	return f.cache.CacheControlMiddlewareFunc(c.Route), nil
 }
 
-func (f *routeCacheFactory) GetDefaultConfig() interface{} { return RouteCacheConfig{} }
+// DecodeConfig is not used: route filters get their config from the route.
+func (f *routeCacheFactory) DecodeConfig(*yaml.Node) (interface{}, error) {
+	return RouteCacheConfig{}, nil
+}
 
 // RouteChainBuilder builds the middleware chain of individual routes from the
 // same factory/spec mechanism the global chain uses, in a registry of its own

@@ -94,10 +94,8 @@ func TestRouteConfig_To_EmptyStringIsNil(t *testing.T) {
 
 func TestRouteConfig_To_EmptyListIsEmptyNotNil(t *testing.T) {
 	// An explicit `to: []` is a deliberately empty list (distinct from
-	// never having written `to:` at all), same distinction this project
-	// draws for `middleware.global: []` vs an absent `middleware:` section
-	// — both still fail proxy-route validation the same way (len == 0),
-	// but it's worth confirming decoding itself doesn't collapse the two.
+	// never having written `to:` at all). Both fail proxy-route validation
+	// the same way (len == 0), but decoding should not collapse the two.
 	path := writeRouteTestConfig(t, `routes:
   - name: explicit-empty-list
     from: /static/*

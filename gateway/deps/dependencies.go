@@ -40,7 +40,7 @@ type Dependencies struct {
 
 // trafficMetricsBatchSize and trafficMetricsFlushInterval configure the
 // db.BatchingTrafficMetricRepository NewProduction wraps TrafficMetricRepo
-// in. Not user-configurable (unlike management.excludeStaticAssets): this
+// in. Not user-configurable (unlike the traffic_metrics filter options): this
 // is a pure implementation-detail efficiency change with no user-visible
 // behavior difference beyond "up to this much recent traffic-metrics data
 // can be lost on a hard crash instead of a graceful shutdown", so there's

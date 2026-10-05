@@ -34,7 +34,7 @@ type StrictApiServer struct {
 	// returns 503, the same way GetTelegramLinkCode does for an
 	// unconfigured Telegram provider.
 	notificationService *notification.Service
-	// excludeStaticAssets mirrors management.excludeStaticAssets so the
+	// excludeStaticAssets mirrors the traffic_metrics filter option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
 }
@@ -59,7 +59,7 @@ func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepos
 // Ensure StrictApiServer implements StrictServerInterface
 var _ api.StrictServerInterface = (*StrictApiServer)(nil)
 
-// SetExcludeStaticAssets records management.excludeStaticAssets for the statistics summary.
+// SetExcludeStaticAssets records the traffic_metrics excludeStaticAssets option for the statistics API.
 func (s *StrictApiServer) SetExcludeStaticAssets(exclude bool) {
 	s.excludeStaticAssets = exclude
 }

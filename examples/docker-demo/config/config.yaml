@@ -21,29 +21,24 @@ management:
     username: admin
     password: admin123 # hashed automatically on first run — change this for anything but local demo use
 
-# Declarative middleware chain (see README.md "Middleware Architecture" and
-# AGENTS.md's `middleware/` section) instead of the legacy
-# management.analytics/logging/rateLimiter/cors boolean flags — this demo
-# uses it deliberately so it also shows off the config-driven middleware
-# system, not just routing/auth.
-middleware:
-  global:
-    - name: cors
-      cors:
-        allowedOrigins:
-          - "*" # fine for a local demo; a real deployment should list actual origins
-        allowCredentials: false # required when allowedOrigins is "*" — see README "Try CORS"
-    - name: rate_limiter
-      rateLimiter:
-        # Deliberately low so it's easy to trigger by hand — see README "Try
-        # the rate limiter". A real deployment would set this much higher.
-        requestsPerMinute: 60
-        maxErrors: 20
-        blockMinutes: 1
-    - name: ja4_fingerprint
-    - name: session_extraction
-    - name: traffic_metrics
-    - name: logging
+# Global filters, run top to bottom (see doc/middleware/ for each one).
+filters:
+  - name: cors
+    config:
+      allowedOrigins:
+        - "*" # fine for a local demo; a real deployment should list actual origins
+      allowCredentials: false # required when allowedOrigins is "*" — see README "Try CORS"
+  - name: rate_limiter
+    config:
+      # Deliberately low so it's easy to trigger by hand — see README "Try
+      # the rate limiter". A real deployment would set this much higher.
+      requestsPerMinute: 60
+      maxErrors: 20
+      blockMinutes: 1
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
+  - name: logging
 
 # Google/GitHub are only registered if their client ID+secret are both
 # non-empty (providers/providers.go) — leaving GOOGLE_CLIENT_ID unset in

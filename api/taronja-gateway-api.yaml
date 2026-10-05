@@ -1844,9 +1844,10 @@ components:
       in: query
       required: false
       description: >-
-        Filter on whether the request was for a static asset (see
-        management.excludeStaticAssets). true returns only static asset
-        requests, false only non-static requests, omitting it returns both.
+        Filter on whether the request was for a static asset. true returns
+        only static asset requests, false only non-static requests, omitting
+        it returns both. Ignored when the traffic_metrics filter excludes
+        static assets.
       schema:
         type: boolean
     TrafficStatusCode:
@@ -2346,9 +2347,9 @@ components:
         staticAssetsExcluded:
           type: boolean
           description: >-
-            True when management.excludeStaticAssets is on, i.e. requests for
-            static assets are no longer recorded, so the static-only request
-            type filter only matches rows recorded before it was enabled.
+            True when the traffic_metrics filter's excludeStaticAssets option
+            is on: static asset requests are not recorded and is_static is
+            ignored.
       required:
         - totalRequests
         - requestsByStatus
@@ -2412,7 +2413,7 @@ components:
           description: Version of the browser
         is_static:
           type: boolean
-          description: Whether the request path looked like a static asset (see management.excludeStaticAssets)
+          description: Whether the request path looked like a static asset
         fingerprint:
           type: string
           description: >-

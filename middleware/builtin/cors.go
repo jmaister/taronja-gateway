@@ -1,15 +1,16 @@
 package builtin
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/middleware"
+	yaml "gopkg.in/yaml.v3"
 )
 
-// Default values used when a CORSConfig field is left unset — see
-// config.CORSConfig's field docs for what each one means.
+// Default values used when a CORSConfig field is left unset.
 var (
 	defaultCORSAllowedMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	defaultCORSAllowedHeaders = []string{"Content-Type", "Authorization"}
@@ -28,7 +29,7 @@ const defaultCORSMaxAgeSeconds = 600
 // Access-Control-Allow-Methods/Headers/Max-Age and a 204, short-circuiting
 // before the wrapped handler runs — a preflight is never meant to reach real
 // application logic).
-func CORSMiddleware(cfg config.CORSConfig) func(http.Handler) http.Handler {
+func CORSMiddleware(cfg CORSConfig) func(http.Handler) http.Handler {
 	if !cfg.IsEnabled() {
 		return func(next http.Handler) http.Handler { return next }
 	}
@@ -101,4 +102,69 @@ func CORSMiddleware(cfg config.CORSConfig) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// FilterCORS answers CORS preflights and adds CORS headers.
+const FilterCORS = "cors"
+
+// CORSConfig holds the cors filter options. The dashboard is served
+// same-origin, so CORS is only needed when a separately hosted frontend calls
+// the management API.
+type CORSConfig struct {
+	// AllowedOrigins lists exact origins (e.g. "https://app.example.com"). A
+	// single "*" allows any origin, but not together with AllowCredentials.
+	// Empty means no CORS headers are added.
+	AllowedOrigins []string `yaml:"allowedOrigins"`
+	// AllowedMethods for preflight responses. Default: GET, POST, PUT, PATCH, DELETE, OPTIONS.
+	AllowedMethods []string `yaml:"allowedMethods,omitempty"`
+	// AllowedHeaders for preflight responses. Default: Content-Type, Authorization.
+	AllowedHeaders []string `yaml:"allowedHeaders,omitempty"`
+	// AllowCredentials sets Access-Control-Allow-Credentials: true.
+	AllowCredentials bool `yaml:"allowCredentials,omitempty"`
+	// MaxAgeSeconds is how long browsers may cache a preflight. Default: 600.
+	MaxAgeSeconds int `yaml:"maxAgeSeconds,omitempty"`
+}
+
+// IsEnabled reports whether at least one origin is allowed.
+func (c CORSConfig) IsEnabled() bool {
+	return len(c.AllowedOrigins) > 0
+}
+
+// AllowsAnyOrigin reports whether AllowedOrigins contains "*".
+func (c CORSConfig) AllowsAnyOrigin() bool {
+	for _, o := range c.AllowedOrigins {
+		if o == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// Validate rejects combinations browsers refuse.
+func (c CORSConfig) Validate() error {
+	if c.AllowCredentials && c.AllowsAnyOrigin() {
+		return fmt.Errorf("allowedOrigins cannot include \"*\" when allowCredentials is true (browsers reject that combination); list the origins that need credentials instead")
+	}
+	if c.MaxAgeSeconds < 0 {
+		return fmt.Errorf("maxAgeSeconds cannot be negative")
+	}
+	return nil
+}
+
+type corsFactory struct{ middleware.ConcreteFactory }
+
+func newCORSFactory() *corsFactory {
+	return &corsFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterCORS, "Adds CORS response headers for cross-origin requests")}
+}
+
+func (f *corsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
+	return middleware.DecodeConfigInto(raw, CORSConfig{})
+}
+
+func (f *corsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
+	c, err := middleware.ConfigAs[CORSConfig](FilterCORS, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return CORSMiddleware(c), nil
 }

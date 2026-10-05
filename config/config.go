@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -209,47 +210,9 @@ func (s *SessionConfig) GetDuration() time.Duration {
 // ManagementConfig defines the management API and dashboard settings.
 // The management API provides endpoints for metrics, user management, and admin dashboard.
 type ManagementConfig struct {
-	Prefix              string            `yaml:"prefix"`              // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
-	Logging             bool              `yaml:"logging"`             // Enable request/response logging. Default: false. Logs all HTTP requests.
-	Compression         bool              `yaml:"compression"`         // Enable brotli/zstd/gzip/deflate response compression, negotiated via Accept-Encoding. Default: false.
-	Analytics           bool              `yaml:"analytics"`           // Enable traffic analytics and metrics collection. Default: false. Stores request data for dashboard.
-	ExcludeStaticAssets bool              `yaml:"excludeStaticAssets"` // Skip traffic-metrics collection for static assets (see middleware.IsStaticAssetPath). Default: false. Only applies when Analytics is true; rows already recorded are kept.
-	Admin               AdminConfig       `yaml:"admin"`               // Admin dashboard access configuration
-	Session             SessionConfig     `yaml:"session"`             // Session lifetime configuration for authenticated users
-	RateLimiter         RateLimiterConfig `yaml:"rateLimiter"`         // Rate limiter settings. Optional; zero values disable.
-	CORS                CORSConfig        `yaml:"cors"`                // Cross-origin request settings. Optional; empty allowedOrigins disables CORS entirely (no headers added — the pre-CORS-support behavior).
-}
-
-// RateLimiterConfig contains per-client-IP in-memory rate limiting settings.
-// Values are positive integers; zero disables the feature.
-// VulnerabilityScanConfig lists URL paths likely to be probed by scanners; an IP
-// that triggers too many 404s on them within the window is temporarily blocked.
-type VulnerabilityScanConfig struct {
-	URLs         []string `yaml:"urls"`         // paths to watch (supports wildcard patterns)
-	Max404       int      `yaml:"max404"`       // max 404s on watched paths before blocking
-	BlockMinutes int      `yaml:"blockMinutes"` // how many minutes to block offending IPs
-}
-
-// RateLimiterConfig contains simple in-memory rate limiting settings.
-// All values are positive integers; zero means the feature is disabled.
-// A single configuration block keeps the gateway easy to configure.
-// The middleware applies limits per client IP address.
-type RateLimiterConfig struct {
-	RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = disabled.
-	MaxErrors         int `yaml:"maxErrors"`         // Max number of 401 or 404 responses before blocking. 0 = disabled.
-	BlockMinutes      int `yaml:"blockMinutes"`      // Duration (in minutes) to block offending IPs. 0 = no blocking.
-	// BlockedClientRetentionDays is how long persisted block events
-	// (db.BlockedClient) are kept before pruning. 0 means the built-in default, not
-	// forever.
-	BlockedClientRetentionDays int `yaml:"blockedClientRetentionDays"`
-
-	VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector
-}
-
-// IsEnabled reports whether any rate-limiting or vulnerability-scan feature is active.
-func (r RateLimiterConfig) IsEnabled() bool {
-	return r.RequestsPerMinute > 0 || r.MaxErrors > 0 ||
-		r.VulnerabilityScan.Max404 > 0 || len(r.VulnerabilityScan.URLs) > 0
+	Prefix  string        `yaml:"prefix"`  // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
+	Admin   AdminConfig   `yaml:"admin"`   // Admin dashboard access configuration
+	Session SessionConfig `yaml:"session"` // Session lifetime configuration for authenticated users
 }
 
 // GeolocationConfig defines IP geolocation service settings.
@@ -271,8 +234,7 @@ type GatewayConfig struct {
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
-	Middleware              MiddlewareSection       `yaml:"middleware,omitempty"`    // Explicit, ordered global middleware chain. Optional; when absent, derived from management.analytics/logging/rateLimiter.
-	Tracing                 TracingConfig           `yaml:"tracing,omitempty"`       // Distributed tracing via OpenTelemetry. Optional; disabled by default.
+	Filters                 []FilterConfig          `yaml:"filters,omitempty"`       // Global filters (middleware), run in list order. Optional; none when absent. See doc/middleware/.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -301,15 +263,23 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	config.Management.Prefix = "/_"                   // Default prefix
 	config.Management.Session.SecondsDuration = 86400 // Default 24 hours
 
-	err = yaml.Unmarshal([]byte(expandedData), config)
-	if err != nil {
+	// The version is checked before the strict decode so an old config gets the
+	// "run tg migrate" message instead of an unknown-field error.
+	var probe struct {
+		Version *string `yaml:"version"`
+	}
+	if err := yaml.Unmarshal([]byte(expandedData), &probe); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
 	}
-
-	// Refuse to run against a config file older than CurrentConfigVersion —
-	// see version.go. Run `tg migrate --config <path>` to upgrade it first.
+	config.Version = probe.Version
 	if err := checkConfigVersion(configAbsPath, config); err != nil {
 		return nil, err
+	}
+
+	dec := yaml.NewDecoder(strings.NewReader(expandedData))
+	dec.KnownFields(true)
+	if err := dec.Decode(config); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
 	}
 
 	// --- Post-Unmarshal Validation and Path Resolution ---
@@ -350,19 +320,8 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		log.Printf("Admin access is disabled")
 	}
 
-	// Validate explicit middleware section, if present
-	seenMiddleware := make(map[string]bool, len(config.Middleware.Global))
-	for _, entry := range config.Middleware.Global {
-		if entry.Name == "" {
-			return nil, fmt.Errorf("middleware.global: entry is missing 'name'")
-		}
-		if !IsMiddlewareNameKnown(entry.Name) {
-			return nil, fmt.Errorf("middleware.global: unknown middleware '%s' (known: %v)", entry.Name, KnownMiddlewareNames)
-		}
-		if seenMiddleware[entry.Name] {
-			return nil, fmt.Errorf("middleware.global: middleware '%s' is listed more than once", entry.Name)
-		}
-		seenMiddleware[entry.Name] = true
+	if err := validateFilters(config.Filters); err != nil {
+		return nil, err
 	}
 
 	// Validate authentication providers
@@ -376,14 +335,6 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	log.Printf("Current working directory: %s", currentDir)
-
-	// Validate tracing config. Nothing more to check than the config's own
-	// shape here — like ACME, actually reaching the collector is a network
-	// operation that can only happen at real gateway startup (see
-	// gateway.InitTracing), not something "tg validate" can confirm.
-	if config.Tracing.Enabled && config.Tracing.Endpoint == "" {
-		return nil, fmt.Errorf("tracing.enabled is true but tracing.endpoint is not set")
-	}
 
 	for i := range config.Routes {
 		route := &config.Routes[i]

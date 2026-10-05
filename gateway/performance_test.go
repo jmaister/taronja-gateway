@@ -15,6 +15,7 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
@@ -398,15 +399,19 @@ func createTestConfig() *config.GatewayConfig {
 			Port: 8080,
 		},
 		Management: config.ManagementConfig{
-			Prefix:    "/_",
-			Analytics: true,
-			Logging:   true,
+			Prefix: "/_",
 			Admin: config.AdminConfig{
 				Enabled:  false,
 				Username: "admin",
 				Email:    "admin@example.com",
 				Password: "password",
 			},
+		},
+		Filters: []config.FilterConfig{
+			config.NewFilterConfig(builtin.FilterJA4Fingerprint, nil),
+			config.NewFilterConfig(builtin.FilterSessionExtraction, nil),
+			config.NewFilterConfig(builtin.FilterTrafficMetrics, nil),
+			config.NewFilterConfig(builtin.FilterLogging, nil),
 		},
 		AuthenticationProviders: config.AuthenticationProviders{
 			Basic: config.BasicAuthenticationConfig{

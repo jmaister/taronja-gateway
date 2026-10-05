@@ -65,21 +65,21 @@ func Middleware(next http.Handler) http.Handler {
 // build middleware. This is the only integration point a third-party
 // middleware needs; nothing here is exported by or coupled to the gateway's
 // internal packages.
-type Factory struct{}
+type Factory struct{ middleware.NoConfig }
 
 // NewFactory creates a Factory. In a real third-party middleware, this is
 // typically where you'd accept and store constructor dependencies (a logger,
 // a metrics client, ...); Middleware here needs none.
 func NewFactory() *Factory { return &Factory{} }
 
-// Create returns the middleware function. cfg is unused since this
-// middleware takes no configuration — see GetDefaultConfig.
+// Create returns the middleware function. cfg is unused: this middleware
+// takes no configuration (see the embedded middleware.NoConfig).
 func (f *Factory) Create(cfg interface{}) (middleware.Middleware, error) {
 	return Middleware, nil
 }
 
 // GetName returns the stable identifier used in middleware.MiddlewareSpec.Name
-// and in config's `middleware.global[].name` (if this factory were registered
+// and in config's `filters[].name` (if this factory were registered
 // into the gateway's own registry — see doc/middleware_development.md).
 func (f *Factory) GetName() string { return "request_id" }
 
@@ -92,9 +92,6 @@ func (f *Factory) GetDescription() string {
 // mean "the named middleware(s) must already be in the chain before this
 // one" — see Registry.BuildChain.
 func (f *Factory) GetDependencies() []string { return nil }
-
-// GetDefaultConfig returns struct{}{}: this middleware takes no configuration.
-func (f *Factory) GetDefaultConfig() interface{} { return struct{}{} }
 
 // HealthCheck implements the optional middleware.HealthChecker interface,
 // purely to demonstrate the pattern — this middleware has no real failure

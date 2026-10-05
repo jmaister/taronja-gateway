@@ -34,12 +34,19 @@ type gatewayRuntime struct {
 func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRuntime, error) {
 	mux := http.NewServeMux()
 
-	// Built from the *effective* config (a per-entry middleware.global
-	// rate_limiter override if present, otherwise management.rateLimiter) —
-	// see the equivalent comment this replaces in the old createHTTPServer.
-	rl := builtin.NewRateLimiter(builtin.EffectiveRateLimiterConfig(cfg), d.BlockedClientRepo)
+	// The rate limiter outlives the chain: the management API reads its state.
+	rlCfg, _, err := builtin.FilterSettings[builtin.RateLimiterConfig](cfg, builtin.FilterRateLimiter)
+	if err != nil {
+		return nil, err
+	}
+	rl := builtin.NewRateLimiter(rlCfg, d.BlockedClientRepo)
 
-	registry, globalChain, err := builtin.NewGlobalChain(cfg, d.SessionStore, d.TokenService, d.TrafficMetricRepo, rl)
+	registry, globalChain, err := builtin.NewGlobalChain(cfg, builtin.FilterDeps{
+		SessionStore:      d.SessionStore,
+		TokenService:      d.TokenService,
+		TrafficMetricRepo: d.TrafficMetricRepo,
+		RateLimiter:       rl,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build global middleware chain: %w", err)
 	}

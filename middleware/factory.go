@@ -1,25 +1,31 @@
 package middleware
 
-// MiddlewareFactory creates middleware instances from configuration.
-// Each existing middleware gets a factory so it can be registered, discovered,
-// and composed at runtime by a Registry.
+import (
+	"bytes"
+	"fmt"
+
+	yaml "gopkg.in/yaml.v3"
+)
+
+// MiddlewareFactory is one filter: its identity, its configuration and how to
+// build it. A Registry composes factories into chains.
 type MiddlewareFactory interface {
-	// Create builds the middleware instance. cfg is factory-specific; pass
-	// GetDefaultConfig() (or a compatible value) when no override is needed.
-	Create(cfg interface{}) (Middleware, error)
-	// GetName returns the stable identifier used in MiddlewareSpec.Name.
+	// GetName returns the identifier used in the config's `filters[].name`.
 	GetName() string
-	// GetDescription returns a short human-readable summary of what the middleware does.
+	// GetDescription returns a short human-readable summary of what the filter does.
 	GetDescription() string
-	// GetDependencies returns the names of middleware that must be enabled
-	// earlier in the same chain for this middleware to function correctly.
+	// GetDependencies returns the names of filters that must appear earlier in
+	// the same chain.
 	GetDependencies() []string
-	// GetDefaultConfig returns the zero-value/default configuration for this middleware.
-	GetDefaultConfig() interface{}
+	// DecodeConfig turns the filter's `config:` block (nil when absent) into
+	// the value Create expects, applying defaults and validating it.
+	DecodeConfig(raw *yaml.Node) (interface{}, error)
+	// Create builds the middleware from a value returned by DecodeConfig.
+	Create(cfg interface{}) (Middleware, error)
 }
 
-// ConcreteFactory is an embeddable base implementation shared by all factories,
-// providing the name/description/dependencies bookkeeping.
+// ConcreteFactory is an embeddable base providing the name, description and
+// dependencies bookkeeping.
 type ConcreteFactory struct {
 	name         string
 	description  string
@@ -35,3 +41,56 @@ func NewConcreteFactory(name, description string, dependencies ...string) Concre
 func (f *ConcreteFactory) GetName() string           { return f.name }
 func (f *ConcreteFactory) GetDescription() string    { return f.description }
 func (f *ConcreteFactory) GetDependencies() []string { return f.dependencies }
+
+// Validator is implemented by filter config types that can check themselves.
+// DecodeConfigInto calls it after decoding.
+type Validator interface {
+	Validate() error
+}
+
+// DecodeConfigInto decodes raw over defaults, rejecting unknown keys, and runs
+// the result's Validate method when it has one. A nil raw yields defaults.
+func DecodeConfigInto[C any](raw *yaml.Node, defaults C) (C, error) {
+	cfg := defaults
+	if raw != nil && raw.Kind != 0 {
+		// yaml.Node.Decode cannot reject unknown keys, so round-trip through a
+		// strict decoder.
+		data, err := yaml.Marshal(raw)
+		if err != nil {
+			return cfg, err
+		}
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(true)
+		if err := dec.Decode(&cfg); err != nil {
+			return cfg, err
+		}
+	}
+	if v, ok := any(&cfg).(Validator); ok {
+		if err := v.Validate(); err != nil {
+			return cfg, err
+		}
+	}
+	return cfg, nil
+}
+
+// NoConfig is embedded by factories whose filter takes no options.
+type NoConfig struct{}
+
+// DecodeConfig accepts only an absent or empty `config:` block.
+func (NoConfig) DecodeConfig(raw *yaml.Node) (interface{}, error) {
+	if raw != nil && raw.Kind != 0 && !(raw.Kind == yaml.MappingNode && len(raw.Content) == 0) {
+		return nil, fmt.Errorf("takes no config")
+	}
+	return struct{}{}, nil
+}
+
+// ConfigAs returns cfg as C, or an error naming the filter when Create is
+// handed a value its DecodeConfig did not produce.
+func ConfigAs[C any](name string, cfg interface{}) (C, error) {
+	c, ok := cfg.(C)
+	if !ok {
+		var zero C
+		return zero, fmt.Errorf("%s: invalid config type %T, expected %T", name, cfg, zero)
+	}
+	return c, nil
+}

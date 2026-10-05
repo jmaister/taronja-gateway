@@ -56,7 +56,7 @@ func (a *app) runGateway(configFilePath string) {
 
 	session.SetGeolocationConfig(&cfg.Geolocation)
 
-	shutdownTracing, err := gateway.InitTracing(context.Background(), cfg.Tracing, cfg.Name)
+	shutdownTracing, err := gateway.InitTracing(context.Background(), cfg)
 	if err != nil {
 		log.Fatalf("FATAL: failed to initialize tracing: %v", err)
 	}

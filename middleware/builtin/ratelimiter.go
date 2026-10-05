@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // RateLimiter implements an in‑memory rate limiter keyed by client IP.
@@ -20,7 +21,7 @@ import (
 // building a fresh one during setup) so that goroutine actually stops
 // instead of running forever alongside its replacement.
 type RateLimiter struct {
-	cfg             config.RateLimiterConfig
+	cfg             RateLimiterConfig
 	entries         sync.Map // map[string]*rateEntry
 	cleanupInterval time.Duration
 	// stop, closed by Close, tells cleanupLoop to exit. Close is safe to
@@ -39,14 +40,14 @@ type RateLimiter struct {
 	blockedClientRepo db.BlockedClientRepository
 	// blockedClientRetention bounds how long a row recordBlock wrote stays
 	// in the database before pruneBlockedClientsLoop deletes it — see
-	// config.RateLimiterConfig.BlockedClientRetentionDays and
+	// RateLimiterConfig.BlockedClientRetentionDays and
 	// defaultBlockedClientRetentionDays. Unused when blockedClientRepo is
 	// nil.
 	blockedClientRetention time.Duration
 }
 
 // defaultBlockedClientRetentionDays is how long a persisted block event is
-// kept when config.RateLimiterConfig.BlockedClientRetentionDays isn't set
+// kept when RateLimiterConfig.BlockedClientRetentionDays isn't set
 // (0). 90 days comfortably covers the kind of incident review or abuse
 // pattern analysis this history exists for, without keeping every scanner's
 // visit forever on a gateway that's been up for years.
@@ -118,7 +119,7 @@ type rateEntry struct {
 // RateLimiterMiddleware creates a middleware from cfg; it is a no-op if both
 // RequestsPerMinute and MaxErrors are zero. It has no BlockedClientRepository, so
 // blocks are not persisted; the gateway uses NewRateLimiter instead.
-func RateLimiterMiddleware(cfg config.RateLimiterConfig) func(http.Handler) http.Handler {
+func RateLimiterMiddleware(cfg RateLimiterConfig) func(http.Handler) http.Handler {
 	rl := NewRateLimiter(cfg, nil)
 	return rl.Handler
 }
@@ -126,7 +127,7 @@ func RateLimiterMiddleware(cfg config.RateLimiterConfig) func(http.Handler) http
 // NewRateLimiter constructs a RateLimiter and starts the cleanup goroutine.
 // blockedClientRepo may be nil (see RateLimiter.blockedClientRepo's doc
 // comment for what that means).
-func NewRateLimiter(cfg config.RateLimiterConfig, blockedClientRepo db.BlockedClientRepository) *RateLimiter {
+func NewRateLimiter(cfg RateLimiterConfig, blockedClientRepo db.BlockedClientRepository) *RateLimiter {
 	// determine cleanup interval: use block minutes or default one minute
 	interval := time.Minute
 	if cfg.BlockMinutes > 0 {
@@ -331,7 +332,7 @@ func (rl *RateLimiter) getEntry(ip string) *rateEntry {
 }
 
 // trim removes outdated timestamps from the entry.
-func (e *rateEntry) trim(now time.Time, cfg config.RateLimiterConfig) {
+func (e *rateEntry) trim(now time.Time, cfg RateLimiterConfig) {
 	// prune requests older than one minute
 	cutoff := now.Add(-1 * time.Minute)
 	i := 0
@@ -404,7 +405,7 @@ func (rl *RateLimiter) Stats() []RateLimiterStat {
 
 // Config returns a snapshot of the limiter's configuration.
 // A copy is returned to avoid callers mutating internal state.
-func (rl *RateLimiter) Config() config.RateLimiterConfig {
+func (rl *RateLimiter) Config() RateLimiterConfig {
 	// cfg is a value type so copying is cheap, and it is immutable after
 	// limiter creation which means we can safely return it directly.
 	return rl.cfg
@@ -460,5 +461,106 @@ func (rl *RateLimiter) pruneBlockedClients(now time.Time) {
 	cutoff := now.Add(-rl.blockedClientRetention)
 	if _, err := rl.blockedClientRepo.DeleteOlderThan(cutoff); err != nil {
 		log.Printf("rate limiter: failed to prune blocked_clients older than %s: %v", cutoff, err)
+	}
+}
+
+// FilterRateLimiter limits requests per client IP and blocks scanners.
+const FilterRateLimiter = "rate_limiter"
+
+// RateLimiterConfig holds the rate_limiter filter options, applied per client
+// IP. Zero values turn the matching check off.
+type RateLimiterConfig struct {
+	RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = no limit.
+	MaxErrors         int `yaml:"maxErrors"`         // Max 401/404 responses before blocking. 0 = no limit.
+	BlockMinutes      int `yaml:"blockMinutes"`      // How long an offending IP is blocked. Required when any check is on.
+	// BlockedClientRetentionDays is how long persisted block events are kept.
+	// 0 means the default (90 days).
+	BlockedClientRetentionDays int `yaml:"blockedClientRetentionDays"`
+
+	VulnerabilityScan VulnerabilityScanConfig `yaml:"vulnerabilityScan"` // Optional scanner detector.
+}
+
+// VulnerabilityScanConfig lists paths scanners probe; an IP that gets too many
+// 404s on them is blocked.
+type VulnerabilityScanConfig struct {
+	URLs         []string `yaml:"urls"`         // Paths to watch (wildcards supported).
+	Max404       int      `yaml:"max404"`       // 404s on watched paths before blocking.
+	BlockMinutes int      `yaml:"blockMinutes"` // How long a scanner is blocked.
+}
+
+// IsEnabled reports whether any rate-limiting or scan check is active.
+func (r RateLimiterConfig) IsEnabled() bool {
+	return r.RequestsPerMinute > 0 || r.MaxErrors > 0 ||
+		r.VulnerabilityScan.Max404 > 0 || len(r.VulnerabilityScan.URLs) > 0
+}
+
+// Validate checks the limits are coherent.
+func (r RateLimiterConfig) Validate() error {
+	switch {
+	case r.RequestsPerMinute < 0:
+		return fmt.Errorf("requestsPerMinute cannot be negative")
+	case r.MaxErrors < 0:
+		return fmt.Errorf("maxErrors cannot be negative")
+	case r.IsEnabled() && r.BlockMinutes <= 0:
+		return fmt.Errorf("blockMinutes must be positive when rate limiting is enabled")
+	}
+	v := r.VulnerabilityScan
+	switch {
+	case v.Max404 < 0:
+		return fmt.Errorf("vulnerabilityScan.max404 cannot be negative")
+	case v.Max404 > 0 && len(v.URLs) == 0:
+		return fmt.Errorf("vulnerabilityScan.urls must be provided when max404 > 0")
+	case v.Max404 > 0 && v.BlockMinutes <= 0:
+		return fmt.Errorf("vulnerabilityScan.blockMinutes must be positive when scan detection is enabled")
+	}
+	return nil
+}
+
+// rateLimiterFactory reuses the gateway's shared RateLimiter, so the chain
+// and the management API see the same state. Without one it builds a
+// standalone limiter from the config.
+type rateLimiterFactory struct {
+	middleware.ConcreteFactory
+	rateLimiter *RateLimiter
+}
+
+func newRateLimiterFactory(rateLimiter *RateLimiter) *rateLimiterFactory {
+	return &rateLimiterFactory{
+		ConcreteFactory: middleware.NewConcreteFactory(FilterRateLimiter, "Limits request rate per client IP and detects vulnerability scans"),
+		rateLimiter:     rateLimiter,
+	}
+}
+
+func (f *rateLimiterFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
+	return middleware.DecodeConfigInto(raw, RateLimiterConfig{})
+}
+
+func (f *rateLimiterFactory) Create(cfg interface{}) (middleware.Middleware, error) {
+	if f.rateLimiter != nil {
+		return f.rateLimiter.Handler, nil
+	}
+	c, err := middleware.ConfigAs[RateLimiterConfig](FilterRateLimiter, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return RateLimiterMiddleware(c), nil
+}
+
+// HealthCheck reports how many client IPs are tracked and blocked.
+func (f *rateLimiterFactory) HealthCheck() middleware.MiddlewareHealth {
+	if f.rateLimiter == nil {
+		return middleware.MiddlewareHealth{Status: "unknown", Message: "no rate limiter instance configured"}
+	}
+	stats := f.rateLimiter.Stats()
+	now := time.Now()
+	blocked := 0
+	for _, s := range stats {
+		if s.BlockedUntil.After(now) {
+			blocked++
+		}
+	}
+	return middleware.MiddlewareHealth{
+		Status:  "healthy",
+		Message: fmt.Sprintf("tracking %d client IP(s), %d currently blocked", len(stats), blocked),
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -263,4 +264,32 @@ func CheckAdminAccess(session *db.Session, adminRequired bool) bool {
 		return true // Admin access not required
 	}
 	return session != nil && session.IsAdmin
+}
+
+// FilterSessionExtraction attaches the caller's session, when there is one, to
+// the request context. It takes no options.
+const FilterSessionExtraction = "session_extraction"
+
+type sessionExtractionFactory struct {
+	middleware.ConcreteFactory
+	middleware.NoConfig
+	sessionStore session.SessionStore
+	tokenService session.TokenService
+}
+
+// The ja4_fingerprint dependency keeps the analytics filters in their
+// original order; this filter does not read the fingerprint itself.
+func newSessionExtractionFactory(sessionStore session.SessionStore, tokenService session.TokenService) *sessionExtractionFactory {
+	return &sessionExtractionFactory{
+		ConcreteFactory: middleware.NewConcreteFactory(FilterSessionExtraction, "Resolves the authenticated session/user and attaches it to the request context", FilterJA4Fingerprint),
+		sessionStore:    sessionStore,
+		tokenService:    tokenService,
+	}
+}
+
+func (f *sessionExtractionFactory) Create(interface{}) (middleware.Middleware, error) {
+	if f.sessionStore == nil || f.tokenService == nil {
+		return nil, fmt.Errorf("needs a session store and a token service")
+	}
+	return SessionExtractionMiddleware(f.sessionStore, f.tokenService), nil
 }

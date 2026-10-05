@@ -15,6 +15,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/static"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -291,8 +292,7 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 					Port: 0, // Use port 0 to let the system assign an available port
 				},
 				Management: config.ManagementConfig{
-					Prefix:  "/admin",
-					Logging: false,
+					Prefix: "/admin",
 				},
 				Routes: tt.routes,
 			}
@@ -495,8 +495,7 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 			Port: 0,
 		},
 		Management: config.ManagementConfig{
-			Prefix:  "/admin",
-			Logging: false,
+			Prefix: "/admin",
 		},
 		Routes: []config.RouteConfig{
 			{
@@ -629,9 +628,9 @@ func TestHelloEndpoint(t *testing.T) {
 			Port: 0, // Use port 0 to let the system assign an available port
 		},
 		Management: config.ManagementConfig{
-			Prefix:  "/admin",
-			Logging: true,
+			Prefix: "/admin",
 		},
+		Filters: []config.FilterConfig{config.NewFilterConfig(builtin.FilterLogging, nil)},
 		Routes: []config.RouteConfig{
 			{
 				Name: "Hello Endpoint",

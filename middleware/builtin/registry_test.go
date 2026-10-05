@@ -1,26 +1,25 @@
 package builtin
 
 import (
-	"github.com/jmaister/taronja-gateway/middleware"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 
-	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/middleware"
 )
 
 func TestRegistryBuildsMiddleware(t *testing.T) {
 	registry := middleware.NewRegistry()
-	if err := registry.RegisterFactory(NewRateLimiterFactory(nil)); err != nil {
+	if err := registry.RegisterFactory(newRateLimiterFactory(nil)); err != nil {
 		t.Fatalf("Failed to register rate_limiter factory: %v", err)
 	}
-	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+	if err := registry.RegisterFactory(newLoggingFactory()); err != nil {
 		t.Fatalf("Failed to register logging factory: %v", err)
 	}
 
 	specs := []middleware.MiddlewareSpec{
-		{Name: "rate_limiter", Config: config.RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 10, BlockMinutes: 5}},
+		{Name: "rate_limiter", Config: RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 10, BlockMinutes: 5}},
 		{Name: "logging"},
 	}
 
@@ -53,17 +52,17 @@ func TestRegistryBuildsMiddleware(t *testing.T) {
 
 func TestRegistryRegisterFactoryRejectsDuplicates(t *testing.T) {
 	registry := middleware.NewRegistry()
-	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+	if err := registry.RegisterFactory(newLoggingFactory()); err != nil {
 		t.Fatalf("First registration should succeed: %v", err)
 	}
-	if err := registry.RegisterFactory(NewLoggingFactory()); err == nil {
+	if err := registry.RegisterFactory(newLoggingFactory()); err == nil {
 		t.Fatal("Expected error when registering duplicate factory name")
 	}
 }
 
 func TestRegistryBuildChainUnknownMiddleware(t *testing.T) {
 	registry := middleware.NewRegistry()
-	registry.RegisterFactory(NewLoggingFactory())
+	registry.RegisterFactory(newLoggingFactory())
 
 	specs := []middleware.MiddlewareSpec{
 		{Name: "does_not_exist"},
@@ -77,7 +76,7 @@ func TestRegistryBuildChainUnknownMiddleware(t *testing.T) {
 
 func TestRegistryValidatesDependencies(t *testing.T) {
 	registry := middleware.NewRegistry()
-	registry.RegisterFactory(NewSessionExtractionFactory(nil, nil))
+	registry.RegisterFactory(newSessionExtractionFactory(nil, nil))
 
 	// Try to build session extraction without ja4_fingerprint being enabled first.
 	specs := []middleware.MiddlewareSpec{
@@ -92,9 +91,9 @@ func TestRegistryValidatesDependencies(t *testing.T) {
 
 func TestRegistryBuildChainSatisfiedDependencies(t *testing.T) {
 	registry := middleware.NewRegistry()
-	registry.RegisterFactory(NewJA4Factory())
-	registry.RegisterFactory(NewSessionExtractionFactory(nil, nil))
-	registry.RegisterFactory(NewTrafficMetricsFactory(nil))
+	registry.RegisterFactory(newJA4Factory())
+	registry.RegisterFactory(newSessionExtractionFactory(nil, nil))
+	registry.RegisterFactory(newTrafficMetricsFactory(nil))
 
 	specs := []middleware.MiddlewareSpec{
 		{Name: "ja4_fingerprint"},
@@ -102,19 +101,15 @@ func TestRegistryBuildChainSatisfiedDependencies(t *testing.T) {
 		{Name: "traffic_metrics"},
 	}
 
-	chain, err := registry.BuildChain(specs)
-	if err != nil {
+	if err := registry.ValidateSpecs(specs); err != nil {
 		t.Fatalf("Expected dependencies to be satisfied in order, got error: %v", err)
-	}
-	if chain == nil {
-		t.Fatal("Chain should not be nil")
 	}
 }
 
 func TestRegistryReportsStatus(t *testing.T) {
 	registry := middleware.NewRegistry()
-	registry.RegisterFactory(NewRateLimiterFactory(nil))
-	registry.RegisterFactory(NewLoggingFactory())
+	registry.RegisterFactory(newRateLimiterFactory(nil))
+	registry.RegisterFactory(newLoggingFactory())
 
 	// Nothing built yet: both should report as "available", not "active".
 	status := registry.GetStatus()
@@ -153,11 +148,11 @@ func TestRegistryReportsStatus(t *testing.T) {
 // contract.
 func TestRegistryStatusReflectsOnlyMostRecentBuild(t *testing.T) {
 	registry := middleware.NewRegistry()
-	registry.RegisterFactory(NewRateLimiterFactory(nil))
-	registry.RegisterFactory(NewLoggingFactory())
+	registry.RegisterFactory(newRateLimiterFactory(nil))
+	registry.RegisterFactory(newLoggingFactory())
 
 	if _, err := registry.BuildChain([]middleware.MiddlewareSpec{
-		{Name: "rate_limiter", Config: config.RateLimiterConfig{RequestsPerMinute: 10}},
+		{Name: "rate_limiter", Config: RateLimiterConfig{RequestsPerMinute: 10}},
 		{Name: "logging"},
 	}); err != nil {
 		t.Fatalf("first BuildChain failed: %v", err)
@@ -184,54 +179,6 @@ func TestRegistryStatusReflectsOnlyMostRecentBuild(t *testing.T) {
 	}
 }
 
-func TestNewGlobalChainMatchesConfig(t *testing.T) {
-	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Management.Analytics = true
-	gatewayConfig.Management.Logging = true
-
-	registry, chain, err := NewGlobalChain(gatewayConfig, nil, nil, nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to build chain from config: %v", err)
-	}
-	if chain == nil {
-		t.Fatal("Chain should not be nil")
-	}
-
-	status := registry.GetStatus()
-	for _, name := range []string{"ja4_fingerprint", "session_extraction", "traffic_metrics", "logging"} {
-		if !status[name].Enabled {
-			t.Fatalf("Expected %s to be active, got %+v", name, status[name])
-		}
-	}
-	if status["rate_limiter"].Enabled {
-		t.Fatalf("Expected rate_limiter to be disabled (not configured), got %+v", status["rate_limiter"])
-	}
-}
-
-func TestNewGlobalChainProducesWorkingChain(t *testing.T) {
-	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Management.Logging = true
-
-	_, chain, err := NewGlobalChain(gatewayConfig, nil, nil, nil, nil)
-	if err != nil {
-		t.Fatalf("NewGlobalChain failed: %v", err)
-	}
-
-	called := false
-	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	rw := httptest.NewRecorder()
-	handler.ServeHTTP(rw, req)
-
-	if !called {
-		t.Fatal("Expected wrapped handler to be called")
-	}
-}
-
 // TestRegistry_ConcurrentBuildChainAndReads is the regression test for the
 // registry's own documented contract: BuildChain's doc comment describes
 // calling it again on an already-live registry (e.g. re-building one
@@ -246,14 +193,14 @@ func TestNewGlobalChainProducesWorkingChain(t *testing.T) {
 // can panic outright ("fatal error: concurrent map read and map write").
 func TestRegistry_ConcurrentBuildChainAndReads(t *testing.T) {
 	registry := middleware.NewRegistry()
-	if err := registry.RegisterFactory(NewRateLimiterFactory(nil)); err != nil {
+	if err := registry.RegisterFactory(newRateLimiterFactory(nil)); err != nil {
 		t.Fatalf("Failed to register rate_limiter factory: %v", err)
 	}
-	if err := registry.RegisterFactory(NewLoggingFactory()); err != nil {
+	if err := registry.RegisterFactory(newLoggingFactory()); err != nil {
 		t.Fatalf("Failed to register logging factory: %v", err)
 	}
 	specs := []middleware.MiddlewareSpec{
-		{Name: "rate_limiter", Config: config.RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 10, BlockMinutes: 5}},
+		{Name: "rate_limiter", Config: RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 10, BlockMinutes: 5}},
 		{Name: "logging"},
 	}
 

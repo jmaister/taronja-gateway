@@ -4,20 +4,8 @@ server:
   host: 127.0.0.1
   port: 8080
   url: http://localhost:8080
-# tracing:
-#   # Disabled by default. Creates an OpenTelemetry span per request,
-#   # exported over OTLP/HTTP to a collector (an OpenTelemetry Collector,
-#   # Jaeger, Tempo, Honeycomb, ...). Top-level, not under management: —
-#   # see README.md's "Tracing" section and doc/middleware/tracing.md.
-#   enabled: true
-#   endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
-#   insecure: true             # plain HTTP to endpoint; most local/self-hosted collectors need this
 management:
   prefix: _
-  logging: true
-  compression: true    # brotli/zstd/gzip/deflate response compression, negotiated via Accept-Encoding
-  analytics: true
-  excludeStaticAssets: false  # set true to skip traffic-metrics collection for static assets (CSS/JS/images/fonts/...)
   session:
     secondsDuration: 86400  # Session duration in seconds (24 hours = 86400 seconds)
   admin:
@@ -26,51 +14,40 @@ management:
     enabled: true
     username: admin
     password: admin123  # This will be automatically hashed for security
-  rateLimiter:
-    # Simple in-memory rate limiting (0 to disable)
-    requestsPerMinute: 100   # general request rate limit per IP
-    maxErrors: 20            # number of 401/404 errors before blocking
-    blockMinutes: 15         # how long to block offending IPs    # optional scanner detection: paths that should never exist
-    vulnerabilityScan:
-      urls:
-        - "/*.php"
-        - "/.env"
-      max404: 3              # block after three hits to watched paths
-      blockMinutes: 15       # length of block for scanner IP
-  cors:
-    # Disabled by default (the dashboard is always served same-origin).
-    # Enable only if a separately-hosted frontend needs to call the
-    # management API directly.
-    allowedOrigins:
-      - "https://app.example.com"
-    allowCredentials: true   # requires an explicit origin list, not "*"
-# Optional: declare the global middleware chain explicitly (order + enabled
-# flags), instead of the management.compression/cors/analytics/logging/
-# rateLimiter flags above. When this section is present it fully replaces
-# those flags. See doc/refactor01.md, AGENTS.md, and doc/middleware/ for
-# details on each middleware. Note: listing "tracing" here only controls
-# its *position* in the chain — actually exporting anything still needs
-# the top-level tracing.enabled/endpoint above, since that's what starts
-# the real OTLP exporter this middleware dispatches through.
-# middleware:
-#   global:
-#     - name: tracing
-#     - name: compression
-#     - name: cors
-#       cors:
-#         allowedOrigins:
-#           - "https://app.example.com"
-#     - name: rate_limiter
-#       rateLimiter:
-#         requestsPerMinute: 100
-#         maxErrors: 20
-#         blockMinutes: 15
-#     - name: ja4_fingerprint
-#     - name: session_extraction
-#     - name: traffic_metrics
-#       trafficMetrics:
-#         excludeStaticAssets: false
-#     - name: logging
+# Global filters, run top to bottom. Each one is documented, with its
+# options, in doc/middleware/. Remove an entry (or set enabled: false) to
+# turn it off; `tg filters list --config <file>` shows the resolved chain.
+filters:
+  # - name: tracing             # OpenTelemetry span per request, see doc/middleware/tracing.md
+  #   config:
+  #     endpoint: localhost:4318  # OTLP/HTTP collector host:port, no scheme
+  #     insecure: true            # plain HTTP; most local collectors need this
+  - name: compression           # brotli/zstd/gzip/deflate, negotiated via Accept-Encoding
+  - name: cors
+    config:
+      # Only needed when a separately hosted frontend calls the management
+      # API directly; the dashboard itself is served same-origin.
+      allowedOrigins:
+        - "https://app.example.com"
+      allowCredentials: true    # requires an explicit origin list, not "*"
+  - name: rate_limiter
+    config:
+      requestsPerMinute: 100    # general request rate limit per IP
+      maxErrors: 20             # number of 401/404 errors before blocking
+      blockMinutes: 15          # how long to block offending IPs
+      vulnerabilityScan:        # optional scanner detection: paths that should never exist
+        urls:
+          - "/*.php"
+          - "/.env"
+        max404: 3               # block after three hits to watched paths
+        blockMinutes: 15        # length of block for scanner IP
+  # Analytics for the dashboard: traffic_metrics needs the two before it.
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
+    config:
+      excludeStaticAssets: false  # true skips CSS/JS/images/fonts/...
+  - name: logging
 routes:
   - name: Favicon
     from: /favicon.ico

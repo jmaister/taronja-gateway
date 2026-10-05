@@ -124,49 +124,56 @@ var configMigrations = map[string]configMigration{
 	legacyConfigVersion: migrateLegacyToV1,
 }
 
-// migrateLegacyToV1 upgrades a pre-v1.0.0 config (legacyConfigVersion) to
-// version 1.0: flattens notification.email.smtp.* to notification.email.*
-// (see flattenNotificationEmailSMTP — the one real content change between
-// the two), then stamps the file with an explicit version: 1.0.
+// migrateLegacyToV1 upgrades a pre-v1.0.0 config to 1.0: flattens
+// notification.email.smtp.*, moves the filter settings into the root `filters`
+// list, then stamps version: 1.0.
 func migrateLegacyToV1(raw []byte) []byte {
-	return setTopLevelVersionField(flattenNotificationEmailSMTP(raw), "1.0")
+	return setTopLevelVersionField(editYAML(raw, flattenNotificationEmailSMTPNode, moveFiltersToRoot), "1.0")
 }
 
 // flattenNotificationEmailSMTP moves notification.email.smtp.* up to
-// notification.email.*; configs without the block pass through untouched. It
-// edits via yaml.Node to keep comments and placeholders, but yaml.v3 may
-// reformat quoting and indentation.
+// notification.email.*; configs without the block pass through untouched.
 func flattenNotificationEmailSMTP(raw []byte) []byte {
+	return editYAML(raw, flattenNotificationEmailSMTPNode)
+}
+
+func flattenNotificationEmailSMTPNode(root *yaml.Node) bool {
+	email := mappingValue(mappingValue(root, "notification"), "email")
+	smtp := removeMappingKey(email, "smtp")
+	if smtp == nil || smtp.Kind != yaml.MappingNode {
+		return false
+	}
+	email.Content = append(email.Content, smtp.Content...)
+	return true
+}
+
+// editYAML applies edits to raw's root mapping through yaml.Node, which keeps
+// comments and ${VAR} placeholders. raw is returned byte-for-byte when no edit
+// changes anything (or it does not parse); otherwise it is re-encoded with
+// 2-space indentation, which may reformat quoting.
+func editYAML(raw []byte, edits ...func(root *yaml.Node) bool) []byte {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
-		// Malformed or empty YAML: leave it exactly as-is. LoadConfig will
-		// report a real parse error on it shortly after anyway — this isn't
-		// the place to fail (or worse, half-mangle) it.
 		return raw
 	}
 	root := doc.Content[0]
 	if root.Kind != yaml.MappingNode {
 		return raw
 	}
-
-	email := mappingValue(mappingValue(root, "notification"), "email")
-	smtp := removeMappingKey(email, "smtp")
-	if smtp == nil || smtp.Kind != yaml.MappingNode {
-		return raw // no notification/email/smtp section at all — nothing to do
+	changed := false
+	for _, edit := range edits {
+		if edit(root) {
+			changed = true
+		}
 	}
-	email.Content = append(email.Content, smtp.Content...)
-
-	// yaml.Marshal's package-level function has no way to set the
-	// indent width and defaults to 4 spaces — inconsistent with every
-	// config file this project ships or generates (2 spaces, the
-	// conventional YAML style). Going through an *Encoder with
-	// SetIndent(2) instead keeps a migrated config's indentation
-	// matching what it had before this function touched it.
+	if !changed {
+		return raw
+	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(&doc); err != nil {
-		return raw // shouldn't happen; fail safe to the original bytes
+		return raw
 	}
 	if err := enc.Close(); err != nil {
 		return raw

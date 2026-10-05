@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +14,7 @@ import (
 
 // Test basic request rate limiting behavior
 func TestRateLimiter_RequestLimit(t *testing.T) {
-	cfg := config.RateLimiterConfig{
+	cfg := RateLimiterConfig{
 		RequestsPerMinute: 2,
 		MaxErrors:         0,
 		BlockMinutes:      1,
@@ -68,7 +67,7 @@ func TestRateLimiter_RequestLimit(t *testing.T) {
 
 // Test that repeated 404/401 errors trigger blocking
 func TestRateLimiter_ErrorLimit(t *testing.T) {
-	cfg := config.RateLimiterConfig{
+	cfg := RateLimiterConfig{
 		RequestsPerMinute: 0,
 		MaxErrors:         2,
 		BlockMinutes:      1,
@@ -108,7 +107,7 @@ func TestRateLimiter_ErrorLimit(t *testing.T) {
 
 // Test that an empty configuration disables all limiting and is a no-op.
 func TestRateLimiter_Disabled(t *testing.T) {
-	cfg := config.RateLimiterConfig{} // zero values
+	cfg := RateLimiterConfig{} // zero values
 	assert.False(t, cfg.IsEnabled(), "empty config should report disabled")
 
 	rl := NewRateLimiter(cfg, nil)
@@ -137,7 +136,7 @@ func TestRateLimiter_Disabled(t *testing.T) {
 
 // Test combined limits: request count and error count share same block
 func TestRateLimiter_Combined(t *testing.T) {
-	cfg := config.RateLimiterConfig{
+	cfg := RateLimiterConfig{
 		RequestsPerMinute: 3,
 		MaxErrors:         1,
 		BlockMinutes:      1,
@@ -181,11 +180,11 @@ func TestRateLimiter_Combined(t *testing.T) {
 
 // Test vulnerability scan detection via configured URLs
 func TestRateLimiter_VulnerabilityScan(t *testing.T) {
-	cfg := config.RateLimiterConfig{
+	cfg := RateLimiterConfig{
 		RequestsPerMinute: 0,
 		MaxErrors:         0,
 		BlockMinutes:      1,
-		VulnerabilityScan: config.VulnerabilityScanConfig{
+		VulnerabilityScan: VulnerabilityScanConfig{
 			URLs:         []string{"/admin.php", "/.env"},
 			Max404:       2,
 			BlockMinutes: 1,
@@ -239,11 +238,11 @@ func TestRateLimiter_VulnerabilityScan(t *testing.T) {
 
 // Test that the trim function correctly prunes old timestamps.
 func TestRateLimiter_Trim(t *testing.T) {
-	cfg := config.RateLimiterConfig{
+	cfg := RateLimiterConfig{
 		RequestsPerMinute: 10,
 		MaxErrors:         10,
 		BlockMinutes:      1,
-		VulnerabilityScan: config.VulnerabilityScanConfig{
+		VulnerabilityScan: VulnerabilityScanConfig{
 			URLs:         []string{"/foo"},
 			Max404:       10,
 			BlockMinutes: 1,
@@ -350,11 +349,11 @@ func TestMatchesVulnerabilityScanPath(t *testing.T) {
 }
 
 func TestRateLimiter_VulnerabilityScanWildcardMatchesNestedPaths(t *testing.T) {
-	cfg := config.RateLimiterConfig{
+	cfg := RateLimiterConfig{
 		RequestsPerMinute: 0,
 		MaxErrors:         0,
 		BlockMinutes:      1,
-		VulnerabilityScan: config.VulnerabilityScanConfig{
+		VulnerabilityScan: VulnerabilityScanConfig{
 			URLs:         []string{"/*.php", "/*.yml"},
 			Max404:       2,
 			BlockMinutes: 1,
@@ -397,7 +396,7 @@ func TestRateLimiter_RecordsRequestLimitBlockToRegistry(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
 
-	cfg := config.RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
+	cfg := RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
 	rl := NewRateLimiter(cfg, repo)
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -432,7 +431,7 @@ func TestRateLimiter_RecordsMaxErrorsBlockToRegistry(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
 
-	cfg := config.RateLimiterConfig{MaxErrors: 1, BlockMinutes: 1}
+	cfg := RateLimiterConfig{MaxErrors: 1, BlockMinutes: 1}
 	rl := NewRateLimiter(cfg, repo)
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -460,8 +459,8 @@ func TestRateLimiter_RecordsVulnerabilityScanBlockToRegistry(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
 
-	cfg := config.RateLimiterConfig{
-		VulnerabilityScan: config.VulnerabilityScanConfig{
+	cfg := RateLimiterConfig{
+		VulnerabilityScan: VulnerabilityScanConfig{
 			URLs:         []string{"/*.php"},
 			Max404:       1,
 			BlockMinutes: 1,
@@ -502,7 +501,7 @@ func TestRateLimiter_PrunesBlockedClientsOlderThanRetention(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
 
-	cfg := config.RateLimiterConfig{BlockedClientRetentionDays: 30}
+	cfg := RateLimiterConfig{BlockedClientRetentionDays: 30}
 	rl := NewRateLimiter(cfg, repo)
 	t.Cleanup(rl.Close)
 	require.Equal(t, 30*24*time.Hour, rl.blockedClientRetention)
@@ -542,7 +541,7 @@ func TestRateLimiter_PrunesBlockedClientsOlderThanRetention(t *testing.T) {
 func TestRateLimiter_NilRepoDoesNotPanicOnBlock(t *testing.T) {
 	// The default for RateLimiterMiddleware's standalone constructor —
 	// blocking must still work with nothing to persist to.
-	cfg := config.RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
+	cfg := RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
 	rl := NewRateLimiter(cfg, nil)
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

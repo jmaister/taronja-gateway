@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jmaister/taronja-gateway/middleware"
+
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 )
@@ -364,4 +366,20 @@ func (cw *compressingResponseWriter) Flush() {
 // through it.
 func (cw *compressingResponseWriter) Unwrap() http.ResponseWriter {
 	return cw.ResponseWriter
+}
+
+// FilterCompression compresses responses. It takes no options.
+const FilterCompression = "compression"
+
+type compressionFactory struct {
+	middleware.ConcreteFactory
+	middleware.NoConfig
+}
+
+func newCompressionFactory() *compressionFactory {
+	return &compressionFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterCompression, "Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it")}
+}
+
+func (f *compressionFactory) Create(interface{}) (middleware.Middleware, error) {
+	return CompressionMiddleware, nil
 }

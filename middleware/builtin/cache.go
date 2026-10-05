@@ -1,10 +1,10 @@
 package builtin
 
 import (
-	"github.com/jmaister/taronja-gateway/middleware"
 	"net/http"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/middleware"
 )
 
 // HttpCacheMiddleware provides cache control middleware functionality

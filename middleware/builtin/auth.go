@@ -1,9 +1,9 @@
 package builtin
 
 import (
-	"github.com/jmaister/taronja-gateway/middleware"
 	"net/http"
 
+	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
 )
 

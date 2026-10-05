@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/middleware"
+
 	"github.com/dgraph-io/ristretto"
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/lum8rjack/go-ja4h"
@@ -132,4 +134,21 @@ func JA4Middleware(enableCaching bool) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// FilterJA4Fingerprint computes the JA4H fingerprint used by the analytics
+// filters. It takes no options.
+const FilterJA4Fingerprint = "ja4_fingerprint"
+
+type ja4Factory struct {
+	middleware.ConcreteFactory
+	middleware.NoConfig
+}
+
+func newJA4Factory() *ja4Factory {
+	return &ja4Factory{ConcreteFactory: middleware.NewConcreteFactory(FilterJA4Fingerprint, "Computes and caches a JA4H fingerprint for each request")}
+}
+
+func (f *ja4Factory) Create(interface{}) (middleware.Middleware, error) {
+	return JA4Middleware(true), nil
 }

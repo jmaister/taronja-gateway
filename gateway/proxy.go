@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -31,7 +32,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	// header, which is what actually makes this a *distributed* trace
 	// instead of one isolated span per hop.
 	var transport http.RoundTripper = http.DefaultTransport
-	if g.GatewayConfig.Tracing.Enabled {
+	if builtin.FilterEnabled(g.GatewayConfig, builtin.FilterTracing) {
 		transport = otelhttp.NewTransport(transport)
 	}
 	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name, transport)

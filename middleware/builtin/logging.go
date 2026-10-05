@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/middleware"
 )
 
 // LoggingMiddleware logs information about each request
@@ -55,4 +57,20 @@ func (rw *responseWriter) WriteHeader(code int) {
 // Status returns the status code
 func (rw *responseWriter) Status() int {
 	return rw.statusCode
+}
+
+// FilterLogging logs every request. It takes no options.
+const FilterLogging = "logging"
+
+type loggingFactory struct {
+	middleware.ConcreteFactory
+	middleware.NoConfig
+}
+
+func newLoggingFactory() *loggingFactory {
+	return &loggingFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterLogging, "Logs each request/response (method, path, status, duration)")}
+}
+
+func (f *loggingFactory) Create(interface{}) (middleware.Middleware, error) {
+	return LoggingMiddleware, nil
 }

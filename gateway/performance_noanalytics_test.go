@@ -47,9 +47,7 @@ func createTestConfigNoAnalytics() *config.GatewayConfig {
 			Port: 8080,
 		},
 		Management: config.ManagementConfig{
-			Prefix:    "/_",
-			Analytics: false, // Disabled analytics
-			Logging:   false, // Disabled logging
+			Prefix: "/_",
 			Admin: config.AdminConfig{
 				Enabled:  false,
 				Username: "admin",

@@ -664,7 +664,7 @@ type RequestDetail struct {
 	FingerprintType RequestDetailFingerprintType `json:"fingerprint_type"`
 	Id              string                       `json:"id"`
 
-	// IsStatic Whether the request path looked like a static asset (see management.excludeStaticAssets)
+	// IsStatic Whether the request path looked like a static asset
 	IsStatic bool `json:"is_static"`
 
 	// Latitude GPS latitude coordinate
@@ -751,7 +751,7 @@ type RequestStatistics struct {
 	// Example: {"alice":1200,"bob":900,"guest":300}
 	RequestsByUser map[string]int `json:"requestsByUser"`
 
-	// StaticAssetsExcluded True when management.excludeStaticAssets is on, i.e. requests for static assets are no longer recorded, so the static-only request type filter only matches rows recorded before it was enabled.
+	// StaticAssetsExcluded True when the traffic_metrics filter's excludeStaticAssets option is on: static asset requests are not recorded and is_static is ignored.
 	StaticAssetsExcluded *bool `json:"staticAssetsExcluded,omitempty"`
 
 	// TotalRequests Total number of requests
@@ -1022,7 +1022,7 @@ type GetRequestStatisticsParams struct {
 	// EndDate End of the date range (ISO 8601 format).
 	EndDate *TrafficEndDate `form:"end_date,omitempty" json:"end_date,omitempty"`
 
-	// IsStatic Filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false only non-static requests, omitting it returns both.
+	// IsStatic Filter on whether the request was for a static asset. true returns only static asset requests, false only non-static requests, omitting it returns both. Ignored when the traffic_metrics filter excludes static assets.
 	IsStatic *TrafficIsStatic `form:"is_static,omitempty" json:"is_static,omitempty"`
 
 	// StatusCode Only requests that got this HTTP status code.
@@ -1058,7 +1058,7 @@ type GetRequestDetailsParams struct {
 	// EndDate End of the date range (ISO 8601 format).
 	EndDate *TrafficEndDate `form:"end_date,omitempty" json:"end_date,omitempty"`
 
-	// IsStatic Filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false only non-static requests, omitting it returns both.
+	// IsStatic Filter on whether the request was for a static asset. true returns only static asset requests, false only non-static requests, omitting it returns both. Ignored when the traffic_metrics filter excludes static assets.
 	IsStatic *TrafficIsStatic `form:"is_static,omitempty" json:"is_static,omitempty"`
 
 	// StatusCode Only requests that got this HTTP status code.
@@ -1097,7 +1097,7 @@ type GetRequestTimeSeriesParams struct {
 	// Granularity Bucket size. Defaults to "day". Each is capped to a maximum start_date/end_date span, to keep the number of returned points bounded: minute (24 hours), hour (31 days), day (366 days), week (2 years), month (5 years).
 	Granularity *TimeSeriesGranularity `form:"granularity,omitempty" json:"granularity,omitempty"`
 
-	// IsStatic Filter on whether the request was for a static asset (see management.excludeStaticAssets). true returns only static asset requests, false only non-static requests, omitting it returns both.
+	// IsStatic Filter on whether the request was for a static asset. true returns only static asset requests, false only non-static requests, omitting it returns both. Ignored when the traffic_metrics filter excludes static assets.
 	IsStatic *TrafficIsStatic `form:"is_static,omitempty" json:"is_static,omitempty"`
 
 	// StatusCode Only requests that got this HTTP status code.

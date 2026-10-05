@@ -1,12 +1,12 @@
 package builtin
 
 import (
-	"github.com/jmaister/taronja-gateway/middleware"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/middleware"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +18,7 @@ func newTestHandler() http.Handler {
 }
 
 func TestCORSMiddleware_DisabledIsPassthrough(t *testing.T) {
-	handler := CORSMiddleware(config.CORSConfig{})(newTestHandler())
+	handler := CORSMiddleware(CORSConfig{})(newTestHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Origin", "https://example.com")
@@ -30,7 +30,7 @@ func TestCORSMiddleware_DisabledIsPassthrough(t *testing.T) {
 }
 
 func TestCORSMiddleware_NoOriginHeaderIsPassthrough(t *testing.T) {
-	handler := CORSMiddleware(config.CORSConfig{AllowedOrigins: []string{"https://example.com"}})(newTestHandler())
+	handler := CORSMiddleware(CORSConfig{AllowedOrigins: []string{"https://example.com"}})(newTestHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil) // no Origin header: not a cross-origin request
 	rw := httptest.NewRecorder()
@@ -42,7 +42,7 @@ func TestCORSMiddleware_NoOriginHeaderIsPassthrough(t *testing.T) {
 
 func TestCORSMiddleware_AllowedOriginGetsHeader(t *testing.T) {
 	called := false
-	handler := CORSMiddleware(config.CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}})(
+	handler := CORSMiddleware(CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			called = true
 			w.WriteHeader(http.StatusOK)
@@ -61,7 +61,7 @@ func TestCORSMiddleware_AllowedOriginGetsHeader(t *testing.T) {
 
 func TestCORSMiddleware_DisallowedOriginGetsNoHeader(t *testing.T) {
 	called := false
-	handler := CORSMiddleware(config.CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}})(
+	handler := CORSMiddleware(CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			called = true
 			w.WriteHeader(http.StatusOK)
@@ -78,7 +78,7 @@ func TestCORSMiddleware_DisallowedOriginGetsNoHeader(t *testing.T) {
 }
 
 func TestCORSMiddleware_WildcardWithoutCredentials(t *testing.T) {
-	handler := CORSMiddleware(config.CORSConfig{AllowedOrigins: []string{"*"}})(newTestHandler())
+	handler := CORSMiddleware(CORSConfig{AllowedOrigins: []string{"*"}})(newTestHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Origin", "https://anything.example.com")
@@ -90,7 +90,7 @@ func TestCORSMiddleware_WildcardWithoutCredentials(t *testing.T) {
 }
 
 func TestCORSMiddleware_CredentialsEchoesSpecificOrigin(t *testing.T) {
-	handler := CORSMiddleware(config.CORSConfig{
+	handler := CORSMiddleware(CORSConfig{
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: true,
 	})(newTestHandler())
@@ -106,7 +106,7 @@ func TestCORSMiddleware_CredentialsEchoesSpecificOrigin(t *testing.T) {
 
 func TestCORSMiddleware_PreflightShortCircuits(t *testing.T) {
 	called := false
-	handler := CORSMiddleware(config.CORSConfig{
+	handler := CORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"https://allowed.example.com"},
 		AllowedMethods: []string{"GET", "POST"},
 		AllowedHeaders: []string{"Content-Type"},
@@ -130,7 +130,7 @@ func TestCORSMiddleware_PreflightShortCircuits(t *testing.T) {
 }
 
 func TestCORSMiddleware_DefaultsWhenUnset(t *testing.T) {
-	handler := CORSMiddleware(config.CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}})(newTestHandler())
+	handler := CORSMiddleware(CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}})(newTestHandler())
 
 	req := httptest.NewRequest(http.MethodOptions, "/", nil)
 	req.Header.Set("Origin", "https://allowed.example.com")
@@ -146,10 +146,10 @@ func TestCORSMiddleware_DefaultsWhenUnset(t *testing.T) {
 
 func TestCORSFactory_RegistersAndBuildsThroughRealRegistry(t *testing.T) {
 	registry := middleware.NewRegistry()
-	require.NoError(t, registry.RegisterFactory(NewCORSFactory()))
+	require.NoError(t, registry.RegisterFactory(newCORSFactory()))
 
 	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{
-		{Name: "cors", Config: config.CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}}},
+		{Name: "cors", Config: CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}}},
 	})
 	require.NoError(t, err)
 
@@ -163,7 +163,7 @@ func TestCORSFactory_RegistersAndBuildsThroughRealRegistry(t *testing.T) {
 }
 
 func TestCORSFactory_RejectsWrongConfigType(t *testing.T) {
-	f := NewCORSFactory()
+	f := newCORSFactory()
 	_, err := f.Create("not a CORSConfig")
 	require.Error(t, err)
 }

@@ -1,3 +1,4 @@
+version: "1.0"
 name: Hockey (Astro)
 server:
   host: 127.0.0.1
@@ -5,7 +6,8 @@ server:
   url: http://localhost:8080
 management:
   prefix: _
-  logging: true
+filters:
+  - name: logging
 
 routes:
   - name: Favicon

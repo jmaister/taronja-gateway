@@ -2,9 +2,13 @@ package builtin
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/middleware"
+	yaml "gopkg.in/yaml.v3"
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
@@ -119,4 +123,43 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository, excludeStatic
 			}()
 		})
 	}
+}
+
+// FilterTrafficMetrics records every request for the statistics dashboard.
+const FilterTrafficMetrics = "traffic_metrics"
+
+// TrafficMetricsConfig holds the traffic_metrics filter options.
+type TrafficMetricsConfig struct {
+	// ExcludeStaticAssets skips requests for static assets (see
+	// session.IsStaticAssetPath). Default: false.
+	ExcludeStaticAssets bool `yaml:"excludeStaticAssets"`
+}
+
+type trafficMetricsFactory struct {
+	middleware.ConcreteFactory
+	trafficMetricRepo db.TrafficMetricRepository
+}
+
+// Both dependencies are real reads: the session from the request context and,
+// through session.NewClientInfo, the JA4H fingerprint header.
+func newTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *trafficMetricsFactory {
+	return &trafficMetricsFactory{
+		ConcreteFactory:   middleware.NewConcreteFactory(FilterTrafficMetrics, "Records per-request traffic metrics (status, size, duration, user)", FilterSessionExtraction, FilterJA4Fingerprint),
+		trafficMetricRepo: trafficMetricRepo,
+	}
+}
+
+func (f *trafficMetricsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
+	return middleware.DecodeConfigInto(raw, TrafficMetricsConfig{})
+}
+
+func (f *trafficMetricsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
+	if f.trafficMetricRepo == nil {
+		return nil, fmt.Errorf("needs a traffic metric repository")
+	}
+	c, err := middleware.ConfigAs[TrafficMetricsConfig](FilterTrafficMetrics, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return TrafficMetricMiddleware(f.trafficMetricRepo, c.ExcludeStaticAssets), nil
 }

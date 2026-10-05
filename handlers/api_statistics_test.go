@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
@@ -448,7 +447,7 @@ func TestGetRequestDetails_IsStaticFilter(t *testing.T) {
 
 func TestRateLimiterEndpoints(t *testing.T) {
 	// create server with a limiter
-	cfg := &config.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
+	cfg := &builtin.RateLimiterConfig{RequestsPerMinute: 5, MaxErrors: 0, BlockMinutes: 1}
 	rl := builtin.NewRateLimiter(*cfg, nil)
 	dependencies := deps.NewTest()
 	s := NewStrictApiServer(dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo, dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService, dependencies.StartTime, rl, nil, dependencies.NotificationService)

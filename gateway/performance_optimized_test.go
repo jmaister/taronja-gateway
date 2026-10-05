@@ -5,20 +5,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
 // BenchmarkStaticRequestAnalyticsIncludingStatic benchmarks a static-asset
-// request through the real full middleware chain with
-// management.excludeStaticAssets left at its default (false): traffic
+// request through the real full middleware chain with the traffic_metrics
+// excludeStaticAssets option left at its default (false): traffic
 // metrics are still recorded for every request, static assets included.
 // Compare against BenchmarkStaticRequestAnalyticsExcludingStatic below —
 // same request, same chain, only that one flag differs.
 func BenchmarkStaticRequestAnalyticsIncludingStatic(b *testing.B) {
 	cfg := createTestConfig()
-	cfg.Management.ExcludeStaticAssets = false
 	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
@@ -37,13 +37,13 @@ func BenchmarkStaticRequestAnalyticsIncludingStatic(b *testing.B) {
 
 // BenchmarkStaticRequestAnalyticsExcludingStatic is
 // BenchmarkStaticRequestAnalyticsIncludingStatic with
-// management.excludeStaticAssets: true — TrafficMetricMiddleware skips its
+// traffic_metrics excludeStaticAssets: true — TrafficMetricMiddleware skips its
 // response-writer wrapping, TrafficMetric construction, and async DB write
 // for this request because session.IsStaticAssetPath("/_/static/style.css")
 // is true. See doc/PERFORMANCE_ANALYSIS.md for the measured before/after.
 func BenchmarkStaticRequestAnalyticsExcludingStatic(b *testing.B) {
 	cfg := createTestConfig()
-	cfg.Management.ExcludeStaticAssets = true
+	cfg.Filters[2] = config.NewFilterConfig(builtin.FilterTrafficMetrics, builtin.TrafficMetricsConfig{ExcludeStaticAssets: true})
 	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
@@ -111,7 +111,7 @@ func BenchmarkJA4HNoCaching(b *testing.B) {
 }
 
 // TestStaticAssetDetection tests session.IsStaticAssetPath, the heuristic
-// management.excludeStaticAssets and the request-details report filter both
+// the traffic_metrics excludeStaticAssets option and the request-details filter both
 // rely on to decide whether a path is a static asset.
 func TestStaticAssetDetection(t *testing.T) {
 	testCases := []struct {

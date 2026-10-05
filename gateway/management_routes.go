@@ -114,7 +114,8 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		g.MiddlewareRegistry,
 		g.Dependencies.NotificationService,
 	)
-	strictApiServer.SetExcludeStaticAssets(builtin.EffectiveExcludeStaticAssets(g.GatewayConfig))
+	metricsCfg, _, _ := builtin.FilterSettings[builtin.TrafficMetricsConfig](g.GatewayConfig, builtin.FilterTrafficMetrics)
+	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)

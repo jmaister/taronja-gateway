@@ -31,7 +31,7 @@ var staticAssetPathPrefixes = []string{
 //
 // Used both to tag TrafficMetric rows with IsStaticAsset (so reports can
 // filter by it after the fact) and, when
-// config.ManagementConfig.ExcludeStaticAssets is set, to decide whether
+// the traffic_metrics filter's excludeStaticAssets option is set, to decide whether
 // TrafficMetricMiddleware should record a row for this request at all.
 func IsStaticAssetPath(path string) bool {
 	pathLower := strings.ToLower(path)

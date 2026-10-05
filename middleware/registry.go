@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 )
 
@@ -124,7 +125,10 @@ func (r *Registry) createAll(specs []MiddlewareSpec, add func(name string, mw Mi
 
 		cfg := spec.Config
 		if cfg == nil {
-			cfg = factory.GetDefaultConfig()
+			var err error
+			if cfg, err = factory.DecodeConfig(nil); err != nil {
+				return fmt.Errorf("middleware '%s': %w", spec.Name, err)
+			}
 		}
 
 		mw, err := factory.Create(cfg)
@@ -178,6 +182,26 @@ func (r *Registry) GetStatus() map[string]MiddlewareStatus {
 	}
 
 	return status
+}
+
+// Factory returns the factory registered under name.
+func (r *Registry) Factory(name string) (MiddlewareFactory, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	f, ok := r.factories[name]
+	return f, ok
+}
+
+// Names returns every registered factory name, sorted.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.factories))
+	for name := range r.factories {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Factories returns every factory currently registered, in no particular
