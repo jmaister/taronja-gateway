@@ -1,40 +1,40 @@
-# Middleware architecture
+# Filter architecture
 
-How requests move through the gateway's middleware. For writing a new middleware see [middleware_development.md](./middleware_development.md); for per-middleware options see [middleware/](./middleware/README.md).
+How requests move through the gateway's filters (global middleware) and route middleware. For writing a filter see [middleware_development.md](./middleware_development.md); for each filter's options see [middleware/](./middleware/README.md).
 
 ## Packages
 
 ```
 middleware/            Plumbing only
 ├── chain.go           ChainBuilder / Chain: compose func(http.Handler) http.Handler values
-├── factory.go         MiddlewareFactory interface and ConcreteFactory helper
+├── factory.go         MiddlewareFactory interface, ConcreteFactory, NoConfig, DecodeConfigInto, ConfigAs
 ├── registry.go        Registry: BuildChain (global, instrumented) and NewChain (per route, no side effects)
 ├── health.go          Optional HealthChecker interface for factories
 └── metrics.go         Per-middleware request/error/time counters
 middleware/builtin/    Implementations
-├── factories.go       One factory per global middleware
-├── global.go          ResolveGlobalChainSpecs, NewGlobalChain, Effective*Config helpers
+├── filters.go         NewFilterRegistry, ResolveFilters, NewGlobalChain, ValidateFilters, FilterSettings
 ├── route_chain.go     route_auth and route_cache factories, RouteChainBuilder
 ├── auth.go, cache.go  Route-level authentication and cache-control
 ├── session.go         Session middlewares, ValidateSessionFromRequest, CheckAdminAccess
-├── ratelimiter.go, compression.go, cors.go, tracing.go, logging.go, trafficmetric.go, validation.go
+├── tracing.go, compression.go, cors.go, ratelimiter.go, ja4.go, trafficmetric.go, logging.go
+│                      One filter each: name constant, options type with Validate, factory, middleware
+├── validation.go      Startup checks for routes, admin settings and filters
 middleware/fingerprint/ JA4H helpers
 ```
 
-## Global chain
+## Filter chain
 
-Built once at startup by `builtin.NewGlobalChain`, from `middleware.global` when that section exists, otherwise from the `management.*` flags (`ResolveGlobalChainSpecs`). With the flags, the order is:
+The root `filters:` list in the config is the whole chain: entries run in list order, disabled entries are skipped, and nothing runs when the list is absent. `config.FilterConfig` keeps each entry's `config:` block as a raw YAML node; the config package knows no filter names or options.
 
-1. `tracing` (when `tracing.enabled`)
-2. `compression`
-3. `cors`
-4. `rate_limiter`
-5. `ja4_fingerprint`, `session_extraction`, `traffic_metrics` (when `management.analytics`)
-6. `logging`
+`builtin.NewGlobalChain` builds the chain once at startup:
 
-`Registry.BuildChain` checks each factory's declared dependencies (for example `session_extraction` needs `ja4_fingerprint` earlier in the chain), wraps every middleware with metrics, and records which ones are active. `ValidateAllMiddleware` runs the same resolution at startup so a bad chain fails before the server starts.
+1. `NewFilterRegistry` registers every built-in factory with its runtime services (session store, token service, traffic metric repository, shared rate limiter).
+2. `ResolveFilters` looks each entry up by name and calls the factory's `DecodeConfig`, which decodes the options over their defaults, rejects unknown keys and runs the options type's `Validate`.
+3. `Registry.BuildChain` checks that every dependency appears earlier in the list (for example `traffic_metrics` needs `session_extraction` and `ja4_fingerprint`), creates each filter, wraps it with metrics and records which ones are active.
 
-When a setting can come from either `management.*` or a per-entry override, ask the resolved chain, not the raw config: `EffectiveRateLimiterConfig`, `EffectiveCORSConfig` and `EffectiveExcludeStaticAssets` return what the chain will really use.
+`ValidateFilters` runs steps 1 to 2 and the dependency check without creating anything; `tg validate`, `tg filters list` and gateway startup use it.
+
+Code outside the chain that depends on a filter's options reads them with `FilterSettings[C](cfg, name)` (or `FilterEnabled`), so it always agrees with the chain: the shared rate limiter, `gateway.InitTracing`, the proxy's trace propagation and the statistics API's `excludeStaticAssets`.
 
 ## Route chain
 

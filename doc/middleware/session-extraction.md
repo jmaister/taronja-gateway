@@ -1,11 +1,11 @@
 # Session Extraction
 
-**Middleware name:** `session_extraction`
-**Global chain position:** second of the "analytics" group — after
+**Filter name:** `session_extraction`
+**Suggested position:** second of the "analytics" group — after
 [`ja4_fingerprint`](ja4-fingerprint.md), before
 [`traffic_metrics`](traffic-metrics.md).
 **Depends on:** `ja4_fingerprint` (ordering only — see below).
-**Enabled by default:** no — part of the `analytics` flag/group (see below).
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -27,38 +27,20 @@ unauthenticated requests to protected routes).
 
 ## Enabling it
 
-There's no dedicated flag for this middleware alone — it's part of the
-`analytics` group, on together with [`ja4_fingerprint`](ja4-fingerprint.md)
-and [`traffic_metrics`](traffic-metrics.md):
+The dashboard's statistics need all three analytics filters, in this order:
 
 ```yaml
-management:
-  analytics: true
+filters:
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
 ```
 
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced),
-where it can be listed (and disabled) independently of the other two:
-
-```yaml
-middleware:
-  global:
-    - name: ja4_fingerprint
-    - name: session_extraction
-    - name: traffic_metrics
-```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one. It's also the only way to enable this middleware without the other
-two "analytics" ones — `analytics: true` always turns on all three
-together.
+It needs `ja4_fingerprint` earlier in the list.
 
 ## Config options
 
-None. `GetDefaultConfig()` returns an empty struct — listing
-`session_extraction` in an explicit `middleware:` section just
-positions/enables it, with nothing to configure.
+None. A `config:` block on this filter is rejected.
 
 ## Dependencies
 
@@ -70,14 +52,12 @@ because the gateway's original hardcoded chain always ran JA4H fingerprinting
 first ("so fingerprint is available for other middlewares"), and removing
 the dependency without being certain nothing downstream implicitly relies
 on that ordering wasn't worth the risk for a purely cosmetic simplification.
-If you're building an explicit `middleware:` chain and want
-`session_extraction` without `ja4_fingerprint`, this is safe to do — you'll
-just need to list `ja4_fingerprint` too to satisfy the declared dependency,
-even though nothing here actually consumes it.
+So listing `session_extraction` always needs `ja4_fingerprint` before it,
+even though nothing here consumes the fingerprint.
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/ja4-fingerprint.md](ja4-fingerprint.md) and
   [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the rest of the

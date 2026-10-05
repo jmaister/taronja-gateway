@@ -1,10 +1,10 @@
 # Rate Limiter
 
-**Middleware name:** `rate_limiter`
-**Global chain position:** second — right after [`cors`](cors.md), before
+**Filter name:** `rate_limiter`
+**Suggested position:** second — right after [`cors`](cors.md), before
 analytics or logging.
 **Depends on:** nothing.
-**Enabled by default:** no.
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -35,40 +35,21 @@ memory from one-off visitors.
 
 ## Enabling it
 
-Disabled by default — with `requestsPerMinute`, `maxErrors`, and
-`vulnerabilityScan` all unset (or zero), `IsEnabled()` is false and the
-middleware is a pure pass-through.
+Not listed, or listed with `requestsPerMinute`, `maxErrors` and
+`vulnerabilityScan` all unset, it passes every request through.
 
 ```yaml
-management:
-  rateLimiter:
-    requestsPerMinute: 300
-    maxErrors: 20
-    blockMinutes: 15
+filters:
+  - name: rate_limiter
+    config:
+      requestsPerMinute: 300
+      maxErrors: 20
+      blockMinutes: 15
 ```
-
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced):
-
-```yaml
-middleware:
-  global:
-    - name: rate_limiter
-      rateLimiter:
-        requestsPerMinute: 300
-        maxErrors: 20
-        blockMinutes: 15
-```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one.
 
 ## Config options
 
-All under `management.rateLimiter` (legacy flag path) or a `rateLimiter:`
-block on the `middleware.global[]` entry (explicit path) — same fields
-either way. Every numeric value is "0 disables that specific check"; the
+All under the entry's `config:` block. Every numeric value is "0 disables that specific check"; the
 three checks are independent, so you can enable any subset of them.
 
 | Key | Type | Default | Description |
@@ -136,10 +117,10 @@ your application's real routes.
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/cors.md](cors.md) — runs immediately before this one in
-  the default chain.
+  the suggested order.
 - `doc/TODO.md`'s "Rate limiter" section for remaining planned work (request-
   details filtering by IP/user-agent/date-range; the persistent-registry
   and attacker-map items are both done).

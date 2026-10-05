@@ -1,10 +1,10 @@
 # Logging
 
-**Middleware name:** `logging`
-**Global chain position:** last — after everything else, including the
+**Filter name:** `logging`
+**Suggested position:** last — after everything else, including the
 "analytics" group.
 **Depends on:** nothing.
-**Enabled by default:** no.
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -26,30 +26,17 @@ deliberately deferred piece of future work, not an oversight).
 ## Enabling it
 
 ```yaml
-management:
-  logging: true
+filters:
+  - name: logging
 ```
-
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced):
-
-```yaml
-middleware:
-  global:
-    - name: logging
-```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one.
 
 ## Config options
 
-None today. `GetDefaultConfig()` returns an empty struct.
+None. A `config:` block on this filter is rejected.
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the structured,
   queryable alternative to this plain-text log line, if you need to filter

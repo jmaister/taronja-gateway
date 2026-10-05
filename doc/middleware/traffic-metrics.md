@@ -1,13 +1,13 @@
 # Traffic Metrics
 
-**Middleware name:** `traffic_metrics`
-**Global chain position:** last of the "analytics" group — after
+**Filter name:** `traffic_metrics`
+**Suggested position:** last of the "analytics" group — after
 [`ja4_fingerprint`](ja4-fingerprint.md) and
 [`session_extraction`](session-extraction.md), before
 [`logging`](logging.md).
 **Depends on:** `session_extraction`, `ja4_fingerprint` (both verified
 reads — see below).
-**Enabled by default:** no — part of the `analytics` flag/group (see below).
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -41,41 +41,28 @@ once it's reachable again). `127.x.x.x`/`localhost` are never looked up.
 
 ## Enabling it
 
-There's no dedicated flag for this middleware alone — it's part of the
-`analytics` group, on together with [`ja4_fingerprint`](ja4-fingerprint.md)
-and [`session_extraction`](session-extraction.md):
+The dashboard's statistics need all three analytics filters, in this order:
 
 ```yaml
-management:
-  analytics: true
+filters:
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
 ```
 
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced),
-where it can be listed (and disabled) independently of the other two:
+To skip static assets:
 
 ```yaml
-middleware:
-  global:
-    - name: ja4_fingerprint
-    - name: session_extraction
-    - name: traffic_metrics
-      trafficMetrics:
-        excludeStaticAssets: true
+  - name: traffic_metrics
+    config:
+      excludeStaticAssets: true
 ```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one. It's also the only way to enable this middleware without the other
-two "analytics" ones — `analytics: true` always turns on all three
-together — and the only way to override `excludeStaticAssets` per-entry
-rather than gateway-wide.
 
 ## Config options
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `management.excludeStaticAssets` (legacy flag path) or `trafficMetrics.excludeStaticAssets` (a `middleware.global[]` entry's block, explicit path) | `bool` | `false` | Skip recording a row at all for a request whose path looks like a static asset (CSS/JS/images/fonts/... — see `session.IsStaticAssetPath`). Has no effect unless analytics/this middleware is also enabled. Reduces per-request overhead and stats-table volume on asset-heavy sites. Rows still record `IsStaticAsset`. When this is on, the statistics endpoints ignore the `is_static` filter (no static rows are recorded), the summary reports `staticAssetsExcluded: true`, and the dashboard hides the "Request type" dropdown. The dashboard reads the effective value, so a `trafficMetrics.excludeStaticAssets` override is honored. The setting is meant to be chosen before data is collected: turning it on later keeps the static rows already stored but no longer lets the dashboard filter them. |
+| `excludeStaticAssets` | `bool` | `false` | Skip recording a row at all for a request whose path looks like a static asset (CSS/JS/images/fonts/... — see `session.IsStaticAssetPath`). Has no effect unless analytics/this middleware is also enabled. Reduces per-request overhead and stats-table volume on asset-heavy sites. Rows still record `IsStaticAsset`. When this is on, the statistics endpoints ignore the `is_static` filter (no static rows are recorded), the summary reports `staticAssetsExcluded: true`, and the dashboard hides the "Request type" dropdown. The setting is meant to be chosen before data is collected: turning it on later keeps the static rows already stored but no longer lets the dashboard filter them. |
 
 ## Reports
 
@@ -122,13 +109,13 @@ Both declared dependencies are **verified reads**, not just ordering:
   fingerprint header that middleware sets, to populate `JA4Fingerprint` on
   the row.
 
-Building an explicit `middleware:` chain with `traffic_metrics` but missing
-either dependency fails fast at startup with a clear error, instead of
-silently recording metrics with that field empty.
+Listing `traffic_metrics` without either dependency earlier in `filters:`
+fails at startup with a clear error, instead of silently recording metrics
+with that field empty.
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/ja4-fingerprint.md](ja4-fingerprint.md) and
   [doc/middleware/session-extraction.md](session-extraction.md) — the rest

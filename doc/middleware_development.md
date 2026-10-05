@@ -1,180 +1,126 @@
-# Middleware Development Guide
+# Writing a Filter
 
-This guide is for anyone adding a new middleware to Taronja Gateway's global
-chain — whether it's a built-in one that ships with the gateway, or a
-third-party one that lives in its own module and is wired in at startup. It
-documents the factory/registry architecture introduced in `doc/refactor01.md`
-(phases 1–3) and the patterns it expects you to follow.
+Filters are the gateway's global middleware, configured in the root
+`filters:` list (see [doc/middleware/](middleware/README.md)). This guide
+covers adding one, either built into the gateway or as a separate module.
 
-A complete, runnable, tested example accompanies this guide at
-[`examples/middleware-plugin/`](../examples/middleware-plugin/) — read this
-document alongside it.
-
----
+A complete, tested third-party example lives in
+[`examples/middleware-plugin/`](../examples/middleware-plugin/).
 
 ## The moving parts
 
-Four pieces make up the system, all in the `middleware` package:
+All in the `middleware` package:
 
-- **`Middleware`** (`middleware/chain.go`) — the actual middleware function,
-  `func(http.Handler) http.Handler`. Nothing new here; this is the same
-  `net/http`-style middleware signature the gateway has always used.
-- **`MiddlewareFactory`** (`middleware/factory.go`) — the interface that lets
-  the registry discover, describe, and build a `Middleware`. This is what you
-  implement.
-- **`Registry`** (`middleware/registry.go`) — holds registered
-  factories and builds a `ChainBuilder` from an ordered list of
-  `MiddlewareSpec`, validating that every spec's declared dependencies are
-  satisfied by an earlier spec in the same list.
-- **`HealthChecker`** (`middleware/health.go`) — an *optional* interface a
-  factory can additionally implement to report runtime health.
+- **`Middleware`** (`chain.go`): `func(http.Handler) http.Handler`.
+- **`MiddlewareFactory`** (`factory.go`): what a filter implements: its name,
+  description, dependencies, how to decode its options, and how to build it.
+- **`Registry`** (`registry.go`): holds factories and builds a chain from an
+  ordered list of `MiddlewareSpec`, checking that each dependency appears
+  earlier in the list.
+- **`HealthChecker`** (`health.go`): optional, for filters with runtime state.
 
-The gateway's own five built-in middlewares (`rate_limiter`,
-`ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`) are
-implemented exactly this way in `middleware/builtin/factories.go` — read that file
-alongside this guide; it's the reference implementation, not a special case.
+## 1. One file per filter
 
-## 1. Implement `MiddlewareFactory`
+A built-in filter is one file in `middleware/builtin/` holding everything
+about it. `cors.go` is a good model:
 
 ```go
-type MiddlewareFactory interface {
-	Create(cfg interface{}) (Middleware, error)
-	GetName() string
-	GetDescription() string
-	GetDependencies() []string
-	GetDefaultConfig() interface{}
+// FilterCORS answers CORS preflights and adds CORS headers.
+const FilterCORS = "cors"
+
+// CORSConfig holds the cors filter options.
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowedOrigins"`
+	// ...
+}
+
+// Validate rejects combinations browsers refuse.
+func (c CORSConfig) Validate() error { ... }
+
+type corsFactory struct{ middleware.ConcreteFactory }
+
+func newCORSFactory() *corsFactory {
+	return &corsFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterCORS, "Adds CORS response headers")}
+}
+
+func (f *corsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
+	return middleware.DecodeConfigInto(raw, CORSConfig{})
+}
+
+func (f *corsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
+	c, err := middleware.ConfigAs[CORSConfig](FilterCORS, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return CORSMiddleware(c), nil
 }
 ```
 
-- **`GetName()`** returns a stable identifier (snake_case, matching the
-  gateway's own convention: `rate_limiter`, `session_extraction`, ...). This
-  is what appears in `MiddlewareSpec.Name`, in the `middleware.global[].name`
-  config field (if wired into the gateway's own config — see §4), and in the
-  `GET /api/middleware` status endpoint.
-- **`GetDescription()`** is a one-line human-readable summary, shown in the
-  status endpoint and the `tg middleware list` CLI output.
-- **`GetDependencies()`** lists the names of other middleware that must
-  already be earlier in the same chain. Returning `nil`/`[]string{}` means no
-  ordering requirement. `Registry.BuildChain` (and
-  `ValidateSpecs`) reject a chain where a dependency isn't satisfied by an
-  earlier spec — e.g. the gateway's own `traffic_metrics` depends on
-  `ja4_fingerprint` (it reads the JA4H header via `session.NewClientInfo` to
-  enrich the metrics it records), so building a chain with `traffic_metrics`
-  but not `ja4_fingerprint` fails fast with a clear error instead of silently
-  recording metrics with that data missing. Only declare a dependency for a
-  verified read like this one — not just to preserve an existing chain's
-  ordering when you can't point to what actually consumes the earlier
-  middleware's output; if you're not sure, say so in a comment the way
-  `NewSessionExtractionFactory` does for its own (ordering-only, not a
-  verified read) dependency on `ja4_fingerprint`.
-- **`GetDefaultConfig()`** returns the zero-value/default config for this
-  middleware. `BuildChain` calls this when a `MiddlewareSpec` has a `nil`
-  `Config`, so `Create` always receives a usable value.
-- **`Create(cfg interface{})`** builds and returns the `Middleware`. Runs once
-  at chain-build time (typically at gateway startup), not per request — it's
-  fine to do real setup here (open a connection, warm a cache, ...), the same
-  way `RateLimiterFactory.Create` in the gateway's own code either reuses an
-  existing `*RateLimiter` or constructs one.
+Then add `newCORSFactory()` to the list in `NewFilterRegistry`
+(`middleware/builtin/filters.go`) and write its page in `doc/middleware/`.
+Nothing else needs to change: the config package does not know filter names
+or options, and `tg validate`, `tg filters list` and the admin API pick the
+filter up from the registry.
 
-A factory usually needs constructor dependencies (a DB repo, a client, a
-config struct) — accept them in a `NewXFactory(...)` constructor and store
-them on the struct, the same way `NewSessionExtractionFactory(sessionStore,
-tokenService)` does in `middleware/builtin/factories.go`.
+### The factory methods
 
-## 2. (Optional) Implement `HealthChecker`
+- **`GetName()`**: the `filters[].name` value, lowercase `snake_case`
+  (`rate_limiter`, not `RateLimiter`).
+- **`GetDescription()`**: one line, shown by `tg filters list` and the admin
+  API.
+- **`GetDependencies()`**: filters that must appear earlier in the list. Only
+  declare a dependency your filter really reads (for example
+  `traffic_metrics` reads the session `session_extraction` attaches); the
+  registry rejects a chain that does not satisfy it.
+- **`DecodeConfig(raw)`**: turns the entry's `config:` block (nil when
+  absent) into the value `Create` receives. `middleware.DecodeConfigInto`
+  decodes over your defaults, rejects unknown keys and calls the type's
+  `Validate()` method if it has one. A filter without options embeds
+  `middleware.NoConfig`, which rejects any `config:` block.
+- **`Create(cfg)`**: builds the middleware once, at startup. Take runtime
+  services (repositories, stores) in the factory constructor and return an
+  error when one is missing; validation builds factories without them and
+  never calls `Create`.
+
+### Options other code needs
+
+When code outside the chain depends on a filter's options (the shared rate
+limiter, tracing setup, the statistics API), read them with
+`builtin.FilterSettings[C](cfg, name)`, which decodes the same entry the
+chain uses. Do not add a second config field for the same setting.
+
+## 2. Health (optional)
 
 ```go
 type HealthChecker interface {
 	HealthCheck() MiddlewareHealth
 }
-
-type MiddlewareHealth struct {
-	Status  string // "healthy", "degraded", "unhealthy", or "unknown"
-	Message string
-}
 ```
 
-Only implement this if your middleware has genuine runtime state worth
-reporting — a connection pool, a circuit breaker, a rate limiter's
-tracked/blocked IPs (see `RateLimiterFactory.HealthCheck` in
-`middleware/factory.go`). If there's nothing meaningful to check, **don't**
-implement it: `Registry.GetHealth`/`GetStatus` report
-`Status: "unknown"` for a factory that doesn't implement `HealthChecker`,
-which is more honest than a hardcoded `"healthy"` that was never actually
-verified. Three of the gateway's five built-ins (`ja4_fingerprint`,
-`session_extraction`, `traffic_metrics`, `logging`) deliberately skip it for
-this reason.
+Implement it only when the filter has real runtime state (the rate
+limiter reports tracked and blocked IPs). Without it the status reads
+`"unknown"`, which is more honest than a hardcoded `"healthy"`.
 
-## 3. Register it and build a chain
+## 3. A filter in its own module
+
+A module outside the gateway implements the same interface; see
+`examples/middleware-plugin/`. To run it, the embedding program registers its
+factory next to the built-ins and builds the chain:
 
 ```go
-registry := middleware.NewRegistry()
-if err := registry.RegisterFactory(NewMyFactory(...)); err != nil {
-	// a factory with this name is already registered
-}
-
-chain, err := registry.BuildChain([]middleware.MiddlewareSpec{
-	{Name: "my_middleware", Config: myConfig}, // Config nil is fine too — GetDefaultConfig() fills in
-})
-handler := chain.Build(mux) // wrap your actual http.Handler / mux
+registry := builtin.NewFilterRegistry(deps)
+registry.RegisterFactory(requestid.NewFactory())
+specs, err := builtin.ResolveFilters(registry, cfg.Filters)
+chain, err := registry.BuildChain(specs)
+handler := chain.Build(mux)
 ```
 
-This is exactly what `examples/middleware-plugin/requestid_test.go` does to
-prove the example works, and exactly what `builtin.NewGlobalChain` does inside the gateway itself
-(`middleware/builtin/global.go`, `gateway/setup.go`).
+## Conventions
 
-## 4. Wiring into the actual gateway
-
-The gateway's own global chain is closed over its built-in factories —
-`newGlobalRegistry` in `middleware/builtin/global.go` is the single place
-that registers them. The `middleware` package holds only the plumbing
-(`Registry`, `MiddlewareFactory`, `ChainBuilder`); the implementations live
-in `middleware/builtin`. There are two ways to add a middleware to a running
-gateway:
-
-- **Built into the gateway itself**: add the implementation and its factory
-  to `middleware/builtin/` and a registration call to `newGlobalRegistry`, plus a name
-  constant in `config/middleware.go` (`config.MiddlewareNameXxx`) so
-  `config.LoadConfig` accepts it in a `middleware:` YAML section
-  (`doc/refactor01.md` Phase 2) and it appears as an option there. This is
-  the right choice for something that ships with and is maintained alongside
-  the gateway.
-- **A separate module, wired in by whoever embeds the gateway**: build your
-  own `main.go` (or fork the gateway's) that constructs
-  `middleware.NewRegistry()`, registers the `builtin.New*Factory(...)`
-  factories it wants plus `yourpackage.NewFactory(...)`, and builds the chain
-  with `registry.BuildChain(specs)` (specs from
-  `builtin.ResolveGlobalChainSpecs`, or written by hand). This is the
-  `examples/middleware-plugin/` scenario: nothing in `middleware/` or
-  `gateway/` needs to change.
-
-Either way, once a middleware is in the registry, it participates fully in
-the existing tooling: `GET <prefix>/api/middleware` reports its status and
-health, `GET <prefix>/api/middleware/{name}/metrics` reports its request
-count/error count/average duration (every middleware built via
-`Registry.BuildChain` is automatically wrapped with this
-instrumentation — see `middleware/metrics.go`, no opt-in needed), and
-`tg middleware list --config <path>` prints it from the command line without
-starting the server.
-
-## Conventions checklist
-
-When adding a middleware, match what the built-ins already do:
-
-- Name: lowercase `snake_case`, short and specific (`rate_limiter`, not
-  `RateLimiterMiddleware` or `rl`).
-- One factory per middleware, in its own well-documented type — don't share a
-  `ConcreteFactory` instance across unrelated middlewares.
-- `Create` should be cheap and side-effect-light beyond genuine setup; it may
-  run more than once (e.g. once per `BuildChain` call) so avoid anything that
-  isn't idempotent.
-- If your middleware wraps the `http.ResponseWriter` to observe the status
-  code or response size, follow the existing pattern in
-  `middleware/builtin/trafficmetric.go` / `middleware/builtin/logging.go` /
-  `middleware/metrics.go` (a thin wrapper implementing `WriteHeader`), rather
-  than reimplementing response buffering.
-- Write tests the same way `middleware/builtin/registry_test.go` and
-  `middleware/health_metrics_test.go` do: build a chain through the real
-  `Registry`/`ChainBuilder` and drive it with
-  `net/http/httptest`, rather than only unit-testing the bare middleware
-  function in isolation.
+- One factory type per filter; do not share a `ConcreteFactory` value.
+- `Create` may run more than once (validation, tests): keep it idempotent.
+- To observe status or size, wrap the `http.ResponseWriter` the way
+  `trafficmetric.go`, `logging.go` and `middleware/metrics.go` do.
+- Test through the real `Registry` and `httptest`, as
+  `middleware/builtin/filters_test.go` does, and cover option decoding in a
+  `ResolveFilters` test.

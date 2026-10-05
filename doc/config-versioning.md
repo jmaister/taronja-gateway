@@ -24,15 +24,14 @@ Config file version: 1.0 (current: 1.0)
 already current — every config file written before this release has no
 `version:` field (the field itself is new in v1.0.0), and some of those
 need a real, one-time content change to keep working correctly under the
-current schema (the `notification.email.smtp.*` block became
-`notification.email.*` directly — see below). Add `version: "1.0"` once
+current schema (see below). Add `version: "1.0"` once
 you've migrated to declare your config current going forward.
 
 **The gateway refuses to start unless the config file's version exactly
 matches what the binary supports** — outdated, undeclared, *and* newer than
 supported all fail the same way: a version mismatch means this binary can't
 be sure it understands the file correctly, in either direction. `tg run`
-(and `tg middleware list`) fail immediately with an error telling you what
+(and `tg validate`, `tg filters list`) fail immediately with an error telling you what
 to do.
 
 An outdated or undeclared file:
@@ -86,28 +85,67 @@ touched; there's no content transformation to run. Real content migrations,
 like the one below, are the exception, reserved for an actual structural
 change (typically paired with a `MAJOR` bump).
 
-**What actually changes for a pre-v1.0.0 config today:** the only real
-content migration so far flattens a `notification.email.smtp:` block (the
-original, v0.0.24-era shape) directly onto `notification.email:` —
+**What changes for a pre-v1.0.0 config:** two content migrations, plus
+stamping `version: "1.0"` on the file.
 
-```yaml
-# before (pre-v1.0.0)
-notification:
-  email:
-    enabled: true
-    smtp:
-      host: smtp.example.com
-      port: 587
+1. A `notification.email.smtp:` block (the v0.0.24-era shape) is flattened
+   onto `notification.email:`:
 
-# after (version: "1.0")
-notification:
-  email:
-    enabled: true
-    host: smtp.example.com
-    port: 587
-```
+   ```yaml
+   # before
+   notification:
+     email:
+       enabled: true
+       smtp:
+         host: smtp.example.com
+         port: 587
 
-— plus stamping `version: "1.0"` on the file. A config with no
-`notification.email.smtp` block to begin with (most of them) only gets the
-`version: "1.0"` line added; everything else, including comments and
-`${VAR_NAME}` placeholders, passes through untouched.
+   # after
+   notification:
+     email:
+       enabled: true
+       host: smtp.example.com
+       port: 587
+   ```
+
+2. The filter settings move into the root `filters:` list:
+   `management.logging`, `compression`, `analytics`, `excludeStaticAssets`,
+   `rateLimiter` and `cors`, the root `tracing:` section, and a
+   `middleware.global` list if there was one. Without a `middleware.global`
+   list, the filters are written in the order the gateway used to run them
+   (tracing, compression, cors, rate_limiter, the three analytics filters,
+   logging), and only the ones that were on:
+
+   ```yaml
+   # before
+   management:
+     prefix: _
+     logging: true
+     analytics: true
+     rateLimiter:
+       requestsPerMinute: 100
+       blockMinutes: 15
+
+   # after
+   management:
+     prefix: _
+   filters:
+     - name: rate_limiter
+       config:
+         requestsPerMinute: 100
+         blockMinutes: 15
+     - name: ja4_fingerprint
+     - name: session_extraction
+     - name: traffic_metrics
+     - name: logging
+   ```
+
+A config with neither (most of them) only gets the `version: "1.0"` line
+added and is otherwise byte-for-byte unchanged. When something does move,
+the file is re-encoded: comments and `${VAR_NAME}` placeholders are kept,
+but spacing around comments and blank lines may change.
+
+**Unknown keys are rejected.** A config whose version matches but which
+still carries a key this version does not know (for example a leftover
+`management.rateLimiter`) fails to load with the line number of that key,
+instead of the setting being silently ignored.

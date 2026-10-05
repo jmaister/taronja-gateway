@@ -1,13 +1,13 @@
 # Tracing
 
-**Middleware name:** `tracing`
-**Global chain position:** first — even before [`compression`](compression.md),
+**Filter name:** `tracing`
+**Suggested position:** first — even before [`compression`](compression.md),
 the previous outermost middleware. It needs to see the request before
 anything else touches it (to extract an incoming W3C `traceparent` header
 as early as possible), and its span should cover the whole request
 lifecycle, compression time included.
 **Depends on:** nothing.
-**Enabled by default:** no.
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -15,7 +15,7 @@ Creates an OpenTelemetry span per request, using
 [`go.opentelemetry.io/contrib`'s `otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp) —
 the standard, upstream-maintained instrumentation package, not a hand-rolled
 span wrapper — and exports it over OTLP/HTTP to whatever collector
-`tracing.endpoint` points at (an OpenTelemetry Collector, Jaeger, Tempo,
+its `endpoint` option points at (an OpenTelemetry Collector, Jaeger, Tempo,
 Honeycomb, Grafana Cloud, or anything else that speaks OTLP).
 
 Two things make this a *distributed* trace, not just a log line with extra
@@ -41,36 +41,19 @@ which exists today.
 
 ## Enabling it
 
-Disabled by default, and unlike every other middleware in this reference,
-its configuration lives at the top level of the config file
-(`tracing:`), not under `management:` — because it isn't really a
-dashboard/API concern, it's "where does telemetry about this whole gateway
-go":
+List it with the collector to export to. Put it first so its span covers the
+whole request, including the other filters.
 
 ```yaml
-tracing:
-  enabled: true
-  endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
-  insecure: true             # plain HTTP to endpoint, not HTTPS
+filters:
+  - name: tracing
+    config:
+      endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
+      insecure: true             # plain HTTP to endpoint, not HTTPS
 ```
 
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced):
-
-```yaml
-middleware:
-  global:
-    - name: tracing
-```
-
-Note that the `middleware:` section only controls the middleware's
-*position* in the chain — the actual exporter setup (`endpoint`,
-`insecure`) still comes from the top-level `tracing:` section either way;
-there's no per-entry override for it (see `doc/middleware/README.md`'s
-note on this). See
-[doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for the general legacy-flag-vs-`middleware:`-section comparison, and the
-important gotcha: an explicit `middleware:` section replaces *every*
-legacy flag at once, not just this one.
+Listing the filter also starts the OTLP exporter at startup and makes
+proxied requests carry the trace context to backends.
 
 ## Try it locally
 
@@ -82,7 +65,7 @@ against this project's actual `tg` binary; any other OTLP-speaking
 backend (an OpenTelemetry Collector, Tempo, Honeycomb, Grafana Cloud, ...)
 works the same way, just pointed at a different `endpoint`.
 
-1. **Start Jaeger.** `4318` is the OTLP/HTTP port `tracing.endpoint`
+1. **Start Jaeger.** `4318` is the OTLP/HTTP port the `endpoint` option
    needs; `16686` is the web UI.
 
    ```sh
@@ -93,16 +76,17 @@ works the same way, just pointed at a different `endpoint`.
    ```
 
 2. **Point a config at it and run the gateway.** `sample/config.yaml`
-   already has a commented-out `tracing:` block near the top — uncomment
-   it (or add the same three lines to any config with at least one proxy
-   route; tracing a route that never proxies anywhere only ever produces
-   the one inbound span, not the distributed pair described below):
+   has a commented-out `tracing` entry at the top of its `filters:` list —
+   uncomment it (or add the same entry to any config with at least one
+   proxy route; tracing a route that never proxies anywhere only ever
+   produces the one inbound span, not the distributed pair described below):
 
    ```yaml
-   tracing:
-     enabled: true
-     endpoint: localhost:4318
-     insecure: true
+   filters:
+     - name: tracing
+       config:
+         endpoint: localhost:4318
+         insecure: true
    ```
 
    ```sh
@@ -192,8 +176,8 @@ happen at real gateway startup.
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system all of these middlewares are built on, and how to
   inspect the running chain.
 - [doc/middleware/compression.md](compression.md) — runs immediately after
-  this one in the default chain.
+  this one in the suggested order.

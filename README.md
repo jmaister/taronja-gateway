@@ -14,7 +14,7 @@ It serves as an entry point for your API server and your frontend application, h
 - [Installation](#installation)
 - [Commands](#commands)
 - [Configuration](#configuration)
-- [Middleware Architecture](#middleware-architecture)
+- [Filter Architecture](#filter-architecture)
 - [Building and Releasing](#building-and-releasing)
 - [Authentication on the APIs](#authentication-on-the-apis)
 - [Getting the Current User from the Frontend](#getting-the-current-user-from-the-frontend)
@@ -128,11 +128,11 @@ The Taronja Gateway CLI provides the following commands:
     ./tg version
     ```
 
-*   **List the global middleware chain for a config file:**
+*   **List the filter chain for a config file:**
     ```bash
-    ./tg middleware list --config ./sample/config.yaml
+    ./tg filters list --config ./sample/config.yaml
     ```
-    Prints every global middleware's status, dependencies, and (where implemented) health for the given config — without starting the server. See [Middleware Architecture](#middleware-architecture).
+    Prints the filters the config enables, in order, and every available filter with its dependencies — without starting the server. See [Filters](#filters).
 
 *   **Migrate a config file to the current schema version:**
     ```bash
@@ -164,14 +164,18 @@ server:
 
 management:
   prefix: _
-  logging: true
-  analytics: true
   session:
     secondsDuration: 86400  # Session duration in seconds (24 hours)
   admin:
     enabled: true
     username: admin
     password: admin123  # Automatically hashed for security
+
+filters:                    # run top to bottom, see doc/middleware/
+  - name: ja4_fingerprint   # the three analytics filters feed the dashboard
+  - name: session_extraction
+  - name: traffic_metrics
+  - name: logging
 
 routes:
   - name: API Route
@@ -202,13 +206,12 @@ geolocation:
 notification:
   email:
     enabled: true
-    smtp:
-      host: smtp.example.com
-      port: 587
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      from: ${SMTP_FROM}
-      fromName: ${SMTP_FROM_NAME}
+    host: smtp.example.com
+    port: 587
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: ${SMTP_FROM}
+    fromName: ${SMTP_FROM_NAME}
 ```
 
 ## Config File Versioning
@@ -225,58 +228,53 @@ Defines the gateway server settings.
 - `port`: The port number to listen on (default: 8080).
 - `url`: The full URL where the gateway is accessible
 
-### Tracing
-
-The gateway can export an [OpenTelemetry](https://opentelemetry.io/) span per request over OTLP/HTTP. It is disabled by default and configured at the top level of the config file:
-
-```yaml
-tracing:
-  enabled: true
-  endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
-  insecure: true             # plain HTTP to endpoint, not HTTPS
-```
-
-See [doc/middleware/tracing.md](doc/middleware/tracing.md) for the full reference and a local Jaeger walkthrough.
-
 ### Management
 
-Controls the management dashboard and gateway features. Every setting below
-that belongs to a specific global middleware links to that middleware's
-full reference page — see [doc/middleware/](doc/middleware/README.md) for
-all of them together (options, dependencies, chain order).
+Controls the management API and dashboard.
 
 - `prefix`: URL prefix for management endpoints (default: `_`)
-- `logging`: Enable/disable request logging — see [`logging`](doc/middleware/logging.md)
-- `compression`: Enable brotli/zstd/gzip/deflate response compression, negotiated per-request from the client's `Accept-Encoding` header — no other options. See [`compression`](doc/middleware/compression.md)
-- `analytics`: Enable/disable traffic analytics and metrics — turns on the
-  [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md),
-  [`session_extraction`](doc/middleware/session-extraction.md), and
-  [`traffic_metrics`](doc/middleware/traffic-metrics.md) middlewares together
-- `excludeStaticAssets`: Skip traffic-metrics collection for static asset requests (CSS/JS/images/fonts/...). Default: `false`. Has no effect unless `analytics` is also `true`. Reduces per-request overhead and stats volume on asset-heavy sites; the Request Details report can still filter by request type either way (see below) — see [`traffic_metrics`](doc/middleware/traffic-metrics.md)
 - `session.secondsDuration`: Session timeout in seconds (e.g., 86400 = 24 hours)
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
-- `rateLimiter.*`: Requests-per-minute, error-count, and vulnerability-scan
-  limits per client IP — see [`rate_limiter`](doc/middleware/rate-limiter.md)
-  for the full option list and scan-path wildcard syntax
-- `cors.allowedOrigins`: Origins allowed to make cross-origin requests to the management API (e.g. `["https://app.example.com"]`). Omit or leave empty to disable CORS entirely — the default, since the dashboard is always served same-origin. A literal `"*"` allows any origin, but only when `allowCredentials` is not also `true` (browsers reject that combination; the gateway rejects it at startup instead of shipping a CORS setup that silently doesn't work)
-- `cors.allowCredentials`: Send `Access-Control-Allow-Credentials: true`, letting browsers include cookies on cross-origin requests
-- `cors.allowedMethods` / `cors.allowedHeaders` / `cors.maxAgeSeconds`: Preflight response details; sensible defaults are used if omitted — see [`cors`](doc/middleware/cors.md) for the full default values
 
-### Middleware (optional, advanced)
+### Filters
 
-By default the global middleware chain is controlled by the `compression` / `cors` / `logging` / `analytics` / `rateLimiter` flags above. To control exactly which middleware runs and in what order, add a `middleware:` section; when present it fully replaces those flags.
+Filters are the global middleware every request passes through: compression,
+CORS, rate limiting, analytics, logging and tracing. They are listed under
+the root `filters:` key and run in list order; each entry has a `name`, an
+optional `enabled: false` and an optional `config` block with that filter's
+options. With no `filters:` key, none run.
 
 ```yaml
-middleware:
-  global:
-    - name: compression
-    - name: rate_limiter
-    - name: logging
+filters:
+  - name: compression
+  - name: rate_limiter
+    config:
+      requestsPerMinute: 300
+      maxErrors: 20
+      blockMinutes: 15
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
+    config:
+      excludeStaticAssets: true
+  - name: logging
 ```
 
-See [doc/middleware/configuration.md](doc/middleware/configuration.md) for the full example, and [Middleware Architecture](#middleware-architecture) for runtime inspection.
+| Filter | What it does |
+|---|---|
+| [`tracing`](doc/middleware/tracing.md) | OpenTelemetry span per request, exported over OTLP/HTTP |
+| [`compression`](doc/middleware/compression.md) | brotli/zstd/gzip/deflate response compression |
+| [`cors`](doc/middleware/cors.md) | CORS headers for the management API |
+| [`rate_limiter`](doc/middleware/rate-limiter.md) | Per-IP request and error limits, scanner blocking |
+| [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md) | JA4H fingerprint per request |
+| [`session_extraction`](doc/middleware/session-extraction.md) | Attaches the caller's session to the request |
+| [`traffic_metrics`](doc/middleware/traffic-metrics.md) | Records requests for the statistics dashboard |
+| [`logging`](doc/middleware/logging.md) | Logs each request |
+
+See [doc/middleware/](doc/middleware/README.md) for every option, the
+dependencies between filters and ordering advice.
 
 ### Routes
 
@@ -367,34 +365,27 @@ export GOOGLE_CLIENT_SECRET="your-client-secret"
 
 See the complete example configuration in `sample/config.yaml`.
 
-# Middleware Architecture
+# Filter Architecture
 
-The gateway's global middleware chain (compression, rate limiting, JA4
-fingerprinting, session extraction, traffic metrics, request logging) is
-built from a small Factory + Registry system rather than hardcoded
-conditionals, so it can be inspected, configured declaratively, monitored,
-and extended. For what each
-individual middleware does, its config options, and its dependencies, see
-[doc/middleware/](doc/middleware/README.md) — one reference page per
-middleware. This section is about the system they're all built on:
+Every filter is one file in `middleware/builtin/` holding its name, its
+options type with validation, and a factory; `middleware/builtin/filters.go`
+registers them and turns the `filters:` list into a chain through a
+registry that checks dependencies. See
+[doc/middlewares.md](doc/middlewares.md) for the design.
 
 - **Inspect** what's active for a config file without starting the server:
   ```bash
-  ./tg middleware list --config ./sample/config.yaml
+  ./tg filters list --config ./sample/config.yaml
   ```
-- **Configure declaratively** with an optional `middleware:` YAML section —
-  see [Middleware (optional, advanced)](#middleware-optional-advanced) above.
 - **Monitor** a running gateway (admin session required):
   - `GET <prefix>/api/middleware` — status, dependencies, and health of every
-    global middleware
+    filter
   - `GET <prefix>/api/middleware/{name}/metrics` — request count, error
-    count, and average duration for one middleware
-- **Extend** by adding your own middleware — see
+    count, and average duration for one filter
+- **Extend** by adding your own filter — see
   [`doc/middleware_development.md`](doc/middleware_development.md) for the
   guide and [`examples/middleware-plugin/`](examples/middleware-plugin/) for
   a complete, tested, third-party-style example.
-
-Full design rationale and phase-by-phase history: [`doc/refactor01.md`](doc/refactor01.md).
 
 # Building and Releasing
 

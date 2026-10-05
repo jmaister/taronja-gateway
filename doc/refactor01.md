@@ -1,6 +1,6 @@
 # Refactoring 01: Middleware Architecture - Declarative & Pluggable Design
 
-**Status**: Complete — all 4 phases implemented (see per-phase status below and [`doc/refactor01-release-notes.md`](./refactor01-release-notes.md) for a summary)
+**Status**: Complete — all 4 phases implemented (see per-phase status below; the configuration has since moved to the root `filters:` list, see [doc/middlewares.md](./middlewares.md))
 **Priority**: Medium  
 **Effort**: 4 weeks (phased)  
 **Owner**: TBD  
@@ -309,7 +309,6 @@ GET /management/metrics/middleware/ja4_fingerprint
 - [x] Create CLI tool for middleware introspection (`tg middleware list --config <path>`, in `cli/middleware.go`)
 - [x] Update CLAUDE.md with new patterns — CLAUDE.md is intentionally a one-line pointer to `AGENTS.md` (per this repo's convention, established before this refactor); all patterns are documented there instead, kept current every phase
 - [x] Update repository README with architecture overview (`README.md`: new "Middleware Architecture" section + `middleware:` config subsection + `tg middleware list` in Commands)
-- [x] Create release notes (`doc/refactor01-release-notes.md` — GoReleaser generates its own changelog from commit messages at actual release time; this is a human-readable summary of the whole refactor for a PR description or manual release notes)
 
 **Success Criteria**:
 - ✅ New developers can add custom middleware

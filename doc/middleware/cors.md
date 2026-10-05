@@ -1,13 +1,13 @@
 # CORS
 
-**Middleware name:** `cors`
-**Global chain position:** second, right after `compression` (which only
+**Filter name:** `cors`
+**Suggested position:** second, right after `compression` (which only
 wraps the response writer and never rejects a request) — and first among
 the middlewares that can actually reject or answer a request, since a CORS
 preflight (`OPTIONS`) request is never meant to reach application logic,
 rate limiting included.
 **Depends on:** nothing.
-**Enabled by default:** no.
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -34,35 +34,18 @@ below) and, if configured, `Access-Control-Allow-Credentials: true`.
 
 ## Enabling it
 
-Disabled by default: with no `allowedOrigins` configured, `IsEnabled()` is
-false and the middleware is a pure pass-through that adds no headers at
-all — identical to the gateway's behavior before CORS support existed.
+Not listed, or listed with no `allowedOrigins`, it adds no headers at all.
 
 ```yaml
-management:
-  cors:
-    allowedOrigins: ["https://app.example.com"]
+filters:
+  - name: cors
+    config:
+      allowedOrigins: ["https://app.example.com"]
 ```
-
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced):
-
-```yaml
-middleware:
-  global:
-    - name: cors
-      cors:
-        allowedOrigins: ["https://app.example.com"]
-```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one.
 
 ## Config options
 
-All under `management.cors` (legacy flag path) or a `cors:` block on the
-`middleware.global[]` entry (explicit path) — same fields either way.
+All under the entry's `config:` block.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -86,8 +69,8 @@ All under `management.cors` (legacy flag path) or a `cors:` block on the
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system all of these middlewares are built on, and how to
   inspect the running chain.
 - [doc/middleware/rate-limiter.md](rate-limiter.md) — runs immediately
-  after this one in the default chain.
+  after this one in the suggested order.

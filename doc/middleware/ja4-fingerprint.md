@@ -1,11 +1,11 @@
 # JA4H Fingerprint
 
-**Middleware name:** `ja4_fingerprint`
-**Global chain position:** first of the "analytics" group — before
+**Filter name:** `ja4_fingerprint`
+**Suggested position:** first of the "analytics" group — before
 [`session_extraction`](session-extraction.md) and
 [`traffic_metrics`](traffic-metrics.md).
 **Depends on:** nothing.
-**Enabled by default:** no — part of the `analytics` flag/group (see below).
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -65,39 +65,21 @@ implementation detail of the built-in `ja4_fingerprint` middleware.
 
 ## Enabling it
 
-There's no dedicated flag for this middleware alone — it's part of the
-`analytics` group, on together with
-[`session_extraction`](session-extraction.md) and
-[`traffic_metrics`](traffic-metrics.md):
+The dashboard's statistics need all three analytics filters, in this order:
 
 ```yaml
-management:
-  analytics: true
+filters:
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
 ```
 
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced),
-where it can be listed (and disabled) independently of the other two:
-
-```yaml
-middleware:
-  global:
-    - name: ja4_fingerprint
-    - name: session_extraction
-    - name: traffic_metrics
-```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one. It's also the only way to enable this middleware without the other
-two "analytics" ones — `analytics: true` always turns on all three
-together.
+It can also run alone, for example to fingerprint requests without
+recording them.
 
 ## Config options
 
-None. `GetDefaultConfig()` returns an empty struct — listing `ja4_fingerprint`
-in an explicit `middleware:` section just positions/enables it, with nothing
-to configure.
+None. A `config:` block on this filter is rejected.
 
 ## Why other middleware depends on it
 
@@ -138,7 +120,7 @@ most reliable first:
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/session-extraction.md](session-extraction.md) and
   [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the rest of the

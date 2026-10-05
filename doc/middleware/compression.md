@@ -1,12 +1,12 @@
 # Compression
 
-**Middleware name:** `compression`
-**Global chain position:** second — right after [`tracing`](tracing.md),
+**Filter name:** `compression`
+**Suggested position:** second — right after [`tracing`](tracing.md),
 outermost of everything else in the chain, so it wraps the response writer
 that every other middleware and the final route handler write through,
 letting it compress whatever actually reaches the socket.
 **Depends on:** nothing.
-**Enabled by default:** no.
+**Enabled by default:** no; list it under `filters:`.
 
 ## What it does
 
@@ -57,31 +57,17 @@ request header.
 
 ## Enabling it
 
-Disabled by default — compressing every response has a real (if usually
-small) CPU cost, so it's opt-in rather than silently changing behavior for
-existing deployments.
+Disabled unless listed: compressing every response has a real (if usually
+small) CPU cost.
 
 ```yaml
-management:
-  compression: true
+filters:
+  - name: compression
 ```
-
-Or, in an explicit [`middleware:` section](../../README.md#middleware-optional-advanced):
-
-```yaml
-middleware:
-  global:
-    - name: compression
-```
-
-See [doc/middleware/README.md#two-ways-to-enable-any-of-these](README.md#two-ways-to-enable-any-of-these)
-for which form to use, and the important gotcha: an explicit
-`middleware:` section replaces *every* legacy flag at once, not just this
-one.
 
 ## Config options
 
-None. Listing it (via either form above) just enables it.
+None. A `config:` block on this filter is rejected.
 
 ## Notes
 
@@ -106,8 +92,8 @@ None. Listing it (via either form above) just enables it.
 
 ## See also
 
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
+- [Filter Architecture](../../README.md#filter-architecture) — the
   factory/registry system all of these middlewares are built on, and how to
   inspect the running chain.
 - [doc/middleware/cors.md](cors.md) — runs immediately after this one in
-  the default chain.
+  the suggested order.
