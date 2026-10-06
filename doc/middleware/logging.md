@@ -39,5 +39,5 @@ None. A `config:` block on this middleware is rejected.
 - [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the structured,
-  queryable alternative to this plain-text log line, if you need to middleware
+  queryable alternative to this plain-text log line, if you need to filter
   or aggregate request history rather than just tail it.
