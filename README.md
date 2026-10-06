@@ -382,10 +382,8 @@ registry that checks dependencies. See
     middleware
   - `GET <prefix>/api/middleware/{name}/metrics` — request count, error
     count, and average duration for one middleware
-- **Extend** by adding your own middleware — see
-  [`doc/middleware_development.md`](doc/middleware_development.md) for the
-  guide and [`examples/middleware-plugin/`](examples/middleware-plugin/) for
-  a complete, tested, third-party-style example.
+- **Add a built-in middleware** — see
+  [`doc/middleware_development.md`](doc/middleware_development.md).
 
 # Building and Releasing
 

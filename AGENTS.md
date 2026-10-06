@@ -35,7 +35,7 @@ taronja-gateway/
 │
 ├── sdk/                        # Published npm package: taronja-gateway-react-sdk
 ├── webapp/                     # React/Vite/TS admin dashboard (built into binary)
-├── examples/                   # Example client apps (astro-hockey, react-newspaper) + middleware-plugin (Go) + docker-demo/docker-image (docker compose)
+├── examples/                   # Example client apps (astro-hockey, react-newspaper) + docker-demo/docker-image (docker compose)
 ├── sample/                     # Sample config.yaml, example configs
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
@@ -192,7 +192,7 @@ See [`doc/middlewares.md`](./doc/middlewares.md) for the design, [`doc/middlewar
 
 **Health and metrics.** A factory may implement `HealthChecker` (only the rate limiter does). `metrics.go` records request count, 5xx count and duration per middleware (nested, so a middleware's duration includes everything after it). Exposed by `GET <prefix>/api/middleware`, `.../middleware/metrics` and `.../middleware/{name}/metrics` (`handlers/api_middleware.go`) and shown on the dashboard's Middleware page (`webapp/src/pages/MiddlewarePage.tsx`).
 
-**Examples.** [`examples/middleware-plugin/`](../examples/middleware-plugin/) is a tested third-party middleware using only the public `middleware` API. [`examples/docker-demo/`](../examples/docker-demo/) runs a full stack with `docker compose up --build` (static, authenticated and proxy routes, a `middleware:` list, OAuth from `.env`), built from the repo-root `Dockerfile` that `.github/workflows/docker-release.yml` publishes to `ghcr.io/jmaister/taronja-gateway`. [`examples/docker-image/`](../examples/docker-image/) is the same idea pulling that published image.
+**Examples.** [`examples/docker-demo/`](../examples/docker-demo/) runs a full stack with `docker compose up --build` (static, authenticated and proxy routes, a `middleware:` list, OAuth from `.env`), built from the repo-root `Dockerfile` that `.github/workflows/docker-release.yml` publishes to `ghcr.io/jmaister/taronja-gateway`. [`examples/docker-image/`](../examples/docker-image/) is the same idea pulling that published image.
 
 ### `providers/` — Authentication Providers
 

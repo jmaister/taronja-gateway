@@ -1,10 +1,9 @@
 # Writing a Middleware
 
-Global middleware is configured in the root `middleware:` list (see [doc/middleware/](middleware/README.md)). This guide
-covers adding one, either built into the gateway or as a separate module.
-
-A complete, tested third-party example lives in
-[`examples/middleware-plugin/`](../examples/middleware-plugin/).
+Global middleware is configured in the root `middleware:` list (see
+[doc/middleware/](middleware/README.md)). This guide covers adding a built-in
+one. Middleware is compiled into the gateway; there is no way to load one
+from outside.
 
 ## The moving parts
 
@@ -99,20 +98,6 @@ type HealthChecker interface {
 Implement it only when the middleware has real runtime state (the rate
 limiter reports tracked and blocked IPs). Without it the status reads
 `"unknown"`, which is more honest than a hardcoded `"healthy"`.
-
-## 3. A middleware in its own module
-
-A module outside the gateway implements the same interface; see
-`examples/middleware-plugin/`. To run it, the embedding program registers its
-factory next to the built-ins and builds the chain:
-
-```go
-registry := builtin.NewGlobalRegistry(deps)
-registry.RegisterFactory(requestid.NewFactory())
-specs, err := builtin.ResolveGlobalMiddleware(registry, cfg.Middleware)
-chain, err := registry.BuildChain(specs)
-handler := chain.Build(mux)
-```
 
 ## Conventions
 
