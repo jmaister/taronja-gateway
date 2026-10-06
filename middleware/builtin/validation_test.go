@@ -14,9 +14,9 @@ func TestValidateConfigOnly_ValidConfigPasses(t *testing.T) {
 	assert.NoError(t, ValidateConfigOnly(cfg))
 }
 
-func TestValidateConfigOnly_CatchesInvalidFilterOptions(t *testing.T) {
-	cfg := &config.GatewayConfig{Filters: []config.FilterConfig{
-		config.NewFilterConfig(FilterCORS, CORSConfig{AllowedOrigins: []string{"*"}, AllowCredentials: true}),
+func TestValidateConfigOnly_CatchesInvalidMiddlewareOptions(t *testing.T) {
+	cfg := &config.GatewayConfig{Middleware: []config.MiddlewareConfig{
+		config.NewMiddlewareConfig(NameCORS, CORSConfig{AllowedOrigins: []string{"*"}, AllowCredentials: true}),
 	}}
 	err := ValidateConfigOnly(cfg)
 	require.Error(t, err)
@@ -24,7 +24,7 @@ func TestValidateConfigOnly_CatchesInvalidFilterOptions(t *testing.T) {
 }
 
 func TestValidateConfigOnly_CatchesBadDependencyGraph(t *testing.T) {
-	cfg := &config.GatewayConfig{Filters: []config.FilterConfig{config.NewFilterConfig(FilterSessionExtraction, nil)}}
+	cfg := &config.GatewayConfig{Middleware: []config.MiddlewareConfig{config.NewMiddlewareConfig(NameSessionExtraction, nil)}}
 	assert.Error(t, ValidateConfigOnly(cfg))
 }
 

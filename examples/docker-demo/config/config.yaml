@@ -21,8 +21,8 @@ management:
     username: admin
     password: admin123 # hashed automatically on first run — change this for anything but local demo use
 
-# Global filters, run top to bottom (see doc/middleware/ for each one).
-filters:
+# Global middleware, run top to bottom (see doc/middleware/ for each one).
+middleware:
   - name: cors
     config:
       allowedOrigins:

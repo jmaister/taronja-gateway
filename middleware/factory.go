@@ -7,17 +7,17 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-// MiddlewareFactory is one filter: its identity, its configuration and how to
+// MiddlewareFactory is one middleware: its identity, its configuration and how to
 // build it. A Registry composes factories into chains.
 type MiddlewareFactory interface {
-	// GetName returns the identifier used in the config's `filters[].name`.
+	// GetName returns the identifier used in the config's `middleware[].name`.
 	GetName() string
-	// GetDescription returns a short human-readable summary of what the filter does.
+	// GetDescription returns a short human-readable summary of what the middleware does.
 	GetDescription() string
-	// GetDependencies returns the names of filters that must appear earlier in
+	// GetDependencies returns the names of middleware that must appear earlier in
 	// the same chain.
 	GetDependencies() []string
-	// DecodeConfig turns the filter's `config:` block (nil when absent) into
+	// DecodeConfig turns the middleware's `config:` block (nil when absent) into
 	// the value Create expects, applying defaults and validating it.
 	DecodeConfig(raw *yaml.Node) (interface{}, error)
 	// Create builds the middleware from a value returned by DecodeConfig.
@@ -42,7 +42,7 @@ func (f *ConcreteFactory) GetName() string           { return f.name }
 func (f *ConcreteFactory) GetDescription() string    { return f.description }
 func (f *ConcreteFactory) GetDependencies() []string { return f.dependencies }
 
-// Validator is implemented by filter config types that can check themselves.
+// Validator is implemented by middleware config types that can check themselves.
 // DecodeConfigInto calls it after decoding.
 type Validator interface {
 	Validate() error
@@ -73,7 +73,7 @@ func DecodeConfigInto[C any](raw *yaml.Node, defaults C) (C, error) {
 	return cfg, nil
 }
 
-// NoConfig is embedded by factories whose filter takes no options.
+// NoConfig is embedded by factories whose middleware takes no options.
 type NoConfig struct{}
 
 // DecodeConfig accepts only an absent or empty `config:` block.
@@ -84,7 +84,7 @@ func (NoConfig) DecodeConfig(raw *yaml.Node) (interface{}, error) {
 	return struct{}{}, nil
 }
 
-// ConfigAs returns cfg as C, or an error naming the filter when Create is
+// ConfigAs returns cfg as C, or an error naming the middleware when Create is
 // handed a value its DecodeConfig did not produce.
 func ConfigAs[C any](name string, cfg interface{}) (C, error) {
 	c, ok := cfg.(C)

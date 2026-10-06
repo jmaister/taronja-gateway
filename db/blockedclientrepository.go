@@ -25,7 +25,7 @@ type BlockedClientRepository interface {
 	// BlockedAt is before cutoff, returning how many rows were removed.
 	// Called periodically by middleware.RateLimiter (see its
 	// pruneBlockedClientsLoop) so this table doesn't grow without bound —
-	// see the rate_limiter filter's blockedClientRetentionDays option.
+	// see the rate_limiter middleware's blockedClientRetentionDays option.
 	DeleteOlderThan(cutoff time.Time) (int64, error)
 }
 

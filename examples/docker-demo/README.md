@@ -38,9 +38,9 @@ off disk on every request. After editing `config/config.yaml`, run
 | `/web/*` | **proxy** | `to: http://web-service:80` — a Compose service name, resolved by Docker's internal DNS, not `localhost` |
 | `/_/admin/` | admin dashboard | built in; log in with `admin` / `admin123` |
 
-All of it runs through the `filters:` list (`cors`, `rate_limiter`,
+All of it runs through the `middleware:` list (`cors`, `rate_limiter`,
 `ja4_fingerprint`, `session_extraction`, `traffic_metrics`, `logging`) in
-`config/config.yaml` — see the main [README's Filters section](../../README.md#filters).
+`config/config.yaml` — see the main [README's Middleware section](../../README.md#middleware).
 
 ## Configure Google authentication
 
@@ -91,20 +91,20 @@ curl -si -X OPTIONS http://localhost:8080/web/ \
   -H "Access-Control-Request-Method: GET" | grep -i access-control
 ```
 
-**Traffic analytics** — every request through the filters above is
+**Traffic analytics** — every request through the middleware above is
 recorded (`traffic_metrics`). Click around the site, then check
 `/_/admin/` → Analytics for request counts, response times, and (per
 `session_extraction`/`ja4_fingerprint`) client fingerprints.
 
 **Cache-Control** — `curl -sI http://localhost:8080/` and look for
 `Cache-Control: max-age=3600` — set via the static route's
-`options.cacheControlSeconds`, not a filter.
+`options.cacheControlSeconds`, not a middleware.
 
 **Validate config without running anything** — the same checks `tg run`
 applies at startup, without starting a server:
 ```bash
 docker compose exec gateway tg validate --config /etc/taronja-gateway/config.yaml
-docker compose exec gateway tg filters list --config /etc/taronja-gateway/config.yaml
+docker compose exec gateway tg middleware list --config /etc/taronja-gateway/config.yaml
 ```
 
 ## Cleaning up

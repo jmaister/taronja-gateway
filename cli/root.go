@@ -41,7 +41,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newRunCmd(a),
 		newAddUserCmd(),
 		newVersionCmd(a),
-		newFiltersCmd(),
+		newMiddlewareCmd(),
 		newMigrateCmd(),
 		newValidateCmd(),
 		newOpenAPICmd(),

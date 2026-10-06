@@ -630,7 +630,7 @@ func TestHelloEndpoint(t *testing.T) {
 		Management: config.ManagementConfig{
 			Prefix: "/admin",
 		},
-		Filters: []config.FilterConfig{config.NewFilterConfig(builtin.FilterLogging, nil)},
+		Middleware: []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)},
 		Routes: []config.RouteConfig{
 			{
 				Name: "Hello Endpoint",

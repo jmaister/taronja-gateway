@@ -11,14 +11,14 @@ import (
 )
 
 // The shared rate limiter is built outside the chain, so it must read the
-// same filter options the chain uses.
-func TestBuildRuntime_RateLimiterUsesTheFilterOptions(t *testing.T) {
+// same middleware options the chain uses.
+func TestBuildRuntime_RateLimiterUsesTheMiddlewareOptions(t *testing.T) {
 	cfg := &config.GatewayConfig{
 		Name:       "rate-limiter-test",
 		Server:     config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 		Management: config.ManagementConfig{Prefix: "/_"},
-		Filters: []config.FilterConfig{
-			config.NewFilterConfig(builtin.FilterRateLimiter, builtin.RateLimiterConfig{RequestsPerMinute: 5, BlockMinutes: 1}),
+		Middleware: []config.MiddlewareConfig{
+			config.NewMiddlewareConfig(builtin.NameRateLimiter, builtin.RateLimiterConfig{RequestsPerMinute: 5, BlockMinutes: 1}),
 		},
 	}
 
@@ -26,22 +26,22 @@ func TestBuildRuntime_RateLimiterUsesTheFilterOptions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rt.rateLimiter)
 	assert.Equal(t, 5, rt.rateLimiter.Config().RequestsPerMinute)
-	assert.True(t, rt.registry.GetStatus()[builtin.FilterRateLimiter].Enabled)
+	assert.True(t, rt.registry.GetStatus()[builtin.NameRateLimiter].Enabled)
 }
 
-func TestBuildRuntime_AnalyticsFiltersGetTheirDependencies(t *testing.T) {
+func TestBuildRuntime_AnalyticsMiddlewareGetTheirDependencies(t *testing.T) {
 	cfg := &config.GatewayConfig{
 		Name:       "analytics-test",
 		Server:     config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 		Management: config.ManagementConfig{Prefix: "/_"},
-		Filters: []config.FilterConfig{
-			config.NewFilterConfig(builtin.FilterJA4Fingerprint, nil),
-			config.NewFilterConfig(builtin.FilterSessionExtraction, nil),
-			config.NewFilterConfig(builtin.FilterTrafficMetrics, nil),
+		Middleware: []config.MiddlewareConfig{
+			config.NewMiddlewareConfig(builtin.NameJA4Fingerprint, nil),
+			config.NewMiddlewareConfig(builtin.NameSessionExtraction, nil),
+			config.NewMiddlewareConfig(builtin.NameTrafficMetrics, nil),
 		},
 	}
 
 	rt, err := buildRuntime(cfg, deps.NewTest())
 	require.NoError(t, err)
-	assert.True(t, rt.registry.GetStatus()[builtin.FilterTrafficMetrics].Enabled)
+	assert.True(t, rt.registry.GetStatus()[builtin.NameTrafficMetrics].Enabled)
 }

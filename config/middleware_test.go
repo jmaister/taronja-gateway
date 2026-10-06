@@ -11,10 +11,10 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
-func TestFilterConfig_IsEnabled(t *testing.T) {
-	assert.True(t, FilterConfig{Name: "logging"}.IsEnabled(), "absent enabled means true")
-	assert.True(t, FilterConfig{Name: "logging", Enabled: boolPtr(true)}.IsEnabled())
-	assert.False(t, FilterConfig{Name: "logging", Enabled: boolPtr(false)}.IsEnabled())
+func TestMiddlewareConfig_IsEnabled(t *testing.T) {
+	assert.True(t, MiddlewareConfig{Name: "logging"}.IsEnabled(), "absent enabled means true")
+	assert.True(t, MiddlewareConfig{Name: "logging", Enabled: boolPtr(true)}.IsEnabled())
+	assert.False(t, MiddlewareConfig{Name: "logging", Enabled: boolPtr(false)}.IsEnabled())
 }
 
 // writeTestConfig writes a minimal valid gateway config, augmented with extraYAML
@@ -41,15 +41,15 @@ routes:
 	return path
 }
 
-func TestLoadConfig_NoFilters(t *testing.T) {
+func TestLoadConfig_NoMiddleware(t *testing.T) {
 	cfg, err := LoadConfig(writeTestConfig(t, ""))
 	require.NoError(t, err)
-	assert.Empty(t, cfg.Filters)
+	assert.Empty(t, cfg.Middleware)
 }
 
-func TestLoadConfig_FiltersParsedInOrder(t *testing.T) {
+func TestLoadConfig_MiddlewareParsedInOrder(t *testing.T) {
 	cfg, err := LoadConfig(writeTestConfig(t, `
-filters:
+middleware:
   - name: rate_limiter
     config:
       requestsPerMinute: 42
@@ -57,9 +57,9 @@ filters:
     enabled: false
 `))
 	require.NoError(t, err)
-	require.Len(t, cfg.Filters, 2)
+	require.Len(t, cfg.Middleware, 2)
 
-	rl := cfg.Filters[0]
+	rl := cfg.Middleware[0]
 	assert.Equal(t, "rate_limiter", rl.Name)
 	assert.True(t, rl.IsEnabled())
 	var opts struct {
@@ -69,19 +69,19 @@ filters:
 	require.NoError(t, rl.Config.Decode(&opts))
 	assert.Equal(t, 42, opts.RequestsPerMinute)
 
-	assert.Equal(t, "logging", cfg.Filters[1].Name)
-	assert.False(t, cfg.Filters[1].IsEnabled())
-	assert.Nil(t, cfg.Filters[1].Config)
+	assert.Equal(t, "logging", cfg.Middleware[1].Name)
+	assert.False(t, cfg.Middleware[1].IsEnabled())
+	assert.Nil(t, cfg.Middleware[1].Config)
 }
 
-func TestLoadConfig_FilterWithoutNameRejected(t *testing.T) {
-	_, err := LoadConfig(writeTestConfig(t, "filters:\n  - enabled: true\n"))
+func TestLoadConfig_MiddlewareWithoutNameRejected(t *testing.T) {
+	_, err := LoadConfig(writeTestConfig(t, "middleware:\n  - enabled: true\n"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing 'name'")
 }
 
-func TestLoadConfig_DuplicateFilterRejected(t *testing.T) {
-	_, err := LoadConfig(writeTestConfig(t, "filters:\n  - name: logging\n  - name: logging\n"))
+func TestLoadConfig_DuplicateMiddlewareRejected(t *testing.T) {
+	_, err := LoadConfig(writeTestConfig(t, "middleware:\n  - name: logging\n  - name: logging\n"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "more than once")
 }
@@ -92,8 +92,8 @@ func TestLoadConfig_UnknownKeysRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "field tracing not found")
 }
 
-func TestNewFilterConfig_EncodesOptions(t *testing.T) {
-	f := NewFilterConfig("cors", map[string]any{"allowedOrigins": []string{"https://a.example"}})
+func TestNewMiddlewareConfig_EncodesOptions(t *testing.T) {
+	f := NewMiddlewareConfig("cors", map[string]any{"allowedOrigins": []string{"https://a.example"}})
 	assert.Equal(t, "cors", f.Name)
 	var opts struct {
 		AllowedOrigins []string `yaml:"allowedOrigins"`
@@ -101,5 +101,5 @@ func TestNewFilterConfig_EncodesOptions(t *testing.T) {
 	require.NoError(t, f.Config.Decode(&opts))
 	assert.Equal(t, []string{"https://a.example"}, opts.AllowedOrigins)
 
-	assert.Nil(t, NewFilterConfig("logging", nil).Config)
+	assert.Nil(t, NewMiddlewareConfig("logging", nil).Config)
 }

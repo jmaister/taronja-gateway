@@ -31,7 +31,7 @@ you've migrated to declare your config current going forward.
 matches what the binary supports** — outdated, undeclared, *and* newer than
 supported all fail the same way: a version mismatch means this binary can't
 be sure it understands the file correctly, in either direction. `tg run`
-(and `tg validate`, `tg filters list`) fail immediately with an error telling you what
+(and `tg validate`, `tg middleware list`) fail immediately with an error telling you what
 to do.
 
 An outdated or undeclared file:
@@ -108,12 +108,12 @@ stamping `version: "1.0"` on the file.
        port: 587
    ```
 
-2. The filter settings move into the root `filters:` list:
+2. The middleware settings move into the root `middleware:` list:
    `management.logging`, `compression`, `analytics`, `excludeStaticAssets`,
    `rateLimiter` and `cors`, the root `tracing:` section, and a
    `middleware.global` list if there was one. Without a `middleware.global`
-   list, the filters are written in the order the gateway used to run them
-   (tracing, compression, cors, rate_limiter, the three analytics filters,
+   list, the entries are written in the order the gateway used to run them
+   (tracing, compression, cors, rate_limiter, the three analytics middleware,
    logging), and only the ones that were on:
 
    ```yaml
@@ -129,7 +129,7 @@ stamping `version: "1.0"` on the file.
    # after
    management:
      prefix: _
-   filters:
+   middleware:
      - name: rate_limiter
        config:
          requestsPerMinute: 100

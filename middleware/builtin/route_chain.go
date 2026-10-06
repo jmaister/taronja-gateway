@@ -39,7 +39,7 @@ func (f *routeAuthFactory) Create(cfg interface{}) (middleware.Middleware, error
 	return f.auth.AuthMiddlewareFunc(c.Redirect), nil
 }
 
-// DecodeConfig is not used: route filters get their config from the route.
+// DecodeConfig is not used: route middleware get their config from the route.
 func (f *routeAuthFactory) DecodeConfig(*yaml.Node) (interface{}, error) {
 	return RouteAuthConfig{}, nil
 }
@@ -57,7 +57,7 @@ func (f *routeCacheFactory) Create(cfg interface{}) (middleware.Middleware, erro
 	return f.cache.CacheControlMiddlewareFunc(c.Route), nil
 }
 
-// DecodeConfig is not used: route filters get their config from the route.
+// DecodeConfig is not used: route middleware get their config from the route.
 func (f *routeCacheFactory) DecodeConfig(*yaml.Node) (interface{}, error) {
 	return RouteCacheConfig{}, nil
 }

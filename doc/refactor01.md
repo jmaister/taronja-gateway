@@ -1,6 +1,6 @@
 # Refactoring 01: Middleware Architecture - Declarative & Pluggable Design
 
-**Status**: Complete — all 4 phases implemented (see per-phase status below; the configuration has since moved to the root `filters:` list, see [doc/middlewares.md](./middlewares.md))
+**Status**: Complete — all 4 phases implemented (see per-phase status below; the configuration has since moved to the root `middleware:` list, see [doc/middlewares.md](./middlewares.md))
 **Priority**: Medium  
 **Effort**: 4 weeks (phased)  
 **Owner**: TBD  

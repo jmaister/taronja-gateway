@@ -34,7 +34,7 @@ type StrictApiServer struct {
 	// returns 503, the same way GetTelegramLinkCode does for an
 	// unconfigured Telegram provider.
 	notificationService *notification.Service
-	// excludeStaticAssets mirrors the traffic_metrics filter option so the
+	// excludeStaticAssets mirrors the traffic_metrics middleware option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
 }

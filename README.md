@@ -14,7 +14,7 @@ It serves as an entry point for your API server and your frontend application, h
 - [Installation](#installation)
 - [Commands](#commands)
 - [Configuration](#configuration)
-- [Filter Architecture](#filter-architecture)
+- [Middleware Architecture](#middleware-architecture)
 - [Building and Releasing](#building-and-releasing)
 - [Authentication on the APIs](#authentication-on-the-apis)
 - [Getting the Current User from the Frontend](#getting-the-current-user-from-the-frontend)
@@ -128,11 +128,11 @@ The Taronja Gateway CLI provides the following commands:
     ./tg version
     ```
 
-*   **List the filter chain for a config file:**
+*   **List the middleware chain for a config file:**
     ```bash
-    ./tg filters list --config ./sample/config.yaml
+    ./tg middleware list --config ./sample/config.yaml
     ```
-    Prints the filters the config enables, in order, and every available filter with its dependencies — without starting the server. See [Filters](#filters).
+    Prints the middleware the config enables, in order, and every available middleware with its dependencies — without starting the server. See [Middleware](#middleware).
 
 *   **Migrate a config file to the current schema version:**
     ```bash
@@ -171,8 +171,8 @@ management:
     username: admin
     password: admin123  # Automatically hashed for security
 
-filters:                    # run top to bottom, see doc/middleware/
-  - name: ja4_fingerprint   # the three analytics filters feed the dashboard
+middleware:                 # run top to bottom, see doc/middleware/
+  - name: ja4_fingerprint   # the three analytics middleware feed the dashboard
   - name: session_extraction
   - name: traffic_metrics
   - name: logging
@@ -238,16 +238,16 @@ Controls the management API and dashboard.
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
 
-### Filters
+### Middleware
 
-Filters are the global middleware every request passes through: compression,
-CORS, rate limiting, analytics, logging and tracing. They are listed under
-the root `filters:` key and run in list order; each entry has a `name`, an
-optional `enabled: false` and an optional `config` block with that filter's
-options. With no `filters:` key, none run.
+Global middleware runs on every request before it reaches a route:
+compression, CORS, rate limiting, analytics, logging and tracing. It is
+listed under the root `middleware:` key and runs in list order; each entry
+has a `name`, an optional `enabled: false` and an optional `config` block
+with that middleware's options. With no `middleware:` key, none runs.
 
 ```yaml
-filters:
+middleware:
   - name: compression
   - name: rate_limiter
     config:
@@ -262,7 +262,7 @@ filters:
   - name: logging
 ```
 
-| Filter | What it does |
+| Middleware | What it does |
 |---|---|
 | [`tracing`](doc/middleware/tracing.md) | OpenTelemetry span per request, exported over OTLP/HTTP |
 | [`compression`](doc/middleware/compression.md) | brotli/zstd/gzip/deflate response compression |
@@ -274,7 +274,7 @@ filters:
 | [`logging`](doc/middleware/logging.md) | Logs each request |
 
 See [doc/middleware/](doc/middleware/README.md) for every option, the
-dependencies between filters and ordering advice.
+dependencies between middleware and ordering advice.
 
 ### Routes
 
@@ -365,24 +365,24 @@ export GOOGLE_CLIENT_SECRET="your-client-secret"
 
 See the complete example configuration in `sample/config.yaml`.
 
-# Filter Architecture
+# Middleware Architecture
 
-Every filter is one file in `middleware/builtin/` holding its name, its
-options type with validation, and a factory; `middleware/builtin/filters.go`
-registers them and turns the `filters:` list into a chain through a
+Every middleware is one file in `middleware/builtin/` holding its name, its
+options type with validation, and a factory; `middleware/builtin/global.go`
+registers them and turns the `middleware:` list into a chain through a
 registry that checks dependencies. See
 [doc/middlewares.md](doc/middlewares.md) for the design.
 
 - **Inspect** what's active for a config file without starting the server:
   ```bash
-  ./tg filters list --config ./sample/config.yaml
+  ./tg middleware list --config ./sample/config.yaml
   ```
 - **Monitor** a running gateway (admin session required):
   - `GET <prefix>/api/middleware` — status, dependencies, and health of every
-    filter
+    middleware
   - `GET <prefix>/api/middleware/{name}/metrics` — request count, error
-    count, and average duration for one filter
-- **Extend** by adding your own filter — see
+    count, and average duration for one middleware
+- **Extend** by adding your own middleware — see
   [`doc/middleware_development.md`](doc/middleware_development.md) for the
   guide and [`examples/middleware-plugin/`](examples/middleware-plugin/) for
   a complete, tested, third-party-style example.

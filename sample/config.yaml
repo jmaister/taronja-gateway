@@ -14,10 +14,10 @@ management:
     enabled: true
     username: admin
     password: admin123  # This will be automatically hashed for security
-# Global filters, run top to bottom. Each one is documented, with its
+# Global middleware, run top to bottom. Each one is documented, with its
 # options, in doc/middleware/. Remove an entry (or set enabled: false) to
-# turn it off; `tg filters list --config <file>` shows the resolved chain.
-filters:
+# turn it off; `tg middleware list --config <file>` shows the resolved chain.
+middleware:
   # - name: tracing             # OpenTelemetry span per request, see doc/middleware/tracing.md
   #   config:
   #     endpoint: localhost:4318  # OTLP/HTTP collector host:port, no scheme

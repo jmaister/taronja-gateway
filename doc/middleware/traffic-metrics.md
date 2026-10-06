@@ -1,13 +1,13 @@
 # Traffic Metrics
 
-**Filter name:** `traffic_metrics`
+**Middleware name:** `traffic_metrics`
 **Suggested position:** last of the "analytics" group — after
 [`ja4_fingerprint`](ja4-fingerprint.md) and
 [`session_extraction`](session-extraction.md), before
 [`logging`](logging.md).
 **Depends on:** `session_extraction`, `ja4_fingerprint` (both verified
 reads — see below).
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -41,10 +41,10 @@ once it's reachable again). `127.x.x.x`/`localhost` are never looked up.
 
 ## Enabling it
 
-The dashboard's statistics need all three analytics filters, in this order:
+The dashboard's statistics need all three analytics middleware, in this order:
 
 ```yaml
-filters:
+middleware:
   - name: ja4_fingerprint
   - name: session_extraction
   - name: traffic_metrics
@@ -109,13 +109,13 @@ Both declared dependencies are **verified reads**, not just ordering:
   fingerprint header that middleware sets, to populate `JA4Fingerprint` on
   the row.
 
-Listing `traffic_metrics` without either dependency earlier in `filters:`
+Listing `traffic_metrics` without either dependency earlier in `middleware:`
 fails at startup with a clear error, instead of silently recording metrics
 with that field empty.
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/ja4-fingerprint.md](ja4-fingerprint.md) and
   [doc/middleware/session-extraction.md](session-extraction.md) — the rest

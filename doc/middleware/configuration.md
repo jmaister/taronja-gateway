@@ -1,12 +1,12 @@
-# Filters
+# Middleware
 
-Global filters (compression, CORS, rate limiting, analytics, logging,
-tracing) are listed under the root `filters:` key, in the order they run.
+Global middleware (compression, CORS, rate limiting, analytics, logging,
+tracing) are listed under the root `middleware:` key, in the order they run.
 Each entry has a `name`, an optional `enabled: false`, and an optional
-`config` block with that filter's options:
+`config` block with that middleware's options:
 
 ```yaml
-filters:
+middleware:
   - name: compression
   - name: cors
     config:
@@ -25,5 +25,5 @@ filters:
     enabled: false   # listed but disabled
 ```
 
-See [doc/middleware/](README.md) for every filter, its options and its
+See [doc/middleware/](README.md) for every middleware, its options and its
 dependencies.

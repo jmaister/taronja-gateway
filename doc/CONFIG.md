@@ -20,15 +20,15 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type BrandingConfig](<#BrandingConfig>)
 - [type EmailNotificationConfig](<#EmailNotificationConfig>)
   - [func \(e EmailNotificationConfig\) IsConfigured\(\) bool](<#EmailNotificationConfig.IsConfigured>)
-- [type FilterConfig](<#FilterConfig>)
-  - [func NewFilterConfig\(name string, options any\) FilterConfig](<#NewFilterConfig>)
-  - [func \(f FilterConfig\) IsEnabled\(\) bool](<#FilterConfig.IsEnabled>)
-  - [func \(f \*FilterConfig\) UnmarshalYAML\(value \*yaml.Node\) error](<#FilterConfig.UnmarshalYAML>)
 - [type GatewayConfig](<#GatewayConfig>)
   - [func LoadConfig\(filename string\) \(\*GatewayConfig, error\)](<#LoadConfig>)
   - [func \(c \*GatewayConfig\) HasAnyAuthentication\(\) bool](<#GatewayConfig.HasAnyAuthentication>)
 - [type GeolocationConfig](<#GeolocationConfig>)
 - [type ManagementConfig](<#ManagementConfig>)
+- [type MiddlewareConfig](<#MiddlewareConfig>)
+  - [func NewMiddlewareConfig\(name string, options any\) MiddlewareConfig](<#NewMiddlewareConfig>)
+  - [func \(f MiddlewareConfig\) IsEnabled\(\) bool](<#MiddlewareConfig.IsEnabled>)
+  - [func \(f \*MiddlewareConfig\) UnmarshalYAML\(value \*yaml.Node\) error](<#MiddlewareConfig.UnmarshalYAML>)
 - [type NotificationConfig](<#NotificationConfig>)
 - [type ResponseWebhookConfig](<#ResponseWebhookConfig>)
   - [func \(w ResponseWebhookConfig\) IsConfigured\(\) bool](<#ResponseWebhookConfig.IsConfigured>)
@@ -178,46 +178,6 @@ func (e EmailNotificationConfig) IsConfigured() bool
 
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
-<a name="FilterConfig"></a>
-## type [FilterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/filters.go#L12-L16>)
-
-FilterConfig is one entry of the root \`filters\` list. Filters run in list order; each filter's options live in its own \`config\` block, decoded and validated by the filter itself \(see doc/middleware/\).
-
-```go
-type FilterConfig struct {
-    Name    string     `yaml:"name"`              // Filter identifier, e.g. "rate_limiter". Required.
-    Enabled *bool      `yaml:"enabled,omitempty"` // Default: true. Set false to keep an entry without running it.
-    Config  *yaml.Node `yaml:"config,omitempty"`  // Filter-specific options. Optional.
-}
-```
-
-<a name="NewFilterConfig"></a>
-### func [NewFilterConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/filters.go#L70>)
-
-```go
-func NewFilterConfig(name string, options any) FilterConfig
-```
-
-NewFilterConfig builds a \`filters\` entry for configs assembled in code; options \(a struct or map, nil for none\) become its config block.
-
-<a name="FilterConfig.IsEnabled"></a>
-### func \(FilterConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/filters.go#L47>)
-
-```go
-func (f FilterConfig) IsEnabled() bool
-```
-
-IsEnabled reports whether the entry runs; an absent Enabled means true.
-
-<a name="FilterConfig.UnmarshalYAML"></a>
-### func \(\*FilterConfig\) [UnmarshalYAML](<https://github.com/jmaister/taronja-gateway/blob/main/config/filters.go#L21>)
-
-```go
-func (f *FilterConfig) UnmarshalYAML(value *yaml.Node) error
-```
-
-UnmarshalYAML keeps \`config\` as a raw node for the filter to decode. A strict decoder would otherwise try to match its keys against yaml.Node's own fields.
-
 <a name="GatewayConfig"></a>
 ## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L227-L238>)
 
@@ -234,7 +194,7 @@ type GatewayConfig struct {
     Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
     Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
     Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
-    Filters                 []FilterConfig          `yaml:"filters,omitempty"`       // Global filters (middleware), run in list order. Optional; none when absent. See doc/middleware/.
+    Middleware              []MiddlewareConfig      `yaml:"middleware,omitempty"`    // Global middleware, run in list order. Optional; none when absent. See doc/middleware/.
 }
 ```
 
@@ -279,6 +239,46 @@ type ManagementConfig struct {
     Session SessionConfig `yaml:"session"` // Session lifetime configuration for authenticated users
 }
 ```
+
+<a name="MiddlewareConfig"></a>
+## type [MiddlewareConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L12-L16>)
+
+MiddlewareConfig is one entry of the root \`middleware\` list. Entries run in list order; each middleware's options live in its own \`config\` block, decoded and validated by the middleware itself \(see doc/middleware/\).
+
+```go
+type MiddlewareConfig struct {
+    Name    string     `yaml:"name"`              // Middleware identifier, e.g. "rate_limiter". Required.
+    Enabled *bool      `yaml:"enabled,omitempty"` // Default: true. Set false to keep an entry without running it.
+    Config  *yaml.Node `yaml:"config,omitempty"`  // Middleware-specific options. Optional.
+}
+```
+
+<a name="NewMiddlewareConfig"></a>
+### func [NewMiddlewareConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L70>)
+
+```go
+func NewMiddlewareConfig(name string, options any) MiddlewareConfig
+```
+
+NewMiddlewareConfig builds a \`middleware\` entry for configs assembled in code; options \(a struct or map, nil for none\) become its config block.
+
+<a name="MiddlewareConfig.IsEnabled"></a>
+### func \(MiddlewareConfig\) [IsEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L47>)
+
+```go
+func (f MiddlewareConfig) IsEnabled() bool
+```
+
+IsEnabled reports whether the entry runs; an absent Enabled means true.
+
+<a name="MiddlewareConfig.UnmarshalYAML"></a>
+### func \(\*MiddlewareConfig\) [UnmarshalYAML](<https://github.com/jmaister/taronja-gateway/blob/main/config/middleware.go#L21>)
+
+```go
+func (f *MiddlewareConfig) UnmarshalYAML(value *yaml.Node) error
+```
+
+UnmarshalYAML keeps \`config\` as a raw node for the middleware to decode. A strict decoder would otherwise try to match its keys against yaml.Node's own fields.
 
 <a name="NotificationConfig"></a>
 ## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L129-L133>)

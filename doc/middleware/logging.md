@@ -1,10 +1,10 @@
 # Logging
 
-**Filter name:** `logging`
+**Middleware name:** `logging`
 **Suggested position:** last — after everything else, including the
 "analytics" group.
 **Depends on:** nothing.
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -26,18 +26,18 @@ deliberately deferred piece of future work, not an oversight).
 ## Enabling it
 
 ```yaml
-filters:
+middleware:
   - name: logging
 ```
 
 ## Config options
 
-None. A `config:` block on this filter is rejected.
+None. A `config:` block on this middleware is rejected.
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the structured,
-  queryable alternative to this plain-text log line, if you need to filter
+  queryable alternative to this plain-text log line, if you need to middleware
   or aggregate request history rather than just tail it.

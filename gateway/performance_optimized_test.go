@@ -43,7 +43,7 @@ func BenchmarkStaticRequestAnalyticsIncludingStatic(b *testing.B) {
 // is true. See doc/PERFORMANCE_ANALYSIS.md for the measured before/after.
 func BenchmarkStaticRequestAnalyticsExcludingStatic(b *testing.B) {
 	cfg := createTestConfig()
-	cfg.Filters[2] = config.NewFilterConfig(builtin.FilterTrafficMetrics, builtin.TrafficMetricsConfig{ExcludeStaticAssets: true})
+	cfg.Middleware[2] = config.NewMiddlewareConfig(builtin.NameTrafficMetrics, builtin.TrafficMetricsConfig{ExcludeStaticAssets: true})
 	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)

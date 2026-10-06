@@ -1,6 +1,6 @@
-# Filter architecture
+# Middleware architecture
 
-How requests move through the gateway's filters (global middleware) and route middleware. For writing a filter see [middleware_development.md](./middleware_development.md); for each filter's options see [middleware/](./middleware/README.md).
+How requests move through the gateway's global middleware and route middleware. For writing a middleware see [middleware_development.md](./middleware_development.md); for each middleware's options see [middleware/](./middleware/README.md).
 
 ## Packages
 
@@ -12,29 +12,29 @@ middleware/            Plumbing only
 ├── health.go          Optional HealthChecker interface for factories
 └── metrics.go         Per-middleware request/error/time counters
 middleware/builtin/    Implementations
-├── filters.go         NewFilterRegistry, ResolveFilters, NewGlobalChain, ValidateFilters, FilterSettings
+├── global.go          NewGlobalRegistry, ResolveGlobalMiddleware, NewGlobalChain, ValidateGlobalMiddleware, MiddlewareSettings
 ├── route_chain.go     route_auth and route_cache factories, RouteChainBuilder
 ├── auth.go, cache.go  Route-level authentication and cache-control
 ├── session.go         Session middlewares, ValidateSessionFromRequest, CheckAdminAccess
 ├── tracing.go, compression.go, cors.go, ratelimiter.go, ja4.go, trafficmetric.go, logging.go
-│                      One filter each: name constant, options type with Validate, factory, middleware
-├── validation.go      Startup checks for routes, admin settings and filters
+│                      One middleware each: name constant, options type with Validate, factory
+├── validation.go      Startup checks for routes, admin settings and middleware
 middleware/fingerprint/ JA4H helpers
 ```
 
-## Filter chain
+## Middleware chain
 
-The root `filters:` list in the config is the whole chain: entries run in list order, disabled entries are skipped, and nothing runs when the list is absent. `config.FilterConfig` keeps each entry's `config:` block as a raw YAML node; the config package knows no filter names or options.
+The root `middleware:` list in the config is the whole chain: entries run in list order, disabled entries are skipped, and nothing runs when the list is absent. `config.MiddlewareConfig` keeps each entry's `config:` block as a raw YAML node; the config package knows no middleware names or options.
 
 `builtin.NewGlobalChain` builds the chain once at startup:
 
-1. `NewFilterRegistry` registers every built-in factory with its runtime services (session store, token service, traffic metric repository, shared rate limiter).
-2. `ResolveFilters` looks each entry up by name and calls the factory's `DecodeConfig`, which decodes the options over their defaults, rejects unknown keys and runs the options type's `Validate`.
-3. `Registry.BuildChain` checks that every dependency appears earlier in the list (for example `traffic_metrics` needs `session_extraction` and `ja4_fingerprint`), creates each filter, wraps it with metrics and records which ones are active.
+1. `NewGlobalRegistry` registers every built-in factory with its runtime services (session store, token service, traffic metric repository, shared rate limiter).
+2. `ResolveGlobalMiddleware` looks each entry up by name and calls the factory's `DecodeConfig`, which decodes the options over their defaults, rejects unknown keys and runs the options type's `Validate`.
+3. `Registry.BuildChain` checks that every dependency appears earlier in the list (for example `traffic_metrics` needs `session_extraction` and `ja4_fingerprint`), creates each middleware, wraps it with metrics and records which ones are active.
 
-`ValidateFilters` runs steps 1 to 2 and the dependency check without creating anything; `tg validate`, `tg filters list` and gateway startup use it.
+`ValidateGlobalMiddleware` runs steps 1 to 2 and the dependency check without creating anything; `tg validate`, `tg middleware list` and gateway startup use it.
 
-Code outside the chain that depends on a filter's options reads them with `FilterSettings[C](cfg, name)` (or `FilterEnabled`), so it always agrees with the chain: the shared rate limiter, `gateway.InitTracing`, the proxy's trace propagation and the statistics API's `excludeStaticAssets`.
+Code outside the chain that depends on a middleware's options reads them with `MiddlewareSettings[C](cfg, name)` (or `MiddlewareEnabled`), so it always agrees with the chain: the shared rate limiter, `gateway.InitTracing`, the proxy's trace propagation and the statistics API's `excludeStaticAssets`.
 
 ## Route chain
 

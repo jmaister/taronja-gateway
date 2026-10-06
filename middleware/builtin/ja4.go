@@ -136,9 +136,9 @@ func JA4Middleware(enableCaching bool) func(http.Handler) http.Handler {
 	}
 }
 
-// FilterJA4Fingerprint computes the JA4H fingerprint used by the analytics
-// filters. It takes no options.
-const FilterJA4Fingerprint = "ja4_fingerprint"
+// NameJA4Fingerprint computes the JA4H fingerprint used by the analytics
+// middleware. It takes no options.
+const NameJA4Fingerprint = "ja4_fingerprint"
 
 type ja4Factory struct {
 	middleware.ConcreteFactory
@@ -146,7 +146,7 @@ type ja4Factory struct {
 }
 
 func newJA4Factory() *ja4Factory {
-	return &ja4Factory{ConcreteFactory: middleware.NewConcreteFactory(FilterJA4Fingerprint, "Computes and caches a JA4H fingerprint for each request")}
+	return &ja4Factory{ConcreteFactory: middleware.NewConcreteFactory(NameJA4Fingerprint, "Computes and caches a JA4H fingerprint for each request")}
 }
 
 func (f *ja4Factory) Create(interface{}) (middleware.Middleware, error) {

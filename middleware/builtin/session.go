@@ -266,9 +266,9 @@ func CheckAdminAccess(session *db.Session, adminRequired bool) bool {
 	return session != nil && session.IsAdmin
 }
 
-// FilterSessionExtraction attaches the caller's session, when there is one, to
+// NameSessionExtraction attaches the caller's session, when there is one, to
 // the request context. It takes no options.
-const FilterSessionExtraction = "session_extraction"
+const NameSessionExtraction = "session_extraction"
 
 type sessionExtractionFactory struct {
 	middleware.ConcreteFactory
@@ -277,11 +277,11 @@ type sessionExtractionFactory struct {
 	tokenService session.TokenService
 }
 
-// The ja4_fingerprint dependency keeps the analytics filters in their
-// original order; this filter does not read the fingerprint itself.
+// The ja4_fingerprint dependency keeps the analytics middleware in their
+// original order; this middleware does not read the fingerprint itself.
 func newSessionExtractionFactory(sessionStore session.SessionStore, tokenService session.TokenService) *sessionExtractionFactory {
 	return &sessionExtractionFactory{
-		ConcreteFactory: middleware.NewConcreteFactory(FilterSessionExtraction, "Resolves the authenticated session/user and attaches it to the request context", FilterJA4Fingerprint),
+		ConcreteFactory: middleware.NewConcreteFactory(NameSessionExtraction, "Resolves the authenticated session/user and attaches it to the request context", NameJA4Fingerprint),
 		sessionStore:    sessionStore,
 		tokenService:    tokenService,
 	}

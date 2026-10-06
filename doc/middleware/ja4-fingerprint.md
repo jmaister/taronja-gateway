@@ -1,11 +1,11 @@
 # JA4H Fingerprint
 
-**Filter name:** `ja4_fingerprint`
+**Middleware name:** `ja4_fingerprint`
 **Suggested position:** first of the "analytics" group — before
 [`session_extraction`](session-extraction.md) and
 [`traffic_metrics`](traffic-metrics.md).
 **Depends on:** nothing.
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -65,10 +65,10 @@ implementation detail of the built-in `ja4_fingerprint` middleware.
 
 ## Enabling it
 
-The dashboard's statistics need all three analytics filters, in this order:
+The dashboard's statistics need all three analytics middleware, in this order:
 
 ```yaml
-filters:
+middleware:
   - name: ja4_fingerprint
   - name: session_extraction
   - name: traffic_metrics
@@ -79,7 +79,7 @@ recording them.
 
 ## Config options
 
-None. A `config:` block on this filter is rejected.
+None. A `config:` block on this middleware is rejected.
 
 ## Why other middleware depends on it
 
@@ -120,7 +120,7 @@ most reliable first:
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/session-extraction.md](session-extraction.md) and
   [doc/middleware/traffic-metrics.md](traffic-metrics.md) — the rest of the

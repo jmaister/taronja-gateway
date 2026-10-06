@@ -4,21 +4,24 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-// moveFiltersToRoot rewrites the pre-1.0 filter settings into the root
-// `filters` list: an explicit middleware.global list keeps its order, otherwise
-// the management flags (and the root tracing section) map to filters in the
+// moveMiddlewareToRoot rewrites the pre-1.0 middleware settings into the root
+// `middleware` list: an old `middleware.global` list keeps its order, otherwise
+// the management flags (and the root tracing section) become entries in the
 // order the gateway used to run them. The old keys are removed. It reports
 // whether the config had any of them.
-func moveFiltersToRoot(root *yaml.Node) bool {
+func moveMiddlewareToRoot(root *yaml.Node) bool {
 	management := mappingValue(root, "management")
-	middlewareSection := mappingValue(root, "middleware")
-	global := mappingValue(middlewareSection, "global")
+	var oldSection *yaml.Node
+	if m := mappingValue(root, "middleware"); m != nil && m.Kind == yaml.MappingNode {
+		oldSection = m
+	}
+	global := mappingValue(oldSection, "global")
 	tracing := mappingValue(root, "tracing")
 
 	legacy := func(key string) *yaml.Node { return mappingValue(management, key) }
 	legacyKeys := []string{"logging", "compression", "analytics", "excludeStaticAssets", "rateLimiter", "cors"}
 
-	found := middlewareSection != nil || tracing != nil
+	found := oldSection != nil || tracing != nil
 	for _, key := range legacyKeys {
 		if legacy(key) != nil {
 			found = true
@@ -28,56 +31,63 @@ func moveFiltersToRoot(root *yaml.Node) bool {
 		return false
 	}
 
-	var filters []*yaml.Node
+	var entries []*yaml.Node
 	if global != nil && global.Kind == yaml.SequenceNode {
 		for _, entry := range global.Content {
-			if f := filterFromGlobalEntry(entry, legacy, tracing); f != nil {
-				filters = append(filters, f)
+			if e := middlewareFromGlobalEntry(entry, legacy, tracing); e != nil {
+				entries = append(entries, e)
 			}
 		}
 	} else {
 		if isTrue(mappingValue(tracing, "enabled")) {
-			filters = append(filters, filterNode("tracing", tracingOptions(tracing)))
+			entries = append(entries, middlewareNode("tracing", tracingOptions(tracing)))
 		}
 		if isTrue(legacy("compression")) {
-			filters = append(filters, filterNode("compression", nil))
+			entries = append(entries, middlewareNode("compression", nil))
 		}
 		if cors := legacy("cors"); hasItems(mappingValue(cors, "allowedOrigins")) {
-			filters = append(filters, filterNode("cors", cors))
+			entries = append(entries, middlewareNode("cors", cors))
 		}
 		if rl := legacy("rateLimiter"); rateLimiterEnabled(rl) {
-			filters = append(filters, filterNode("rate_limiter", rl))
+			entries = append(entries, middlewareNode("rate_limiter", rl))
 		}
 		if isTrue(legacy("analytics")) {
-			filters = append(filters,
-				filterNode("ja4_fingerprint", nil),
-				filterNode("session_extraction", nil),
-				filterNode("traffic_metrics", trafficMetricsOptions(legacy("excludeStaticAssets"))),
+			entries = append(entries,
+				middlewareNode("ja4_fingerprint", nil),
+				middlewareNode("session_extraction", nil),
+				middlewareNode("traffic_metrics", trafficMetricsOptions(legacy("excludeStaticAssets"))),
 			)
 		}
 		if isTrue(legacy("logging")) {
-			filters = append(filters, filterNode("logging", nil))
+			entries = append(entries, middlewareNode("logging", nil))
 		}
 	}
 
 	for _, key := range legacyKeys {
 		removeMappingKey(management, key)
 	}
-	removeMappingKey(root, "middleware")
+	if oldSection != nil {
+		removeMappingKey(root, "middleware")
+	}
 	removeMappingKey(root, "tracing")
 
-	if len(filters) > 0 {
-		root.Content = append(root.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "filters"},
-			&yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Content: filters},
-		)
+	if len(entries) == 0 {
+		return true
 	}
+	if list := mappingValue(root, "middleware"); list != nil && list.Kind == yaml.SequenceNode {
+		list.Content = append(list.Content, entries...)
+		return true
+	}
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "middleware"},
+		&yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Content: entries},
+	)
 	return true
 }
 
-// filterFromGlobalEntry converts one middleware.global entry; options it did
+// middlewareFromGlobalEntry converts one middleware.global entry; options it did
 // not override come from the matching management setting, as before.
-func filterFromGlobalEntry(entry *yaml.Node, legacy func(string) *yaml.Node, tracing *yaml.Node) *yaml.Node {
+func middlewareFromGlobalEntry(entry *yaml.Node, legacy func(string) *yaml.Node, tracing *yaml.Node) *yaml.Node {
 	nameNode := mappingValue(entry, "name")
 	if nameNode == nil {
 		return nil
@@ -94,14 +104,14 @@ func filterFromGlobalEntry(entry *yaml.Node, legacy func(string) *yaml.Node, tra
 	case "tracing":
 		options = tracingOptions(tracing)
 	}
-	f := filterNode(name, options)
+	f := middlewareNode(name, options)
 	if enabled := mappingValue(entry, "enabled"); enabled != nil {
 		f.Content = append(f.Content[:2], append([]*yaml.Node{scalar("enabled"), enabled}, f.Content[2:]...)...)
 	}
 	return f
 }
 
-func filterNode(name string, options *yaml.Node) *yaml.Node {
+func middlewareNode(name string, options *yaml.Node) *yaml.Node {
 	n := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{scalar("name"), scalar(name)}}
 	if options != nil && options.Kind == yaml.MappingNode && len(options.Content) > 0 {
 		n.Content = append(n.Content, scalar("config"), options)
@@ -110,7 +120,7 @@ func filterNode(name string, options *yaml.Node) *yaml.Node {
 }
 
 // tracingOptions is the old tracing section without its enabled switch, which
-// listing the filter now replaces.
+// listing the middleware now replaces.
 func tracingOptions(tracing *yaml.Node) *yaml.Node {
 	if tracing == nil || tracing.Kind != yaml.MappingNode {
 		return nil

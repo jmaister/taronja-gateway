@@ -1846,7 +1846,7 @@ components:
       description: >-
         Filter on whether the request was for a static asset. true returns
         only static asset requests, false only non-static requests, omitting
-        it returns both. Ignored when the traffic_metrics filter excludes
+        it returns both. Ignored when the traffic_metrics middleware excludes
         static assets.
       schema:
         type: boolean
@@ -2347,7 +2347,7 @@ components:
         staticAssetsExcluded:
           type: boolean
           description: >-
-            True when the traffic_metrics filter's excludeStaticAssets option
+            True when the traffic_metrics middleware's excludeStaticAssets option
             is on: static asset requests are not recorded and is_static is
             ignored.
       required:

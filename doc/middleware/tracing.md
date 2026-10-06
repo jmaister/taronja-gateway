@@ -1,13 +1,13 @@
 # Tracing
 
-**Filter name:** `tracing`
+**Middleware name:** `tracing`
 **Suggested position:** first — even before [`compression`](compression.md),
 the previous outermost middleware. It needs to see the request before
 anything else touches it (to extract an incoming W3C `traceparent` header
 as early as possible), and its span should cover the whole request
 lifecycle, compression time included.
 **Depends on:** nothing.
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -42,17 +42,17 @@ which exists today.
 ## Enabling it
 
 List it with the collector to export to. Put it first so its span covers the
-whole request, including the other filters.
+whole request, including the other middleware.
 
 ```yaml
-filters:
+middleware:
   - name: tracing
     config:
       endpoint: localhost:4318   # OTLP/HTTP collector host:port, no scheme
       insecure: true             # plain HTTP to endpoint, not HTTPS
 ```
 
-Listing the filter also starts the OTLP exporter at startup and makes
+Listing the middleware also starts the OTLP exporter at startup and makes
 proxied requests carry the trace context to backends.
 
 ## Try it locally
@@ -76,13 +76,13 @@ works the same way, just pointed at a different `endpoint`.
    ```
 
 2. **Point a config at it and run the gateway.** `sample/config.yaml`
-   has a commented-out `tracing` entry at the top of its `filters:` list —
+   has a commented-out `tracing` entry at the top of its `middleware:` list —
    uncomment it (or add the same entry to any config with at least one
    proxy route; tracing a route that never proxies anywhere only ever
    produces the one inbound span, not the distributed pair described below):
 
    ```yaml
-   filters:
+   middleware:
      - name: tracing
        config:
          endpoint: localhost:4318
@@ -176,7 +176,7 @@ happen at real gateway startup.
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system all of these middlewares are built on, and how to
   inspect the running chain.
 - [doc/middleware/compression.md](compression.md) — runs immediately after

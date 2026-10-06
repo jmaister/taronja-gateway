@@ -1,12 +1,12 @@
-# Filters
+# Middleware
 
-Filters are the gateway's global middleware: each request passes through
-them, top to bottom, before it reaches a route. They are configured in one
-place, the root `filters:` list of the config file, and each filter has its
-own page here with its options and dependencies.
+Global middleware runs on every request, top to bottom, before it reaches a
+route. It is configured in one place, the root `middleware:` list of the
+config file, and each middleware has its own page here with its options and
+dependencies.
 
 ```yaml
-filters:
+middleware:
   - name: compression
   - name: rate_limiter
     config:
@@ -23,19 +23,19 @@ Every entry takes the same three keys:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `name` | yes | Which filter (see the table below). Each name may appear once. |
+| `name` | yes | Which middleware (see the table below). Each name may appear once. |
 | `enabled` | no | `false` keeps the entry without running it. Default `true`. |
-| `config` | no | The filter's own options. Unknown keys are rejected. |
+| `config` | no | The middleware's own options. Unknown keys are rejected. |
 
-With no `filters:` key, no filter runs. `tg filters list --config <file>`
+With no `middleware:` key, no middleware runs. `tg middleware list --config <file>`
 prints the chain a config resolves to; `tg validate` checks names, options
 and dependencies without starting the gateway.
 
-## Available filters
+## Available middleware
 
 In the order the sample config lists them:
 
-| Filter | Options | Depends on | Summary |
+| Middleware | Options | Depends on | Summary |
 |---|---|---|---|
 | [`tracing`](tracing.md) | `endpoint` (required), `insecure` | — | OpenTelemetry span per request, trace context forwarded to backends. |
 | [`compression`](compression.md) | none | — | brotli, zstd, gzip or deflate, negotiated via Accept-Encoding. |
@@ -47,7 +47,7 @@ In the order the sample config lists them:
 | [`logging`](logging.md) | none | — | Logs each request (method, path, status, duration). |
 
 A dependency must appear earlier in the list; the gateway refuses to start
-otherwise. The dashboard's statistics pages need the three analytics filters
+otherwise. The dashboard's statistics pages need the three analytics middleware
 (`ja4_fingerprint`, `session_extraction`, `traffic_metrics`).
 
 ### Ordering
@@ -55,7 +55,7 @@ otherwise. The dashboard's statistics pages need the three analytics filters
 Order is yours to choose, but a few placements matter:
 
 - `tracing` first, so its span covers the whole request.
-- `compression` near the top: it wraps the response writer, and filters
+- `compression` near the top: it wraps the response writer, and middleware
   after it still see the uncompressed status and size.
 - `cors` before `rate_limiter`, so preflights are answered without being
   counted or blocked.
@@ -65,9 +65,9 @@ Route-level behavior (authentication, cache-control headers) is configured on
 each route, not here; see [Routes](../../README.md#routes) and
 [`doc/CACHE_CONTROL.md`](../CACHE_CONTROL.md).
 
-## Writing a filter
+## Writing a middleware
 
-A filter is one file in `middleware/builtin/` holding its name, its options
+A middleware is one file in `middleware/builtin/` holding its name, its options
 type, its validation and a factory, registered in
-`middleware/builtin/filters.go`. See
+`middleware/builtin/global.go`. See
 [`doc/middleware_development.md`](../middleware_development.md).

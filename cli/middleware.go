@@ -11,21 +11,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newFiltersCmd() *cobra.Command {
+func newMiddlewareCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "filters",
-		Short: "Introspect the gateway's global filter chain",
+		Use:   "middleware",
+		Short: "Introspect the gateway's global middleware chain",
 	}
 
 	list := &cobra.Command{
 		Use:   "list",
-		Short: "List the filters of a config file and every available filter",
-		Long: `Prints the filter chain a config file resolves to, in order, then every
-built-in filter with whether it is active and what it depends on.
+		Short: "List the middleware of a config file and every available middleware",
+		Long: `Prints the middleware chain a config file resolves to, in order, then every
+built-in middleware with whether it is active and what it depends on.
 
 Starts no server and opens no database connection.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			listFilters(configPath(cmd))
+			listMiddleware(configPath(cmd))
 		},
 	}
 	addConfigFlag(list, "Path to the configuration file")
@@ -33,27 +33,27 @@ Starts no server and opens no database connection.`,
 	return cmd
 }
 
-// listFilters resolves and validates the chain without creating any filter, so
+// listMiddleware resolves and validates the chain without creating any middleware, so
 // it needs no runtime dependencies.
-func listFilters(configFilePath string) {
+func listMiddleware(configFilePath string) {
 	cfg, err := config.LoadConfig(configFilePath)
 	if err != nil {
 		fatalf("Failed to load configuration: %v", err)
 	}
 
-	registry := builtin.NewFilterRegistry(builtin.FilterDeps{})
-	specs, err := builtin.ResolveFilters(registry, cfg.Filters)
+	registry := builtin.NewGlobalRegistry(builtin.GlobalDeps{})
+	specs, err := builtin.ResolveGlobalMiddleware(registry, cfg.Middleware)
 	if err != nil {
 		fatalf("%v", err)
 	}
 	if err := registry.ValidateSpecs(specs); err != nil {
-		fatalf("filters: %v", err)
+		fatalf("middleware: %v", err)
 	}
 
 	active := make(map[string]bool, len(specs))
-	fmt.Printf("Filter chain for %q:\n\n", cfg.Name)
+	fmt.Printf("Middleware chain for %q:\n\n", cfg.Name)
 	if len(specs) == 0 {
-		fmt.Println("  (none: the config has no enabled entries under filters:)")
+		fmt.Println("  (none: the config has no enabled entries under middleware:)")
 	}
 	for i, spec := range specs {
 		active[spec.Name] = true

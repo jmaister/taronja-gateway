@@ -25,8 +25,8 @@ func setupMiddlewareTestServer(t *testing.T) *StrictApiServer {
 	dependencies := deps.NewTest()
 
 	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Filters = []config.FilterConfig{config.NewFilterConfig(builtin.FilterLogging, nil)}
-	registry, _, err := builtin.NewGlobalChain(gatewayConfig, builtin.FilterDeps{
+	gatewayConfig.Middleware = []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)}
+	registry, _, err := builtin.NewGlobalChain(gatewayConfig, builtin.GlobalDeps{
 		SessionStore: dependencies.SessionStore, TokenService: dependencies.TokenService, TrafficMetricRepo: dependencies.TrafficMetricRepo,
 	})
 	require.NoError(t, err)
@@ -66,28 +66,28 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 		byName[item.Name] = item
 	}
 
-	logging, ok := byName[builtin.FilterLogging]
+	logging, ok := byName[builtin.NameLogging]
 	require.True(t, ok)
 	assert.True(t, logging.Enabled)
 	assert.Equal(t, api.MiddlewareStatusItemStatusActive, logging.Status)
 	assert.Nil(t, logging.Health, "logging has no HealthChecker implementation")
 
-	rateLimiter, ok := byName[builtin.FilterRateLimiter]
+	rateLimiter, ok := byName[builtin.NameRateLimiter]
 	require.True(t, ok)
 	assert.False(t, rateLimiter.Enabled, "rate limiter was not enabled in the test config")
 	assert.Equal(t, api.MiddlewareStatusItemStatusAvailable, rateLimiter.Status)
 	require.NotNil(t, rateLimiter.Health, "rate limiter always implements HealthChecker")
 
-	sessionExtraction, ok := byName[builtin.FilterSessionExtraction]
+	sessionExtraction, ok := byName[builtin.NameSessionExtraction]
 	require.True(t, ok)
-	assert.Contains(t, sessionExtraction.Dependencies, builtin.FilterJA4Fingerprint)
+	assert.Contains(t, sessionExtraction.Dependencies, builtin.NameJA4Fingerprint)
 
-	compression, ok := byName[builtin.FilterCompression]
+	compression, ok := byName[builtin.NameCompression]
 	require.True(t, ok)
 	assert.False(t, compression.Enabled, "compression was not enabled in the test config")
 	assert.Equal(t, api.MiddlewareStatusItemStatusAvailable, compression.Status)
 
-	tracing, ok := byName[builtin.FilterTracing]
+	tracing, ok := byName[builtin.NameTracing]
 	require.True(t, ok)
 	assert.False(t, tracing.Enabled, "tracing was not enabled in the test config")
 	assert.Equal(t, api.MiddlewareStatusItemStatusAvailable, tracing.Status)
@@ -96,7 +96,7 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 func TestGetMiddlewareMetrics_Unauthorized(t *testing.T) {
 	s := setupMiddlewareTestServer(t)
 
-	resp, err := s.GetMiddlewareMetrics(context.Background(), api.GetMiddlewareMetricsRequestObject{Name: builtin.FilterLogging})
+	resp, err := s.GetMiddlewareMetrics(context.Background(), api.GetMiddlewareMetricsRequestObject{Name: builtin.NameLogging})
 	require.NoError(t, err)
 	_, ok := resp.(api.GetMiddlewareMetrics401JSONResponse)
 	assert.True(t, ok)
@@ -115,8 +115,8 @@ func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 	dependencies := deps.NewTest()
 
 	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Filters = []config.FilterConfig{config.NewFilterConfig(builtin.FilterLogging, nil)}
-	registry, chain, err := builtin.NewGlobalChain(gatewayConfig, builtin.FilterDeps{
+	gatewayConfig.Middleware = []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)}
+	registry, chain, err := builtin.NewGlobalChain(gatewayConfig, builtin.GlobalDeps{
 		SessionStore: dependencies.SessionStore, TokenService: dependencies.TokenService, TrafficMetricRepo: dependencies.TrafficMetricRepo,
 	})
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 		dependencies.StartTime, nil, registry, dependencies.NotificationService,
 	)
 
-	resp, err := s.GetMiddlewareMetrics(adminContext(), api.GetMiddlewareMetricsRequestObject{Name: builtin.FilterLogging})
+	resp, err := s.GetMiddlewareMetrics(adminContext(), api.GetMiddlewareMetricsRequestObject{Name: builtin.NameLogging})
 	require.NoError(t, err)
 	metrics, ok := resp.(api.GetMiddlewareMetrics200JSONResponse)
 	require.True(t, ok)
@@ -162,8 +162,8 @@ func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
 	dependencies := deps.NewTest()
 
 	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Filters = []config.FilterConfig{config.NewFilterConfig(builtin.FilterLogging, nil)} // rate_limiter, ja4, etc. stay unbuilt
-	registry, chain, err := builtin.NewGlobalChain(gatewayConfig, builtin.FilterDeps{
+	gatewayConfig.Middleware = []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)} // rate_limiter, ja4, etc. stay unbuilt
+	registry, chain, err := builtin.NewGlobalChain(gatewayConfig, builtin.GlobalDeps{
 		SessionStore: dependencies.SessionStore, TokenService: dependencies.TokenService, TrafficMetricRepo: dependencies.TrafficMetricRepo,
 	})
 	require.NoError(t, err)
@@ -188,6 +188,6 @@ func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
 	items, ok := resp.(api.GetAllMiddlewareMetrics200JSONResponse)
 	require.True(t, ok)
 	require.Len(t, items, 1, "only logging was built into the chain")
-	assert.Equal(t, builtin.FilterLogging, items[0].Name)
+	assert.Equal(t, builtin.NameLogging, items[0].Name)
 	assert.Equal(t, int64(2), items[0].RequestCount)
 }

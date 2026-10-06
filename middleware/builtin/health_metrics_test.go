@@ -21,7 +21,7 @@ func TestGetHealth_FactoryWithoutHealthCheckerReturnsUnknown(t *testing.T) {
 	registry := middleware.NewRegistry()
 	registry.RegisterFactory(newLoggingFactory())
 
-	health, ok := registry.GetHealth(FilterLogging)
+	health, ok := registry.GetHealth(NameLogging)
 	if !ok {
 		t.Fatal("expected ok=true for a registered middleware")
 	}
@@ -57,12 +57,12 @@ func TestGetStatus_IncludesHealthWhenImplemented(t *testing.T) {
 
 	status := registry.GetStatus()
 
-	rl := status[FilterRateLimiter]
+	rl := status[NameRateLimiter]
 	if rl.Health == nil {
 		t.Fatal("expected rate_limiter status to include Health (it implements middleware.HealthChecker)")
 	}
 
-	logging := status[FilterLogging]
+	logging := status[NameLogging]
 	if logging.Health != nil {
 		t.Fatalf("expected logging status to have nil Health (no middleware.HealthChecker), got %+v", logging.Health)
 	}
@@ -81,7 +81,7 @@ func TestGetMetrics_KnownButNeverBuiltReturnsZeroSnapshot(t *testing.T) {
 	registry := middleware.NewRegistry()
 	registry.RegisterFactory(newLoggingFactory())
 
-	snap, err := registry.GetMetrics(FilterLogging)
+	snap, err := registry.GetMetrics(NameLogging)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestMetrics_RecordedAcrossRequests(t *testing.T) {
 	registry := middleware.NewRegistry()
 	registry.RegisterFactory(newLoggingFactory())
 
-	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: FilterLogging}})
+	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: NameLogging}})
 	if err != nil {
 		t.Fatalf("BuildChain failed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestMetrics_RecordedAcrossRequests(t *testing.T) {
 		handler.ServeHTTP(rw, req)
 	}
 
-	snap, err := registry.GetMetrics(FilterLogging)
+	snap, err := registry.GetMetrics(NameLogging)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestMetrics_CountsServerErrors(t *testing.T) {
 	registry := middleware.NewRegistry()
 	registry.RegisterFactory(newLoggingFactory())
 
-	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: FilterLogging}})
+	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: NameLogging}})
 	if err != nil {
 		t.Fatalf("BuildChain failed: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestMetrics_CountsServerErrors(t *testing.T) {
 	rw := httptest.NewRecorder()
 	handler.ServeHTTP(rw, req)
 
-	snap, err := registry.GetMetrics(FilterLogging)
+	snap, err := registry.GetMetrics(NameLogging)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -155,15 +155,15 @@ func TestGetAllMetrics_OnlyIncludesBuiltMiddleware(t *testing.T) {
 	registry.RegisterFactory(newLoggingFactory())
 	registry.RegisterFactory(newRateLimiterFactory(nil))
 
-	if _, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: FilterLogging}}); err != nil {
+	if _, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: NameLogging}}); err != nil {
 		t.Fatalf("BuildChain failed: %v", err)
 	}
 
 	all := registry.GetAllMetrics()
-	if _, ok := all[FilterLogging]; !ok {
+	if _, ok := all[NameLogging]; !ok {
 		t.Fatal("expected logging to be present (it was built)")
 	}
-	if _, ok := all[FilterRateLimiter]; ok {
+	if _, ok := all[NameRateLimiter]; ok {
 		t.Fatal("expected rate_limiter to be absent (it was never built into a chain)")
 	}
 }

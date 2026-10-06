@@ -464,10 +464,10 @@ func (rl *RateLimiter) pruneBlockedClients(now time.Time) {
 	}
 }
 
-// FilterRateLimiter limits requests per client IP and blocks scanners.
-const FilterRateLimiter = "rate_limiter"
+// NameRateLimiter limits requests per client IP and blocks scanners.
+const NameRateLimiter = "rate_limiter"
 
-// RateLimiterConfig holds the rate_limiter filter options, applied per client
+// RateLimiterConfig holds the rate_limiter middleware options, applied per client
 // IP. Zero values turn the matching check off.
 type RateLimiterConfig struct {
 	RequestsPerMinute int `yaml:"requestsPerMinute"` // Max requests per IP per 60s window. 0 = no limit.
@@ -526,7 +526,7 @@ type rateLimiterFactory struct {
 
 func newRateLimiterFactory(rateLimiter *RateLimiter) *rateLimiterFactory {
 	return &rateLimiterFactory{
-		ConcreteFactory: middleware.NewConcreteFactory(FilterRateLimiter, "Limits request rate per client IP and detects vulnerability scans"),
+		ConcreteFactory: middleware.NewConcreteFactory(NameRateLimiter, "Limits request rate per client IP and detects vulnerability scans"),
 		rateLimiter:     rateLimiter,
 	}
 }
@@ -539,7 +539,7 @@ func (f *rateLimiterFactory) Create(cfg interface{}) (middleware.Middleware, err
 	if f.rateLimiter != nil {
 		return f.rateLimiter.Handler, nil
 	}
-	c, err := middleware.ConfigAs[RateLimiterConfig](FilterRateLimiter, cfg)
+	c, err := middleware.ConfigAs[RateLimiterConfig](NameRateLimiter, cfg)
 	if err != nil {
 		return nil, err
 	}

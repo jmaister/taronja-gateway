@@ -407,11 +407,11 @@ func createTestConfig() *config.GatewayConfig {
 				Password: "password",
 			},
 		},
-		Filters: []config.FilterConfig{
-			config.NewFilterConfig(builtin.FilterJA4Fingerprint, nil),
-			config.NewFilterConfig(builtin.FilterSessionExtraction, nil),
-			config.NewFilterConfig(builtin.FilterTrafficMetrics, nil),
-			config.NewFilterConfig(builtin.FilterLogging, nil),
+		Middleware: []config.MiddlewareConfig{
+			config.NewMiddlewareConfig(builtin.NameJA4Fingerprint, nil),
+			config.NewMiddlewareConfig(builtin.NameSessionExtraction, nil),
+			config.NewMiddlewareConfig(builtin.NameTrafficMetrics, nil),
+			config.NewMiddlewareConfig(builtin.NameLogging, nil),
 		},
 		AuthenticationProviders: config.AuthenticationProviders{
 			Basic: config.BasicAuthenticationConfig{

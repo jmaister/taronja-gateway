@@ -234,7 +234,7 @@ type GatewayConfig struct {
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
-	Filters                 []FilterConfig          `yaml:"filters,omitempty"`       // Global filters (middleware), run in list order. Optional; none when absent. See doc/middleware/.
+	Middleware              []MiddlewareConfig      `yaml:"middleware,omitempty"`    // Global middleware, run in list order. Optional; none when absent. See doc/middleware/.
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -320,7 +320,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		log.Printf("Admin access is disabled")
 	}
 
-	if err := validateFilters(config.Filters); err != nil {
+	if err := validateMiddleware(config.Middleware); err != nil {
 		return nil, err
 	}
 

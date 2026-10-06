@@ -125,10 +125,10 @@ var configMigrations = map[string]configMigration{
 }
 
 // migrateLegacyToV1 upgrades a pre-v1.0.0 config to 1.0: flattens
-// notification.email.smtp.*, moves the filter settings into the root `filters`
+// notification.email.smtp.*, moves the middleware settings into the root `middleware`
 // list, then stamps version: 1.0.
 func migrateLegacyToV1(raw []byte) []byte {
-	return setTopLevelVersionField(editYAML(raw, flattenNotificationEmailSMTPNode, moveFiltersToRoot), "1.0")
+	return setTopLevelVersionField(editYAML(raw, flattenNotificationEmailSMTPNode, moveMiddlewareToRoot), "1.0")
 }
 
 // flattenNotificationEmailSMTP moves notification.email.smtp.* up to

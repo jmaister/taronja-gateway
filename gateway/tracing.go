@@ -15,12 +15,12 @@ import (
 )
 
 // InitTracing registers an OTLP/HTTP TracerProvider and the W3C tracecontext
-// propagator when the tracing filter is enabled; otherwise it is a no-op. The
+// propagator when the tracing middleware is enabled; otherwise it is a no-op. The
 // returned shutdown func flushes pending spans and must be called on graceful
 // shutdown.
 func InitTracing(ctx context.Context, gatewayConfig *config.GatewayConfig) (shutdown func(context.Context) error, err error) {
 	noopShutdown := func(context.Context) error { return nil }
-	cfg, enabled, err := builtin.FilterSettings[builtin.TracingConfig](gatewayConfig, builtin.FilterTracing)
+	cfg, enabled, err := builtin.MiddlewareSettings[builtin.TracingConfig](gatewayConfig, builtin.NameTracing)
 	if err != nil || !enabled {
 		return noopShutdown, err
 	}

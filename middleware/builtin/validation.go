@@ -198,8 +198,8 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 		return err
 	}
 
-	if err := ValidateFilters(config); err != nil {
-		return &ValidationError{Middleware: "filters", Message: err.Error()}
+	if err := ValidateGlobalMiddleware(config); err != nil {
+		return &ValidationError{Middleware: "middleware", Message: err.Error()}
 	}
 
 	log.Printf("All middleware validation completed successfully")
@@ -216,8 +216,8 @@ func ValidateConfigOnly(config *config.GatewayConfig) error {
 	if err := ValidateAdminAccess(nil, config); err != nil {
 		return err
 	}
-	if err := ValidateFilters(config); err != nil {
-		return &ValidationError{Middleware: "filters", Message: err.Error()}
+	if err := ValidateGlobalMiddleware(config); err != nil {
+		return &ValidationError{Middleware: "middleware", Message: err.Error()}
 	}
 	return nil
 }
@@ -227,16 +227,16 @@ func LogMiddlewareStatus(config *config.GatewayConfig) {
 	log.Printf("=== Middleware Status ===")
 
 	enabled := 0
-	for _, f := range config.Filters {
+	for _, f := range config.Middleware {
 		if f.IsEnabled() {
-			log.Printf("✓ Filter %s: ENABLED", f.Name)
+			log.Printf("✓ Middleware %s: ENABLED", f.Name)
 			enabled++
 		} else {
-			log.Printf("✗ Filter %s: DISABLED", f.Name)
+			log.Printf("✗ Middleware %s: DISABLED", f.Name)
 		}
 	}
 	if enabled == 0 {
-		log.Printf("✗ Filters: NONE")
+		log.Printf("✗ Middleware: NONE")
 	}
 
 	// Route-specific middleware status

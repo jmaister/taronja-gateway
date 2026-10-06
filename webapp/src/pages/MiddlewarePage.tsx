@@ -87,9 +87,9 @@ export function MiddlewarePage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Filters</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight">Middleware</h1>
                     <p className="text-sm text-muted-fg mt-1">
-                        Status, health, and live request metrics for the global filter chain.
+                        Status, health, and live request metrics for the global middleware chain.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -116,7 +116,7 @@ export function MiddlewarePage() {
                 <Card>
                     <CardContent className="pt-5">
                         <div className="text-3xl font-semibold text-primary">{items.length}</div>
-                        <div className="text-sm text-muted-fg mt-1">Filters registered</div>
+                        <div className="text-sm text-muted-fg mt-1">Middleware registered</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -138,20 +138,20 @@ export function MiddlewarePage() {
             {/* Middleware Table */}
             <Card>
                 <CardHeader>
-                    <h3 className="text-base font-semibold">Global Filter Chain</h3>
+                    <h3 className="text-base font-semibold">Global Middleware Chain</h3>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <InlineQueryState isLoading={isLoading} error={error} errorMessage="Failed to load filter status. Make sure you're signed in as an admin.">
+                    <InlineQueryState isLoading={isLoading} error={error} errorMessage="Failed to load middleware status. Make sure you're signed in as an admin.">
                         {items.length === 0 ? (
                         <div className="p-6 text-sm text-muted-fg">
-                            No filters registered.
+                            No middleware registered.
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="border-b border-border bg-muted/40">
-                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Filter</th>
+                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Middleware</th>
                                         <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-fg">Status</th>
                                         <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-fg">Health</th>
                                         <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Depends on</th>

@@ -35,13 +35,13 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 	mux := http.NewServeMux()
 
 	// The rate limiter outlives the chain: the management API reads its state.
-	rlCfg, _, err := builtin.FilterSettings[builtin.RateLimiterConfig](cfg, builtin.FilterRateLimiter)
+	rlCfg, _, err := builtin.MiddlewareSettings[builtin.RateLimiterConfig](cfg, builtin.NameRateLimiter)
 	if err != nil {
 		return nil, err
 	}
 	rl := builtin.NewRateLimiter(rlCfg, d.BlockedClientRepo)
 
-	registry, globalChain, err := builtin.NewGlobalChain(cfg, builtin.FilterDeps{
+	registry, globalChain, err := builtin.NewGlobalChain(cfg, builtin.GlobalDeps{
 		SessionStore:      d.SessionStore,
 		TokenService:      d.TokenService,
 		TrafficMetricRepo: d.TrafficMetricRepo,

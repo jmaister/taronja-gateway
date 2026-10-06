@@ -59,8 +59,8 @@ func (rw *responseWriter) Status() int {
 	return rw.statusCode
 }
 
-// FilterLogging logs every request. It takes no options.
-const FilterLogging = "logging"
+// NameLogging logs every request. It takes no options.
+const NameLogging = "logging"
 
 type loggingFactory struct {
 	middleware.ConcreteFactory
@@ -68,7 +68,7 @@ type loggingFactory struct {
 }
 
 func newLoggingFactory() *loggingFactory {
-	return &loggingFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterLogging, "Logs each request/response (method, path, status, duration)")}
+	return &loggingFactory{ConcreteFactory: middleware.NewConcreteFactory(NameLogging, "Logs each request/response (method, path, status, duration)")}
 }
 
 func (f *loggingFactory) Create(interface{}) (middleware.Middleware, error) {

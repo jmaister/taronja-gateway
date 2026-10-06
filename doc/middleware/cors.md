@@ -1,13 +1,13 @@
 # CORS
 
-**Filter name:** `cors`
+**Middleware name:** `cors`
 **Suggested position:** second, right after `compression` (which only
 wraps the response writer and never rejects a request) — and first among
 the middlewares that can actually reject or answer a request, since a CORS
 preflight (`OPTIONS`) request is never meant to reach application logic,
 rate limiting included.
 **Depends on:** nothing.
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -37,7 +37,7 @@ below) and, if configured, `Access-Control-Allow-Credentials: true`.
 Not listed, or listed with no `allowedOrigins`, it adds no headers at all.
 
 ```yaml
-filters:
+middleware:
   - name: cors
     config:
       allowedOrigins: ["https://app.example.com"]
@@ -69,7 +69,7 @@ All under the entry's `config:` block.
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system all of these middlewares are built on, and how to
   inspect the running chain.
 - [doc/middleware/rate-limiter.md](rate-limiter.md) — runs immediately

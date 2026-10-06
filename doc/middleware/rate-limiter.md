@@ -1,10 +1,10 @@
 # Rate Limiter
 
-**Filter name:** `rate_limiter`
+**Middleware name:** `rate_limiter`
 **Suggested position:** second — right after [`cors`](cors.md), before
 analytics or logging.
 **Depends on:** nothing.
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -39,7 +39,7 @@ Not listed, or listed with `requestsPerMinute`, `maxErrors` and
 `vulnerabilityScan` all unset, it passes every request through.
 
 ```yaml
-filters:
+middleware:
   - name: rate_limiter
     config:
       requestsPerMinute: 300
@@ -90,7 +90,7 @@ your application's real routes.
   the background cleanup goroutine (see "What it does" above) deletes its
   entry entirely, so a since-expired block has no trace here.
 - **`GET <prefix>/api/rate-limiter/blocked`** (admin-only) — the persistent
-  history of block events, unaffected by that cleanup. Optional `ip` filter,
+  history of block events, unaffected by that cleanup. Optional `ip` middleware,
   `limit`/`offset` pagination (default `limit=50`, max `200`). Each entry
   records which of the three checks tripped (`reason`:
   `rate_limit`/`max_errors`/`vulnerability_scan`), the matched path for
@@ -117,7 +117,7 @@ your application's real routes.
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system, and how to inspect the running chain.
 - [doc/middleware/cors.md](cors.md) — runs immediately before this one in
   the suggested order.

@@ -24,7 +24,7 @@ import (
 )
 
 // TestInitTracing_DisabledIsNoOp confirms the documented contract:
-// a config without the tracing filter must not touch the global TracerProvider at all,
+// a config without the tracing middleware must not touch the global TracerProvider at all,
 // so anything else in the process that happens to call otel.Tracer(...)
 // keeps using whatever was already registered (OpenTelemetry's own
 // default no-op provider, absent any other Init call).
@@ -63,7 +63,7 @@ func TestInitTracing_EnabledExportsRealSpansOverOTLP(t *testing.T) {
 	defer collector.Close()
 
 	endpoint := collector.Listener.Addr().String() // host:port, no scheme — see builtin.TracingConfig.Endpoint
-	shutdown, err := InitTracing(context.Background(), &config.GatewayConfig{Name: "test-service", Filters: tracingFilters(endpoint)})
+	shutdown, err := InitTracing(context.Background(), &config.GatewayConfig{Name: "test-service", Middleware: tracingMiddleware(endpoint)})
 	require.NoError(t, err)
 
 	tracer := otel.Tracer("test")
@@ -106,7 +106,7 @@ func TestGatewayPropagatesTraceContextToBackend(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(collector.Close)
-	shutdown, err := InitTracing(context.Background(), &config.GatewayConfig{Name: "test-service", Filters: tracingFilters(collector.Listener.Addr().String())})
+	shutdown, err := InitTracing(context.Background(), &config.GatewayConfig{Name: "test-service", Middleware: tracingMiddleware(collector.Listener.Addr().String())})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = shutdown(context.Background()) })
 
@@ -120,7 +120,7 @@ func TestGatewayPropagatesTraceContextToBackend(t *testing.T) {
 	gwConfig := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
 		Management: config.ManagementConfig{Prefix: "/admin"},
-		Filters:    tracingFilters(collector.Listener.Addr().String()),
+		Middleware: tracingMiddleware(collector.Listener.Addr().String()),
 		Routes: []config.RouteConfig{
 			{
 				Name:           "TracedProxy",
@@ -243,7 +243,7 @@ func (c *decodingOTLPCollector) spansByKind() []receivedSpan {
 func TestGatewayTracing_DistributedSpanLinkageOverRealOTLP(t *testing.T) {
 	collector := newDecodingOTLPCollector(t)
 
-	shutdown, err := InitTracing(context.Background(), &config.GatewayConfig{Name: "test-service", Filters: tracingFilters(collector.Listener.Addr().String())})
+	shutdown, err := InitTracing(context.Background(), &config.GatewayConfig{Name: "test-service", Middleware: tracingMiddleware(collector.Listener.Addr().String())})
 	require.NoError(t, err)
 
 	var receivedTraceparent string
@@ -256,7 +256,7 @@ func TestGatewayTracing_DistributedSpanLinkageOverRealOTLP(t *testing.T) {
 	gwConfig := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
 		Management: config.ManagementConfig{Prefix: "/admin"},
-		Filters:    tracingFilters(collector.Listener.Addr().String()),
+		Middleware: tracingMiddleware(collector.Listener.Addr().String()),
 		Routes: []config.RouteConfig{
 			{
 				Name:           "TracedProxy",
@@ -326,9 +326,9 @@ func TestGatewayTracing_DistributedSpanLinkageOverRealOTLP(t *testing.T) {
 	assert.Equal(t, wantTraceparent, receivedTraceparent)
 }
 
-// tracingFilters enables the tracing filter against a plain-HTTP collector.
-func tracingFilters(endpoint string) []config.FilterConfig {
-	return []config.FilterConfig{
-		config.NewFilterConfig(builtin.FilterTracing, builtin.TracingConfig{Endpoint: endpoint, Insecure: true}),
+// tracingMiddleware enables the tracing middleware against a plain-HTTP collector.
+func tracingMiddleware(endpoint string) []config.MiddlewareConfig {
+	return []config.MiddlewareConfig{
+		config.NewMiddlewareConfig(builtin.NameTracing, builtin.TracingConfig{Endpoint: endpoint, Insecure: true}),
 	}
 }

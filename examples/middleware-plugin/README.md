@@ -21,8 +21,8 @@ points:
 
 `requestid_test.go` proves the integration actually works: it registers
 `Factory` into a real `middleware.Registry` and builds a chain with it, the
-same way the gateway builds its own filter chain (see
-`middleware/builtin/filters.go`'s `NewGlobalChain`).
+same way the gateway builds its own middleware chain (see
+`middleware/builtin/global.go`'s `NewGlobalChain`).
 
 Read `doc/middleware_development.md` for the full walkthrough this example is
 based on, including how to wire a middleware like this one into a real

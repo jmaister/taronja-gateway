@@ -79,7 +79,7 @@ func (f *Factory) Create(cfg interface{}) (middleware.Middleware, error) {
 }
 
 // GetName returns the stable identifier used in middleware.MiddlewareSpec.Name
-// and in config's `filters[].name` (if this factory were registered
+// and in config's `middleware[].name` (if this factory were registered
 // into the gateway's own registry — see doc/middleware_development.md).
 func (f *Factory) GetName() string { return "request_id" }
 

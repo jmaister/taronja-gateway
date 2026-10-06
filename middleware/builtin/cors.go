@@ -104,10 +104,10 @@ func CORSMiddleware(cfg CORSConfig) func(http.Handler) http.Handler {
 	}
 }
 
-// FilterCORS answers CORS preflights and adds CORS headers.
-const FilterCORS = "cors"
+// NameCORS answers CORS preflights and adds CORS headers.
+const NameCORS = "cors"
 
-// CORSConfig holds the cors filter options. The dashboard is served
+// CORSConfig holds the cors middleware options. The dashboard is served
 // same-origin, so CORS is only needed when a separately hosted frontend calls
 // the management API.
 type CORSConfig struct {
@@ -154,7 +154,7 @@ func (c CORSConfig) Validate() error {
 type corsFactory struct{ middleware.ConcreteFactory }
 
 func newCORSFactory() *corsFactory {
-	return &corsFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterCORS, "Adds CORS response headers for cross-origin requests")}
+	return &corsFactory{ConcreteFactory: middleware.NewConcreteFactory(NameCORS, "Adds CORS response headers for cross-origin requests")}
 }
 
 func (f *corsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
@@ -162,7 +162,7 @@ func (f *corsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
 }
 
 func (f *corsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
-	c, err := middleware.ConfigAs[CORSConfig](FilterCORS, cfg)
+	c, err := middleware.ConfigAs[CORSConfig](NameCORS, cfg)
 	if err != nil {
 		return nil, err
 	}

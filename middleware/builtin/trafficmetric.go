@@ -125,10 +125,10 @@ func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository, excludeStatic
 	}
 }
 
-// FilterTrafficMetrics records every request for the statistics dashboard.
-const FilterTrafficMetrics = "traffic_metrics"
+// NameTrafficMetrics records every request for the statistics dashboard.
+const NameTrafficMetrics = "traffic_metrics"
 
-// TrafficMetricsConfig holds the traffic_metrics filter options.
+// TrafficMetricsConfig holds the traffic_metrics middleware options.
 type TrafficMetricsConfig struct {
 	// ExcludeStaticAssets skips requests for static assets (see
 	// session.IsStaticAssetPath). Default: false.
@@ -144,7 +144,7 @@ type trafficMetricsFactory struct {
 // through session.NewClientInfo, the JA4H fingerprint header.
 func newTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *trafficMetricsFactory {
 	return &trafficMetricsFactory{
-		ConcreteFactory:   middleware.NewConcreteFactory(FilterTrafficMetrics, "Records per-request traffic metrics (status, size, duration, user)", FilterSessionExtraction, FilterJA4Fingerprint),
+		ConcreteFactory:   middleware.NewConcreteFactory(NameTrafficMetrics, "Records per-request traffic metrics (status, size, duration, user)", NameSessionExtraction, NameJA4Fingerprint),
 		trafficMetricRepo: trafficMetricRepo,
 	}
 }
@@ -157,7 +157,7 @@ func (f *trafficMetricsFactory) Create(cfg interface{}) (middleware.Middleware, 
 	if f.trafficMetricRepo == nil {
 		return nil, fmt.Errorf("needs a traffic metric repository")
 	}
-	c, err := middleware.ConfigAs[TrafficMetricsConfig](FilterTrafficMetrics, cfg)
+	c, err := middleware.ConfigAs[TrafficMetricsConfig](NameTrafficMetrics, cfg)
 	if err != nil {
 		return nil, err
 	}

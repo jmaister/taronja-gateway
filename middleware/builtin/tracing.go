@@ -21,17 +21,17 @@ import (
 // The span this creates dispatches through whatever *sdktrace.
 // TracerProvider gateway.InitTracing registered globally — this
 // middleware itself holds no state and doesn't know or care whether
-// tracing is actually configured. Like every filter, "disabled" means "not
+// tracing is actually configured. Like every middleware, "disabled" means "not
 // in the chain", not a per-request check.
 func TracingMiddleware(next http.Handler) http.Handler {
 	return otelhttp.NewHandler(next, "gateway.request")
 }
 
-// FilterTracing creates an OpenTelemetry span per request and exports it over
+// NameTracing creates an OpenTelemetry span per request and exports it over
 // OTLP/HTTP. The exporter is set up once at startup by gateway.InitTracing.
-const FilterTracing = "tracing"
+const NameTracing = "tracing"
 
-// TracingConfig holds the tracing filter options.
+// TracingConfig holds the tracing middleware options.
 type TracingConfig struct {
 	// Endpoint is the OTLP/HTTP collector's host:port, no scheme or path
 	// (e.g. "localhost:4318"). Required.
@@ -52,7 +52,7 @@ func (c TracingConfig) Validate() error {
 type tracingFactory struct{ middleware.ConcreteFactory }
 
 func newTracingFactory() *tracingFactory {
-	return &tracingFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterTracing, "Creates an OpenTelemetry span per request and propagates trace context to proxied backends")}
+	return &tracingFactory{ConcreteFactory: middleware.NewConcreteFactory(NameTracing, "Creates an OpenTelemetry span per request and propagates trace context to proxied backends")}
 }
 
 func (f *tracingFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {

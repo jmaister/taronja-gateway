@@ -120,7 +120,7 @@ func TestPrintOpenAPISpec_WritesEmbeddedYamlToStdout(t *testing.T) {
 	assert.Contains(t, stdout, "\n  /openapi.yaml:")
 }
 
-// --config belongs on run/migrate/validate/filters list, never on the root (a required root flag broke every subcommand).
+// --config belongs on run/migrate/validate/middleware list, never on the root (a required root flag broke every subcommand).
 func TestRunCommandOwnsConfigFlag(t *testing.T) {
 	rootCmd := newRootCmd(&app{})
 	assert.Nil(t, rootCmd.Flags().Lookup("config"), "root must not own --config")

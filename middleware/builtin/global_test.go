@@ -12,19 +12,19 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-func resolve(t *testing.T, filters ...config.FilterConfig) ([]middleware.MiddlewareSpec, error) {
+func resolve(t *testing.T, entries ...config.MiddlewareConfig) ([]middleware.MiddlewareSpec, error) {
 	t.Helper()
-	return ResolveFilters(NewFilterRegistry(FilterDeps{}), filters)
+	return ResolveGlobalMiddleware(NewGlobalRegistry(GlobalDeps{}), entries)
 }
 
-func yamlFilters(t *testing.T, src string) []config.FilterConfig {
+func yamlMiddleware(t *testing.T, src string) []config.MiddlewareConfig {
 	t.Helper()
-	var filters []config.FilterConfig
-	require.NoError(t, yaml.Unmarshal([]byte(src), &filters))
-	return filters
+	var entries []config.MiddlewareConfig
+	require.NoError(t, yaml.Unmarshal([]byte(src), &entries))
+	return entries
 }
 
-func filterSpecNames(specs []middleware.MiddlewareSpec) []string {
+func specNamesOf(specs []middleware.MiddlewareSpec) []string {
 	names := make([]string, len(specs))
 	for i, s := range specs {
 		names[i] = s.Name
@@ -32,32 +32,32 @@ func filterSpecNames(specs []middleware.MiddlewareSpec) []string {
 	return names
 }
 
-func TestResolveFilters_EmptyByDefault(t *testing.T) {
+func TestResolveMiddleware_EmptyByDefault(t *testing.T) {
 	specs, err := resolve(t)
 	require.NoError(t, err)
 	assert.Empty(t, specs)
 }
 
-func TestResolveFilters_KeepsListOrderAndSkipsDisabled(t *testing.T) {
-	specs, err := ResolveFilters(NewFilterRegistry(FilterDeps{}), yamlFilters(t, `
+func TestResolveMiddleware_KeepsListOrderAndSkipsDisabled(t *testing.T) {
+	specs, err := ResolveGlobalMiddleware(NewGlobalRegistry(GlobalDeps{}), yamlMiddleware(t, `
 - name: logging
 - name: compression
   enabled: false
 - name: ja4_fingerprint
 `))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"logging", "ja4_fingerprint"}, filterSpecNames(specs))
+	assert.Equal(t, []string{"logging", "ja4_fingerprint"}, specNamesOf(specs))
 }
 
-func TestResolveFilters_UnknownNameListsTheKnownOnes(t *testing.T) {
-	_, err := resolve(t, config.FilterConfig{Name: "not_a_filter"})
+func TestResolveMiddleware_UnknownNameListsTheKnownOnes(t *testing.T) {
+	_, err := resolve(t, config.MiddlewareConfig{Name: "not_a_middleware"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown filter 'not_a_filter'")
+	assert.Contains(t, err.Error(), "unknown middleware 'not_a_middleware'")
 	assert.Contains(t, err.Error(), "rate_limiter")
 }
 
-func TestResolveFilters_DecodesEachFiltersOptions(t *testing.T) {
-	specs, err := ResolveFilters(NewFilterRegistry(FilterDeps{}), yamlFilters(t, `
+func TestResolveMiddleware_DecodesEachMiddlewaresOptions(t *testing.T) {
+	specs, err := ResolveGlobalMiddleware(NewGlobalRegistry(GlobalDeps{}), yamlMiddleware(t, `
 - name: rate_limiter
   config:
     requestsPerMinute: 42
@@ -79,13 +79,13 @@ func TestResolveFilters_DecodesEachFiltersOptions(t *testing.T) {
 	assert.Equal(t, TrafficMetricsConfig{ExcludeStaticAssets: true}, specs[3].Config)
 }
 
-func TestResolveFilters_RejectsBadOptions(t *testing.T) {
+func TestResolveMiddleware_RejectsBadOptions(t *testing.T) {
 	cases := map[string]struct{ yaml, want string }{
 		"unknown option": {`
 - name: rate_limiter
   config:
     requestsPerMinut: 10`, "field requestsPerMinut not found"},
-		"options on a filter without any": {`
+		"options on a middleware without any": {`
 - name: logging
   config:
     level: debug`, "logging: takes no config"},
@@ -103,45 +103,45 @@ func TestResolveFilters_RejectsBadOptions(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := ResolveFilters(NewFilterRegistry(FilterDeps{}), yamlFilters(t, tc.yaml))
+			_, err := ResolveGlobalMiddleware(NewGlobalRegistry(GlobalDeps{}), yamlMiddleware(t, tc.yaml))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
 		})
 	}
 }
 
-func TestValidateFilters_ChecksDependencies(t *testing.T) {
-	cfg := &config.GatewayConfig{Filters: yamlFilters(t, "- name: session_extraction\n")}
-	err := ValidateFilters(cfg)
+func TestValidateMiddleware_ChecksDependencies(t *testing.T) {
+	cfg := &config.GatewayConfig{Middleware: yamlMiddleware(t, "- name: session_extraction\n")}
+	err := ValidateGlobalMiddleware(cfg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "depends on 'ja4_fingerprint'")
 
-	cfg.Filters = yamlFilters(t, "- name: ja4_fingerprint\n- name: session_extraction\n- name: traffic_metrics\n")
-	assert.NoError(t, ValidateFilters(cfg), "validation must not need real dependencies")
+	cfg.Middleware = yamlMiddleware(t, "- name: ja4_fingerprint\n- name: session_extraction\n- name: traffic_metrics\n")
+	assert.NoError(t, ValidateGlobalMiddleware(cfg), "validation must not need real dependencies")
 }
 
 func TestTrafficMetrics_DependsDirectlyOnJA4Fingerprint(t *testing.T) {
 	deps := newTrafficMetricsFactory(nil).GetDependencies()
-	assert.Contains(t, deps, FilterJA4Fingerprint)
-	assert.Contains(t, deps, FilterSessionExtraction)
+	assert.Contains(t, deps, NameJA4Fingerprint)
+	assert.Contains(t, deps, NameSessionExtraction)
 }
 
 func TestNewGlobalChain_ReportsMissingRuntimeDependency(t *testing.T) {
-	cfg := &config.GatewayConfig{Filters: yamlFilters(t, "- name: ja4_fingerprint\n- name: session_extraction\n")}
-	_, _, err := NewGlobalChain(cfg, FilterDeps{})
+	cfg := &config.GatewayConfig{Middleware: yamlMiddleware(t, "- name: ja4_fingerprint\n- name: session_extraction\n")}
+	_, _, err := NewGlobalChain(cfg, GlobalDeps{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "needs a session store")
 }
 
 func TestNewGlobalChain_BuildsAWorkingChain(t *testing.T) {
-	cfg := &config.GatewayConfig{Filters: []config.FilterConfig{
-		config.NewFilterConfig(FilterCORS, CORSConfig{AllowedOrigins: []string{"https://a.example"}}),
-		config.NewFilterConfig(FilterLogging, nil),
+	cfg := &config.GatewayConfig{Middleware: []config.MiddlewareConfig{
+		config.NewMiddlewareConfig(NameCORS, CORSConfig{AllowedOrigins: []string{"https://a.example"}}),
+		config.NewMiddlewareConfig(NameLogging, nil),
 	}}
-	registry, chain, err := NewGlobalChain(cfg, FilterDeps{})
+	registry, chain, err := NewGlobalChain(cfg, GlobalDeps{})
 	require.NoError(t, err)
-	assert.True(t, registry.GetStatus()[FilterCORS].Enabled)
-	assert.False(t, registry.GetStatus()[FilterRateLimiter].Enabled)
+	assert.True(t, registry.GetStatus()[NameCORS].Enabled)
+	assert.False(t, registry.GetStatus()[NameRateLimiter].Enabled)
 
 	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -152,29 +152,29 @@ func TestNewGlobalChain_BuildsAWorkingChain(t *testing.T) {
 	assert.Equal(t, "https://a.example", rw.Header().Get("Access-Control-Allow-Origin"))
 }
 
-func TestFilterSettings(t *testing.T) {
-	disabled := config.NewFilterConfig(FilterTracing, TracingConfig{Endpoint: "x:1"})
+func TestMiddlewareSettings(t *testing.T) {
+	disabled := config.NewMiddlewareConfig(NameTracing, TracingConfig{Endpoint: "x:1"})
 	disabled.Enabled = new(bool)
-	cfg := &config.GatewayConfig{Filters: []config.FilterConfig{
-		config.NewFilterConfig(FilterTrafficMetrics, TrafficMetricsConfig{ExcludeStaticAssets: true}),
+	cfg := &config.GatewayConfig{Middleware: []config.MiddlewareConfig{
+		config.NewMiddlewareConfig(NameTrafficMetrics, TrafficMetricsConfig{ExcludeStaticAssets: true}),
 		disabled,
 	}}
 
-	tm, enabled, err := FilterSettings[TrafficMetricsConfig](cfg, FilterTrafficMetrics)
+	tm, enabled, err := MiddlewareSettings[TrafficMetricsConfig](cfg, NameTrafficMetrics)
 	require.NoError(t, err)
 	assert.True(t, enabled)
 	assert.True(t, tm.ExcludeStaticAssets)
 
-	_, enabled, err = FilterSettings[TracingConfig](cfg, FilterTracing)
+	_, enabled, err = MiddlewareSettings[TracingConfig](cfg, NameTracing)
 	require.NoError(t, err)
 	assert.False(t, enabled, "a disabled entry is not in effect")
-	assert.False(t, FilterEnabled(cfg, FilterTracing))
+	assert.False(t, MiddlewareEnabled(cfg, NameTracing))
 
-	rl, enabled, err := FilterSettings[RateLimiterConfig](cfg, FilterRateLimiter)
+	rl, enabled, err := MiddlewareSettings[RateLimiterConfig](cfg, NameRateLimiter)
 	require.NoError(t, err)
 	assert.False(t, enabled)
-	assert.Equal(t, RateLimiterConfig{}, rl, "an absent filter yields zero options")
+	assert.Equal(t, RateLimiterConfig{}, rl, "an absent middleware yields zero options")
 
-	_, _, err = FilterSettings[CORSConfig](cfg, FilterTrafficMetrics)
+	_, _, err = MiddlewareSettings[CORSConfig](cfg, NameTrafficMetrics)
 	assert.Error(t, err, "asking for the wrong config type is a programming error")
 }

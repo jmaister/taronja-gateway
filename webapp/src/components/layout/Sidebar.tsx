@@ -29,7 +29,7 @@ const Sidebar = ({
       ]
     },
     { name: 'Counters', icon: '💰', path: '/counters' },
-    { name: 'Filters', icon: '🧩', path: '/middleware' },
+    { name: 'Middleware', icon: '🧩', path: '/middleware' },
     { name: 'Notification Channels', icon: '🔔', path: '/notifications/channels' },
     {
       name: 'Statistics',

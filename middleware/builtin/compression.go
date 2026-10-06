@@ -368,8 +368,8 @@ func (cw *compressingResponseWriter) Unwrap() http.ResponseWriter {
 	return cw.ResponseWriter
 }
 
-// FilterCompression compresses responses. It takes no options.
-const FilterCompression = "compression"
+// NameCompression compresses responses. It takes no options.
+const NameCompression = "compression"
 
 type compressionFactory struct {
 	middleware.ConcreteFactory
@@ -377,7 +377,7 @@ type compressionFactory struct {
 }
 
 func newCompressionFactory() *compressionFactory {
-	return &compressionFactory{ConcreteFactory: middleware.NewConcreteFactory(FilterCompression, "Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it")}
+	return &compressionFactory{ConcreteFactory: middleware.NewConcreteFactory(NameCompression, "Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it")}
 }
 
 func (f *compressionFactory) Create(interface{}) (middleware.Middleware, error) {

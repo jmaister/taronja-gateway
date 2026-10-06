@@ -1,12 +1,12 @@
 # Compression
 
-**Filter name:** `compression`
+**Middleware name:** `compression`
 **Suggested position:** second — right after [`tracing`](tracing.md),
 outermost of everything else in the chain, so it wraps the response writer
 that every other middleware and the final route handler write through,
 letting it compress whatever actually reaches the socket.
 **Depends on:** nothing.
-**Enabled by default:** no; list it under `filters:`.
+**Enabled by default:** no; list it under `middleware:`.
 
 ## What it does
 
@@ -61,13 +61,13 @@ Disabled unless listed: compressing every response has a real (if usually
 small) CPU cost.
 
 ```yaml
-filters:
+middleware:
   - name: compression
 ```
 
 ## Config options
 
-None. A `config:` block on this filter is rejected.
+None. A `config:` block on this middleware is rejected.
 
 ## Notes
 
@@ -92,7 +92,7 @@ None. A `config:` block on this filter is rejected.
 
 ## See also
 
-- [Filter Architecture](../../README.md#filter-architecture) — the
+- [Middleware Architecture](../../README.md#middleware-architecture) — the
   factory/registry system all of these middlewares are built on, and how to
   inspect the running chain.
 - [doc/middleware/cors.md](cors.md) — runs immediately after this one in
