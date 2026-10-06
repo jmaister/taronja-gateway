@@ -1,5 +1,3 @@
-
-
 # TODO tasks for the project
 
 ## Remove prefix config
@@ -7,14 +5,7 @@
 We assume "_" is the prefix for all gateway routes, no need to configure it.
 Using /_tg/ might be a good one so we see the name of the project everywhere.
 
-## TO FIX
-
-- integration_ja4h_test.go really needed? if so, can be moved to a different place?
-
-
-# Health check 
-
-GET /_/health - Returns 200 OK if the service is running
+# Route health checks
 
 Health check configuration for the routes configured in the gateway:
 - Add a URL to check
@@ -22,7 +13,6 @@ Health check configuration for the routes configured in the gateway:
 - Timeout
 - Expected response code
 - Show the results in /_/health
-
 
 
 ## Password
