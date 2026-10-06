@@ -1,5 +1,9 @@
 import { InlineQueryState } from '../components/QueryState';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
+import { FilterToggle } from '../components/FilterToggle';
+import { toggleValue } from '../lib/toggleValue';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useRateLimiterStats, useBlockedClients } from '../services/rateLimiter';
@@ -50,10 +54,33 @@ function reasonLabel(reason: BlockedClient['reason']): string {
     }
 }
 
-function BlockedClientRow({ item }: { item: BlockedClient }) {
+function BlockedClientRow({
+    item,
+    activeCountry,
+    onCountrySelect,
+}: {
+    item: BlockedClient;
+    activeCountry: string;
+    onCountrySelect: (country: string) => void;
+}) {
+    const country = item.country;
     return (
         <tr className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
             <td className="px-4 py-3 font-mono text-sm">{item.ipAddress}</td>
+            <td className="px-4 py-3 text-sm">
+                {country ? (
+                    <FilterToggle
+                        label={country}
+                        active={country === activeCountry}
+                        onToggle={() => onCountrySelect(country)}
+                        className="px-1"
+                    >
+                        {country}
+                    </FilterToggle>
+                ) : (
+                    <span className="text-muted-fg">—</span>
+                )}
+            </td>
             <td className="px-4 py-3 text-center">
                 <Badge variant="danger">{reasonLabel(item.reason)}</Badge>
             </td>
@@ -68,14 +95,28 @@ function BlockedClientRow({ item }: { item: BlockedClient }) {
 export function RateLimiterStatsPage() {
     const [autoRefresh, setAutoRefresh] = useState(true);
     const { data: stats, isLoading, error, refetch, dataUpdatedAt } = useRateLimiterStats();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const country = searchParams.get('country') ?? '';
+    const selectCountry = (value: string) => {
+        const next = new URLSearchParams(searchParams);
+        const selected = toggleValue(country, value);
+        if (selected) next.set('country', selected);
+        else next.delete('country');
+        setSearchParams(next, { replace: true });
+    };
+    // 200 is the API's max limit. The map always shows every country so
+    // another one can be picked; the history table follows the country filter
+    // (the same query as the map when no country is selected).
     const {
         data: blockedClients,
         isLoading: blockedClientsLoading,
         error: blockedClientsError,
-        // 200 is the API's max limit — the map benefits from as many points
-        // as it can get, and the history table below reads from the same
-        // response.
-    } = useBlockedClients(undefined, 200);
+    } = useBlockedClients({}, 200);
+    const {
+        data: history,
+        isLoading: historyLoading,
+        error: historyError,
+    } = useBlockedClients(country ? { country } : {}, 200);
 
     // Auto-refresh: re-fetch every 10 seconds when enabled
     useState(() => {
@@ -186,23 +227,36 @@ export function RateLimiterStatsPage() {
 
             {/* Attacker Map */}
             {!blockedClientsLoading && !blockedClientsError && blockedClients && blockedClients.items.length > 0 && (
-                <LazyBlockedClientsWorldMap blockedClients={blockedClients.items} />
+                <LazyBlockedClientsWorldMap
+                    blockedClients={blockedClients.items}
+                    activeCountry={country}
+                    onCountrySelect={selectCountry}
+                />
             )}
 
             {/* Blocked Clients History */}
             <Card>
                 <CardHeader>
-                    <h3 className="text-base font-semibold">Blocked Clients History</h3>
-                    <p className="text-sm text-muted-fg mt-1">
-                        Persistent record of past block events. Unlike the live stats above, entries here
-                        remain after the rate limiter forgets an IP.
-                    </p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 className="text-base font-semibold">Blocked Clients History</h3>
+                            <p className="text-sm text-muted-fg mt-1">
+                                Persistent record of past block events. Unlike the live stats above, entries here
+                                remain after the rate limiter forgets an IP. Click a country to filter by it.
+                            </p>
+                        </div>
+                        {country && (
+                            <Button variant="secondary" size="sm" onClick={() => selectCountry(country)}>
+                                Country: {country} ✕
+                            </Button>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <InlineQueryState isLoading={blockedClientsLoading} error={blockedClientsError} errorMessage="Failed to load blocked clients history.">
-                        {!blockedClients || blockedClients.items.length === 0 ? (
+                    <InlineQueryState isLoading={historyLoading} error={historyError} errorMessage="Failed to load blocked clients history.">
+                        {!history || history.items.length === 0 ? (
                         <div className="p-6 text-sm text-muted-fg">
-                            No blocked clients recorded yet.
+                            {country ? `No blocked clients from ${country}.` : 'No blocked clients recorded yet.'}
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -210,6 +264,7 @@ export function RateLimiterStatsPage() {
                                 <thead>
                                     <tr className="border-b border-border bg-muted/40">
                                         <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">IP Address</th>
+                                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Country</th>
                                         <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-fg">Reason</th>
                                         <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-fg">Path</th>
                                         <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-fg">Triggers</th>
@@ -218,8 +273,8 @@ export function RateLimiterStatsPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {blockedClients.items.map(item => (
-                                        <BlockedClientRow key={item.id} item={item} />
+                                    {history.items.map(item => (
+                                        <BlockedClientRow key={item.id} item={item} activeCountry={country} onCountrySelect={selectCountry} />
                                     ))}
                                 </tbody>
                             </table>

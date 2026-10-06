@@ -229,9 +229,12 @@ func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBloc
 		return api.GetBlockedClients200JSONResponse{Items: []api.BlockedClient{}}, nil
 	}
 
-	ip := ""
+	var filter db.BlockedClientFilter
 	if req.Params.Ip != nil {
-		ip = *req.Params.Ip
+		filter.IP = *req.Params.Ip
+	}
+	if req.Params.Country != nil {
+		filter.Country = *req.Params.Country
 	}
 	limit := 50 // default, matching GetUserCounterHistory's convention
 	if req.Params.Limit != nil {
@@ -242,7 +245,7 @@ func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBloc
 		offset = *req.Params.Offset
 	}
 
-	items, total, err := s.blockedClientRepo.List(ip, limit, offset)
+	items, total, err := s.blockedClientRepo.List(filter, limit, offset)
 	if err != nil {
 		log.Printf("GetBlockedClients: failed to list blocked clients: %v", err)
 		return api.GetBlockedClients500JSONResponse{}, nil

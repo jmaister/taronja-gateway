@@ -1007,6 +1007,9 @@ type GetBlockedClientsParams struct {
 	// Ip Optional filter to only blocks recorded for this IP address
 	Ip *string `form:"ip,omitempty" json:"ip,omitempty"`
 
+	// Country Optional filter to only blocks of clients located in this country (as stored, e.g. "Spain")
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
 	// Limit Maximum number of block events to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -1947,6 +1950,19 @@ func (siw *ServerInterfaceWrapper) GetBlockedClients(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ip"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ip", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "country" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "country", r.URL.Query(), &params.Country, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "country"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "country", Err: err})
 		}
 		return
 	}

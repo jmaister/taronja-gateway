@@ -8,6 +8,8 @@ const RequestsWorldMapInternal = lazy(() =>
 
 interface LazyRequestsWorldMapProps {
     requests: RequestDetail[];
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
 }
 
 function MapLoadingFallback() {
@@ -24,10 +26,10 @@ function MapLoadingFallback() {
     );
 }
 
-export function LazyRequestsWorldMap({ requests }: LazyRequestsWorldMapProps) {
+export function LazyRequestsWorldMap(props: LazyRequestsWorldMapProps) {
     return (
         <Suspense fallback={<MapLoadingFallback />}>
-            <RequestsWorldMapInternal requests={requests} />
+            <RequestsWorldMapInternal {...props} />
         </Suspense>
     );
 }

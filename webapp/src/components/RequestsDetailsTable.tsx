@@ -1,9 +1,18 @@
 import { RequestDetail } from "@/apiclient";
 import { getSafeLocale } from "../lib/intl";
 import { formatBytes } from "../lib/format";
+import { FilterToggle } from "./FilterToggle";
 
 
-export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }) {
+export function RequestsDetailsTable({
+    requests,
+    onCountrySelect,
+    activeCountry,
+}: {
+    requests: RequestDetail[];
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
+}) {
     const locale = getSafeLocale();
 
     const numberFormatter = new Intl.NumberFormat(locale);
@@ -103,7 +112,20 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.status_code}</td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{decimalFormatter.format(req.response_time)}</td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{numberFormatter.format(req.response_size)}</td>
-                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.country}</td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">
+                                {onCountrySelect && req.country ? (
+                                    <FilterToggle
+                                        label={req.country}
+                                        active={req.country === activeCountry}
+                                        onToggle={() => onCountrySelect(req.country)}
+                                        className="px-1"
+                                    >
+                                        {req.country}
+                                    </FilterToggle>
+                                ) : (
+                                    req.country
+                                )}
+                            </td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.city}</td>
                             <td className="px-2 py-2 text-sm" title={req.device_type}>
                                 <div className="max-w-20 truncate">{req.device_type}</div>

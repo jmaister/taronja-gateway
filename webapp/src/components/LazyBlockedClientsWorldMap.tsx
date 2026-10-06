@@ -9,6 +9,8 @@ const BlockedClientsWorldMapInternal = lazy(() =>
 
 interface LazyBlockedClientsWorldMapProps {
     blockedClients: BlockedClient[];
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
 }
 
 function MapLoadingFallback() {
@@ -25,10 +27,10 @@ function MapLoadingFallback() {
     );
 }
 
-export function LazyBlockedClientsWorldMap({ blockedClients }: LazyBlockedClientsWorldMapProps) {
+export function LazyBlockedClientsWorldMap(props: LazyBlockedClientsWorldMapProps) {
     return (
         <Suspense fallback={<MapLoadingFallback />}>
-            <BlockedClientsWorldMapInternal blockedClients={blockedClients} />
+            <BlockedClientsWorldMapInternal {...props} />
         </Suspense>
     );
 }

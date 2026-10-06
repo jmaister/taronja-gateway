@@ -6,8 +6,8 @@ import { customApiClient, handleResponse } from './client';
 export const rateLimiterKeys = {
   stats: () => ['rateLimiterStats'] as const,
   config: () => ['rateLimiterConfig'] as const,
-  blockedClients: (ip: string | undefined, limit: number, offset: number) =>
-    ['blockedClients', { ip, limit, offset }] as const,
+  blockedClients: (filter: BlockedClientsFilter, limit: number, offset: number) =>
+    ['blockedClients', { ...filter, limit, offset }] as const,
 };
 
 export function useRateLimiterStats() {
@@ -38,12 +38,17 @@ export function useRateLimiterConfig() {
 // doc/middleware/rate-limiter.md. Distinct from useRateLimiterStats, which
 // only reflects whatever the in-memory limiter still happens to be
 // tracking right now; this survives past that cleanup.
-export function useBlockedClients(ip?: string, limit = 50, offset = 0) {
+export interface BlockedClientsFilter {
+  ip?: string;
+  country?: string;
+}
+
+export function useBlockedClients(filter: BlockedClientsFilter = {}, limit = 50, offset = 0) {
   return useQuery<BlockedClientsResponse, Error>({
-    queryKey: rateLimiterKeys.blockedClients(ip, limit, offset),
+    queryKey: rateLimiterKeys.blockedClients(filter, limit, offset),
     queryFn: async () => {
       const response = await getBlockedClients({
-        query: { ip, limit, offset },
+        query: { ...filter, limit, offset },
         client: customApiClient,
       });
       return handleResponse<BlockedClientsResponse>(response);

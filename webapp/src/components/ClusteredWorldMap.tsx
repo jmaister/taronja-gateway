@@ -2,6 +2,7 @@ import { useRef, useMemo } from "react";
 import { Map, Source, Layer } from "react-map-gl/maplibre";
 import { getCountryCoordinates } from "../utils/countryCoordinates";
 import { Card } from "./ui/Card";
+import { FilterToggle } from "./FilterToggle";
 import maplibreStyleJson from "../assets/maplibre-style.json";
 
 import type { MapRef, MapMouseEvent } from "react-map-gl/maplibre";
@@ -65,7 +66,13 @@ export interface ClusteredWorldMapProps<T> {
      * component reads itself.
      */
     getProperties?: (item: T, index: number) => Record<string, unknown>;
+    /** When set, the top-country entries filter by that country. */
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
 }
+
+// UNKNOWN_COUNTRY is what the maps show for items without geo data; it is not a filterable value.
+const UNKNOWN_COUNTRY = "Unknown";
 
 export function ClusteredWorldMap<T>({
     items,
@@ -80,6 +87,8 @@ export function ClusteredWorldMap<T>({
     getCoordinates,
     getCountry,
     getProperties,
+    onCountrySelect,
+    activeCountry,
 }: ClusteredWorldMapProps<T>) {
     const mapRef = useRef<MapRef>(null);
 
@@ -264,12 +273,29 @@ export function ClusteredWorldMap<T>({
                         {Object.entries(countryData)
                             .sort(([, a], [, b]) => b - a)
                             .slice(0, 8)
-                            .map(([country, count]) => (
-                                <div key={country} className="flex justify-between bg-muted px-2 py-1 rounded">
-                                    <span className="truncate">{country}</span>
-                                    <span className="font-medium">{count}</span>
-                                </div>
-                            ))
+                            .map(([country, count]) => {
+                                const content = (
+                                    <>
+                                        <span className="truncate">{country}</span>
+                                        <span className="font-medium">{count}</span>
+                                    </>
+                                );
+                                return onCountrySelect && country !== UNKNOWN_COUNTRY ? (
+                                    <FilterToggle
+                                        key={country}
+                                        label={country}
+                                        active={country === activeCountry}
+                                        onToggle={() => onCountrySelect(country)}
+                                        className="flex justify-between bg-muted px-2 py-1"
+                                    >
+                                        {content}
+                                    </FilterToggle>
+                                ) : (
+                                    <div key={country} className="flex justify-between bg-muted px-2 py-1 rounded">
+                                        {content}
+                                    </div>
+                                );
+                            })
                         }
                     </div>
 

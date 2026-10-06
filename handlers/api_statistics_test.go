@@ -541,6 +541,17 @@ func TestGetBlockedClients_ListsAndFilters(t *testing.T) {
 		assert.Nil(t, body.Items[0].Path, "rate_limit doesn't set a path")
 	})
 
+	t.Run("filters by country", func(t *testing.T) {
+		country := "United States"
+		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Country: &country}})
+		require.NoError(t, err)
+		body, ok := resp.(api.GetBlockedClients200JSONResponse)
+		require.True(t, ok)
+		assert.Equal(t, 1, body.TotalCount)
+		require.Len(t, body.Items, 1)
+		assert.Equal(t, "203.0.113.11", body.Items[0].IpAddress)
+	})
+
 	t.Run("scan block includes the path", func(t *testing.T) {
 		ip := "203.0.113.10"
 		resp, err := s.GetBlockedClients(ctx, api.GetBlockedClientsRequestObject{Params: api.GetBlockedClientsParams{Ip: &ip}})

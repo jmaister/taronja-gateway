@@ -20,7 +20,11 @@ vi.mock('../services/statistics', () => ({
 vi.mock('../components/charts/TimeSeriesChart', () => ({ TimeSeriesChart: () => <div>chart</div> }));
 vi.mock('../components/LazyRequestsWorldMap', () => ({ LazyRequestsWorldMap: () => <div>world-map</div> }));
 vi.mock('../components/RequestsDetailsTable', () => ({
-    RequestsDetailsTable: ({ requests }: { requests: unknown[] }) => <div>{requests.length} requests in table</div>,
+    RequestsDetailsTable: ({ requests, activeCountry }: { requests: unknown[]; activeCountry?: string }) => (
+        <div>
+            {requests.length} requests in table, country [{activeCountry}]
+        </div>
+    ),
 }));
 
 const result = (over: Partial<QueryResult>): QueryResult => ({
@@ -31,7 +35,8 @@ const result = (over: Partial<QueryResult>): QueryResult => ({
     ...over,
 });
 
-const render = (ui: React.ReactElement) => renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);
+const render = (ui: React.ReactElement, url = '/') =>
+    renderToStaticMarkup(<MemoryRouter initialEntries={[url]}>{ui}</MemoryRouter>);
 
 const stats = (over: object = {}) => ({
     totalRequests: 10,
@@ -81,6 +86,13 @@ describe('RequestSummaryPage', () => {
         expect(html).toContain('80.0%');
         expect(html).toContain('Requests by Country');
     });
+
+    it('turns breakdown rows into filters and marks the active one', () => {
+        state.summary = result({ data: stats() });
+        const html = render(<RequestSummaryPage />, '/?country=ES');
+        expect(html).toContain('title="Clear filter: ES"');
+        expect(html).toContain('title="Filter by 200"');
+    });
 });
 
 describe('RequestsDetailsPage', () => {
@@ -97,6 +109,10 @@ describe('RequestsDetailsPage', () => {
         const html = render(<RequestsDetailsPage />);
         expect(html).toContain('world-map');
         expect(html).toContain('2 requests in table');
+    });
+
+    it('passes the country filter from the URL to the table', () => {
+        expect(render(<RequestsDetailsPage />, '/?country=Spain')).toContain('country [Spain]');
     });
 
     it('renders an empty table when there is no data yet', () => {

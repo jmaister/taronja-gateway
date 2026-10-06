@@ -3,6 +3,8 @@ import { BlockedClient } from "@/apiclient";
 
 interface BlockedClientsWorldMapProps {
     blockedClients: BlockedClient[];
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
 }
 
 const hasActualCoordinates = (bc: BlockedClient) =>
@@ -31,7 +33,7 @@ const colors = {
     point: '#ef4444',
 };
 
-export function BlockedClientsWorldMap({ blockedClients }: BlockedClientsWorldMapProps) {
+export function BlockedClientsWorldMap({ blockedClients, onCountrySelect, activeCountry }: BlockedClientsWorldMapProps) {
     return (
         <ClusteredWorldMap
             items={blockedClients}
@@ -41,6 +43,8 @@ export function BlockedClientsWorldMap({ blockedClients }: BlockedClientsWorldMa
             legendLabel="Block Count:"
             legend={legend}
             countNoun="blocks"
+            onCountrySelect={onCountrySelect}
+            activeCountry={activeCountry}
             countryStatsTitle="Top Attacker Countries"
             colors={colors}
             getCoordinates={(bc) => ({

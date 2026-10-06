@@ -3,6 +3,8 @@ import { RequestDetail } from "@/apiclient";
 
 interface RequestsWorldMapProps {
     requests: RequestDetail[];
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
 }
 
 const hasActualCoordinates = (request: RequestDetail) =>
@@ -30,7 +32,7 @@ const colors = {
     point: '#86efac',
 };
 
-export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
+export function RequestsWorldMap({ requests, onCountrySelect, activeCountry }: RequestsWorldMapProps) {
     return (
         <ClusteredWorldMap
             items={requests}
@@ -40,6 +42,8 @@ export function RequestsWorldMap({ requests }: RequestsWorldMapProps) {
             legendLabel="Cluster Size:"
             legend={legend}
             countNoun="requests"
+            onCountrySelect={onCountrySelect}
+            activeCountry={activeCountry}
             countryStatsTitle="Top Countries"
             colors={colors}
             getCoordinates={(request) => ({

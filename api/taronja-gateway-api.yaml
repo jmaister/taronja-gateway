@@ -1389,6 +1389,13 @@ paths:
           description: Optional filter to only blocks recorded for this IP address
           example: "203.0.113.9"
         - in: query
+          name: country
+          schema:
+            type: string
+          required: false
+          description: Optional filter to only blocks of clients located in this country (as stored, e.g. "Spain")
+          example: "Spain"
+        - in: query
           name: limit
           schema:
             type: integer

@@ -90,8 +90,8 @@ your application's real routes.
   the background cleanup goroutine (see "What it does" above) deletes its
   entry entirely, so a since-expired block has no trace here.
 - **`GET <prefix>/api/rate-limiter/blocked`** (admin-only) — the persistent
-  history of block events, unaffected by that cleanup. Optional `ip` middleware,
-  `limit`/`offset` pagination (default `limit=50`, max `200`). Each entry
+  history of block events, unaffected by that cleanup. Optional `ip` and
+  `country` filters, `limit`/`offset` pagination (default `limit=50`, max `200`). Each entry
   records which of the three checks tripped (`reason`:
   `rate_limit`/`max_errors`/`vulnerability_scan`), the matched path for
   scan blocks, how many times the threshold was hit, the block's start/end

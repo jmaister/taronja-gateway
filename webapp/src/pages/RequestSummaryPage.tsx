@@ -1,7 +1,9 @@
 import { TrafficFilterBar } from '../components/TrafficFilterBar';
 import { QueryState } from '../components/QueryState';
 import { useTrafficFilter } from '../lib/useTrafficFilter';
-import type { TrafficFilterState } from '../lib/trafficFilter';
+import type { TrafficDimensionKey, TrafficFilterState } from '../lib/trafficFilter';
+import { FilterToggle } from '../components/FilterToggle';
+import { toggleValue } from '../lib/toggleValue';
 import { formatNumber } from '../lib/format';
 import { useRequestStatistics, useRequestTimeSeries } from '../services/statistics';
 import { Button } from '../components/ui/Button';
@@ -44,9 +46,11 @@ interface DataTableProps {
     title: string;
     data: Record<string, number>;
     accent?: 'primary' | 'success' | 'warning' | 'danger';
+    activeKey?: string;
+    onSelect?: (key: string) => void;
 }
 
-function DataTable({ title, data, accent = 'primary' }: DataTableProps) {
+function DataTable({ title, data, accent = 'primary', activeKey, onSelect }: DataTableProps) {
     const accentText: Record<NonNullable<DataTableProps['accent']>, string> = {
         primary: 'text-primary',
         success: 'text-success',
@@ -86,21 +90,36 @@ function DataTable({ title, data, accent = 'primary' }: DataTableProps) {
             </CardHeader>
             <CardContent>
                 <div className="space-y-2">
-                    {sortedData.map(([key, value], index) => (
-                        <div
-                            key={key}
-                            className="flex items-center justify-between border-b border-border/70 py-2 last:border-b-0"
-                        >
-                            <span className="text-sm font-medium text-muted-fg">{key}</span>
-                            <div className="flex items-center space-x-2">
-                                <span className="text-sm font-semibold">{formatNumber(value)}</span>
-                                <div
-                                    className={`h-2 w-2 rounded-full ${accentDot[accent]}`}
-                                    style={{ opacity: 1 - index * 0.1 }}
-                                />
+                    {sortedData.map(([key, value], index) => {
+                        const content = (
+                            <>
+                                <span className={`text-sm font-medium ${key === activeKey ? '' : 'text-muted-fg'}`}>{key}</span>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-sm font-semibold">{formatNumber(value)}</span>
+                                    <div
+                                        className={`h-2 w-2 rounded-full ${accentDot[accent]}`}
+                                        style={{ opacity: 1 - index * 0.1 }}
+                                    />
+                                </div>
+                            </>
+                        );
+                        const rowClass = 'flex w-full items-center justify-between border-b border-border/70 py-2 last:border-b-0';
+                        return onSelect ? (
+                            <FilterToggle
+                                key={key}
+                                label={key}
+                                active={key === activeKey}
+                                onToggle={() => onSelect(key)}
+                                className={`${rowClass} px-2`}
+                            >
+                                {content}
+                            </FilterToggle>
+                        ) : (
+                            <div key={key} className={rowClass}>
+                                {content}
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </CardContent>
         </Card>
@@ -128,6 +147,27 @@ function successRate(statistics: RequestStatistics): string {
         .filter(([status]) => status.startsWith('2') || status.startsWith('3'))
         .reduce((sum, [, count]) => sum + count, 0);
     return `${((ok / statistics.totalRequests) * 100).toFixed(1)}%`;
+}
+
+interface Breakdown {
+    title: string;
+    field: TrafficDimensionKey;
+    data: Record<string, number> | undefined;
+    accent: 'primary' | 'warning';
+}
+
+// Each breakdown table filters by its own dimension when a row is clicked.
+function breakdownTables(statistics: RequestStatistics): Breakdown[] {
+    return [
+        { title: 'Requests by Status Code', field: 'statusCode', data: statistics.requestsByStatus, accent: 'primary' },
+        { title: 'Requests by Country', field: 'country', data: statistics.requestsByCountry, accent: 'primary' },
+        { title: 'Requests by Device Type', field: 'deviceType', data: statistics.requestsByDeviceType, accent: 'primary' },
+        { title: 'Requests by Platform', field: 'platform', data: statistics.requestsByPlatform, accent: 'primary' },
+        { title: 'Requests by Browser', field: 'browser', data: statistics.requestsByBrowser, accent: 'primary' },
+        { title: 'Requests by User', field: 'username', data: statistics.requestsByUser, accent: 'primary' },
+        { title: 'Requests by Fingerprint', field: 'fingerprint', data: statistics.requestsByFingerprint, accent: 'warning' },
+        { title: 'Requests by Fingerprint Type', field: 'fingerprintType', data: statistics.requestsByFingerprintType, accent: 'warning' },
+    ];
 }
 
 function TrafficOverTimeSection({ filter }: { filter: TrafficFilterState }) {
@@ -193,6 +233,7 @@ function TrafficOverTimeSection({ filter }: { filter: TrafficFilterState }) {
 export function RequestSummaryPage() {
     const controller = useTrafficFilter();
     const { data: statistics, isLoading, error, refetch } = useRequestStatistics(controller.filter);
+    const breakdowns = statistics ? breakdownTables(statistics) : [];
 
     return (
         <div className="mx-auto max-w-7xl space-y-6">
@@ -242,24 +283,18 @@ export function RequestSummaryPage() {
                     </div>
                     <TrafficOverTimeSection filter={controller.filter} />
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                        <DataTable title="Requests by Status Code" data={statistics.requestsByStatus} accent="primary" />
-                        <DataTable title="Requests by Country" data={statistics.requestsByCountry} accent="primary" />
-                        <DataTable title="Requests by Device Type" data={statistics.requestsByDeviceType} accent="primary" />
-                        <DataTable title="Requests by Platform" data={statistics.requestsByPlatform} accent="primary" />
-                        <DataTable title="Requests by Browser" data={statistics.requestsByBrowser} accent="primary" />
-                        {statistics.requestsByUser && (
-                            <DataTable title="Requests by User" data={statistics.requestsByUser} accent="primary" />
+                        {breakdowns.map(({ title, field, data, accent }) =>
+                            data ? (
+                                <DataTable
+                                    key={field}
+                                    title={title}
+                                    data={data}
+                                    accent={accent}
+                                    activeKey={controller.filter[field]}
+                                    onSelect={(key) => controller.update(field, toggleValue(controller.filter[field], key))}
+                                />
+                            ) : null,
                         )}
-                        <DataTable
-                            title="Requests by Fingerprint"
-                            data={statistics.requestsByFingerprint}
-                            accent="warning"
-                        />
-                        <DataTable
-                            title="Requests by Fingerprint Type"
-                            data={statistics.requestsByFingerprintType}
-                            accent="warning"
-                        />
                     </div>
                     </div>
                 )}

@@ -16,11 +16,10 @@ type BlockedClientRepository interface {
 	// never on the hot path of the request that's actively being
 	// rejected with a 429.
 	Create(bc *BlockedClient) error
-	// List returns block events, most recent first, optionally filtered
-	// to a single IP address (pass "" for no filter), along with the
-	// total count matching that filter (ignoring limit/offset) for
+	// List returns block events matching filter, most recent first, along
+	// with the total count matching it (ignoring limit/offset) for
 	// pagination.
-	List(ip string, limit, offset int) ([]BlockedClient, int64, error)
+	List(filter BlockedClientFilter, limit, offset int) ([]BlockedClient, int64, error)
 	// DeleteOlderThan permanently removes every block event whose
 	// BlockedAt is before cutoff, returning how many rows were removed.
 	// Called periodically by middleware.RateLimiter (see its
@@ -44,33 +43,34 @@ func (r *BlockedClientRepositoryDB) Create(bc *BlockedClient) error {
 	return r.db.Create(bc).Error
 }
 
-func (r *BlockedClientRepositoryDB) List(ip string, limit, offset int) ([]BlockedClient, int64, error) {
-	// Two separate chains built fresh from r.db, not one *gorm.DB reused
-	// across both terminal calls (Count then Find) — matching this
-	// codebase's existing convention (see countersrepository.go's
-	// GetCounterHistory) rather than relying on GORM's own per-call
-	// cloning behavior to keep the two queries' conditions from bleeding
-	// into each other.
+func (r *BlockedClientRepositoryDB) List(filter BlockedClientFilter, limit, offset int) ([]BlockedClient, int64, error) {
 	var total int64
-	countQuery := r.db.Model(&BlockedClient{})
-	if ip != "" {
-		countQuery = countQuery.Where("ip_address = ?", ip)
-	}
-	err := countQuery.Count(&total).Error
-	if err != nil {
+	if err := filter.apply(r.db.Model(&BlockedClient{})).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	var items []BlockedClient
-	listQuery := r.db.Model(&BlockedClient{})
-	if ip != "" {
-		listQuery = listQuery.Where("ip_address = ?", ip)
-	}
-	err = listQuery.Order("blocked_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	err := filter.apply(r.db.Model(&BlockedClient{})).Order("blocked_at DESC").Limit(limit).Offset(offset).Find(&items).Error
 	if err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+// BlockedClientFilter narrows List; empty fields are not applied.
+type BlockedClientFilter struct {
+	IP      string
+	Country string
+}
+
+func (f BlockedClientFilter) apply(q *gorm.DB) *gorm.DB {
+	if f.IP != "" {
+		q = q.Where("ip_address = ?", f.IP)
+	}
+	if f.Country != "" {
+		q = q.Where("country = ?", f.Country)
+	}
+	return q
 }
 
 func (r *BlockedClientRepositoryDB) DeleteOlderThan(cutoff time.Time) (int64, error) {
