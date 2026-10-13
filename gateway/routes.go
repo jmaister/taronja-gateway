@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 )
 
 // configureUserRoutes sets up the main proxy and static file routes defined by the user.
@@ -52,8 +53,8 @@ func (g *Gateway) configureUserRoutes() error {
 			}
 		}
 
-		// Wrap with cache control for all routes
-		handler = g.RouteChainBuilder.BuildRouteChain(handler, routeConfig)
+		// Authentication (when enabled) and cache control
+		handler = builtin.WrapRoute(handler, routeConfig, g.AuthMiddleware)
 
 		// Register the final handler for routeConfig.From
 		// To match /api with /api/hello and /api/foo, the pattern must be "/api/"

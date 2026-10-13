@@ -4,8 +4,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/jmaister/taronja-gateway/middleware"
 )
 
 // LoggingMiddleware logs information about each request
@@ -62,15 +60,9 @@ func (rw *responseWriter) Status() int {
 // NameLogging logs every request. It takes no options.
 const NameLogging = "logging"
 
-type loggingFactory struct {
-	middleware.ConcreteFactory
-	middleware.NoConfig
-}
-
-func newLoggingFactory() *loggingFactory {
-	return &loggingFactory{ConcreteFactory: middleware.NewConcreteFactory(NameLogging, "Logs each request/response (method, path, status, duration)")}
-}
-
-func (f *loggingFactory) Create(interface{}) (middleware.Middleware, error) {
-	return LoggingMiddleware, nil
+var loggingDefinition = Definition{
+	Name:        NameLogging,
+	Description: "Logs each request/response (method, path, status, duration)",
+	Decode:      noOptions,
+	New:         stateless(LoggingMiddleware),
 }

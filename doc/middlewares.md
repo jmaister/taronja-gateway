@@ -6,19 +6,18 @@ How requests move through the gateway's global middleware and route middleware. 
 
 ```
 middleware/            Plumbing only
-├── chain.go           ChainBuilder / Chain: compose func(http.Handler) http.Handler values
-├── factory.go         MiddlewareFactory interface, ConcreteFactory, NoConfig, DecodeConfigInto, ConfigAs
-├── registry.go        Registry: BuildChain (global, instrumented) and NewChain (per route, no side effects)
-├── health.go          Optional HealthChecker interface for factories
-└── metrics.go         Per-middleware request/error/time counters
+├── chain.go           Middleware type and Chain: compose func(http.Handler) http.Handler values
+├── health.go          MiddlewareHealth
+└── metrics.go         Counter: per-middleware request/error/time counters
 middleware/builtin/    Implementations
-├── global.go          NewGlobalRegistry, ResolveGlobalMiddleware, NewGlobalChain, ValidateGlobalMiddleware, MiddlewareSettings
-├── route_chain.go     route_auth and route_cache factories, RouteChainBuilder
+├── definition.go      Definition, the definitions list, GlobalDeps, decodeOptions/noOptions
+├── global_chain.go    GlobalChain: ResolveGlobalChain, Build, GlobalOptions, Status, Metrics
+├── route_chain.go     WrapRoute: route authentication and cache-control
 ├── auth.go, cache.go  Route-level authentication and cache-control
 ├── session.go         Session middlewares, ValidateSessionFromRequest, CheckAdminAccess
 ├── tracing.go, compression.go, cors.go, ratelimiter.go, ja4.go, trafficmetric.go, logging.go
-│                      One middleware each: name constant, options type with Validate, factory
-├── validation.go      Startup checks for routes, admin settings and middleware
+│                      One middleware each: name constant, options type with Validate, Definition
+├── validation.go      ValidateConfigOnly (`tg validate`), startup status log
 middleware/fingerprint/ JA4H helpers
 ```
 
@@ -26,24 +25,21 @@ middleware/fingerprint/ JA4H helpers
 
 The root `middleware:` list in the config is the whole chain: entries run in list order, disabled entries are skipped, and nothing runs when the list is absent. `config.MiddlewareConfig` keeps each entry's `config:` block as a raw YAML node; the config package knows no middleware names or options.
 
-`builtin.NewGlobalChain` builds the chain once at startup:
+Each built-in middleware is a `Definition` value: name, description, dependencies, a `Decode` func for its options and a `New` func that builds it from those options and the runtime services (`GlobalDeps`).
 
-1. `NewGlobalRegistry` registers every built-in factory with its runtime services (session store, token service, traffic metric repository, shared rate limiter).
-2. `ResolveGlobalMiddleware` looks each entry up by name and calls the factory's `DecodeConfig`, which decodes the options over their defaults, rejects unknown keys and runs the options type's `Validate`.
-3. `Registry.BuildChain` checks that every dependency appears earlier in the list (for example `traffic_metrics` needs `session_extraction` and `ja4_fingerprint`), creates each middleware, wraps it with metrics and records which ones are active.
+1. `ResolveGlobalChain(cfg)` looks each enabled entry up by name, checks that its dependencies appear earlier in the list (for example `traffic_metrics` needs `session_extraction` and `ja4_fingerprint`), and decodes its options: over their defaults, rejecting unknown keys, running the options type's `Validate`. It needs no runtime services, so `tg validate` and `tg middleware list` use it too.
+2. `GlobalChain.Build(deps)` runs once at startup: it creates each middleware and wraps it with metrics.
 
-`ValidateGlobalMiddleware` runs steps 1 to 2 and the dependency check without creating anything; `tg validate`, `tg middleware list` and gateway startup use it.
-
-Code outside the chain that depends on a middleware's options reads them with `MiddlewareSettings[C](cfg, name)` (or `MiddlewareEnabled`), so it always agrees with the chain: the shared rate limiter, `gateway.InitTracing`, the proxy's trace propagation and the statistics API's `excludeStaticAssets`.
+The resolved `*GlobalChain` never changes afterwards; the admin API reads its status and metrics without locking. Code outside the chain that depends on a middleware's options reads them with `GlobalOptions[C](chain, name)` (or `chain.Enabled(name)`), so it always agrees with the chain: the shared rate limiter, `gateway.InitTracing`, the proxy's trace propagation and the statistics API's `excludeStaticAssets`.
 
 ## Route chain
 
-Each configured route is wrapped by `RouteChainBuilder.BuildRouteChain`, which resolves two factories from its own registry through `Registry.NewChain`:
+`WrapRoute` wraps each configured route's handler:
 
-1. `route_auth`, only when the route has authentication enabled. Browser routes (static, SPA) redirect to the login page; proxy routes answer 401.
-2. `route_cache`, always. Sets `Cache-Control` from the route config.
+1. Authentication, only when the route sets `authenticated: true`. Browser routes (static, SPA) redirect to the login page; proxy routes answer 401.
+2. Cache control, always. Sets `Cache-Control` from the route options.
 
-`NewChain` does not touch the global registry's status or metrics, which is why the route chain has a registry of its own.
+Route middleware is configured on the route, not in `middleware:`, and is not instrumented.
 
 ## Sessions
 
@@ -60,7 +56,7 @@ Each configured route is wrapped by `RouteChainBuilder.BuildRouteChain`, which r
 Request
   -> global chain (order above)
   -> route match
-  -> route_auth (if enabled)
-  -> route_cache
+  -> route authentication (if enabled)
+  -> route cache control
   -> handler / proxy
 ```

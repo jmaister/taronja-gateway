@@ -6,42 +6,38 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
-	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
 // gatewayRuntime bundles everything setup builds from cfg: the mux routes
 // are registered on, the assembled global middleware chain handler, and the
-// middleware instances the rest of the gateway (route registration, the
-// admin API) needs a reference to. Built as a unit by buildRuntime so setup
-// has one single, self-contained value to wire onto the Gateway, rather
-// than several separately-fallible pieces.
+// pieces the rest of the gateway (route registration, the admin API) needs a
+// reference to.
 type gatewayRuntime struct {
-	mux               *http.ServeMux
-	handler           http.Handler
-	rateLimiter       *builtin.RateLimiter
-	registry          *middleware.Registry
-	authMiddleware    *builtin.AuthMiddleware
-	cacheMiddleware   *builtin.HttpCacheMiddleware
-	routeChainBuilder *builtin.RouteChainBuilder
+	mux             *http.ServeMux
+	handler         http.Handler
+	rateLimiter     *builtin.RateLimiter
+	middlewareChain *builtin.GlobalChain
+	authMiddleware  *builtin.AuthMiddleware
 }
 
-// buildRuntime assembles a gatewayRuntime for cfg: the rate limiter, the
-// global middleware registry/chain built through it (see
-// doc/refactor01.md Phases 1-3), and the auth/cache/route-chain middleware
-// used when registering individual routes.
+// buildRuntime assembles a gatewayRuntime for cfg: the global middleware
+// chain, the rate limiter it shares with the management API, and the auth
+// middleware used when registering individual routes.
 func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRuntime, error) {
 	mux := http.NewServeMux()
 
-	// The rate limiter outlives the chain: the management API reads its state.
-	rlCfg, _, err := builtin.MiddlewareSettings[builtin.RateLimiterConfig](cfg, builtin.NameRateLimiter)
+	chain, err := builtin.ResolveGlobalChain(cfg)
 	if err != nil {
 		return nil, err
 	}
+
+	// The rate limiter outlives the chain: the management API reads its state.
+	rlCfg, _ := builtin.GlobalOptions[builtin.RateLimiterConfig](chain, builtin.NameRateLimiter)
 	rl := builtin.NewRateLimiter(rlCfg, d.BlockedClientRepo)
 
-	registry, globalChain, err := builtin.NewGlobalChain(cfg, builtin.GlobalDeps{
+	globalMiddleware, err := chain.Build(builtin.GlobalDeps{
 		SessionStore:      d.SessionStore,
 		TokenService:      d.TokenService,
 		TrafficMetricRepo: d.TrafficMetricRepo,
@@ -50,20 +46,13 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 	if err != nil {
 		return nil, fmt.Errorf("failed to build global middleware chain: %w", err)
 	}
-	handler := globalChain.Build(mux)
-
-	authMiddleware := builtin.NewAuthMiddleware(d.SessionStore, d.TokenService, config.ManagementPrefix)
-	cacheMiddleware := builtin.NewHttpCacheMiddleware()
-	routeChainBuilder := builtin.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
 
 	return &gatewayRuntime{
-		mux:               mux,
-		handler:           handler,
-		rateLimiter:       rl,
-		registry:          registry,
-		authMiddleware:    authMiddleware,
-		cacheMiddleware:   cacheMiddleware,
-		routeChainBuilder: routeChainBuilder,
+		mux:             mux,
+		handler:         globalMiddleware(mux),
+		rateLimiter:     rl,
+		middlewareChain: chain,
+		authMiddleware:  builtin.NewAuthMiddleware(d.SessionStore, d.TokenService, config.ManagementPrefix),
 	}, nil
 }
 
@@ -72,8 +61,9 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 // the one-time sequence NewGatewayWithDependencies runs to bring a gateway
 // up.
 func (g *Gateway) setup(cfg *config.GatewayConfig) error {
-	if err := builtin.ValidateAllMiddleware(g.Dependencies, cfg); err != nil {
-		return fmt.Errorf("middleware validation failed: %w", err)
+	// buildRuntime validates the middleware list.
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 	builtin.LogMiddlewareStatus(cfg)
 
@@ -89,10 +79,8 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	g.GatewayConfig = cfg
 	g.Mux = rt.mux
 	g.RateLimiter = rt.rateLimiter
-	g.MiddlewareRegistry = rt.registry
+	g.MiddlewareChain = rt.middlewareChain
 	g.AuthMiddleware = rt.authMiddleware
-	g.HttpCacheMiddleware = rt.cacheMiddleware
-	g.RouteChainBuilder = rt.routeChainBuilder
 
 	// Registers every route/management handler onto the mux just built
 	// above.

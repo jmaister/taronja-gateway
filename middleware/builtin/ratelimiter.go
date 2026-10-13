@@ -13,7 +13,6 @@ import (
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // RateLimiter implements an in‑memory rate limiter keyed by client IP.
@@ -523,42 +522,28 @@ func (r RateLimiterConfig) Validate() error {
 	return nil
 }
 
-// rateLimiterFactory reuses the gateway's shared RateLimiter, so the chain
-// and the management API see the same state. Without one it builds a
-// standalone limiter from the config.
-type rateLimiterFactory struct {
-	middleware.ConcreteFactory
-	rateLimiter *RateLimiter
+// The middleware reuses the gateway's shared RateLimiter, so the chain and the
+// management API see the same state. Without one it builds a standalone
+// limiter from the options.
+var rateLimiterDefinition = Definition{
+	Name:        NameRateLimiter,
+	Description: "Limits request rate per client IP and detects vulnerability scans",
+	Decode:      decodeOptions(RateLimiterConfig{}),
+	New: func(opts any, d GlobalDeps) (middleware.Middleware, error) {
+		if d.RateLimiter != nil {
+			return d.RateLimiter.Handler, nil
+		}
+		return RateLimiterMiddleware(opts.(RateLimiterConfig)), nil
+	},
+	Health: rateLimiterHealth,
 }
 
-func newRateLimiterFactory(rateLimiter *RateLimiter) *rateLimiterFactory {
-	return &rateLimiterFactory{
-		ConcreteFactory: middleware.NewConcreteFactory(NameRateLimiter, "Limits request rate per client IP and detects vulnerability scans"),
-		rateLimiter:     rateLimiter,
-	}
-}
-
-func (f *rateLimiterFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
-	return middleware.DecodeConfigInto(raw, RateLimiterConfig{})
-}
-
-func (f *rateLimiterFactory) Create(cfg interface{}) (middleware.Middleware, error) {
-	if f.rateLimiter != nil {
-		return f.rateLimiter.Handler, nil
-	}
-	c, err := middleware.ConfigAs[RateLimiterConfig](NameRateLimiter, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return RateLimiterMiddleware(c), nil
-}
-
-// HealthCheck reports how many client IPs are tracked and blocked.
-func (f *rateLimiterFactory) HealthCheck() middleware.MiddlewareHealth {
-	if f.rateLimiter == nil {
+// rateLimiterHealth reports how many client IPs are tracked and blocked.
+func rateLimiterHealth(d GlobalDeps) middleware.MiddlewareHealth {
+	if d.RateLimiter == nil {
 		return middleware.MiddlewareHealth{Status: "unknown", Message: "no rate limiter instance configured"}
 	}
-	stats := f.rateLimiter.Stats()
+	stats := d.RateLimiter.Stats()
 	now := time.Now()
 	blocked := 0
 	for _, s := range stats {

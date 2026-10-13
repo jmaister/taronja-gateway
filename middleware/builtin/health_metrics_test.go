@@ -5,165 +5,90 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// loggingChain builds a chain with only logging enabled around handler.
+func loggingChain(t *testing.T, status int) (*GlobalChain, http.Handler) {
+	t.Helper()
+	chain, err := ResolveGlobalChain(&config.GatewayConfig{Middleware: []config.MiddlewareConfig{config.NewMiddlewareConfig(NameLogging, nil)}})
+	require.NoError(t, err)
+	mw, err := chain.Build(GlobalDeps{})
+	require.NoError(t, err)
+	return chain, mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
+}
+
+func serve(handler http.Handler, n int) {
+	for i := 0; i < n; i++ {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/ping", nil))
+	}
+}
 
 // --- Health checks ---
 
-func TestGetHealth_UnknownMiddlewareReturnsFalse(t *testing.T) {
-	registry := middleware.NewRegistry()
-	if _, ok := registry.GetHealth("does_not_exist"); ok {
-		t.Fatal("expected ok=false for an unregistered middleware name")
-	}
-}
+func TestRateLimiterHealth(t *testing.T) {
+	assert.Equal(t, "unknown", rateLimiterHealth(GlobalDeps{}).Status)
 
-func TestGetHealth_FactoryWithoutHealthCheckerReturnsUnknown(t *testing.T) {
-	registry := middleware.NewRegistry()
-	registry.RegisterFactory(newLoggingFactory())
-
-	health, ok := registry.GetHealth(NameLogging)
-	if !ok {
-		t.Fatal("expected ok=true for a registered middleware")
-	}
-	if health.Status != "unknown" {
-		t.Fatalf("expected status 'unknown' for a factory with no middleware.HealthChecker, got %+v", health)
-	}
-}
-
-func TestRateLimiterFactory_HealthCheck_NoInstance(t *testing.T) {
-	f := newRateLimiterFactory(nil)
-	health := f.HealthCheck()
-	if health.Status != "unknown" {
-		t.Fatalf("expected 'unknown' with no rate limiter instance, got %+v", health)
-	}
-}
-
-func TestRateLimiterFactory_HealthCheck_WithInstance(t *testing.T) {
 	rl := NewRateLimiter(RateLimiterConfig{RequestsPerMinute: 100, MaxErrors: 5, BlockMinutes: 5}, nil)
-	f := newRateLimiterFactory(rl)
-	health := f.HealthCheck()
-	if health.Status != "healthy" {
-		t.Fatalf("expected 'healthy' with a real rate limiter instance, got %+v", health)
-	}
-	if health.Message == "" {
-		t.Fatal("expected a non-empty message describing rate limiter state")
-	}
+	health := rateLimiterHealth(GlobalDeps{RateLimiter: rl})
+	assert.Equal(t, "healthy", health.Status)
+	assert.NotEmpty(t, health.Message)
 }
 
-func TestGetStatus_IncludesHealthWhenImplemented(t *testing.T) {
-	registry := middleware.NewRegistry()
-	registry.RegisterFactory(newRateLimiterFactory(nil))
-	registry.RegisterFactory(newLoggingFactory())
-
-	status := registry.GetStatus()
-
-	rl := status[NameRateLimiter]
-	if rl.Health == nil {
-		t.Fatal("expected rate_limiter status to include Health (it implements middleware.HealthChecker)")
+func TestStatus_IncludesHealthOnlyWhenImplemented(t *testing.T) {
+	chain, _ := loggingChain(t, http.StatusOK)
+	byName := map[string]MiddlewareStatus{}
+	for _, s := range chain.Status() {
+		byName[s.Name] = s
 	}
+	require.Len(t, byName, len(definitions))
 
-	logging := status[NameLogging]
-	if logging.Health != nil {
-		t.Fatalf("expected logging status to have nil Health (no middleware.HealthChecker), got %+v", logging.Health)
-	}
+	assert.NotNil(t, byName[NameRateLimiter].Health)
+	assert.Nil(t, byName[NameLogging].Health)
+	assert.Equal(t, "active", byName[NameLogging].Status)
+	assert.Equal(t, "available", byName[NameRateLimiter].Status)
+	assert.NotNil(t, byName[NameCORS].Dependencies, "no dependencies is an empty list, not null")
 }
 
 // --- Metrics ---
 
-func TestGetMetrics_UnknownMiddlewareErrors(t *testing.T) {
-	registry := middleware.NewRegistry()
-	if _, err := registry.GetMetrics("does_not_exist"); err == nil {
-		t.Fatal("expected an error for an unregistered middleware name")
-	}
-}
+func TestMetrics_UnknownAndNotEnabled(t *testing.T) {
+	chain, _ := loggingChain(t, http.StatusOK)
 
-func TestGetMetrics_KnownButNeverBuiltReturnsZeroSnapshot(t *testing.T) {
-	registry := middleware.NewRegistry()
-	registry.RegisterFactory(newLoggingFactory())
+	_, ok := chain.Metrics("does_not_exist")
+	assert.False(t, ok)
 
-	snap, err := registry.GetMetrics(NameLogging)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if snap.RequestCount != 0 || snap.LastInvokedAt != nil {
-		t.Fatalf("expected a zero-valued snapshot, got %+v", snap)
-	}
+	snap, ok := chain.Metrics(NameRateLimiter)
+	assert.True(t, ok)
+	assert.Zero(t, snap.RequestCount)
+	assert.Nil(t, snap.LastInvokedAt)
 }
 
 func TestMetrics_RecordedAcrossRequests(t *testing.T) {
-	registry := middleware.NewRegistry()
-	registry.RegisterFactory(newLoggingFactory())
+	chain, handler := loggingChain(t, http.StatusOK)
+	serve(handler, 3)
 
-	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: NameLogging}})
-	if err != nil {
-		t.Fatalf("BuildChain failed: %v", err)
-	}
-
-	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
-		rw := httptest.NewRecorder()
-		handler.ServeHTTP(rw, req)
-	}
-
-	snap, err := registry.GetMetrics(NameLogging)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if snap.RequestCount != 3 {
-		t.Fatalf("expected 3 recorded requests, got %d", snap.RequestCount)
-	}
-	if snap.ErrorCount != 0 {
-		t.Fatalf("expected 0 errors for 200 responses, got %d", snap.ErrorCount)
-	}
-	if snap.LastInvokedAt == nil {
-		t.Fatal("expected LastInvokedAt to be set after requests were served")
-	}
+	snap, ok := chain.Metrics(NameLogging)
+	require.True(t, ok)
+	assert.Equal(t, int64(3), snap.RequestCount)
+	assert.Zero(t, snap.ErrorCount)
+	assert.NotNil(t, snap.LastInvokedAt)
 }
 
 func TestMetrics_CountsServerErrors(t *testing.T) {
-	registry := middleware.NewRegistry()
-	registry.RegisterFactory(newLoggingFactory())
+	chain, handler := loggingChain(t, http.StatusInternalServerError)
+	serve(handler, 1)
 
-	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: NameLogging}})
-	if err != nil {
-		t.Fatalf("BuildChain failed: %v", err)
-	}
-
-	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
-	rw := httptest.NewRecorder()
-	handler.ServeHTTP(rw, req)
-
-	snap, err := registry.GetMetrics(NameLogging)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if snap.RequestCount != 1 || snap.ErrorCount != 1 {
-		t.Fatalf("expected 1 request and 1 error, got %+v", snap)
-	}
+	snap, _ := chain.Metrics(NameLogging)
+	assert.Equal(t, int64(1), snap.RequestCount)
+	assert.Equal(t, int64(1), snap.ErrorCount)
 }
 
-func TestGetAllMetrics_OnlyIncludesBuiltMiddleware(t *testing.T) {
-	registry := middleware.NewRegistry()
-	registry.RegisterFactory(newLoggingFactory())
-	registry.RegisterFactory(newRateLimiterFactory(nil))
-
-	if _, err := registry.BuildChain([]middleware.MiddlewareSpec{{Name: NameLogging}}); err != nil {
-		t.Fatalf("BuildChain failed: %v", err)
-	}
-
-	all := registry.GetAllMetrics()
-	if _, ok := all[NameLogging]; !ok {
-		t.Fatal("expected logging to be present (it was built)")
-	}
-	if _, ok := all[NameRateLimiter]; ok {
-		t.Fatal("expected rate_limiter to be absent (it was never built into a chain)")
-	}
+func TestAllMetrics_OnlyIncludesEnabledMiddleware(t *testing.T) {
+	chain, _ := loggingChain(t, http.StatusOK)
+	all := chain.AllMetrics()
+	require.Len(t, all, 1)
+	assert.Equal(t, NameLogging, all[0].Name)
 }

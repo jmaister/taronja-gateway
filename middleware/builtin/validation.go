@@ -1,117 +1,10 @@
 package builtin
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/gateway/deps"
 )
-
-// ValidationError represents a middleware validation error
-type ValidationError struct {
-	Middleware string
-	Message    string
-}
-
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("middleware %s: %s", e.Middleware, e.Message)
-}
-
-// ValidateDependencies validates that all required dependencies are available
-func ValidateDependencies(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	if deps == nil {
-		return &ValidationError{
-			Middleware: "global",
-			Message:    "dependencies cannot be nil",
-		}
-	}
-
-	if config == nil {
-		return &ValidationError{
-			Middleware: "global",
-			Message:    "gateway configuration is required",
-		}
-	}
-
-	return nil
-}
-
-// ValidateAuthenticationMiddleware validates authentication middleware configuration and dependencies
-func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	// Check if any routes require authentication
-	hasAuthRoutes := false
-	for _, route := range config.Routes {
-		if route.Authenticated {
-			hasAuthRoutes = true
-			break
-		}
-	}
-
-	if !hasAuthRoutes {
-		// No auth routes, no validation needed
-		return nil
-	}
-
-	log.Printf("Validating authentication middleware dependencies...")
-
-	// Validate SessionStore for authentication
-	if deps.SessionStore == nil {
-		return &ValidationError{
-			Middleware: "authentication",
-			Message:    "session store is required when authentication is enabled on routes",
-		}
-	}
-
-	// Validate TokenService for authentication
-	if deps.TokenService == nil {
-		return &ValidationError{
-			Middleware: "authentication",
-			Message:    "token service is required when authentication is enabled on routes",
-		}
-	}
-
-	// Validate UserRepository for authentication
-	if deps.UserRepo == nil {
-		return &ValidationError{
-			Middleware: "authentication",
-			Message:    "user repository is required when authentication is enabled on routes",
-		}
-	}
-
-	// Validate TokenRepository for authentication
-	if deps.TokenRepo == nil {
-		return &ValidationError{
-			Middleware: "authentication",
-			Message:    "token repository is required when authentication is enabled on routes",
-		}
-	}
-
-	log.Printf("Authentication middleware dependencies validated successfully")
-	return nil
-}
-
-// ValidateAllMiddleware validates all middleware configuration and dependencies
-func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	log.Printf("Starting comprehensive middleware validation...")
-
-	// Validate basic dependencies
-	if err := ValidateDependencies(deps, config); err != nil {
-		return err
-	}
-
-	// Validate authentication middleware
-	if err := ValidateAuthenticationMiddleware(deps, config); err != nil {
-		return err
-	}
-
-	if err := ValidateConfigOnly(config); err != nil {
-		return err
-	}
-
-	log.Printf("All middleware validation completed successfully")
-	return nil
-}
 
 // ValidateConfigOnly runs the checks that only inspect the config: the config
 // package's own Validate, then each middleware's options and dependencies. It
@@ -120,10 +13,8 @@ func ValidateConfigOnly(config *config.GatewayConfig) error {
 	if err := config.Validate(); err != nil {
 		return err
 	}
-	if err := ValidateGlobalMiddleware(config); err != nil {
-		return &ValidationError{Middleware: "middleware", Message: err.Error()}
-	}
-	return nil
+	_, err := ResolveGlobalChain(config)
+	return err
 }
 
 // LogMiddlewareStatus logs the status of all middleware based on configuration

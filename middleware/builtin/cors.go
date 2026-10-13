@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/jmaister/taronja-gateway/middleware"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // Default values used when a CORSConfig field is left unset.
@@ -151,20 +150,11 @@ func (c CORSConfig) Validate() error {
 	return nil
 }
 
-type corsFactory struct{ middleware.ConcreteFactory }
-
-func newCORSFactory() *corsFactory {
-	return &corsFactory{ConcreteFactory: middleware.NewConcreteFactory(NameCORS, "Adds CORS response headers for cross-origin requests")}
-}
-
-func (f *corsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
-	return middleware.DecodeConfigInto(raw, CORSConfig{})
-}
-
-func (f *corsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
-	c, err := middleware.ConfigAs[CORSConfig](NameCORS, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return CORSMiddleware(c), nil
+var corsDefinition = Definition{
+	Name:        NameCORS,
+	Description: "Adds CORS response headers for cross-origin requests",
+	Decode:      decodeOptions(CORSConfig{}),
+	New: func(opts any, _ GlobalDeps) (middleware.Middleware, error) {
+		return CORSMiddleware(opts.(CORSConfig)), nil
+	},
 }

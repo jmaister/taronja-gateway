@@ -26,7 +26,7 @@ func TestBuildRuntime_RateLimiterUsesTheMiddlewareOptions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rt.rateLimiter)
 	assert.Equal(t, 5, rt.rateLimiter.Config().RequestsPerMinute)
-	assert.True(t, rt.registry.GetStatus()[builtin.NameRateLimiter].Enabled)
+	assert.True(t, rt.middlewareChain.Enabled(builtin.NameRateLimiter))
 }
 
 func TestBuildRuntime_AnalyticsMiddlewareGetTheirDependencies(t *testing.T) {
@@ -43,5 +43,5 @@ func TestBuildRuntime_AnalyticsMiddlewareGetTheirDependencies(t *testing.T) {
 
 	rt, err := buildRuntime(cfg, deps.NewTest())
 	require.NoError(t, err)
-	assert.True(t, rt.registry.GetStatus()[builtin.NameTrafficMetrics].Enabled)
+	assert.True(t, rt.middlewareChain.Enabled(builtin.NameTrafficMetrics))
 }

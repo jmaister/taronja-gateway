@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/jmaister/taronja-gateway/middleware"
+	"github.com/jmaister/taronja-gateway/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,28 +142,21 @@ func TestCORSMiddleware_DefaultsWhenUnset(t *testing.T) {
 	assert.Equal(t, "600", rw.Header().Get("Access-Control-Max-Age"))
 }
 
-// --- CORSFactory ---
+// --- Definition ---
 
-func TestCORSFactory_RegistersAndBuildsThroughRealRegistry(t *testing.T) {
-	registry := middleware.NewRegistry()
-	require.NoError(t, registry.RegisterFactory(newCORSFactory()))
-
-	chain, err := registry.BuildChain([]middleware.MiddlewareSpec{
-		{Name: "cors", Config: CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}}},
-	})
+func TestCORSDefinition_BuildsThroughTheGlobalChain(t *testing.T) {
+	chain, err := ResolveGlobalChain(&config.GatewayConfig{Middleware: []config.MiddlewareConfig{
+		config.NewMiddlewareConfig(NameCORS, CORSConfig{AllowedOrigins: []string{"https://allowed.example.com"}}),
+	}})
+	require.NoError(t, err)
+	mw, err := chain.Build(GlobalDeps{})
 	require.NoError(t, err)
 
-	handler := chain.Build(newTestHandler())
+	handler := mw(newTestHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Origin", "https://allowed.example.com")
 	rw := httptest.NewRecorder()
 	handler.ServeHTTP(rw, req)
 
 	assert.Equal(t, "https://allowed.example.com", rw.Header().Get("Access-Control-Allow-Origin"))
-}
-
-func TestCORSFactory_RejectsWrongConfigType(t *testing.T) {
-	f := newCORSFactory()
-	_, err := f.Create("not a CORSConfig")
-	require.Error(t, err)
 }

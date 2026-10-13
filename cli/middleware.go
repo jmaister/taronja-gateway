@@ -41,39 +41,29 @@ func listMiddleware(configFilePath string) {
 		fatalf("Failed to load configuration: %v", err)
 	}
 
-	registry := builtin.NewGlobalRegistry(builtin.GlobalDeps{})
-	specs, err := builtin.ResolveGlobalMiddleware(registry, cfg.Middleware)
+	chain, err := builtin.ResolveGlobalChain(cfg)
 	if err != nil {
 		fatalf("%v", err)
 	}
-	if err := registry.ValidateSpecs(specs); err != nil {
-		fatalf("middleware: %v", err)
-	}
 
-	active := make(map[string]bool, len(specs))
 	fmt.Printf("Middleware chain for %q:\n\n", cfg.Name)
-	if len(specs) == 0 {
+	names := chain.Names()
+	if len(names) == 0 {
 		fmt.Println("  (none: the config has no enabled entries under middleware:)")
 	}
-	for i, spec := range specs {
-		active[spec.Name] = true
-		fmt.Printf("  %d. %s\n", i+1, spec.Name)
+	for i, name := range names {
+		fmt.Printf("  %d. %s\n", i+1, name)
 	}
 	fmt.Println()
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tSTATUS\tDEPENDENCIES\tDESCRIPTION")
-	for _, name := range registry.Names() {
-		f, _ := registry.Factory(name)
-		status := "available"
-		if active[name] {
-			status = "active"
-		}
+	for _, st := range chain.Status() {
 		dependsOn := "-"
-		if deps := f.GetDependencies(); len(deps) > 0 {
-			dependsOn = strings.Join(deps, ", ")
+		if len(st.Dependencies) > 0 {
+			dependsOn = strings.Join(st.Dependencies, ", ")
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, status, dependsOn, f.GetDescription())
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", st.Name, st.Status, dependsOn, st.Description)
 	}
 	tw.Flush()
 }

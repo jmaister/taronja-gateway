@@ -6,7 +6,6 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db/repositories"
-	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
@@ -25,9 +24,9 @@ type StrictApiServer struct {
 	startTime         time.Time
 	// rate limiter instance for stats/config endpoints
 	rateLimiter *builtin.RateLimiter
-	// middleware registry for the middleware status/health/metrics endpoints
-	// (see doc/refactor01.md Phase 3). May be nil in tests that don't need it.
-	middlewareRegistry *middleware.Registry
+	// global middleware chain for the middleware status/health/metrics
+	// endpoints. May be nil in tests that don't need it.
+	middlewareChain *builtin.GlobalChain
 	// notificationService backs every /api/notifications* endpoint (see
 	// handlers/api_notifications.go). May be nil in tests that don't need
 	// it — every notification handler checks for that explicitly and
@@ -40,7 +39,7 @@ type StrictApiServer struct {
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo repositories.UserRepository, trafficMetricRepo repositories.TrafficMetricRepository, tokenRepo repositories.TokenRepository, countersRepo repositories.CountersRepository, blockedClientRepo repositories.BlockedClientRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *builtin.RateLimiter, middlewareRegistry *middleware.Registry, notificationService *notification.Service) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo repositories.UserRepository, trafficMetricRepo repositories.TrafficMetricRepository, tokenRepo repositories.TokenRepository, countersRepo repositories.CountersRepository, blockedClientRepo repositories.BlockedClientRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *builtin.RateLimiter, middlewareChain *builtin.GlobalChain, notificationService *notification.Service) *StrictApiServer {
 	return &StrictApiServer{
 		sessionStore:        sessionStore,
 		userRepo:            userRepo,
@@ -51,7 +50,7 @@ func NewStrictApiServer(sessionStore session.SessionStore, userRepo repositories
 		tokenService:        tokenService,
 		startTime:           startTime,
 		rateLimiter:         rateLimiter,
-		middlewareRegistry:  middlewareRegistry,
+		middlewareChain:     middlewareChain,
 		notificationService: notificationService,
 	}
 }

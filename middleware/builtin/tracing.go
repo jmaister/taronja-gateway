@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/jmaister/taronja-gateway/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // TracingMiddleware wraps next with OpenTelemetry HTTP server
@@ -49,16 +47,9 @@ func (c TracingConfig) Validate() error {
 	return nil
 }
 
-type tracingFactory struct{ middleware.ConcreteFactory }
-
-func newTracingFactory() *tracingFactory {
-	return &tracingFactory{ConcreteFactory: middleware.NewConcreteFactory(NameTracing, "Creates an OpenTelemetry span per request and propagates trace context to proxied backends")}
-}
-
-func (f *tracingFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
-	return middleware.DecodeConfigInto(raw, TracingConfig{})
-}
-
-func (f *tracingFactory) Create(interface{}) (middleware.Middleware, error) {
-	return TracingMiddleware, nil
+var tracingDefinition = Definition{
+	Name:        NameTracing,
+	Description: "Creates an OpenTelemetry span per request and propagates trace context to proxied backends",
+	Decode:      decodeOptions(TracingConfig{}),
+	New:         stateless(TracingMiddleware),
 }

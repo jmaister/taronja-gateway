@@ -32,7 +32,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	// header, which is what actually makes this a *distributed* trace
 	// instead of one isolated span per hop.
 	var transport http.RoundTripper = http.DefaultTransport
-	if builtin.MiddlewareEnabled(g.GatewayConfig, builtin.NameTracing) {
+	if g.MiddlewareChain.Enabled(builtin.NameTracing) {
 		transport = otelhttp.NewTransport(transport)
 	}
 	proxy.Transport = newRoundRobinTransport(targetURLs, routeConfig.Name, transport)

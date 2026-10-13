@@ -46,7 +46,7 @@ The analytics middleware introduces significant overhead:
 
 ### 2. Middleware Chain Overhead
 
-**Location**: `middleware/builtin/global.go`, `NewGlobalChain()`
+**Location**: `middleware/builtin/global_chain.go`, `GlobalChain.Build()`
 
 **Issues**:
 - Multiple middleware layers executed for every request
@@ -428,7 +428,7 @@ module root, and `gateway/performance_test.go`,
 directly. `gw.Mux` is only the route table — routing plus whatever
 middleware an individual route attaches directly (auth, cache-control). The
 global middleware chain (JA4H fingerprinting, session extraction, traffic
-metrics, request logging — everything `builtin.NewGlobalChain` assembles, see
+metrics, request logging — everything `builtin.GlobalChain` assembles, see
 `gateway/reload.go`'s `buildRuntime`) wraps *around* `gw.Mux` into a separate
 handler (`gw.handler`) that only the real HTTP server actually uses.
 Calling `gw.Mux.ServeHTTP` in a benchmark silently skips that entire chain.

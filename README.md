@@ -364,9 +364,9 @@ See the complete example configuration in `sample/config.yaml`.
 # Middleware Architecture
 
 Every middleware is one file in `middleware/builtin/` holding its name, its
-options type with validation, and a factory; `middleware/builtin/global.go`
-registers them and turns the `middleware:` list into a chain through a
-registry that checks dependencies. See
+options type with validation, and a `Definition`;
+`middleware/builtin/global_chain.go` turns the `middleware:` list into a
+chain, checking names, options and dependencies. See
 [doc/middlewares.md](doc/middlewares.md) for the design.
 
 - **Inspect** what's active for a config file without starting the server:

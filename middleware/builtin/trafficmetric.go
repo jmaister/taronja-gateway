@@ -9,7 +9,6 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware"
-	yaml "gopkg.in/yaml.v3"
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/session"
@@ -136,31 +135,17 @@ type TrafficMetricsConfig struct {
 	ExcludeStaticAssets bool `yaml:"excludeStaticAssets"`
 }
 
-type trafficMetricsFactory struct {
-	middleware.ConcreteFactory
-	trafficMetricRepo repositories.TrafficMetricRepository
-}
-
 // Both dependencies are real reads: the session from the request context and,
 // through session.NewClientInfo, the JA4H fingerprint header.
-func newTrafficMetricsFactory(trafficMetricRepo repositories.TrafficMetricRepository) *trafficMetricsFactory {
-	return &trafficMetricsFactory{
-		ConcreteFactory:   middleware.NewConcreteFactory(NameTrafficMetrics, "Records per-request traffic metrics (status, size, duration, user)", NameSessionExtraction, NameJA4Fingerprint),
-		trafficMetricRepo: trafficMetricRepo,
-	}
-}
-
-func (f *trafficMetricsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
-	return middleware.DecodeConfigInto(raw, TrafficMetricsConfig{})
-}
-
-func (f *trafficMetricsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
-	if f.trafficMetricRepo == nil {
-		return nil, fmt.Errorf("needs a traffic metric repository")
-	}
-	c, err := middleware.ConfigAs[TrafficMetricsConfig](NameTrafficMetrics, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return TrafficMetricMiddleware(f.trafficMetricRepo, c.ExcludeStaticAssets), nil
+var trafficMetricsDefinition = Definition{
+	Name:        NameTrafficMetrics,
+	Description: "Records per-request traffic metrics (status, size, duration, user)",
+	DependsOn:   []string{NameSessionExtraction, NameJA4Fingerprint},
+	Decode:      decodeOptions(TrafficMetricsConfig{}),
+	New: func(opts any, d GlobalDeps) (middleware.Middleware, error) {
+		if d.TrafficMetricRepo == nil {
+			return nil, fmt.Errorf("needs a traffic metric repository")
+		}
+		return TrafficMetricMiddleware(d.TrafficMetricRepo, opts.(TrafficMetricsConfig).ExcludeStaticAssets), nil
+	},
 }

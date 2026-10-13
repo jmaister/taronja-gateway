@@ -7,10 +7,10 @@ import (
 	"time"
 )
 
-func TestInstrumentMiddleware_PassesRequestThrough(t *testing.T) {
-	counter := &middlewareMetricsCounter{}
+func TestCounterInstrument_PassesRequestThrough(t *testing.T) {
+	counter := &Counter{}
 	var identity Middleware = func(next http.Handler) http.Handler { return next }
-	wrapped := instrumentMiddleware(identity, counter)
+	wrapped := counter.Instrument(identity)
 
 	called := false
 	handler := wrapped(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,18 +29,18 @@ func TestInstrumentMiddleware_PassesRequestThrough(t *testing.T) {
 		t.Fatalf("expected status to pass through unchanged, got %d", rw.Code)
 	}
 
-	snap := counter.snapshot("test")
+	snap := counter.Snapshot("test")
 	if snap.RequestCount != 1 {
 		t.Fatalf("expected 1 recorded request, got %d", snap.RequestCount)
 	}
 }
 
-func TestMiddlewareMetricsCounter_AverageDuration(t *testing.T) {
-	c := &middlewareMetricsCounter{}
+func TestCounter_AverageDuration(t *testing.T) {
+	c := &Counter{}
 	c.record(http.StatusOK, 10*time.Millisecond)
 	c.record(http.StatusOK, 30*time.Millisecond)
 
-	snap := c.snapshot("test")
+	snap := c.Snapshot("test")
 	if snap.RequestCount != 2 {
 		t.Fatalf("expected 2 requests, got %d", snap.RequestCount)
 	}

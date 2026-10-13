@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/jmaister/taronja-gateway/middleware"
-
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 )
@@ -371,15 +369,9 @@ func (cw *compressingResponseWriter) Unwrap() http.ResponseWriter {
 // NameCompression compresses responses. It takes no options.
 const NameCompression = "compression"
 
-type compressionFactory struct {
-	middleware.ConcreteFactory
-	middleware.NoConfig
-}
-
-func newCompressionFactory() *compressionFactory {
-	return &compressionFactory{ConcreteFactory: middleware.NewConcreteFactory(NameCompression, "Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it")}
-}
-
-func (f *compressionFactory) Create(interface{}) (middleware.Middleware, error) {
-	return CompressionMiddleware, nil
+var compressionDefinition = Definition{
+	Name:        NameCompression,
+	Description: "Compresses response bodies with brotli, zstd, gzip, or deflate when the client accepts it",
+	Decode:      noOptions,
+	New:         stateless(CompressionMiddleware),
 }

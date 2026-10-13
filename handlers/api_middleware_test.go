@@ -17,24 +17,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setupMiddlewareTestServer builds a StrictApiServer wired to a real
-// middleware.Registry, with the logging middleware active (built
-// into a chain) so status/metrics/health have something concrete to report.
-func setupMiddlewareTestServer(t *testing.T) *StrictApiServer {
+// loggingChain builds a real global chain with only the logging middleware
+// enabled, wrapping a handler that answers 200.
+func loggingChain(t *testing.T, dependencies *deps.Dependencies) (*builtin.GlobalChain, http.Handler) {
 	t.Helper()
-	dependencies := deps.NewTest()
-
 	gatewayConfig := &config.GatewayConfig{}
 	gatewayConfig.Middleware = []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)}
-	registry, _, err := builtin.NewGlobalChain(gatewayConfig, builtin.GlobalDeps{
+	chain, err := builtin.ResolveGlobalChain(gatewayConfig)
+	require.NoError(t, err)
+	mw, err := chain.Build(builtin.GlobalDeps{
 		SessionStore: dependencies.SessionStore, TokenService: dependencies.TokenService, TrafficMetricRepo: dependencies.TrafficMetricRepo,
 	})
 	require.NoError(t, err)
+	return chain, mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+}
+
+// setupMiddlewareTestServer builds a StrictApiServer wired to a real global
+// chain, with the logging middleware active so status/metrics/health have
+// something concrete to report.
+func setupMiddlewareTestServer(t *testing.T) *StrictApiServer {
+	t.Helper()
+	dependencies := deps.NewTest()
+	chain, _ := loggingChain(t, dependencies)
 
 	return NewStrictApiServer(
 		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService,
-		dependencies.StartTime, nil, registry, dependencies.NotificationService,
+		dependencies.StartTime, nil, chain, dependencies.NotificationService,
 	)
 }
 
@@ -59,7 +70,7 @@ func TestGetMiddlewareStatus_ListsBuiltInMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	items, ok := resp.(api.GetMiddlewareStatus200JSONResponse)
 	require.True(t, ok)
-	require.Len(t, items, 8, "expected all 8 built-in global middleware factories")
+	require.Len(t, items, 8, "expected all 8 built-in global middleware")
 
 	byName := make(map[string]api.MiddlewareStatusItem, len(items))
 	for _, item := range items {
@@ -114,18 +125,10 @@ func TestGetMiddlewareMetrics_UnknownNameReturns404(t *testing.T) {
 func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 	dependencies := deps.NewTest()
 
-	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Middleware = []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)}
-	registry, chain, err := builtin.NewGlobalChain(gatewayConfig, builtin.GlobalDeps{
-		SessionStore: dependencies.SessionStore, TokenService: dependencies.TokenService, TrafficMetricRepo: dependencies.TrafficMetricRepo,
-	})
-	require.NoError(t, err)
+	chain, handler := loggingChain(t, dependencies)
 
 	// Drive one request through the built chain so the logging middleware
 	// actually records a metric.
-	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	rw := httptest.NewRecorder()
 	handler.ServeHTTP(rw, req)
@@ -133,7 +136,7 @@ func TestGetMiddlewareMetrics_ReportsRecordedRequests(t *testing.T) {
 	s := NewStrictApiServer(
 		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService,
-		dependencies.StartTime, nil, registry, dependencies.NotificationService,
+		dependencies.StartTime, nil, chain, dependencies.NotificationService,
 	)
 
 	resp, err := s.GetMiddlewareMetrics(adminContext(), api.GetMiddlewareMetricsRequestObject{Name: builtin.NameLogging})
@@ -161,16 +164,7 @@ func TestGetAllMiddlewareMetrics_Unauthorized(t *testing.T) {
 func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
 	dependencies := deps.NewTest()
 
-	gatewayConfig := &config.GatewayConfig{}
-	gatewayConfig.Middleware = []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)} // rate_limiter, ja4, etc. stay unbuilt
-	registry, chain, err := builtin.NewGlobalChain(gatewayConfig, builtin.GlobalDeps{
-		SessionStore: dependencies.SessionStore, TokenService: dependencies.TokenService, TrafficMetricRepo: dependencies.TrafficMetricRepo,
-	})
-	require.NoError(t, err)
-
-	handler := chain.Build(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	chain, handler := loggingChain(t, dependencies) // rate_limiter, ja4, etc. stay unbuilt
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 		rw := httptest.NewRecorder()
@@ -180,7 +174,7 @@ func TestGetAllMiddlewareMetrics_ReportsOnlyBuiltMiddleware(t *testing.T) {
 	s := NewStrictApiServer(
 		dependencies.SessionStore, dependencies.UserRepo, dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo, dependencies.CountersRepo, dependencies.BlockedClientRepo, dependencies.TokenService,
-		dependencies.StartTime, nil, registry, dependencies.NotificationService,
+		dependencies.StartTime, nil, chain, dependencies.NotificationService,
 	)
 
 	resp, err := s.GetAllMiddlewareMetrics(adminContext(), api.GetAllMiddlewareMetricsRequestObject{})

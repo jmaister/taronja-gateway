@@ -12,7 +12,6 @@ import (
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
-	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/static"
 )
@@ -23,19 +22,17 @@ type Gateway struct {
 	GatewayConfig *config.GatewayConfig
 	Mux           *http.ServeMux
 	Dependencies  *deps.Dependencies
-	// Middleware components (created during gateway initialization)
-	AuthMiddleware      *builtin.AuthMiddleware
-	HttpCacheMiddleware *builtin.HttpCacheMiddleware
-	RouteChainBuilder   *builtin.RouteChainBuilder
+	// Route authentication (created during gateway initialization)
+	AuthMiddleware *builtin.AuthMiddleware
 	// Rate limiter instance (for stats/config APIs)
 	RateLimiter *builtin.RateLimiter
-	// Registry of global middleware factories, built by setup. Kept
-	// on the Gateway so the middleware status/health/metrics API (see
-	// doc/refactor01.md Phase 3) can introspect it after startup.
-	MiddlewareRegistry *middleware.Registry
-	templates          map[string]*template.Template
-	WebappEmbedFS      *embed.FS
-	StartTime          time.Time
+	// The resolved `middleware:` list, built by setup. Read by the
+	// middleware status/health/metrics API and by code that depends on a
+	// middleware's options.
+	MiddlewareChain *builtin.GlobalChain
+	templates       map[string]*template.Template
+	WebappEmbedFS   *embed.FS
+	StartTime       time.Time
 
 	handler http.Handler
 }

@@ -270,26 +270,17 @@ func CheckAdminAccess(session *db.Session, adminRequired bool) bool {
 // the request context. It takes no options.
 const NameSessionExtraction = "session_extraction"
 
-type sessionExtractionFactory struct {
-	middleware.ConcreteFactory
-	middleware.NoConfig
-	sessionStore session.SessionStore
-	tokenService session.TokenService
-}
-
 // The ja4_fingerprint dependency keeps the analytics middleware in their
 // original order; this middleware does not read the fingerprint itself.
-func newSessionExtractionFactory(sessionStore session.SessionStore, tokenService session.TokenService) *sessionExtractionFactory {
-	return &sessionExtractionFactory{
-		ConcreteFactory: middleware.NewConcreteFactory(NameSessionExtraction, "Resolves the authenticated session/user and attaches it to the request context", NameJA4Fingerprint),
-		sessionStore:    sessionStore,
-		tokenService:    tokenService,
-	}
-}
-
-func (f *sessionExtractionFactory) Create(interface{}) (middleware.Middleware, error) {
-	if f.sessionStore == nil || f.tokenService == nil {
-		return nil, fmt.Errorf("needs a session store and a token service")
-	}
-	return SessionExtractionMiddleware(f.sessionStore, f.tokenService), nil
+var sessionExtractionDefinition = Definition{
+	Name:        NameSessionExtraction,
+	Description: "Resolves the authenticated session/user and attaches it to the request context",
+	DependsOn:   []string{NameJA4Fingerprint},
+	Decode:      noOptions,
+	New: func(_ any, d GlobalDeps) (middleware.Middleware, error) {
+		if d.SessionStore == nil || d.TokenService == nil {
+			return nil, fmt.Errorf("needs a session store and a token service")
+		}
+		return SessionExtractionMiddleware(d.SessionStore, d.TokenService), nil
+	},
 }

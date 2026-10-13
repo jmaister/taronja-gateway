@@ -20,9 +20,13 @@ import (
 // shutdown.
 func InitTracing(ctx context.Context, gatewayConfig *config.GatewayConfig) (shutdown func(context.Context) error, err error) {
 	noopShutdown := func(context.Context) error { return nil }
-	cfg, enabled, err := builtin.MiddlewareSettings[builtin.TracingConfig](gatewayConfig, builtin.NameTracing)
-	if err != nil || !enabled {
+	chain, err := builtin.ResolveGlobalChain(gatewayConfig)
+	if err != nil {
 		return noopShutdown, err
+	}
+	cfg, enabled := builtin.GlobalOptions[builtin.TracingConfig](chain, builtin.NameTracing)
+	if !enabled {
+		return noopShutdown, nil
 	}
 	serviceName := gatewayConfig.Name
 

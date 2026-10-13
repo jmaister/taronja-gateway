@@ -5,22 +5,11 @@ Global middleware is configured in the root `middleware:` list (see
 one. Middleware is compiled into the gateway; there is no way to load one
 from outside.
 
-## The moving parts
-
-All in the `middleware` package:
-
-- **`Middleware`** (`chain.go`): `func(http.Handler) http.Handler`.
-- **`MiddlewareFactory`** (`factory.go`): what a middleware implements: its name,
-  description, dependencies, how to decode its options, and how to build it.
-- **`Registry`** (`registry.go`): holds factories and builds a chain from an
-  ordered list of `MiddlewareSpec`, checking that each dependency appears
-  earlier in the list.
-- **`HealthChecker`** (`health.go`): optional, for middleware with runtime state.
-
 ## 1. One file per middleware
 
 A built-in middleware is one file in `middleware/builtin/` holding everything
-about it. `cors.go` is a good model:
+about it: its name, its options type and a `Definition`. `cors.go` is a good
+model:
 
 ```go
 // NameCORS answers CORS preflights and adds CORS headers.
@@ -35,76 +24,53 @@ type CORSConfig struct {
 // Validate rejects combinations browsers refuse.
 func (c CORSConfig) Validate() error { ... }
 
-type corsFactory struct{ middleware.ConcreteFactory }
-
-func newCORSFactory() *corsFactory {
-	return &corsFactory{ConcreteFactory: middleware.NewConcreteFactory(NameCORS, "Adds CORS response headers")}
-}
-
-func (f *corsFactory) DecodeConfig(raw *yaml.Node) (interface{}, error) {
-	return middleware.DecodeConfigInto(raw, CORSConfig{})
-}
-
-func (f *corsFactory) Create(cfg interface{}) (middleware.Middleware, error) {
-	c, err := middleware.ConfigAs[CORSConfig](NameCORS, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return CORSMiddleware(c), nil
+var corsDefinition = Definition{
+	Name:        NameCORS,
+	Description: "Adds CORS response headers for cross-origin requests",
+	Decode:      decodeOptions(CORSConfig{}),
+	New: func(opts any, _ GlobalDeps) (middleware.Middleware, error) {
+		return CORSMiddleware(opts.(CORSConfig)), nil
+	},
 }
 ```
 
-Then add `newCORSFactory()` to the list in `NewGlobalRegistry`
-(`middleware/builtin/global.go`) and write its page in `doc/middleware/`.
-Nothing else needs to change: the config package does not know middleware names
-or options, and `tg validate`, `tg middleware list` and the admin API pick the
-middleware up from the registry.
+Then add `&corsDefinition` to `definitions` (`middleware/builtin/definition.go`)
+and write its page in `doc/middleware/`. Nothing else needs to change: the
+config package does not know middleware names or options, and `tg validate`,
+`tg middleware list` and the admin API pick the middleware up from that list.
 
-### The factory methods
+### Definition fields
 
-- **`GetName()`**: the `middleware[].name` value, lowercase `snake_case`
+- **`Name`**: the `middleware[].name` value, lowercase `snake_case`
   (`rate_limiter`, not `RateLimiter`).
-- **`GetDescription()`**: one line, shown by `tg middleware list` and the admin
-  API.
-- **`GetDependencies()`**: middleware that must appear earlier in the list. Only
+- **`Description`**: one line, shown by `tg middleware list` and the admin API.
+- **`DependsOn`**: middleware that must appear earlier in the list. Only
   declare a dependency your middleware really reads (for example
-  `traffic_metrics` reads the session `session_extraction` attaches); the
-  registry rejects a chain that does not satisfy it.
-- **`DecodeConfig(raw)`**: turns the entry's `config:` block (nil when
-  absent) into the value `Create` receives. `middleware.DecodeConfigInto`
-  decodes over your defaults, rejects unknown keys and calls the type's
-  `Validate()` method if it has one. A middleware without options embeds
-  `middleware.NoConfig`, which rejects any `config:` block.
-- **`Create(cfg)`**: builds the middleware once, at startup. Take runtime
-  services (repositories, stores) in the factory constructor and return an
-  error when one is missing; validation builds factories without them and
-  never calls `Create`.
+  `traffic_metrics` reads the session `session_extraction` attaches).
+- **`Decode`**: turns the entry's `config:` block (nil when absent) into the
+  options `New` receives. `decodeOptions(defaults)` decodes over your defaults,
+  rejects unknown keys and calls the type's `Validate()` method if it has one.
+  A middleware without options uses `noOptions`, which rejects any `config:`
+  block.
+- **`New`**: builds the middleware once, at startup. Runtime services
+  (repositories, stores) come in `GlobalDeps`; return an error when one you
+  need is missing. Validation only runs `Decode`, never `New`. `stateless(mw)`
+  covers middleware that need neither options nor services.
+- **`Health`** (optional): only for middleware with real runtime state (the
+  rate limiter reports tracked and blocked IPs). Without it the admin API
+  shows no health, which is more honest than a hardcoded `"healthy"`.
 
 ### Options other code needs
 
 When code outside the chain depends on a middleware's options (the shared rate
 limiter, tracing setup, the statistics API), read them with
-`builtin.MiddlewareSettings[C](cfg, name)`, which decodes the same entry the
-chain uses. Do not add a second config field for the same setting.
-
-## 2. Health (optional)
-
-```go
-type HealthChecker interface {
-	HealthCheck() MiddlewareHealth
-}
-```
-
-Implement it only when the middleware has real runtime state (the rate
-limiter reports tracked and blocked IPs). Without it the status reads
-`"unknown"`, which is more honest than a hardcoded `"healthy"`.
+`builtin.GlobalOptions[C](chain, name)` from the resolved `*GlobalChain`. Do
+not add a second config field for the same setting.
 
 ## Conventions
 
-- One factory type per middleware; do not share a `ConcreteFactory` value.
-- `Create` may run more than once (validation, tests): keep it idempotent.
 - To observe status or size, wrap the `http.ResponseWriter` the way
   `trafficmetric.go`, `logging.go` and `middleware/metrics.go` do.
-- Test through the real `Registry` and `httptest`, as
-  `middleware/builtin/global_test.go` does, and cover option decoding in a
-  `ResolveGlobalMiddleware` test.
+- Test through `ResolveGlobalChain` and `httptest`, as
+  `middleware/builtin/global_chain_test.go` does, and cover option decoding
+  there too.
