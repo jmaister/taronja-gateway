@@ -63,7 +63,7 @@ func CompareConfigVersions(a, b string) (int, error)
 CompareConfigVersions returns \-1, 0 or 1 as a is less than, equal to or greater than b, or an error if either fails to parse.
 
 <a name="MigrateConfigContent"></a>
-## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L321>)
+## func [MigrateConfigContent](<https://github.com/jmaister/taronja-gateway/blob/main/config/version.go#L239>)
 
 ```go
 func MigrateConfigContent(path string) (content []byte, fromVersion *string, err error)
