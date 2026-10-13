@@ -20,20 +20,13 @@ type GlobalDeps struct {
 }
 
 // Definition describes a middleware that can be listed under `middleware:`.
-// Each one is declared next to its middleware and listed in definitions.
 type Definition struct {
 	Name        string
 	Description string
-	// DependsOn names middleware that must appear earlier in the list.
-	DependsOn []string
-	// Decode turns the entry's `config:` block (nil when absent) into the
-	// options New expects, applying defaults and validating them. It needs no
-	// runtime services, so `tg validate` can run it.
-	Decode func(raw *yaml.Node) (any, error)
-	// New builds the middleware from Decode's result.
-	New func(opts any, d GlobalDeps) (middleware.Middleware, error)
-	// Health reports runtime state. Optional: nil for stateless middleware.
-	Health func(d GlobalDeps) middleware.MiddlewareHealth
+	DependsOn   []string                                                    // must appear earlier in the list
+	Decode      func(raw *yaml.Node) (any, error)                           // `config:` block to validated options
+	New         func(opts any, d GlobalDeps) (middleware.Middleware, error) // builds it from Decode's result
+	Health      func(d GlobalDeps) middleware.MiddlewareHealth              // optional
 }
 
 // definitions lists every built-in middleware.
@@ -70,14 +63,12 @@ type Validator interface {
 	Validate() error
 }
 
-// decodeOptions returns a Definition.Decode that decodes the `config:` block
-// over defaults, rejecting unknown keys, and runs Validate when C has one.
+// decodeOptions decodes over defaults, rejects unknown keys and runs Validate.
 func decodeOptions[C any](defaults C) func(raw *yaml.Node) (any, error) {
 	return func(raw *yaml.Node) (any, error) {
 		cfg := defaults
 		if raw != nil && raw.Kind != 0 {
-			// yaml.Node.Decode cannot reject unknown keys, so round-trip
-			// through a strict decoder.
+			// yaml.Node.Decode cannot reject unknown keys: re-decode strictly.
 			data, err := yaml.Marshal(raw)
 			if err != nil {
 				return nil, err
@@ -97,8 +88,7 @@ func decodeOptions[C any](defaults C) func(raw *yaml.Node) (any, error) {
 	}
 }
 
-// noOptions is the Decode of middleware without options: it accepts only an
-// absent or empty `config:` block.
+// noOptions rejects any non-empty `config:` block.
 func noOptions(raw *yaml.Node) (any, error) {
 	if raw != nil && raw.Kind != 0 && !(raw.Kind == yaml.MappingNode && len(raw.Content) == 0) {
 		return nil, fmt.Errorf("takes no config")
@@ -106,8 +96,7 @@ func noOptions(raw *yaml.Node) (any, error) {
 	return nil, nil
 }
 
-// stateless adapts a middleware that needs neither options nor services to
-// Definition.New.
+// stateless is the New of middleware without options or services.
 func stateless(mw middleware.Middleware) func(any, GlobalDeps) (middleware.Middleware, error) {
 	return func(any, GlobalDeps) (middleware.Middleware, error) { return mw, nil }
 }

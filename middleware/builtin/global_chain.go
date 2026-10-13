@@ -11,11 +11,7 @@ import (
 	"github.com/jmaister/taronja-gateway/middleware"
 )
 
-// GlobalChain is the config's `middleware:` list resolved against the
-// built-in definitions: the enabled entries, in order, with their options
-// decoded. Resolving needs no runtime services; Build then creates the
-// middleware. Build runs once, before serving, so the admin API reads the
-// chain without locking.
+// GlobalChain is the enabled `middleware:` entries, in order, with decoded options.
 type GlobalChain struct {
 	entries []globalEntry
 	deps    GlobalDeps
@@ -37,8 +33,7 @@ type MiddlewareStatus struct {
 	Health       *middleware.MiddlewareHealth // nil when the middleware has no health check
 }
 
-// ResolveGlobalChain checks every enabled entry's name, options and
-// dependencies.
+// ResolveGlobalChain checks names, dependency order and options.
 func ResolveGlobalChain(cfg *config.GatewayConfig) (*GlobalChain, error) {
 	chain := &GlobalChain{}
 	for _, entry := range cfg.Middleware {
@@ -63,8 +58,7 @@ func ResolveGlobalChain(cfg *config.GatewayConfig) (*GlobalChain, error) {
 	return chain, nil
 }
 
-// Build creates every middleware and returns them as one, each instrumented
-// with its request metrics.
+// Build creates the middleware, each instrumented with metrics. Call once, at startup.
 func (c *GlobalChain) Build(d GlobalDeps) (middleware.Middleware, error) {
 	c.deps = d
 	mws := make([]middleware.Middleware, 0, len(c.entries))
@@ -102,10 +96,7 @@ func (c *GlobalChain) entry(name string) *globalEntry {
 	return nil
 }
 
-// GlobalOptions returns the named middleware's decoded options and whether it
-// is enabled; the zero C when it is not. Code outside the chain that depends
-// on a middleware's options (the shared rate limiter, tracing setup, the
-// statistics API) reads them here so it always agrees with the chain.
+// GlobalOptions returns the named middleware's options and whether it is enabled.
 func GlobalOptions[C any](c *GlobalChain, name string) (C, bool) {
 	var zero C
 	e := c.entry(name)
@@ -143,9 +134,7 @@ func (c *GlobalChain) Status() []MiddlewareStatus {
 	return out
 }
 
-// Metrics returns the request metrics of the named middleware. ok is false
-// when no built-in middleware has that name; one that is not enabled reports
-// zeros.
+// Metrics returns the named middleware's metrics; ok is false for an unknown name.
 func (c *GlobalChain) Metrics(name string) (snap middleware.MiddlewareMetricsSnapshot, ok bool) {
 	if findDefinition(name) == nil {
 		return snap, false
@@ -156,8 +145,7 @@ func (c *GlobalChain) Metrics(name string) (snap middleware.MiddlewareMetricsSna
 	return middleware.MiddlewareMetricsSnapshot{Name: name}, true
 }
 
-// AllMetrics returns the request metrics of every enabled middleware, sorted
-// by name.
+// AllMetrics returns the metrics of every enabled middleware, sorted by name.
 func (c *GlobalChain) AllMetrics() []middleware.MiddlewareMetricsSnapshot {
 	out := make([]middleware.MiddlewareMetricsSnapshot, 0, len(c.entries))
 	for _, e := range c.entries {

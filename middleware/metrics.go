@@ -7,25 +7,17 @@ import (
 	"time"
 )
 
-// MiddlewareMetricsSnapshot is a point-in-time read of a middleware's
-// request metrics since the process started (counters are in-memory only).
+// MiddlewareMetricsSnapshot is a middleware's in-memory request metrics.
 type MiddlewareMetricsSnapshot struct {
 	Name         string `json:"name"`
 	RequestCount int64  `json:"requestCount"`
 	ErrorCount   int64  `json:"errorCount"` // requests where the eventual response status was >= 500
-	// AverageDurationMs is the mean wall-clock time, in milliseconds, spent
-	// from entering this middleware to the response being written. Because
-	// middlewares are nested (each wraps everything after it in the chain),
-	// this includes every downstream middleware and the final handler too —
-	// it is not this middleware's isolated cost.
+	// AverageDurationMs includes everything after this middleware in the chain.
 	AverageDurationMs float64    `json:"averageDurationMs"`
 	LastInvokedAt     *time.Time `json:"lastInvokedAt,omitempty"`
 }
 
-// Counter holds the counters backing one MiddlewareMetricsSnapshot.
-// Count/duration/error fields use atomics since they're updated from
-// whatever goroutine is serving the request; lastInvokedAt is guarded by mu
-// since time.Time isn't atomic-friendly.
+// Counter backs one MiddlewareMetricsSnapshot; safe for concurrent requests.
 type Counter struct {
 	requestCount    int64
 	errorCount      int64
@@ -73,9 +65,7 @@ func (c *Counter) Snapshot(name string) MiddlewareMetricsSnapshot {
 	return snap
 }
 
-// metricsResponseRecorder captures the status code the wrapped handler
-// eventually writes, defaulting to 200 to match net/http's own behavior when
-// WriteHeader is never called explicitly.
+// metricsResponseRecorder captures the status code written (200 by default).
 type metricsResponseRecorder struct {
 	http.ResponseWriter
 	status int
@@ -86,8 +76,7 @@ func (m *metricsResponseRecorder) WriteHeader(code int) {
 	m.ResponseWriter.WriteHeader(code)
 }
 
-// Instrument wraps mw so every request through it updates c: request count,
-// error count (status >= 500), and elapsed wall-clock time.
+// Instrument wraps mw so every request through it updates c.
 func (c *Counter) Instrument(mw Middleware) Middleware {
 	return func(next http.Handler) http.Handler {
 		wrapped := mw(next)
