@@ -18,11 +18,7 @@ Define routing rules for incoming requests. Each route can:
 - `toFile`: Serve a single static file
 - `toFolder`: Serve files from a directory
 - A route sets exactly one of `to`, `toFile` and `toFolder`.
-- `removeFromPath`: Prefix removed before forwarding (proxy routes only), on a
-  path-segment boundary: `/api` turns `/api/users` into `/users` and leaves
-  `/apiary` alone. A path in `to` is then prepended once:
-  `to: http://backend/v2` + `removeFromPath: /api` sends `/api/users` to
-  `http://backend/v2/users`.
+- `removeFromPath`: Prefix removed before forwarding (proxy routes only). See [removeFromPath](#removefrompath).
 - `authenticated: true`: Require a logged-in user for this route
 - `options.cacheControlSeconds`: Cache duration in seconds (0 = no-cache)
 
@@ -82,6 +78,55 @@ routes:
     options:
       cacheControlSeconds: 0  # No cache for dashboard
 ```
+
+# removeFromPath
+
+Strips a prefix from the request path before it is proxied, so a backend
+mounted at `/` can be published under a sub-path.
+
+```yaml
+routes:
+  - name: Users API
+    from: /api/*
+    removeFromPath: /api
+    to: http://users:8080
+
+  - name: Billing API (backend lives under /v2)
+    from: /billing/*
+    removeFromPath: /billing/
+    to: http://billing:9000/v2
+```
+
+| Request | Route | Backend receives |
+|---|---|---|
+| `/api/users` | Users API | `/users` |
+| `/api/users?page=2` | Users API | `/users?page=2` |
+| `/api/` | Users API | `/` |
+| `/api/a%20b` | Users API | `/a%20b` |
+| `/billing/invoices/7` | Billing API | `/v2/invoices/7` |
+| `/billing/` | Billing API | `/v2/` |
+
+Without `removeFromPath` the full path is forwarded: `/billing/invoices/7`
+would reach `http://billing:9000/v2/billing/invoices/7`. A bare `/api` never
+reaches the backend: a `from: /api/*` route answers it with a `307` redirect
+to `/api/`.
+
+Caveats:
+
+- **Proxy routes only.** A route with `toFolder` or `toFile` and
+  `removeFromPath` fails validation.
+- **Whole path segments.** `/api` and `/api/` are the same and strip `/api`
+  and `/api/...`, never the start of `/apiary`.
+- **Paths without the prefix pass unchanged.** Keep `removeFromPath` equal to
+  the start of `from`; otherwise nothing is stripped.
+- **The `to` path is added after stripping**, exactly once. A trailing slash
+  on `to` makes no difference.
+- **Responses are not rewritten.** If the backend redirects to `/users/x`,
+  the browser goes to `/users/x`, not `/api/users/x`; links in the body are
+  passed as-is too, and no `X-Forwarded-Prefix` header is sent. The backend
+  must build public URLs itself, or use relative links.
+- **Load balancing** (`to` as a list) takes the path from the first URL, so
+  all targets must share it.
 
 # Load Balancing
 
