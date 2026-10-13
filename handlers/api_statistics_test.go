@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
@@ -16,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupStatsTestServer() (*StrictApiServer, db.TrafficMetricRepository) {
+func setupStatsTestServer() (*StrictApiServer, repositories.TrafficMetricRepository) {
 	// Generate a unique test name to ensure database isolation
 	testName := fmt.Sprintf("stats_test_%d", time.Now().UnixNano())
 

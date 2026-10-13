@@ -1,10 +1,11 @@
-package db
+package repositories
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,8 +13,8 @@ import (
 func TestTokenRepository(t *testing.T) {
 	// Create test database with unique name for isolation
 	testName := fmt.Sprintf("tokenrepository_test_%d", time.Now().UnixNano())
-	SetupTestDB(testName)
-	testDB := GetConnection()
+	db.SetupTestDB(testName)
+	testDB := db.GetConnection()
 
 	repo := NewTokenRepositoryDB(testDB)
 	testTokenRepository(t, repo)
@@ -21,7 +22,7 @@ func TestTokenRepository(t *testing.T) {
 
 func testTokenRepository(t *testing.T, repo TokenRepository) {
 	// Create a test token (ID will be auto-generated)
-	token := &Token{
+	token := &db.Token{
 		UserID:      "user-123",
 		TokenHash:   "hash123",
 		Name:        "Test Token",
@@ -74,12 +75,12 @@ func testTokenRepository(t *testing.T, repo TokenRepository) {
 func TestTokenRepositoryUserIsolation(t *testing.T) {
 	// Create test database with unique name for isolation
 	testName := fmt.Sprintf("tokenrepository_user_isolation_test_%d", time.Now().UnixNano())
-	SetupTestDB(testName)
-	testDB := GetConnection()
+	db.SetupTestDB(testName)
+	testDB := db.GetConnection()
 	repo := NewTokenRepositoryDB(testDB)
 
 	// Create tokens for different users (IDs will be auto-generated)
-	user1Token := &Token{
+	user1Token := &db.Token{
 		UserID:      "user-1",
 		TokenHash:   "hash-user1",
 		Name:        "User 1 Token",
@@ -88,7 +89,7 @@ func TestTokenRepositoryUserIsolation(t *testing.T) {
 		CreatedFrom: "test",
 	}
 
-	user2Token := &Token{
+	user2Token := &db.Token{
 		UserID:      "user-2",
 		TokenHash:   "hash-user2",
 		Name:        "User 2 Token",
@@ -124,13 +125,13 @@ func TestTokenRepositoryUserIsolation(t *testing.T) {
 func TestTokenRepository_ExpirationHandling(t *testing.T) {
 	// Create test database with unique name for isolation
 	testName := fmt.Sprintf("tokenrepository_expiration_test_%d", time.Now().UnixNano())
-	SetupTestDB(testName)
-	testDB := GetConnection()
+	db.SetupTestDB(testName)
+	testDB := db.GetConnection()
 	repo := NewTokenRepositoryDB(testDB)
 
 	// Create expired token (ID will be auto-generated)
 	expiredTime := time.Now().Add(-1 * time.Hour)
-	expiredToken := &Token{
+	expiredToken := &db.Token{
 		UserID:    "user-123",
 		TokenHash: "expired-hash",
 		Name:      "Expired Token",
@@ -144,7 +145,7 @@ func TestTokenRepository_ExpirationHandling(t *testing.T) {
 
 	// Create active token (ID will be auto-generated)
 	futureTime := time.Now().Add(1 * time.Hour)
-	activeToken := &Token{
+	activeToken := &db.Token{
 		UserID:    "user-123",
 		TokenHash: "active-hash",
 		Name:      "Active Token",

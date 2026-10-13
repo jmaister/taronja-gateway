@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,7 @@ import (
 func createTestSessionStoreAdmin() session.SessionStore {
 	// Initialize test database if not already done
 	db.SetupTestDB("TestSessionMiddlewareAdminRequired")
-	sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+	sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 	return session.NewSessionStore(sessionRepo, 24*time.Hour)
 }
 

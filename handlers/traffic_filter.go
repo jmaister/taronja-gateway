@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
-	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/queries"
 )
 
 // trafficFilterParams is the set of query parameters every statistics
@@ -12,8 +12,8 @@ import (
 // details endpoints' generated Params structs convert to it directly.
 type trafficFilterParams api.GetRequestStatisticsParams
 
-func (p trafficFilterParams) filter() db.TrafficFilter {
-	f := db.TrafficFilter{
+func (p trafficFilterParams) filter() queries.TrafficFilter {
+	f := queries.TrafficFilter{
 		Start:      p.StartDate,
 		End:        p.EndDate,
 		IsStatic:   p.IsStatic,
@@ -34,10 +34,10 @@ func (p trafficFilterParams) filter() db.TrafficFilter {
 	return f
 }
 
-// filterFrom converts p to a db.TrafficFilter. With static assets excluded no
+// filterFrom converts p to a queries.TrafficFilter. With static assets excluded no
 // static rows are recorded, so is_static is dropped and every request type
 // returns the same data.
-func (s *StrictApiServer) filterFrom(p trafficFilterParams) db.TrafficFilter {
+func (s *StrictApiServer) filterFrom(p trafficFilterParams) queries.TrafficFilter {
 	f := p.filter()
 	if s.excludeStaticAssets {
 		f.IsStatic = nil
@@ -63,7 +63,7 @@ func trafficFilterParamsFromTimeSeries(p api.GetRequestTimeSeriesParams) traffic
 
 // withDefaultRange fills a missing start or end: end defaults to now and start
 // to span before end.
-func withDefaultRange(f db.TrafficFilter, span func(end time.Time) time.Time) db.TrafficFilter {
+func withDefaultRange(f queries.TrafficFilter, span func(end time.Time) time.Time) queries.TrafficFilter {
 	if f.End == nil {
 		now := time.Now()
 		f.End = &now

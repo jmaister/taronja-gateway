@@ -1,4 +1,4 @@
-package db
+package dbmigrations_test
 
 import (
 	"os"
@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/dbmigrations"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,11 +18,11 @@ import (
 )
 
 // TestMigrateRealV0024Database opens a real, historical SQLite database —
-// db/testdata/v0.0.24.db, produced by actually running the v0.0.24 tagged
+// db/dbmigrations/testdata/v0.0.24.db, produced by actually running the v0.0.24 tagged
 // release (the last tag before this project's v1 schema work — the UTC
 // timestamp normalization and the JA4H/TLS-JA4/stable fingerprint
-// consolidation in db/legacy_migrations.go were both written after it) and
-// generating real traffic against it — see db/testdata/README.md for
+// consolidation in db/dbmigrations/legacy.go were both written after it) and
+// generating real traffic against it — see db/dbmigrations/testdata/README.md for
 // exactly how and why a real fixture, not just a synthetic reproduction of
 // the old schema, is worth keeping. This runs the exact same bridge
 // db.Init runs the first time it ever opens a pre-golang-migrate database
@@ -29,7 +32,7 @@ import (
 // migrations_test.go's other tests do.
 func TestMigrateRealV0024Database(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/v0.0.24.db")
-	require.NoError(t, err, "db/testdata/v0.0.24.db must exist — see db/testdata/README.md")
+	require.NoError(t, err, "db/dbmigrations/testdata/v0.0.24.db must exist — see db/dbmigrations/testdata/README.md")
 
 	// Work on a throwaway copy in a temp dir — AutoMigrate/applyDBMigrations
 	// write to this file, and the checked-in fixture must never be mutated
@@ -42,7 +45,7 @@ func TestMigrateRealV0024Database(t *testing.T) {
 		DSN:        dbPath,
 	}, &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent),
-		NowFunc: utcNowFunc,
+		NowFunc: db.NowUTC,
 	})
 	require.NoError(t, err)
 
@@ -54,7 +57,7 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	require.NoError(t, gdb.Raw("SELECT token FROM sessions LIMIT 1").Row().Scan(&rawTokenBeforeMigration))
 	require.NotEmpty(t, rawTokenBeforeMigration, "fixture's legacy plaintext token column should be readable before migration")
 
-	// The core regression check: runMigrations — the exact function
+	// The core regression check: dbmigrations.Run — the exact function
 	// db.Init calls — must not error against a real pre-v1 database. In
 	// particular, TrafficMetric.IsStaticAsset (`not null`, added after
 	// v0.0.24, on a table this fixture already has rows in) needs its
@@ -68,23 +71,23 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	// fails the test at cleanup; cleanups run last-in-first-out, so this
 	// closes the connection before TempDir's removal.
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	require.NoError(t, runMigrations(sqlDB))
+	require.NoError(t, dbmigrations.Run(sqlDB, testSchema))
 
 	// Existing data survived, untouched in substance.
 	var userCount, sessionCount, metricCount int64
-	require.NoError(t, gdb.Model(&User{}).Count(&userCount).Error)
-	require.NoError(t, gdb.Model(&Session{}).Count(&sessionCount).Error)
-	require.NoError(t, gdb.Model(&TrafficMetric{}).Count(&metricCount).Error)
+	require.NoError(t, gdb.Model(&db.User{}).Count(&userCount).Error)
+	require.NoError(t, gdb.Model(&db.Session{}).Count(&sessionCount).Error)
+	require.NoError(t, gdb.Model(&db.TrafficMetric{}).Count(&metricCount).Error)
 	assert.EqualValues(t, 1, userCount)
 	assert.EqualValues(t, 1, sessionCount)
 	assert.EqualValues(t, 11, metricCount)
 
-	var user User
+	var user db.User
 	require.NoError(t, gdb.First(&user).Error)
 	assert.Equal(t, "admin", user.Username)
-	assert.Equal(t, AdminProvider, user.Provider)
+	assert.Equal(t, db.AdminProvider, user.Provider)
 
-	var metrics []TrafficMetric
+	var metrics []db.TrafficMetric
 	require.NoError(t, gdb.Order("id").Find(&metrics).Error)
 	require.Len(t, metrics, 11)
 
@@ -103,7 +106,7 @@ func TestMigrateRealV0024Database(t *testing.T) {
 		_, offset := m.Timestamp.Zone()
 		assert.Equal(t, 0, offset, "traffic_metrics.timestamp (id=%d) should be normalized to UTC, got %v", m.ID, m.Timestamp)
 	}
-	var session Session
+	var session db.Session
 	require.NoError(t, gdb.First(&session).Error)
 
 	// token_hash backfill (Finding 7's session-token-hashing migration):
@@ -113,7 +116,7 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	// column — see below), so the plaintext session captured by this
 	// fixture stays valid across the upgrade instead of forcing every
 	// existing user to re-login.
-	assert.Equal(t, hashSessionToken(rawTokenBeforeMigration), session.TokenHash,
+	assert.Equal(t, db.HashSessionToken(rawTokenBeforeMigration), session.TokenHash,
 		"token_hash should be backfilled from the legacy plaintext token column")
 
 	// migrateSessionTokensToHashed must actually drop the legacy "token"
@@ -126,10 +129,10 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	// i.e. every login — failed outright with "NOT NULL constraint failed:
 	// sessions.token" until the column was actually dropped, not just
 	// backfilled from.
-	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"),
+	assert.False(t, gdb.Migrator().HasColumn(&db.Session{}, "token"),
 		"the legacy token column must be dropped, not just backfilled from — its surviving NOT NULL constraint breaks every session created afterward")
-	newSession := &Session{UserID: user.ID, ValidUntil: time.Now().Add(time.Hour)}
-	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-post-migration-token", newSession),
+	newSession := &db.Session{UserID: user.ID, ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, repositories.NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-post-migration-token", newSession),
 		"creating a new session against an in-place-migrated database must succeed")
 
 	_, sessionOffset := session.ValidUntil.Zone()
@@ -161,8 +164,8 @@ func TestMigrateRealV0024Database(t *testing.T) {
 	// queryable, even though nothing backfills rows into it: v0.0.24 never
 	// recorded a block anywhere durable, only the in-memory rate limiter's
 	// live (and by now long-expired) state.
-	assert.True(t, gdb.Migrator().HasTable(&BlockedClient{}))
+	assert.True(t, gdb.Migrator().HasTable(&db.BlockedClient{}))
 	var blockedCount int64
-	require.NoError(t, gdb.Model(&BlockedClient{}).Count(&blockedCount).Error)
+	require.NoError(t, gdb.Model(&db.BlockedClient{}).Count(&blockedCount).Error)
 	assert.EqualValues(t, 0, blockedCount)
 }

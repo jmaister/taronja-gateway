@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ import (
 )
 
 // setupTestTrafficRepo creates a test traffic metric repository with unique database isolation
-func setupTestTrafficRepo(t *testing.T) db.TrafficMetricRepository {
+func setupTestTrafficRepo(t *testing.T) repositories.TrafficMetricRepository {
 	testName := fmt.Sprintf("trafficmetric_%s_%d", t.Name(), time.Now().UnixNano())
 	dependencies := deps.NewTestWithName(testName)
 	return dependencies.TrafficMetricRepo
@@ -29,7 +30,7 @@ func setupTestTrafficRepo(t *testing.T) db.TrafficMetricRepository {
 // so how long that takes depends on work — user-agent parsing, a
 // non-routable-IP check — that a short fixed sleep isn't reliably longer
 // than, especially under the race detector's overhead.
-func waitForTrafficMetric(t *testing.T, repo db.TrafficMetricRepository, path string) []db.TrafficMetric {
+func waitForTrafficMetric(t *testing.T, repo repositories.TrafficMetricRepository, path string) []db.TrafficMetric {
 	t.Helper()
 	var stats []db.TrafficMetric
 	var lastErr error

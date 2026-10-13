@@ -1,4 +1,4 @@
-package db_test
+package repositories_test
 
 import (
 	"net/http"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session" // Added import for session package
 )
 
@@ -15,7 +16,7 @@ func TestSessionStoreDB(t *testing.T) {
 	db.SetupTestDB("TestSessionStoreDB")
 
 	// Create a new SessionStoreDB with the test database
-	store := db.NewSessionRepositoryDB(db.GetConnection())
+	store := repositories.NewSessionRepositoryDB(db.GetConnection())
 
 	// Generate a session token
 	token, err := session.GenerateToken() // Changed to session.GenerateToken()
@@ -72,7 +73,7 @@ func TestSessionStoreDBValidateSession(t *testing.T) {
 	db.SetupTestDB("TestSessionStoreDBValidateSession")
 
 	// Create a new SessionStoreDB with the test database
-	repo := db.NewSessionRepositoryDB(db.GetConnection())
+	repo := repositories.NewSessionRepositoryDB(db.GetConnection())
 	sessionStore := session.NewSessionStore(repo, 24*time.Hour) // Create SessionStore to use ValidateSession
 
 	// Generate a session token for a valid session
@@ -177,7 +178,7 @@ func TestSessionStoreDBCloseSession(t *testing.T) {
 	db.SetupTestDB("TestSessionStoreDBCloseSession")
 
 	// Create a new SessionStoreDB with the test database
-	repo := db.NewSessionRepositoryDB(db.GetConnection())
+	repo := repositories.NewSessionRepositoryDB(db.GetConnection())
 
 	// Generate a session token
 	token, err := session.GenerateToken() // Changed to session.GenerateToken()

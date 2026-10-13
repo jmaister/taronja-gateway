@@ -1,10 +1,13 @@
-package db
+package dbmigrations
 
 import (
 	"database/sql"
 	"fmt"
 	"log"
 	"strings"
+	"time"
+
+	"github.com/jmaister/taronja-gateway/db/queries"
 
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"gorm.io/driver/sqlite"
@@ -14,42 +17,33 @@ import (
 
 // One-time bridge for databases that predate golang-migrate: AutoMigrate plus
 // three data repairs that plain SQL files cannot express (they need live schema
-// introspection). Future changes are numbered SQL files in db/migrations/.
+// introspection). Future changes are numbered SQL files in migrations/.
 
-// autoMigrateModels lists every model applyLegacyDataMigrations passes to
-// AutoMigrate — a single source of truth so a test that needs to
-// AutoMigrate a database outside of it (db/migration_v0_fixture_test.go,
-// exercising this same bridge function directly against a real historical
-// fixture) uses the exact same model list rather than a second hand-copied
-// one that could silently drift from the real one.
-var autoMigrateModels = []interface{}{
-	&User{},
-	&Session{},
-	&TrafficMetric{},
-	&Token{},
-	&Counter{},
-	&BlockedClient{},
-	&Notification{},
-	&NotificationDelivery{},
-	&NotificationChannelLink{},
-	&NotificationLinkCode{},
-	&NotificationPreference{},
+// Schema is what the migrations need from the db package, passed in because
+// db imports this package.
+type Schema struct {
+	// Models are AutoMigrated by the legacy bridge.
+	Models []interface{}
+	// HashSessionToken must match how sessions store token hashes.
+	HashSessionToken func(token string) string
 }
+
+func nowUTC() time.Time { return time.Now().UTC() }
 
 // applyLegacyDataMigrations runs AutoMigrate (after 0001_initial_schema) and then
 // the data repairs, once per database. It is a safe no-op on a fresh database:
 // each repair guards itself.
-func applyLegacyDataMigrations(sqlDB *sql.DB) error {
+func applyLegacyDataMigrations(sqlDB *sql.DB, schema Schema) error {
 	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", Conn: sqlDB}, &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent),
-		NowFunc: utcNowFunc,
+		NowFunc: nowUTC,
 	})
 	if err != nil {
 		return fmt.Errorf("wrapping connection for legacy data migrations: %w", err)
 	}
 
 	log.Printf("db: applying legacy migration: AutoMigrate (adds any columns/tables an old database is still missing)")
-	if err := gdb.AutoMigrate(autoMigrateModels...); err != nil {
+	if err := gdb.AutoMigrate(schema.Models...); err != nil {
 		return fmt.Errorf("legacy migration (AutoMigrate): %w", err)
 	}
 	log.Printf("db: applying legacy migration: normalize existing timestamps to UTC")
@@ -61,7 +55,7 @@ func applyLegacyDataMigrations(sqlDB *sql.DB) error {
 		return fmt.Errorf("legacy migration (fingerprint backfill): %w", err)
 	}
 	log.Printf("db: applying legacy migration: backfill sessions.token_hash from the old plaintext token column, and drop it")
-	if err := migrateSessionTokensToHashed(gdb); err != nil {
+	if err := migrateSessionTokensToHashed(gdb, schema.HashSessionToken); err != nil {
 		return fmt.Errorf("legacy migration (session token hashing): %w", err)
 	}
 	return nil
@@ -149,7 +143,7 @@ func backfillColumnToUTC(gdb *gorm.DB, col utcTimestampColumn) error {
 		if !row.Value.Valid {
 			continue
 		}
-		parsed, err := parseStoredTimestamp(row.Value.String)
+		parsed, err := queries.ParseStoredTimestamp(row.Value.String)
 		if err != nil {
 			log.Printf("db: skipping unparseable %s.%s value %q for %s=%s during UTC backfill: %v", col.table, col.column, row.Value.String, col.pk, row.PK, err)
 			continue
@@ -241,8 +235,8 @@ func backfillLegacyFingerprintColumn(gdb *gorm.DB, table string) error {
 // migrateSessionTokensToHashed backfills token_hash from the raw token column so
 // existing sessions stay valid. It is a no-op (guarded with HasColumn) on
 // databases that never had that column.
-func migrateSessionTokensToHashed(gdb *gorm.DB) error {
-	if !gdb.Migrator().HasColumn(&Session{}, "token") {
+func migrateSessionTokensToHashed(gdb *gorm.DB, hashSessionToken func(string) string) error {
+	if !gdb.Migrator().HasColumn("sessions", "token") {
 		return nil // fresh schema, no legacy plaintext column to backfill from
 	}
 

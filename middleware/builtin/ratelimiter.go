@@ -10,6 +10,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
 	yaml "gopkg.in/yaml.v3"
@@ -37,7 +38,7 @@ type RateLimiter struct {
 	// RateLimiterMiddleware's standalone constructor, used where there's
 	// no database to write to), in which case blocks are still enforced
 	// exactly as before, just never recorded to the persistent registry.
-	blockedClientRepo db.BlockedClientRepository
+	blockedClientRepo repositories.BlockedClientRepository
 	// blockedClientRetention bounds how long a row recordBlock wrote stays
 	// in the database before pruneBlockedClientsLoop deletes it — see
 	// RateLimiterConfig.BlockedClientRetentionDays and
@@ -127,7 +128,7 @@ func RateLimiterMiddleware(cfg RateLimiterConfig) func(http.Handler) http.Handle
 // NewRateLimiter constructs a RateLimiter and starts the cleanup goroutine.
 // blockedClientRepo may be nil (see RateLimiter.blockedClientRepo's doc
 // comment for what that means).
-func NewRateLimiter(cfg RateLimiterConfig, blockedClientRepo db.BlockedClientRepository) *RateLimiter {
+func NewRateLimiter(cfg RateLimiterConfig, blockedClientRepo repositories.BlockedClientRepository) *RateLimiter {
 	// determine cleanup interval: use block minutes or default one minute
 	interval := time.Minute
 	if cfg.BlockMinutes > 0 {

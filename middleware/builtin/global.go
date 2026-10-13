@@ -6,7 +6,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/session"
 )
@@ -16,7 +16,7 @@ import (
 type GlobalDeps struct {
 	SessionStore      session.SessionStore
 	TokenService      *auth.TokenService
-	TrafficMetricRepo db.TrafficMetricRepository
+	TrafficMetricRepo repositories.TrafficMetricRepository
 	RateLimiter       *RateLimiter
 }
 

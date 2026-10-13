@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +19,7 @@ import (
 // just that a hash also happens to be stored alongside it.
 func TestSessionToken_NeverStoredInPlaintext(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewSessionRepositoryDB(db.GetConnection())
+	repo := repositories.NewSessionRepositoryDB(db.GetConnection())
 
 	const rawToken = "super-secret-raw-session-token-value"
 	session := &db.Session{

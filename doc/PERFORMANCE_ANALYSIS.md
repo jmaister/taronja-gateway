@@ -95,7 +95,7 @@ go func() {
 
 ### 5. Database Operations
 
-**Location**: `db/sessionrepository_db.go`
+**Location**: `db/repositories/sessionrepository_db.go`
 
 **Issues**:
 - GORM query overhead for session validation
@@ -632,7 +632,7 @@ top of this document, implemented for real.
   before this fix and apparently never had been run in CI.
 
 **Measured improvement** (`BenchmarkTrafficMetricCreate_Unbatched` vs
-`_Batched`, `db/trafficmetricrepository_batching_bench_test.go`, fixed
+`_Batched`, `db/repositories/trafficmetricrepository_batching_bench_test.go`, fixed
 `-benchtime=5000x` — see that file's doc comment for why adaptive
 benchtime is the wrong tool here — 3 runs):
 

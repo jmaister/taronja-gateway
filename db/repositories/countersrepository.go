@@ -1,10 +1,12 @@
-package db
+package repositories
 
 import (
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/queries"
 	"gorm.io/gorm"
 )
 
@@ -30,14 +32,14 @@ type UserCounterSummary struct {
 
 // CounterHistoryResult represents paginated counter history
 type CounterHistoryResult struct {
-	UserID       string    `json:"user_id"`
-	CounterID    string    `json:"counter_id"`
-	Balance      int       `json:"current_balance"`
-	HasHistory   bool      `json:"has_history"` // false when user has no transactions and balance is default 0
-	Transactions []Counter `json:"transactions"`
-	TotalCount   int64     `json:"total_count"`
-	Limit        int       `json:"limit"`
-	Offset       int       `json:"offset"`
+	UserID       string       `json:"user_id"`
+	CounterID    string       `json:"counter_id"`
+	Balance      int          `json:"current_balance"`
+	HasHistory   bool         `json:"has_history"` // false when user has no transactions and balance is default 0
+	Transactions []db.Counter `json:"transactions"`
+	TotalCount   int64        `json:"total_count"`
+	Limit        int          `json:"limit"`
+	Offset       int          `json:"offset"`
 }
 
 // AllUserCountersResult represents paginated list of all users' counter balances
@@ -56,7 +58,7 @@ type CountersRepository interface {
 
 	// AdjustCounters adds or deducts counters for a user (thread-safe)
 	// Returns the new counter transaction record and updated balance
-	AdjustCounters(userID, counterID string, amount int, description string) (*Counter, error)
+	AdjustCounters(userID, counterID string, amount int, description string) (*db.Counter, error)
 
 	// GetCounterHistory gets paginated counter transaction history for a user
 	GetCounterHistory(userID, counterID string, limit, offset int) (*CounterHistoryResult, error)
@@ -65,7 +67,7 @@ type CountersRepository interface {
 	GetAllUserCounters(counterID string, limit, offset int) (*AllUserCountersResult, error)
 
 	// GetCounterTransaction gets a specific counter transaction by ID
-	GetCounterTransaction(transactionID string) (*Counter, error)
+	GetCounterTransaction(transactionID string) (*db.Counter, error)
 
 	// GetAvailableCounterTypes gets a list of all available counter type IDs
 	GetAvailableCounterTypes() ([]string, error)
@@ -91,7 +93,7 @@ type userCounterScan struct {
 func (u *userCounterScan) toUserCounterSummary() (*UserCounterSummary, error) {
 	// See parseStoredTimestamp's comment for why this shares its layout
 	// list rather than keeping its own.
-	lastUpdated, err := parseStoredTimestamp(u.LastUpdated)
+	lastUpdated, err := queries.ParseStoredTimestamp(u.LastUpdated)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse LastUpdated for user %s: %w", u.UserID, err)
 	}
@@ -115,7 +117,7 @@ func NewDBCountersRepository(db *gorm.DB) *CountersRepositoryDB {
 
 // GetUserBalance gets the current counter balance for a user
 func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*CounterSummary, error) {
-	var lastCounter Counter
+	var lastCounter db.Counter
 
 	// Get the most recent counter transaction to get the current balance
 	result := r.db.Where("user_id = ? AND counter_id = ?", userID, counterID).Order("created_at desc").First(&lastCounter)
@@ -145,14 +147,14 @@ func (r *CountersRepositoryDB) GetUserBalance(userID, counterID string) (*Counte
 }
 
 // AdjustCounters adds or deducts counters for a user (thread-safe)
-func (r *CountersRepositoryDB) AdjustCounters(userID, counterID string, amount int, description string) (*Counter, error) {
-	var newCounter Counter
+func (r *CountersRepositoryDB) AdjustCounters(userID, counterID string, amount int, description string) (*db.Counter, error) {
+	var newCounter db.Counter
 
 	// Use a transaction to ensure thread-safety
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		// Get current balance
 		var currentBalance int
-		var lastCounter Counter
+		var lastCounter db.Counter
 
 		result := tx.Where("user_id = ? AND counter_id = ?", userID, counterID).Order("created_at desc").First(&lastCounter)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -174,7 +176,7 @@ func (r *CountersRepositoryDB) AdjustCounters(userID, counterID string, amount i
 		}
 
 		// Create new counter transaction
-		newCounter = Counter{
+		newCounter = db.Counter{
 			UserID:       userID,
 			CounterID:    counterID,
 			Amount:       amount,
@@ -198,11 +200,11 @@ func (r *CountersRepositoryDB) AdjustCounters(userID, counterID string, amount i
 
 // GetCounterHistory gets paginated counter transaction history for a user
 func (r *CountersRepositoryDB) GetCounterHistory(userID, counterID string, limit, offset int) (*CounterHistoryResult, error) {
-	var counters []Counter
+	var counters []db.Counter
 	var totalCount int64
 
 	// Get total count
-	if err := r.db.Model(&Counter{}).Where("user_id = ? AND counter_id = ?", userID, counterID).Count(&totalCount).Error; err != nil {
+	if err := r.db.Model(&db.Counter{}).Where("user_id = ? AND counter_id = ?", userID, counterID).Count(&totalCount).Error; err != nil {
 		return nil, fmt.Errorf("failed to count counter transactions: %w", err)
 	}
 
@@ -219,7 +221,7 @@ func (r *CountersRepositoryDB) GetCounterHistory(userID, counterID string, limit
 	currentBalance := 0
 	hasHistory := totalCount > 0
 	if hasHistory {
-		var lastCounter Counter
+		var lastCounter db.Counter
 		if err := r.db.Where("user_id = ? AND counter_id = ?", userID, counterID).Order("created_at desc").First(&lastCounter).Error; err == nil {
 			currentBalance = lastCounter.BalanceAfter
 		}
@@ -243,7 +245,7 @@ func (r *CountersRepositoryDB) GetAllUserCounters(counterID string, limit, offse
 	var totalCount int64
 
 	// Get total count of users
-	if err := r.db.Model(&User{}).Count(&totalCount).Error; err != nil {
+	if err := r.db.Model(&db.User{}).Count(&totalCount).Error; err != nil {
 		return nil, fmt.Errorf("failed to count users: %w", err)
 	}
 
@@ -301,8 +303,8 @@ func (r *CountersRepositoryDB) GetAllUserCounters(counterID string, limit, offse
 }
 
 // GetCounterTransaction gets a specific counter transaction by ID
-func (r *CountersRepositoryDB) GetCounterTransaction(transactionID string) (*Counter, error) {
-	var counter Counter
+func (r *CountersRepositoryDB) GetCounterTransaction(transactionID string) (*db.Counter, error) {
+	var counter db.Counter
 
 	if err := r.db.Preload("User").First(&counter, "id = ?", transactionID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -318,7 +320,7 @@ func (r *CountersRepositoryDB) GetCounterTransaction(transactionID string) (*Cou
 func (r *CountersRepositoryDB) GetAvailableCounterTypes() ([]string, error) {
 	var counterTypes []string
 
-	if err := r.db.Model(&Counter{}).
+	if err := r.db.Model(&db.Counter{}).
 		Distinct("counter_id").
 		Order("counter_id").
 		Pluck("counter_id", &counterTypes).Error; err != nil {

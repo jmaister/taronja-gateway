@@ -1,8 +1,9 @@
-package db
+package repositories
 
 import (
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
 	"gorm.io/gorm"
 )
 
@@ -15,11 +16,11 @@ type BlockedClientRepository interface {
 	// middleware/builtin/ratelimiter.go's Handler in a background goroutine —
 	// never on the hot path of the request that's actively being
 	// rejected with a 429.
-	Create(bc *BlockedClient) error
+	Create(bc *db.BlockedClient) error
 	// List returns block events matching filter, most recent first, along
 	// with the total count matching it (ignoring limit/offset) for
 	// pagination.
-	List(filter BlockedClientFilter, limit, offset int) ([]BlockedClient, int64, error)
+	List(filter BlockedClientFilter, limit, offset int) ([]db.BlockedClient, int64, error)
 	// DeleteOlderThan permanently removes every block event whose
 	// BlockedAt is before cutoff, returning how many rows were removed.
 	// Called periodically by middleware.RateLimiter (see its
@@ -39,18 +40,18 @@ func NewBlockedClientRepositoryDB(db *gorm.DB) *BlockedClientRepositoryDB {
 	return &BlockedClientRepositoryDB{db: db}
 }
 
-func (r *BlockedClientRepositoryDB) Create(bc *BlockedClient) error {
+func (r *BlockedClientRepositoryDB) Create(bc *db.BlockedClient) error {
 	return r.db.Create(bc).Error
 }
 
-func (r *BlockedClientRepositoryDB) List(filter BlockedClientFilter, limit, offset int) ([]BlockedClient, int64, error) {
+func (r *BlockedClientRepositoryDB) List(filter BlockedClientFilter, limit, offset int) ([]db.BlockedClient, int64, error) {
 	var total int64
-	if err := filter.apply(r.db.Model(&BlockedClient{})).Count(&total).Error; err != nil {
+	if err := filter.apply(r.db.Model(&db.BlockedClient{})).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	var items []BlockedClient
-	err := filter.apply(r.db.Model(&BlockedClient{})).Order("blocked_at DESC").Limit(limit).Offset(offset).Find(&items).Error
+	var items []db.BlockedClient
+	err := filter.apply(r.db.Model(&db.BlockedClient{})).Order("blocked_at DESC").Limit(limit).Offset(offset).Find(&items).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -79,6 +80,6 @@ func (r *BlockedClientRepositoryDB) DeleteOlderThan(cutoff time.Time) (int64, er
 	// growth this exists to bound, would still be sitting in the table.
 	// This is a retention prune, not a user-facing removal, so an actual
 	// hard DELETE is what's wanted here.
-	result := r.db.Unscoped().Where("blocked_at < ?", cutoff).Delete(&BlockedClient{})
+	result := r.db.Unscoped().Where("blocked_at < ?", cutoff).Delete(&db.BlockedClient{})
 	return result.RowsAffected, result.Error
 }

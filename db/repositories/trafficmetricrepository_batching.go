@@ -1,10 +1,12 @@
-package db
+package repositories
 
 import (
 	"fmt"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/db"
 )
 
 // BatchingTrafficMetricRepository coalesces Create calls into periodic bulk
@@ -27,7 +29,7 @@ type BatchingTrafficMetricRepository struct {
 	maxPending int
 
 	mu      sync.Mutex
-	pending []*TrafficMetric
+	pending []*db.TrafficMetric
 	// dropped counts records Create has discarded because maxPending was
 	// reached — read/reset only by flush's periodic log line, never by
 	// Create itself, so incrementing it needs no separate lock beyond the
@@ -69,7 +71,7 @@ func NewBatchingTrafficMetricRepository(inner TrafficMetricRepository, maxBatchS
 
 // Create buffers stat and returns immediately; the background goroutine flushes it.
 // If the buffer is at maxPending the record is dropped and an error is returned.
-func (b *BatchingTrafficMetricRepository) Create(stat *TrafficMetric) error {
+func (b *BatchingTrafficMetricRepository) Create(stat *db.TrafficMetric) error {
 	b.mu.Lock()
 	if len(b.pending) >= b.maxPending {
 		b.dropped++

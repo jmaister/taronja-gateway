@@ -1,19 +1,20 @@
 // filepath: c:\dev\workspace\taronja-gateway\db\mockdb.go
-package db
+package repositories
 
 import (
 	"errors"
 	"fmt"
 
+	"github.com/jmaister/taronja-gateway/db"
 	"gorm.io/gorm"
 )
 
 // UserRepository interface for abstracting user database operations
 type UserRepository interface {
-	FindUserByIdOrUsername(id, username, email string) (*User, error)
-	CreateUser(user *User) error
-	GetAllUsers() ([]*User, error)
-	UpdateUser(user *User) error
+	FindUserByIdOrUsername(id, username, email string) (*db.User, error)
+	CreateUser(user *db.User) error
+	GetAllUsers() ([]*db.User, error)
+	UpdateUser(user *db.User) error
 	DeleteUser(id string) error
 	EnsureAdminUser(username, email, password string) error
 }
@@ -31,8 +32,8 @@ func NewDBUserRepository(db *gorm.DB) *UserRepositoryDB {
 }
 
 // FindUserByIdOrUsername finds a user by ID, username, or email
-func (r *UserRepositoryDB) FindUserByIdOrUsername(id, username, email string) (*User, error) {
-	var user User
+func (r *UserRepositoryDB) FindUserByIdOrUsername(id, username, email string) (*db.User, error) {
+	var user db.User
 
 	if id != "" {
 		result := r.db.First(&user, "id = ?", id)
@@ -68,7 +69,7 @@ func (r *UserRepositoryDB) FindUserByIdOrUsername(id, username, email string) (*
 }
 
 // CreateUser adds a new user to the repository
-func (r *UserRepositoryDB) CreateUser(user *User) error {
+func (r *UserRepositoryDB) CreateUser(user *db.User) error {
 	// GORM will use the BeforeCreate hook that generates a CUID
 	// Password hashing is handled automatically by the BeforeSave hook
 	result := r.db.Create(user)
@@ -76,10 +77,10 @@ func (r *UserRepositoryDB) CreateUser(user *User) error {
 }
 
 // UpdateUser updates an existing user in the repository
-func (r *UserRepositoryDB) UpdateUser(user *User) error {
+func (r *UserRepositoryDB) UpdateUser(user *db.User) error {
 	// Make sure the user exists
 	var count int64
-	r.db.Model(&User{}).Where("id = ?", user.ID).Count(&count)
+	r.db.Model(&db.User{}).Where("id = ?", user.ID).Count(&count)
 	if count == 0 {
 		return errors.New("user not found")
 	}
@@ -91,7 +92,7 @@ func (r *UserRepositoryDB) UpdateUser(user *User) error {
 
 // DeleteUser removes a user from the repository
 func (r *UserRepositoryDB) DeleteUser(id string) error {
-	result := r.db.Delete(&User{}, "id = ?", id)
+	result := r.db.Delete(&db.User{}, "id = ?", id)
 	if result.RowsAffected == 0 {
 		return errors.New("user not found")
 	}
@@ -99,8 +100,8 @@ func (r *UserRepositoryDB) DeleteUser(id string) error {
 }
 
 // GetAllUsers retrieves all users from the database.
-func (r *UserRepositoryDB) GetAllUsers() ([]*User, error) {
-	users := []*User{}
+func (r *UserRepositoryDB) GetAllUsers() ([]*db.User, error) {
+	users := []*db.User{}
 	result := r.db.Find(&users)
 	if result.Error != nil {
 		return nil, fmt.Errorf("error getting all users: %w", result.Error)
@@ -136,12 +137,12 @@ func (r *UserRepositoryDB) EnsureAdminUser(username, email, password string) err
 	}
 
 	// User doesn't exist, create new admin user
-	adminUser := &User{
+	adminUser := &db.User{
 		Username:       username,
 		Email:          email,
-		Password:       password,      // Will be hashed by BeforeSave hook
-		EmailConfirmed: true,          // Admin users are always confirmed
-		Provider:       AdminProvider, // Mark as config-based user
+		Password:       password,         // Will be hashed by BeforeSave hook
+		EmailConfirmed: true,             // Admin users are always confirmed
+		Provider:       db.AdminProvider, // Mark as config-based user
 	}
 
 	err = r.CreateUser(adminUser)

@@ -1,4 +1,4 @@
-package db_test
+package repositories_test
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 )
 
 // Run both benchmarks below with a fixed iteration count, e.g.
@@ -25,7 +26,7 @@ import (
 // and what deps.NewTest() (and so every gateway benchmark/test) still does.
 func BenchmarkTrafficMetricCreate_Unbatched(b *testing.B) {
 	db.SetupTestDB("BenchmarkTrafficMetricCreate_Unbatched")
-	repo := db.NewTrafficMetricRepository(db.GetConnection())
+	repo := repositories.NewTrafficMetricRepository(db.GetConnection())
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -45,8 +46,8 @@ func BenchmarkTrafficMetricCreate_Unbatched(b *testing.B) {
 // been flushed by a full batch or the ticker yet, same as a real shutdown.
 func BenchmarkTrafficMetricCreate_Batched(b *testing.B) {
 	db.SetupTestDB("BenchmarkTrafficMetricCreate_Batched")
-	inner := db.NewTrafficMetricRepository(db.GetConnection())
-	batched := db.NewBatchingTrafficMetricRepository(inner, 100, 500*time.Millisecond)
+	inner := repositories.NewTrafficMetricRepository(db.GetConnection())
+	batched := repositories.NewBatchingTrafficMetricRepository(inner, 100, 500*time.Millisecond)
 
 	b.ResetTimer()
 	b.ReportAllocs()

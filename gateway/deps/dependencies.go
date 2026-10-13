@@ -6,6 +6,7 @@ import (
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
@@ -17,13 +18,13 @@ type Dependencies struct {
 	DB *gorm.DB
 
 	// Repositories
-	UserRepo          db.UserRepository
-	SessionRepo       db.SessionRepository
-	TrafficMetricRepo db.TrafficMetricRepository
-	TokenRepo         db.TokenRepository
-	CountersRepo      db.CountersRepository
-	BlockedClientRepo db.BlockedClientRepository
-	NotificationRepo  db.NotificationRepository
+	UserRepo          repositories.UserRepository
+	SessionRepo       repositories.SessionRepository
+	TrafficMetricRepo repositories.TrafficMetricRepository
+	TokenRepo         repositories.TokenRepository
+	CountersRepo      repositories.CountersRepository
+	BlockedClientRepo repositories.BlockedClientRepository
+	NotificationRepo  repositories.NotificationRepository
 
 	// Services
 	SessionStore session.SessionStore
@@ -39,7 +40,7 @@ type Dependencies struct {
 }
 
 // trafficMetricsBatchSize and trafficMetricsFlushInterval configure the
-// db.BatchingTrafficMetricRepository NewProduction wraps TrafficMetricRepo
+// repositories.BatchingTrafficMetricRepository NewProduction wraps TrafficMetricRepo
 // in. Not user-configurable (unlike the traffic_metrics middleware options): this
 // is a pure implementation-detail efficiency change with no user-visible
 // behavior difference beyond "up to this much recent traffic-metrics data
@@ -71,20 +72,20 @@ func NewProduction() *Dependencies {
 	gormDB := db.GetConnection()
 
 	// Create repositories using database implementations
-	userRepo := db.NewDBUserRepository(gormDB)
-	sessionRepo := db.NewSessionRepositoryDB(gormDB)
+	userRepo := repositories.NewDBUserRepository(gormDB)
+	sessionRepo := repositories.NewSessionRepositoryDB(gormDB)
 	// Wrapped in a batcher: see the trafficMetricsBatchSize doc comment and
 	// doc/PERFORMANCE_ANALYSIS.md for why. Dependencies.Close flushes it on
 	// shutdown.
-	trafficMetricRepo := db.NewBatchingTrafficMetricRepository(
-		db.NewTrafficMetricRepository(gormDB),
+	trafficMetricRepo := repositories.NewBatchingTrafficMetricRepository(
+		repositories.NewTrafficMetricRepository(gormDB),
 		trafficMetricsBatchSize,
 		trafficMetricsFlushInterval,
 	)
-	tokenRepo := db.NewTokenRepositoryDB(gormDB)
-	countersRepo := db.NewDBCountersRepository(gormDB)
-	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
-	notificationRepo := db.NewNotificationRepositoryDB(gormDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(gormDB)
+	countersRepo := repositories.NewDBCountersRepository(gormDB)
+	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
+	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -122,13 +123,13 @@ func NewTestWithName(testName string) *Dependencies {
 	gormDB := db.GetConnection()
 
 	// Create repositories using database implementations (not memory!)
-	userRepo := db.NewDBUserRepository(gormDB)
-	sessionRepo := db.NewSessionRepositoryDB(gormDB)
-	trafficMetricRepo := db.NewTrafficMetricRepository(gormDB)
-	tokenRepo := db.NewTokenRepositoryDB(gormDB)
-	countersRepo := db.NewDBCountersRepository(gormDB)
-	blockedClientRepo := db.NewBlockedClientRepositoryDB(gormDB)
-	notificationRepo := db.NewNotificationRepositoryDB(gormDB)
+	userRepo := repositories.NewDBUserRepository(gormDB)
+	sessionRepo := repositories.NewSessionRepositoryDB(gormDB)
+	trafficMetricRepo := repositories.NewTrafficMetricRepository(gormDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(gormDB)
+	countersRepo := repositories.NewDBCountersRepository(gormDB)
+	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
+	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)

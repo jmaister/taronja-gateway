@@ -1,4 +1,4 @@
-package db
+package dbmigrations_test
 
 import (
 	"fmt"
@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/dbmigrations"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware/fingerprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,7 +18,7 @@ import (
 )
 
 // migrationsNonUTC is a fixed +01:00 zone standing in for "whatever the
-// host's local zone happened to be" before db.utcNowFunc and the
+// host's local zone happened to be" before db.db.NowUTC and the
 // BeforeSave hooks existed — deliberately not UTC. Named "CEST" (a real
 // zone abbreviation) rather than something synthetic: this test writes the
 // raw text directly (bypassing the normal write path, to simulate a
@@ -27,12 +30,12 @@ var migrationsNonUTC = time.FixedZone("CEST", 60*60)
 
 // seedLegacyRow creates a real row through the normal (already
 // UTC-normalizing) path, then overwrites one column with raw legacy-format
-// text via direct SQL — simulating a row written before db.utcNowFunc and
+// text via direct SQL — simulating a row written before db.db.NowUTC and
 // the BeforeSave hooks existed, without needing to satisfy every other
 // NOT NULL constraint by hand.
 func seedLegacyTimestampColumn(t *testing.T, table, column, pkColumn, pkValue string, legacyValue time.Time) {
 	t.Helper()
-	require.NoError(t, GetConnection().Exec(
+	require.NoError(t, db.GetConnection().Exec(
 		"UPDATE "+table+" SET "+column+" = ? WHERE "+pkColumn+" = ?", legacyValue, pkValue,
 	).Error)
 }
@@ -42,7 +45,7 @@ func seedLegacyTimestampColumn(t *testing.T, table, column, pkColumn, pkValue st
 func readTimestampColumn(t *testing.T, table, column, pkColumn, pkValue string) time.Time {
 	t.Helper()
 	var stored time.Time
-	require.NoError(t, GetConnection().Raw(
+	require.NoError(t, db.GetConnection().Raw(
 		"SELECT "+column+" FROM "+table+" WHERE "+pkColumn+" = ?", pkValue,
 	).Row().Scan(&stored))
 	return stored
@@ -51,33 +54,33 @@ func readTimestampColumn(t *testing.T, table, column, pkColumn, pkValue string) 
 // TestMigrateTimestampsToUTC_BackfillsLegacyRows is the core regression
 // test for the scenario db.migrateTimestampsToUTC exists to fix: a
 // database with rows already written in a non-UTC zone (from before
-// db.utcNowFunc and the BeforeSave hooks existed) should end up with those
+// db.db.NowUTC and the BeforeSave hooks existed) should end up with those
 // rows normalized to UTC once this migration runs — covering one column
-// from each of the five tables utcTimestampColumns lists.
+// from each of the five tables dbmigrations.UTCTimestampColumns lists.
 func TestMigrateTimestampsToUTC_BackfillsLegacyRows(t *testing.T) {
-	SetupTestDB(t.Name())
+	db.SetupTestDB(t.Name())
 
-	user := &User{Username: "legacy-user", Email: "legacy@example.com"}
-	require.NoError(t, GetConnection().Create(user).Error)
+	user := &db.User{Username: "legacy-user", Email: "legacy@example.com"}
+	require.NoError(t, db.GetConnection().Create(user).Error)
 	legacyResetExpires := time.Date(2026, 6, 1, 8, 0, 0, 0, migrationsNonUTC)
 	seedLegacyTimestampColumn(t, "users", "password_reset_expires", "id", user.ID, legacyResetExpires)
 
-	session := &Session{Token: "legacy-session", UserID: user.ID, ValidUntil: time.Now().Add(time.Hour)}
-	require.NoError(t, NewSessionRepositoryDB(GetConnection()).CreateSession("legacy-session", session))
+	session := &db.Session{Token: "legacy-session", UserID: user.ID, ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, repositories.NewSessionRepositoryDB(db.GetConnection()).CreateSession("legacy-session", session))
 	sessionID := strconv.FormatUint(uint64(session.ID), 10)
 	legacyValidUntil := time.Date(2026, 6, 2, 9, 30, 0, 0, migrationsNonUTC)
 	// "id", not "token": Session.Token is gorm:"-" (never a real column, see
 	// db.Session's doc comment) — gorm.Model's own "id" is used here instead.
 	seedLegacyTimestampColumn(t, "sessions", "valid_until", "id", sessionID, legacyValidUntil)
 
-	metric := &TrafficMetric{HttpMethod: "GET", Path: "/legacy", HttpStatus: 200}
-	require.NoError(t, GetConnection().Create(metric).Error)
+	metric := &db.TrafficMetric{HttpMethod: "GET", Path: "/legacy", HttpStatus: 200}
+	require.NoError(t, db.GetConnection().Create(metric).Error)
 	metricID := strconv.FormatUint(uint64(metric.ID), 10)
 	legacyTimestamp := time.Date(2026, 6, 3, 10, 0, 0, 0, migrationsNonUTC)
 	seedLegacyTimestampColumn(t, "traffic_metrics", "timestamp", "id", metricID, legacyTimestamp)
 
-	token := &Token{UserID: user.ID, TokenHash: "legacy-hash", Name: "legacy-token"}
-	require.NoError(t, NewTokenRepositoryDB(GetConnection()).CreateToken(token))
+	token := &db.Token{UserID: user.ID, TokenHash: "legacy-hash", Name: "legacy-token"}
+	require.NoError(t, repositories.NewTokenRepositoryDB(db.GetConnection()).CreateToken(token))
 	legacyExpiresAt := time.Date(2026, 6, 4, 11, 0, 0, 0, migrationsNonUTC)
 	seedLegacyTimestampColumn(t, "tokens", "expires_at", "id", token.ID, legacyExpiresAt)
 
@@ -87,7 +90,7 @@ func TestMigrateTimestampsToUTC_BackfillsLegacyRows(t *testing.T) {
 	_, beforeOffset := before.Zone()
 	require.NotEqual(t, 0, beforeOffset, "seeding should have produced a non-UTC stored value")
 
-	require.NoError(t, migrateTimestampsToUTC(GetConnection()))
+	require.NoError(t, dbmigrations.MigrateTimestampsToUTC(db.GetConnection()))
 
 	for _, tc := range []struct {
 		table, column, pkColumn, pkValue string
@@ -117,13 +120,13 @@ func TestMigrateTimestampsToUTC_BackfillsLegacyRows(t *testing.T) {
 func addLegacyFingerprintColumns(t *testing.T, table string) {
 	t.Helper()
 	for _, col := range []string{"ja4_fingerprint", "ja4_tls_fingerprint", "stable_fingerprint"} {
-		require.NoError(t, GetConnection().Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s TEXT", table, col)).Error)
+		require.NoError(t, db.GetConnection().Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s TEXT", table, col)).Error)
 	}
 }
 
 func seedLegacyFingerprintColumns(t *testing.T, table, pkColumn, pkValue, ja4, ja4tls, stable string) {
 	t.Helper()
-	require.NoError(t, GetConnection().Exec(
+	require.NoError(t, db.GetConnection().Exec(
 		fmt.Sprintf("UPDATE %s SET ja4_fingerprint = ?, ja4_tls_fingerprint = ?, stable_fingerprint = ? WHERE %s = ?", table, pkColumn),
 		ja4, ja4tls, stable, pkValue,
 	).Error)
@@ -138,17 +141,17 @@ func seedLegacyFingerprintColumns(t *testing.T, table, pkColumn, pkValue, ja4, j
 // that already has Fingerprint set (should be left alone, not overwritten
 // from a stale old column, even a decoy one).
 func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
-	SetupTestDB(t.Name())
-	gdb := GetConnection()
+	db.SetupTestDB(t.Name())
+	gdb := db.GetConnection()
 	addLegacyFingerprintColumns(t, "sessions")
 
 	// "id", not "token": Session.Token is gorm:"-" (never a real column, see
 	// db.Session's doc comment) — gorm.Model's own "id" is used here
 	// instead, keyed by the same token strings for readability.
-	repo := NewSessionRepositoryDB(gdb)
+	repo := repositories.NewSessionRepositoryDB(gdb)
 	ids := map[string]string{}
 	for _, token := range []string{"all-three-present", "stable-and-ja4h", "ja4h-only", "none-present"} {
-		session := &Session{UserID: "test-user", ValidUntil: time.Now().Add(time.Hour)}
+		session := &db.Session{UserID: "test-user", ValidUntil: time.Now().Add(time.Hour)}
 		require.NoError(t, repo.CreateSession(token, session))
 		ids[token] = strconv.FormatUint(uint64(session.ID), 10)
 	}
@@ -162,7 +165,7 @@ func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
 		"already-set-value", "ja4h", ids["none-present"],
 	).Error)
 
-	require.NoError(t, migrateLegacyFingerprintColumns(gdb))
+	require.NoError(t, dbmigrations.MigrateLegacyFingerprintColumns(gdb))
 
 	type result struct {
 		Fingerprint     string
@@ -186,8 +189,8 @@ func TestMigrateLegacyFingerprintColumns_BackfillsByPriority(t *testing.T) {
 // columns at all. migrateLegacyFingerprintColumns must not error trying to
 // reference a column that was never there.
 func TestMigrateLegacyFingerprintColumns_NoOpWhenColumnsNeverExisted(t *testing.T) {
-	SetupTestDB(t.Name())
-	require.NoError(t, migrateLegacyFingerprintColumns(GetConnection()))
+	db.SetupTestDB(t.Name())
+	require.NoError(t, dbmigrations.MigrateLegacyFingerprintColumns(db.GetConnection()))
 }
 
 // TestMigrateSessionTokensToHashed_DropsLegacyColumn is the regression test
@@ -207,7 +210,7 @@ func TestMigrateLegacyFingerprintColumns_NoOpWhenColumnsNeverExisted(t *testing.
 func TestMigrateSessionTokensToHashed_DropsLegacyColumn(t *testing.T) {
 	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent),
-		NowFunc: utcNowFunc,
+		NowFunc: db.NowUTC,
 	})
 	require.NoError(t, err)
 
@@ -221,21 +224,21 @@ func TestMigrateSessionTokensToHashed_DropsLegacyColumn(t *testing.T) {
 	require.NoError(t, gdb.Exec(`INSERT INTO sessions (token, user_id, valid_until) VALUES (?, ?, ?)`,
 		"legacy-plaintext-token", "legacy-user", time.Now().Add(time.Hour)).Error)
 
-	require.NoError(t, gdb.AutoMigrate(autoMigrateModels...))
-	require.NoError(t, migrateSessionTokensToHashed(gdb))
+	require.NoError(t, gdb.AutoMigrate(db.Models...))
+	require.NoError(t, dbmigrations.MigrateSessionTokensToHashed(gdb, db.HashSessionToken))
 
 	// The existing row's token_hash was actually backfilled...
 	var gotHash string
 	require.NoError(t, gdb.Raw(`SELECT token_hash FROM sessions WHERE user_id = ?`, "legacy-user").Row().Scan(&gotHash))
-	assert.Equal(t, hashSessionToken("legacy-plaintext-token"), gotHash)
+	assert.Equal(t, db.HashSessionToken("legacy-plaintext-token"), gotHash)
 
 	// ...and the legacy column is actually gone, not just backfilled from.
-	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"))
+	assert.False(t, gdb.Migrator().HasColumn(&db.Session{}, "token"))
 
 	// The actual regression: a brand new session must be creatable
 	// against this now-migrated table.
-	newSession := &Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
-	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession))
+	newSession := &db.Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, repositories.NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession))
 }
 
 // TestRunMigrations_HealsDatabaseStuckMidOldSystem is the regression test
@@ -244,16 +247,16 @@ func TestMigrateSessionTokensToHashed_DropsLegacyColumn(t *testing.T) {
 // version of migrateSessionTokensToHashed that backfilled token_hash but
 // never dropped the legacy token column, recording user_version=3 as a
 // successful run regardless. needsLegacyBridge must treat any value other
-// than legacyBridgeDoneVersion as "still needs the bridge" — including an
+// than dbmigrations.LegacyBridgeDoneVersion as "still needs the bridge" — including an
 // old, seemingly-progressed value like 3 — not just a bare 0, or a database
 // stuck exactly there would never get healed. Builds one in exactly that
-// stuck state and confirms a single runMigrations call heals it: the
+// stuck state and confirms a single dbmigrations.Run call heals it: the
 // column actually dropped, and a new session created against it
 // succeeding, without needing any manual intervention.
 func TestRunMigrations_HealsDatabaseStuckMidOldSystem(t *testing.T) {
 	gdb, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent),
-		NowFunc: utcNowFunc,
+		NowFunc: db.NowUTC,
 	})
 	require.NoError(t, err)
 
@@ -266,64 +269,66 @@ func TestRunMigrations_HealsDatabaseStuckMidOldSystem(t *testing.T) {
 	)`).Error)
 	require.NoError(t, gdb.Exec(`INSERT INTO sessions (token, user_id, valid_until) VALUES (?, ?, ?)`,
 		"legacy-plaintext-token", "legacy-user", time.Now().Add(time.Hour)).Error)
-	require.NoError(t, gdb.AutoMigrate(autoMigrateModels...))
+	require.NoError(t, gdb.AutoMigrate(db.Models...))
 
 	// Simulate the buggy version of the old migration 3 having already run
 	// and been recorded: token_hash backfilled correctly, token column left
-	// behind, user_version already at 3 (not 0, and not legacyBridgeDoneVersion).
-	require.NoError(t, gdb.Exec(`UPDATE sessions SET token_hash = ?`, hashSessionToken("legacy-plaintext-token")).Error)
+	// behind, user_version already at 3 (not 0, and not dbmigrations.LegacyBridgeDoneVersion).
+	require.NoError(t, gdb.Exec(`UPDATE sessions SET token_hash = ?`, db.HashSessionToken("legacy-plaintext-token")).Error)
 	sqlDB, err := gdb.DB()
 	require.NoError(t, err)
 	_, err = sqlDB.Exec("PRAGMA user_version = 3")
 	require.NoError(t, err)
 
-	require.NoError(t, runMigrations(sqlDB))
+	require.NoError(t, dbmigrations.Run(sqlDB, testSchema))
 
-	assert.False(t, gdb.Migrator().HasColumn(&Session{}, "token"),
+	assert.False(t, gdb.Migrator().HasColumn(&db.Session{}, "token"),
 		"the bridge must drop the column a database stuck at the old user_version=3 never got dropped for")
-	newSession := &Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
-	require.NoError(t, NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession),
-		"a previously-stuck database must accept new sessions after runMigrations")
+	newSession := &db.Session{UserID: "new-user", ValidUntil: time.Now().Add(time.Hour)}
+	require.NoError(t, repositories.NewSessionRepositoryDB(gdb).CreateSession("a-brand-new-token", newSession),
+		"a previously-stuck database must accept new sessions after dbmigrations.Run")
 }
 
 // TestRunMigrations_LegacyBridgeIsIdempotent covers needsLegacyBridge's
-// gating: running runMigrations twice should only apply the legacy bridge
+// gating: running dbmigrations.Run twice should only apply the legacy bridge
 // once — simulated here by seeding a legacy row, migrating, manually
-// re-seeding the same legacy value, and confirming a second runMigrations
+// re-seeding the same legacy value, and confirming a second dbmigrations.Run
 // call leaves it untouched (proving it short-circuited on
-// legacyBridgeDoneVersion, not that migrateTimestampsToUTC is itself a
+// dbmigrations.LegacyBridgeDoneVersion, not that migrateTimestampsToUTC is itself a
 // no-op the second time around, which it also would be, just not what this
 // test is isolating).
 func TestRunMigrations_LegacyBridgeIsIdempotent(t *testing.T) {
-	SetupTestDB(t.Name())
-	sqlDB, err := GetConnection().DB()
+	db.SetupTestDB(t.Name())
+	sqlDB, err := db.GetConnection().DB()
 	require.NoError(t, err)
 
 	// SetupTestDB already ran the bridge once (a no-op, since nothing
 	// needed it yet) and recorded it done — reset that marker so this
-	// test's own first runMigrations call below is the one actually being
+	// test's own first dbmigrations.Run call below is the one actually being
 	// isolated, the same way it would be for a real database that's never
 	// seen this bridge before.
 	_, err = sqlDB.Exec("PRAGMA user_version = 0")
 	require.NoError(t, err)
 
-	user := &User{Username: "idempotent-user", Email: "idempotent@example.com"}
-	require.NoError(t, GetConnection().Create(user).Error)
+	user := &db.User{Username: "idempotent-user", Email: "idempotent@example.com"}
+	require.NoError(t, db.GetConnection().Create(user).Error)
 	legacy := time.Date(2026, 6, 1, 8, 0, 0, 0, migrationsNonUTC)
 	seedLegacyTimestampColumn(t, "users", "password_reset_expires", "id", user.ID, legacy)
 
-	require.NoError(t, runMigrations(sqlDB))
+	require.NoError(t, dbmigrations.Run(sqlDB, testSchema))
 	migrated := readTimestampColumn(t, "users", "password_reset_expires", "id", user.ID)
 	_, offset := migrated.Zone()
 	require.Equal(t, 0, offset)
 
 	// Re-seed the same legacy (non-UTC) value directly, bypassing the
-	// migration, then run runMigrations again. If the gate works, this
+	// migration, then run dbmigrations.Run again. If the gate works, this
 	// value is left alone (still non-UTC) — the bridge never re-runs,
 	// since the database's user_version already records it as applied.
 	seedLegacyTimestampColumn(t, "users", "password_reset_expires", "id", user.ID, legacy)
-	require.NoError(t, runMigrations(sqlDB))
+	require.NoError(t, dbmigrations.Run(sqlDB, testSchema))
 	untouched := readTimestampColumn(t, "users", "password_reset_expires", "id", user.ID)
 	_, untouchedOffset := untouched.Zone()
-	assert.NotEqual(t, 0, untouchedOffset, "second runMigrations call should have skipped the already-applied legacy bridge, not re-normalized it")
+	assert.NotEqual(t, 0, untouchedOffset, "second dbmigrations.Run call should have skipped the already-applied legacy bridge, not re-normalized it")
 }
+
+var testSchema = dbmigrations.Schema{Models: db.Models, HashSessionToken: db.HashSessionToken}

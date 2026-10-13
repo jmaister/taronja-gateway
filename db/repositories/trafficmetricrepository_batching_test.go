@@ -1,4 +1,4 @@
-package db_test
+package repositories_test
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/queries"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,8 +24,8 @@ func newTestMetric(path string) *db.TrafficMetric {
 
 func TestBatchingTrafficMetricRepository_FlushesOnBatchSize(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	inner := db.NewTrafficMetricRepository(db.GetConnection())
-	batched := db.NewBatchingTrafficMetricRepository(inner, 3, time.Hour) // flushInterval long enough to never fire on its own
+	inner := repositories.NewTrafficMetricRepository(db.GetConnection())
+	batched := repositories.NewBatchingTrafficMetricRepository(inner, 3, time.Hour) // flushInterval long enough to never fire on its own
 	defer batched.Close()
 
 	for i := 0; i < 3; i++ {
@@ -33,36 +35,36 @@ func TestBatchingTrafficMetricRepository_FlushesOnBatchSize(t *testing.T) {
 	// The 3rd Create should have triggered a flush; give the background
 	// goroutine a moment to run it rather than asserting instantaneously.
 	require.Eventually(t, func() bool {
-		count, err := inner.CountRequests(db.TrafficFilter{})
+		count, err := inner.CountRequests(queries.TrafficFilter{})
 		return err == nil && count == 3
 	}, time.Second, 5*time.Millisecond, "expected all 3 records to be flushed once maxBatchSize was reached")
 }
 
 func TestBatchingTrafficMetricRepository_FlushesOnInterval(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	inner := db.NewTrafficMetricRepository(db.GetConnection())
-	batched := db.NewBatchingTrafficMetricRepository(inner, 100, 20*time.Millisecond) // maxBatchSize high enough to never trigger on its own
+	inner := repositories.NewTrafficMetricRepository(db.GetConnection())
+	batched := repositories.NewBatchingTrafficMetricRepository(inner, 100, 20*time.Millisecond) // maxBatchSize high enough to never trigger on its own
 	defer batched.Close()
 
 	require.NoError(t, batched.Create(newTestMetric("/interval-only")))
 
 	require.Eventually(t, func() bool {
-		count, err := inner.CountRequests(db.TrafficFilter{})
+		count, err := inner.CountRequests(queries.TrafficFilter{})
 		return err == nil && count == 1
 	}, time.Second, 5*time.Millisecond, "expected the record to be flushed once flushInterval elapsed, even though the batch never filled up")
 }
 
 func TestBatchingTrafficMetricRepository_CloseFlushesRemaining(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	inner := db.NewTrafficMetricRepository(db.GetConnection())
-	batched := db.NewBatchingTrafficMetricRepository(inner, 100, time.Hour)
+	inner := repositories.NewTrafficMetricRepository(db.GetConnection())
+	batched := repositories.NewBatchingTrafficMetricRepository(inner, 100, time.Hour)
 
 	require.NoError(t, batched.Create(newTestMetric("/close-flush-1")))
 	require.NoError(t, batched.Create(newTestMetric("/close-flush-2")))
 
 	batched.Close() // should flush both before returning, with no wait needed
 
-	count, err := inner.CountRequests(db.TrafficFilter{})
+	count, err := inner.CountRequests(queries.TrafficFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count)
 }
@@ -73,7 +75,7 @@ func TestBatchingTrafficMetricRepository_CloseFlushesRemaining(t *testing.T) {
 // test can reliably drive pending past maxPending without racing a fast
 // in-memory database that would otherwise drain it as quickly as it fills.
 type blockingBatchRepo struct {
-	db.TrafficMetricRepository
+	repositories.TrafficMetricRepository
 	unblock chan struct{}
 }
 
@@ -91,13 +93,13 @@ func (r *blockingBatchRepo) CreateBatch(stats []*db.TrafficMetric) error {
 // still succeeds normally once the wrapped repository is unblocked.
 func TestBatchingTrafficMetricRepository_DropsWhenBufferFull(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	inner := db.NewTrafficMetricRepository(db.GetConnection())
+	inner := repositories.NewTrafficMetricRepository(db.GetConnection())
 	unblock := make(chan struct{})
 	blocking := &blockingBatchRepo{TrafficMetricRepository: inner, unblock: unblock}
 
 	const maxBatchSize = 3
 	const maxPending = maxBatchSize * 20 // mirrors the unexported maxPendingMultiplier
-	batched := db.NewBatchingTrafficMetricRepository(blocking, maxBatchSize, time.Hour)
+	batched := repositories.NewBatchingTrafficMetricRepository(blocking, maxBatchSize, time.Hour)
 	defer batched.Close() // Close's own final flush also needs unblock closed, done below before this runs
 
 	var rejected error
@@ -108,15 +110,15 @@ func TestBatchingTrafficMetricRepository_DropsWhenBufferFull(t *testing.T) {
 
 	close(unblock)
 	require.Eventually(t, func() bool {
-		count, err := inner.CountRequests(db.TrafficFilter{})
+		count, err := inner.CountRequests(queries.TrafficFilter{})
 		return err == nil && count > 0
 	}, time.Second, 5*time.Millisecond, "records buffered before the ceiling was hit should still flush normally once unblocked")
 }
 
 func TestBatchingTrafficMetricRepository_ReadsDelegateToInner(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	inner := db.NewTrafficMetricRepository(db.GetConnection())
-	batched := db.NewBatchingTrafficMetricRepository(inner, 100, time.Hour)
+	inner := repositories.NewTrafficMetricRepository(db.GetConnection())
+	batched := repositories.NewBatchingTrafficMetricRepository(inner, 100, time.Hour)
 	defer batched.Close()
 
 	require.NoError(t, inner.Create(newTestMetric("/written-directly-to-inner")))

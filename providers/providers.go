@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
@@ -49,7 +50,7 @@ type AuthProvider interface {
 
 // RegisterProviders registers all enabled authentication providers. ctx bounds
 // any background goroutine a provider starts during registration.
-func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
@@ -91,13 +92,13 @@ func NewSimpleAuthProvider(name string) *SimpleAuthProvider {
 }
 
 // AuthenticationProvider manages OAuth2 authentication flows.
-// It now uses db.SessionRepository.
+// It now uses repositories.SessionRepository.
 type AuthenticationProvider struct {
 	Provider      AuthProvider
 	LongName      string
 	OAuthConfig   *oauth2.Config
 	Fetcher       UserDataFetcher
-	UserRepo      db.UserRepository
+	UserRepo      repositories.UserRepository
 	SessionStore  session.SessionStore
 	GatewayConfig *config.GatewayConfig
 
@@ -127,8 +128,8 @@ func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProvid
 }
 
 // NewAuthenticationProvider creates a new AuthenticationProvider.
-// It now accepts db.SessionRepository.
-func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) *AuthenticationProvider {
+// It now accepts repositories.SessionRepository.
+func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur repositories.UserRepository, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) *AuthenticationProvider {
 	// baseUrl is not directly needed here if redirectURL is in oauthConfig
 	log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
 
@@ -192,7 +193,7 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 }
 
 // Callback handles the OAuth2 callback.
-// Uses db.SessionRepository methods.
+// Uses repositories.SessionRepository methods.
 func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Request) {
 	// r.FormValue reads from the URL query for every provider's GET
 	// callback, and additionally from a POST body for Apple's
@@ -366,7 +367,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 }
 
 // Logout handles the logout process.
-// Uses db.SessionRepository.DeleteSession.
+// Uses repositories.SessionRepository.DeleteSession.
 func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(session.SessionCookieName)
 	if err == nil && cookie != nil {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
@@ -80,12 +81,12 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 }
 
 // RegisterBasicAuth registers basic authentication handlers for login.
-// It now uses db.SessionRepository.
-func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo db.UserRepository, gatewayConfig *config.GatewayConfig) {
+// It now uses repositories.SessionRepository.
+func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo repositories.UserRepository, gatewayConfig *config.GatewayConfig) {
 	basicLoginPath := managementPrefix + "/auth/basic/login"
 
 	checkSessionAndRedirect := func(w http.ResponseWriter, r *http.Request) bool {
-		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from db.SessionRepository
+		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from repositories.SessionRepository
 		if isValid {
 			redirectURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 			http.Redirect(w, r, redirectURL, http.StatusFound)

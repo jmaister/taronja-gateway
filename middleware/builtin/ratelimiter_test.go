@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -390,11 +391,11 @@ func TestRateLimiter_VulnerabilityScanWildcardMatchesNestedPaths(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 }
 
-// --- Persisting blocks to the registry (db.BlockedClientRepository) -------
+// --- Persisting blocks to the registry (repositories.BlockedClientRepository) -------
 
 func TestRateLimiter_RecordsRequestLimitBlockToRegistry(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+	repo := repositories.NewBlockedClientRepositoryDB(db.GetConnection())
 
 	cfg := RateLimiterConfig{RequestsPerMinute: 1, BlockMinutes: 1}
 	rl := NewRateLimiter(cfg, repo)
@@ -412,11 +413,11 @@ func TestRateLimiter_RecordsRequestLimitBlockToRegistry(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, w.Code)
 
 	require.Eventually(t, func() bool {
-		items, total, err := repo.List(db.BlockedClientFilter{}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{}, 10, 0)
 		return err == nil && total == 1 && len(items) == 1
 	}, time.Second, 5*time.Millisecond, "expected the block to be recorded to the registry")
 
-	items, _, err := repo.List(db.BlockedClientFilter{}, 10, 0)
+	items, _, err := repo.List(repositories.BlockedClientFilter{}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	bc := items[0]
@@ -429,7 +430,7 @@ func TestRateLimiter_RecordsRequestLimitBlockToRegistry(t *testing.T) {
 
 func TestRateLimiter_RecordsMaxErrorsBlockToRegistry(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+	repo := repositories.NewBlockedClientRepositoryDB(db.GetConnection())
 
 	cfg := RateLimiterConfig{MaxErrors: 1, BlockMinutes: 1}
 	rl := NewRateLimiter(cfg, repo)
@@ -444,11 +445,11 @@ func TestRateLimiter_RecordsMaxErrorsBlockToRegistry(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(), req) // 2nd 404 exceeds MaxErrors=1
 
 	require.Eventually(t, func() bool {
-		items, total, err := repo.List(db.BlockedClientFilter{IP: "127.0.0.12"}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{IP: "127.0.0.12"}, 10, 0)
 		return err == nil && total == 1 && len(items) == 1
 	}, time.Second, 5*time.Millisecond, "expected the block to be recorded to the registry")
 
-	items, _, err := repo.List(db.BlockedClientFilter{IP: "127.0.0.12"}, 10, 0)
+	items, _, err := repo.List(repositories.BlockedClientFilter{IP: "127.0.0.12"}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, db.BlockReasonMaxErrors, items[0].Reason)
@@ -457,7 +458,7 @@ func TestRateLimiter_RecordsMaxErrorsBlockToRegistry(t *testing.T) {
 
 func TestRateLimiter_RecordsVulnerabilityScanBlockToRegistry(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+	repo := repositories.NewBlockedClientRepositoryDB(db.GetConnection())
 
 	cfg := RateLimiterConfig{
 		VulnerabilityScan: VulnerabilityScanConfig{
@@ -478,11 +479,11 @@ func TestRateLimiter_RecordsVulnerabilityScanBlockToRegistry(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(), req) // 2nd exceeds Max404=1
 
 	require.Eventually(t, func() bool {
-		items, total, err := repo.List(db.BlockedClientFilter{IP: "127.0.0.13"}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{IP: "127.0.0.13"}, 10, 0)
 		return err == nil && total == 1 && len(items) == 1
 	}, time.Second, 5*time.Millisecond, "expected the block to be recorded to the registry")
 
-	items, _, err := repo.List(db.BlockedClientFilter{IP: "127.0.0.13"}, 10, 0)
+	items, _, err := repo.List(repositories.BlockedClientFilter{IP: "127.0.0.13"}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, db.BlockReasonVulnerabilityScan, items[0].Reason)
@@ -499,7 +500,7 @@ func TestRateLimiter_RecordsVulnerabilityScanBlockToRegistry(t *testing.T) {
 // retention window and leave everything still inside it alone.
 func TestRateLimiter_PrunesBlockedClientsOlderThanRetention(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+	repo := repositories.NewBlockedClientRepositoryDB(db.GetConnection())
 
 	cfg := RateLimiterConfig{BlockedClientRetentionDays: 30}
 	rl := NewRateLimiter(cfg, repo)
@@ -525,13 +526,13 @@ func TestRateLimiter_PrunesBlockedClientsOlderThanRetention(t *testing.T) {
 	recentRow.IPAddress = "127.0.0.22"
 	require.NoError(t, repo.Create(recentRow))
 
-	_, total, err := repo.List(db.BlockedClientFilter{}, 10, 0)
+	_, total, err := repo.List(repositories.BlockedClientFilter{}, 10, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, total, "sanity check: both rows should exist before pruning")
 
 	rl.pruneBlockedClients(now)
 
-	items, total, err := repo.List(db.BlockedClientFilter{}, 10, 0)
+	items, total, err := repo.List(repositories.BlockedClientFilter{}, 10, 0)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total, "only the row past retention should have been pruned")
 	require.Len(t, items, 1)

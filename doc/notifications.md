@@ -387,7 +387,7 @@ No live SMTP server or Telegram bot is needed to test this:
   response (never as part of a notification's own initial delivery), stays
   fully invisible when unconfigured, and gets a real fail-then-retry-then-
   succeed cycle through the exact same retry machinery email/Telegram use.
-- `notification/service_test.go` and `db/notificationrepository_test.go`
+- `notification/service_test.go` and `db/repositories/notificationrepository_test.go`
   cover the business logic and persistence layer against a real SQLite test
   database — including the retry schedule's exhaustion boundary, a full
   fail-then-succeed retry cycle (backdating a delivery's `NextRetryAt`

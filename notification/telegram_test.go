@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -178,11 +179,11 @@ func TestTelegramProvider(t *testing.T) {
 // database (db.SetupTestDB) rather than a mock repository, consistent with
 // this codebase's existing preference for a real repository over a
 // hand-rolled mock wherever the real one is cheap to stand up (see
-// db/notificationrepository_test.go).
+// db/repositories/notificationrepository_test.go).
 func TestTelegramPoller(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewNotificationRepositoryDB(db.GetConnection())
-	userRepo := db.NewDBUserRepository(db.GetConnection())
+	repo := repositories.NewNotificationRepositoryDB(db.GetConnection())
+	userRepo := repositories.NewDBUserRepository(db.GetConnection())
 
 	user := &db.User{Username: "poller-user", Email: "poller@example.com"}
 	require.NoError(t, db.GetConnection().Create(user).Error)
@@ -309,8 +310,8 @@ func TestTelegramPoller(t *testing.T) {
 // available but this user just hasn't connected.
 func TestTelegramLinkStatus_ChannelNotConfigured(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewNotificationRepositoryDB(db.GetConnection())
-	userRepo := db.NewDBUserRepository(db.GetConnection())
+	repo := repositories.NewNotificationRepositoryDB(db.GetConnection())
+	userRepo := repositories.NewDBUserRepository(db.GetConnection())
 	service := NewService(config.NotificationConfig{}, repo, userRepo, "https://gw.example.com/_/notifications/respond")
 
 	_, _, err := service.GetTelegramLinkStatus("some-user-id")

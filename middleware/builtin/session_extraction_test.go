@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 		defer db.ResetConnection()
 
 		// Set up repositories and services
-		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+		sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
@@ -83,7 +84,7 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 		defer db.ResetConnection()
 
 		// Set up repositories and services
-		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+		sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 
@@ -121,7 +122,7 @@ func TestSessionExtractionMiddleware(t *testing.T) {
 		defer db.ResetConnection()
 
 		// Set up repositories and services
-		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+		sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		tokenService := createMockTokenService()
 

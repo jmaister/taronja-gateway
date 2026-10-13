@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/middleware"
@@ -89,7 +89,7 @@ func configureRoutes(gateway *Gateway) error {
 }
 
 // ensureAdminUser creates the admin user if configured
-func ensureAdminUser(config *config.GatewayConfig, userRepository db.UserRepository) error {
+func ensureAdminUser(config *config.GatewayConfig, userRepository repositories.UserRepository) error {
 	if !config.Management.Admin.Enabled {
 		return nil
 	}

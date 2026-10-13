@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware"
 	yaml "gopkg.in/yaml.v3"
 
@@ -68,7 +69,7 @@ func (rw *responseWriterWithStats) Body() string {
 // TrafficMetricMiddleware collects request statistics. With excludeStaticAssets,
 // static-asset paths (session.IsStaticAssetPath) skip it entirely, avoiding most of
 // its per-request cost (see doc/PERFORMANCE_ANALYSIS.md) for the least useful requests.
-func TrafficMetricMiddleware(statsRepo db.TrafficMetricRepository, excludeStaticAssets bool) func(http.Handler) http.Handler {
+func TrafficMetricMiddleware(statsRepo repositories.TrafficMetricRepository, excludeStaticAssets bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			if excludeStaticAssets && session.IsStaticAssetPath(req.URL.Path) {
@@ -137,12 +138,12 @@ type TrafficMetricsConfig struct {
 
 type trafficMetricsFactory struct {
 	middleware.ConcreteFactory
-	trafficMetricRepo db.TrafficMetricRepository
+	trafficMetricRepo repositories.TrafficMetricRepository
 }
 
 // Both dependencies are real reads: the session from the request context and,
 // through session.NewClientInfo, the JA4H fingerprint header.
-func newTrafficMetricsFactory(trafficMetricRepo db.TrafficMetricRepository) *trafficMetricsFactory {
+func newTrafficMetricsFactory(trafficMetricRepo repositories.TrafficMetricRepository) *trafficMetricsFactory {
 	return &trafficMetricsFactory{
 		ConcreteFactory:   middleware.NewConcreteFactory(NameTrafficMetrics, "Records per-request traffic metrics (status, size, duration, user)", NameSessionExtraction, NameJA4Fingerprint),
 		trafficMetricRepo: trafficMetricRepo,

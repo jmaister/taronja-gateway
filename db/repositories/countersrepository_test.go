@@ -1,20 +1,21 @@
-package db
+package repositories
 
 import (
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCountersRepository(t *testing.T) {
-	SetupTestDB(t.Name()) // This line is retained as per the goal to update test DB setup
-	dbConn := GetConnection()
+	db.SetupTestDB(t.Name()) // This line is retained as per the goal to update test DB setup
+	dbConn := db.GetConnection()
 	repo := NewDBCountersRepository(dbConn)
 
 	// Create test users in the database
-	user1 := User{
+	user1 := db.User{
 		Username: "testuser1",
 		Email:    "user1@example.com",
 	}
@@ -71,7 +72,7 @@ func TestCountersRepository(t *testing.T) {
 		// Add a small delay to ensure test isolation
 		time.Sleep(1 * time.Millisecond)
 		// Create another test user for isolated testing
-		user2 := User{
+		user2 := db.User{
 			Username: "testuser2_hashistory",
 			Email:    "user2_hashistory@example.com",
 		}
@@ -107,7 +108,7 @@ func TestCountersRepository(t *testing.T) {
 
 	t.Run("GetCounterHistory_HasHistory_Flag", func(t *testing.T) {
 		// Create another test user for isolated testing
-		user3 := User{
+		user3 := db.User{
 			Username: "testuser3_counterhistory",
 			Email:    "user3_counterhistory@example.com",
 		}
@@ -143,13 +144,13 @@ func TestCountersRepository(t *testing.T) {
 
 	t.Run("GetAllUserCounters_HasHistory_Flag", func(t *testing.T) {
 		// Create test users for isolated testing
-		userNoHistory := User{
+		userNoHistory := db.User{
 			Username: "user_no_history_allusers",
 			Email:    "nohistory_allusers@example.com",
 		}
 		require.NoError(t, dbConn.Create(&userNoHistory).Error)
 
-		userWithHistory := User{
+		userWithHistory := db.User{
 			Username: "user_with_history_allusers",
 			Email:    "withhistory_allusers@example.com",
 		}
@@ -196,7 +197,7 @@ func TestCountersRepository(t *testing.T) {
 
 	t.Run("GetAllUserCounters_RealWorld_Debug", func(t *testing.T) {
 		// Debug test to reproduce the issue where user has balance but has_history is false
-		debugUser := User{
+		debugUser := db.User{
 			Username: "debug_user",
 			Email:    "debug@example.com",
 		}

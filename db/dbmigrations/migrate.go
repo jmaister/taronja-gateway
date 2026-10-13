@@ -1,4 +1,4 @@
-package db
+package dbmigrations
 
 import (
 	"database/sql"
@@ -12,7 +12,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-// migrationFiles embeds every numbered SQL migration under db/migrations/
+// migrationFiles embeds every numbered SQL migration under db/dbmigrations/migrations/
 // into the compiled binary — same convention this project already uses for
 // webapp/dist and static/ (see main.go/static/static.go), so a migration
 // ships with the binary and needs no separate file to deploy alongside it.
@@ -25,22 +25,22 @@ var migrationFiles embed.FS
 // never wrote (1-4).
 const legacyBridgeDoneVersion = 9999
 
-// runMigrations brings sqlDB up to date. Databases that predate golang-migrate
+// Run brings sqlDB up to date. Databases that predate golang-migrate
 // first go through the legacy bridge (AutoMigrate plus the Go data repairs in
-// legacy_migrations.go); after that every schema change is a numbered SQL file in
-// db/migrations/, tracked in schema_migrations.
+// legacy.go); after that every schema change is a numbered SQL file in
+// migrations/, tracked in schema_migrations.
 //
 // The bridge runs before Up(): 0001_initial_schema is only a readable baseline,
 // and its CREATE INDEX IF NOT EXISTS statements fail ("no such column") on a
 // table in an older shape until AutoMigrate has added the missing columns.
-func runMigrations(sqlDB *sql.DB) error {
+func Run(sqlDB *sql.DB, schema Schema) error {
 	needsBridge, err := needsLegacyBridge(sqlDB)
 	if err != nil {
 		return fmt.Errorf("checking whether the legacy migration bridge has already run: %w", err)
 	}
 	if needsBridge {
 		log.Printf("db: applying one-time legacy migration bridge (AutoMigrate + data repairs) for a database that predates golang-migrate")
-		if err := applyLegacyDataMigrations(sqlDB); err != nil {
+		if err := applyLegacyDataMigrations(sqlDB, schema); err != nil {
 			return fmt.Errorf("applying legacy migrations: %w", err)
 		}
 		// Recorded only after every step succeeds, so a failure or crash retries the

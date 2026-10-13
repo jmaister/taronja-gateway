@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,8 +16,8 @@ func TestTokenService(t *testing.T) {
 	testDB := db.GetConnection()
 
 	// Setup repositories with test database
-	userRepo := db.NewDBUserRepository(testDB)
-	tokenRepo := db.NewTokenRepositoryDB(testDB)
+	userRepo := repositories.NewDBUserRepository(testDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(testDB)
 	tokenService := NewTokenService(tokenRepo, userRepo)
 
 	// Create a test user

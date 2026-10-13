@@ -1,4 +1,4 @@
-package db
+package queries
 
 import (
 	"time"
@@ -83,6 +83,14 @@ const (
 type dimensionSpec struct {
 	expr string
 	join string
+}
+
+// SQL returns the column expression and optional join that group by d; ok is
+// false for an unknown dimension. dimensionSpecs is an allow-list: both are
+// spliced into SQL.
+func (d Dimension) SQL() (expr, join string, ok bool) {
+	spec, ok := dimensionSpecs[d]
+	return spec.expr, spec.join, ok
 }
 
 // dimensionSpecs is an allow-list: expr and join are spliced into SQL.

@@ -10,20 +10,21 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 )
 
-var testUserRepo db.UserRepository
+var testUserRepo repositories.UserRepository
 var testSessionStore session.SessionStore
 
 // TestMain sets up the test database and repositories.
 func TestMain(m *testing.M) {
 	db.SetupTestDB("TestProviders")
-	testUserRepo = db.NewDBUserRepository(db.GetConnection())
-	testSessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+	testUserRepo = repositories.NewDBUserRepository(db.GetConnection())
+	testSessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 	testSessionStore = session.NewSessionStore(testSessionRepo, 24*time.Hour)
 	exitVal := m.Run()
 	os.Exit(exitVal)

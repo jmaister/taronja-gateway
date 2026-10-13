@@ -8,6 +8,7 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
@@ -250,11 +251,11 @@ func TestGetUserTelegramLinkCode(t *testing.T) {
 // s.telegram != nil to do anything but 503, and neither actually calls out
 // to the real Telegram API (unlike GetTelegramLinkCode's Username lookup),
 // so a fake bot token is enough — no network access needed for these two.
-func setupTelegramEnabledTestServer(t *testing.T) (*StrictApiServer, db.NotificationRepository, db.UserRepository) {
+func setupTelegramEnabledTestServer(t *testing.T) (*StrictApiServer, repositories.NotificationRepository, repositories.UserRepository) {
 	t.Helper()
 	db.SetupTestDB(t.Name())
-	repo := db.NewNotificationRepositoryDB(db.GetConnection())
-	userRepo := db.NewDBUserRepository(db.GetConnection())
+	repo := repositories.NewNotificationRepositoryDB(db.GetConnection())
+	userRepo := repositories.NewDBUserRepository(db.GetConnection())
 	service := notification.NewService(config.NotificationConfig{
 		Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "fake-test-token"},
 	}, repo, userRepo, "https://gw.example.com/_/notifications/respond")
@@ -366,8 +367,8 @@ func TestGetChannelStatuses(t *testing.T) {
 
 	t.Run("reports email active and telegram connected/not_connected", func(t *testing.T) {
 		db.SetupTestDB(t.Name())
-		repo := db.NewNotificationRepositoryDB(db.GetConnection())
-		userRepo := db.NewDBUserRepository(db.GetConnection())
+		repo := repositories.NewNotificationRepositoryDB(db.GetConnection())
+		userRepo := repositories.NewDBUserRepository(db.GetConnection())
 		service := notification.NewService(config.NotificationConfig{
 			Email:    config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: 25, From: "gw@example.com"},
 			Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "fake-test-token"},
@@ -429,8 +430,8 @@ func TestGetUserChannelStatuses(t *testing.T) {
 
 	t.Run("reports the target user's own status, not the admin caller's", func(t *testing.T) {
 		db.SetupTestDB(t.Name())
-		repo := db.NewNotificationRepositoryDB(db.GetConnection())
-		userRepo := db.NewDBUserRepository(db.GetConnection())
+		repo := repositories.NewNotificationRepositoryDB(db.GetConnection())
+		userRepo := repositories.NewDBUserRepository(db.GetConnection())
 		service := notification.NewService(config.NotificationConfig{
 			Email:    config.EmailNotificationConfig{Enabled: true, Host: "127.0.0.1", Port: 25, From: "gw@example.com"},
 			Telegram: config.TelegramNotificationConfig{Enabled: true, BotToken: "fake-test-token"},

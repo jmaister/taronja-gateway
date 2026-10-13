@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,7 +99,7 @@ func TestTrafficMetricMiddleware_ExcludeStaticAssets(t *testing.T) {
 	db.SetupTestDB("TestTrafficMetricMiddleware_ExcludeStaticAssets")
 	gormDB := db.GetConnection()
 
-	statsRepo := db.NewTrafficMetricRepository(gormDB)
+	statsRepo := repositories.NewTrafficMetricRepository(gormDB)
 	excludingMiddleware := TrafficMetricMiddleware(statsRepo, true)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

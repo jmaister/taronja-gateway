@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 )
 
 // contextKey is a custom type for context keys to avoid collisions.
@@ -39,12 +40,12 @@ type TokenService interface {
 
 // SessionStoreDB implements SessionStore and uses a SessionRepository to access session data.
 type SessionStoreDB struct {
-	Repo            db.SessionRepository
+	Repo            repositories.SessionRepository
 	SessionDuration time.Duration
 }
 
 // NewSessionStore creates a new SessionStoreDB instance with the provided session repository.
-func NewSessionStore(repo db.SessionRepository, duration time.Duration) *SessionStoreDB {
+func NewSessionStore(repo repositories.SessionRepository, duration time.Duration) *SessionStoreDB {
 	return &SessionStoreDB{
 		Repo:            repo,
 		SessionDuration: duration,

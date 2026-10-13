@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +49,7 @@ func assertStoredUTC(t *testing.T, table, column, whereCol, whereVal string) {
 // used to build them. See db/schema.go's Session.BeforeSave comment.
 func TestSessionBeforeSave_NormalizesToUTC(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewSessionRepositoryDB(db.GetConnection())
+	repo := repositories.NewSessionRepositoryDB(db.GetConnection())
 
 	closedOn := time.Date(2026, 9, 3, 10, 0, 0, 0, nonUTC)
 	session := &db.Session{
@@ -83,7 +84,7 @@ func TestSessionBeforeSave_NormalizesToUTC(t *testing.T) {
 // can never see — see the comment on that call site in sessionrepository.go.
 func TestSessionCloseSession_NormalizesToUTC(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewSessionRepositoryDB(db.GetConnection())
+	repo := repositories.NewSessionRepositoryDB(db.GetConnection())
 
 	session := &db.Session{
 		Token:      "test-token-close",
@@ -131,7 +132,7 @@ func TestTokenBeforeSave_NormalizesToUTC(t *testing.T) {
 // on those two methods in tokenrepository.go.
 func TestTokenRepository_RawUpdates_NormalizeToUTC(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewTokenRepositoryDB(db.GetConnection())
+	repo := repositories.NewTokenRepositoryDB(db.GetConnection())
 
 	// Token.BeforeCreate always overwrites ID with a fresh CUID, so it's
 	// read back off token.ID below rather than a literal set here.

@@ -1,4 +1,4 @@
-package db
+package queries
 
 import (
 	"fmt"
@@ -25,10 +25,10 @@ var storedTimestampLayouts = []string{
 // (" m=+13.39"). The numeric offset alone determines the instant.
 var storedTimestampOffsetPrefix = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)? [+-]\d{4}`)
 
-// parseStoredTimestamp parses a timestamp column's text using storedTimestampLayouts,
+// ParseStoredTimestamp parses a timestamp column's text using storedTimestampLayouts,
 // then storedTimestampOffsetPrefix, returning an error if neither matches. Shared
 // by toUserCounterSummary and migrateTimestampsToUTC.
-func parseStoredTimestamp(value string) (time.Time, error) {
+func ParseStoredTimestamp(value string) (time.Time, error) {
 	var lastErr error
 	for _, layout := range storedTimestampLayouts {
 		if t, err := time.Parse(layout, value); err == nil {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/lucsky/cuid"
 )
 
@@ -86,8 +87,8 @@ func nextRetryAt(attemptNumber int, now time.Time) *time.Time {
 // only caller, translating this package's types and errors to and from
 // the OpenAPI-generated request/response shapes.
 type Service struct {
-	repo     db.NotificationRepository
-	userRepo db.UserRepository
+	repo     repositories.NotificationRepository
+	userRepo repositories.UserRepository
 
 	providers map[string]Provider
 	telegram  *TelegramProvider // also present in providers when configured; kept separately for Telegram-only operations (linking) with no generic Provider equivalent
@@ -111,7 +112,7 @@ type Service struct {
 // NewEmailProvider/NewTelegramProvider's nil-when-unconfigured
 // convention) — a deployment with neither block set still gets a fully
 // working in-app notification system, just with no external delivery.
-func NewService(cfg config.NotificationConfig, repo db.NotificationRepository, userRepo db.UserRepository, respondBaseURL string) *Service {
+func NewService(cfg config.NotificationConfig, repo repositories.NotificationRepository, userRepo repositories.UserRepository, respondBaseURL string) *Service {
 	providers := map[string]Provider{}
 	var telegram *TelegramProvider
 
@@ -687,7 +688,7 @@ func (s *Service) recordValidatedResponse(ctx context.Context, n *db.Notificatio
 	}
 	now := time.Now()
 	if err := s.repo.RecordResponse(n.ID, actionID, via, now); err != nil {
-		if errors.Is(err, db.ErrNotificationAlreadyResponded) {
+		if errors.Is(err, repositories.ErrNotificationAlreadyResponded) {
 			return "", ErrAlreadyResponded
 		}
 		return "", err

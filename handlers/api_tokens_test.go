@@ -8,6 +8,7 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,8 +20,8 @@ func TestTokenHandlersAdmin(t *testing.T) {
 	testDB := db.GetConnection()
 
 	// Setup repositories and services with database
-	userRepo := db.NewDBUserRepository(testDB)
-	tokenRepo := db.NewTokenRepositoryDB(testDB)
+	userRepo := repositories.NewDBUserRepository(testDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	// Create test server

@@ -1,9 +1,10 @@
-package db
+package repositories
 
 import (
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -13,19 +14,19 @@ import (
 func setupTestDB(t *testing.T) *gorm.DB {
 	// Use a unique database name for each test to ensure isolation
 	dbName := "file::memory:?cache=shared&_" + t.Name()
-	db, err := gorm.Open(sqlite.Open(dbName), &gorm.Config{})
+	gdb, err := gorm.Open(sqlite.Open(dbName), &gorm.Config{})
 	assert.NoError(t, err)
 
 	// Migrate the schema
-	err = db.AutoMigrate(&User{})
+	err = gdb.AutoMigrate(&db.User{})
 	assert.NoError(t, err)
 
-	return db
+	return gdb
 }
 
 // createTestUser creates a test user for tests
-func createTestUser(suffix string) *User {
-	return &User{
+func createTestUser(suffix string) *db.User {
+	return &db.User{
 		Email:          "test-" + suffix + "@example.com",
 		Username:       "testuser-" + suffix,
 		Name:           "Test User",
@@ -39,12 +40,12 @@ func createTestUser(suffix string) *User {
 }
 
 func TestFindUserByIdOrUsername(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// Create a test user
 	testUser := createTestUser("find-test")
-	result := db.Create(testUser)
+	result := gdb.Create(testUser)
 	assert.NoError(t, result.Error)
 
 	// Test finding by ID
@@ -73,8 +74,8 @@ func TestFindUserByIdOrUsername(t *testing.T) {
 }
 
 func TestCreateUser(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// Create a test user
 	testUser := createTestUser("create-test")
@@ -83,20 +84,20 @@ func TestCreateUser(t *testing.T) {
 	assert.NotEmpty(t, testUser.ID) // Verify CUID is generated
 
 	// Verify user exists in DB
-	var foundUser User
-	result := db.First(&foundUser, "id = ?", testUser.ID)
+	var foundUser db.User
+	result := gdb.First(&foundUser, "id = ?", testUser.ID)
 	assert.NoError(t, result.Error)
 	assert.Equal(t, testUser.Username, foundUser.Username)
 	assert.Equal(t, testUser.Email, foundUser.Email)
 }
 
 func TestUpdateUser(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// Create a test user
 	testUser := createTestUser("update-test")
-	result := db.Create(testUser)
+	result := gdb.Create(testUser)
 	assert.NoError(t, result.Error)
 
 	// Update user
@@ -106,14 +107,14 @@ func TestUpdateUser(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify changes persisted
-	var foundUser User
-	result = db.First(&foundUser, "id = ?", testUser.ID)
+	var foundUser db.User
+	result = gdb.First(&foundUser, "id = ?", testUser.ID)
 	assert.NoError(t, result.Error)
 	assert.Equal(t, "Updated Name", foundUser.Name)
 	assert.Equal(t, "updated@example.com", foundUser.Email)
 
 	// Test updating non-existent user
-	nonExistentUser := &User{
+	nonExistentUser := &db.User{
 		ID:       "nonexistent",
 		Username: "nonexistent",
 		Email:    "nonexistent@example.com",
@@ -124,12 +125,12 @@ func TestUpdateUser(t *testing.T) {
 }
 
 func TestDeleteUser(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// Create a test user
 	testUser := createTestUser("delete-test")
-	result := db.Create(testUser)
+	result := gdb.Create(testUser)
 	assert.NoError(t, result.Error)
 
 	// Delete user
@@ -137,8 +138,8 @@ func TestDeleteUser(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify user is deleted
-	var foundUser User
-	result = db.First(&foundUser, "id = ?", testUser.ID)
+	var foundUser db.User
+	result = gdb.First(&foundUser, "id = ?", testUser.ID)
 	assert.Error(t, result.Error) // Should not find the user
 
 	// Test deleting non-existent user
@@ -148,11 +149,11 @@ func TestDeleteUser(t *testing.T) {
 }
 
 func TestConcurrentOperations(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// First ensure the table is empty
-	db.Exec("DELETE FROM users")
+	gdb.Exec("DELETE FROM users")
 
 	// Create multiple test users
 	expectedCount := 10
@@ -164,16 +165,16 @@ func TestConcurrentOperations(t *testing.T) {
 
 	// Verify count
 	var count int64
-	db.Model(&User{}).Count(&count)
+	gdb.Model(&db.User{}).Count(&count)
 	assert.Equal(t, int64(expectedCount), count)
 }
 
 func TestUserSchema(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// Create a user with all fields populated
-	user := &User{
+	user := &db.User{
 		Email:                    "complete@example.com",
 		Username:                 "complete_user",
 		Picture:                  "https://example.com/pic.jpg",
@@ -210,8 +211,8 @@ func TestUserSchema(t *testing.T) {
 // TestUniqueConstraints tests that the database enforces unique constraints on email and username
 // Note: This test purposely creates errors which will be logged - these errors are expected and are part of the test
 func TestUniqueConstraints(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	// Create initial test user
 	testUser := createTestUser("unique-test")
@@ -238,8 +239,8 @@ func TestUniqueConstraints(t *testing.T) {
 }
 
 func TestCreateUser_RejectsDuplicateEmailAndUsername(t *testing.T) {
-	db := setupTestDB(t)
-	repo := NewDBUserRepository(db)
+	gdb := setupTestDB(t)
+	repo := NewDBUserRepository(gdb)
 
 	first := createTestUser("dup")
 	assert.NoError(t, repo.CreateUser(first))

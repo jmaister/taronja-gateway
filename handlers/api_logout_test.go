@@ -8,22 +8,23 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
+func setupLogoutTestServer() (*StrictApiServer, repositories.SessionRepository) {
 	db.SetupTestDB("setupLogoutTestServer")
 	testDB := db.GetConnection()
 
 	// Create database repositories for testing
-	userRepo := db.NewDBUserRepository(testDB)
-	sessionRepo := db.NewSessionRepositoryDB(testDB)
+	userRepo := repositories.NewDBUserRepository(testDB)
+	sessionRepo := repositories.NewSessionRepositoryDB(testDB)
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewTrafficMetricRepository(testDB)
-	tokenRepo := db.NewTokenRepositoryDB(testDB)
-	countersRepo := db.NewDBCountersRepository(testDB)
+	trafficMetricRepo := repositories.NewTrafficMetricRepository(testDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(testDB)
+	countersRepo := repositories.NewDBCountersRepository(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	startTime := time.Now()

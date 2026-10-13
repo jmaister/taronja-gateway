@@ -17,7 +17,7 @@ const AdminProvider = "tg_admin_provider"
 // ClientInfo contains common client and geographical information
 type ClientInfo struct {
 	// Indexed: BlockedClient's registry is routinely queried/filtered by
-	// IP (db.BlockedClientRepositoryDB.List), and this is the field that
+	// IP (repositories.BlockedClientRepositoryDB.List), and this is the field that
 	// query filters on across every table ClientInfo is embedded in.
 	IPAddress string `gorm:"type:varchar(45);index" json:"ipAddress"` // IP address of the client
 	UserAgent string `gorm:"type:text" json:"userAgent"`              // User agent string
@@ -45,7 +45,7 @@ type ClientInfo struct {
 
 	// Fingerprint is the client fingerprint chosen by fingerprint.SelectFingerprint
 	// (stable over JA4H); FingerprintType names the algorithm. Indexed for the
-	// new-vs-returning query in db/timeseries.go.
+	// new-vs-returning query in db/queries/timeseries.go.
 	Fingerprint string `gorm:"type:varchar(100);index" json:"fingerprint"`
 	// FingerprintType names which algorithm produced Fingerprint —
 	// fingerprint.TypeStable ("stable") or fingerprint.TypeJA4H ("ja4h")
@@ -137,12 +137,12 @@ type Session struct {
 	ClientInfo
 }
 
-// hashSessionToken returns the hex-encoded SHA-256 hash of a raw session
+// HashSessionToken returns the hex-encoded SHA-256 hash of a raw session
 // token — the value actually stored in and looked up from TokenHash. Used
 // by BeforeSave (whenever a full *Session goes through Create/Save) and
 // directly by SessionRepository's lookup/mutation methods (which only ever
 // see the raw token, never a *Session to hook into).
-func hashSessionToken(token string) string {
+func HashSessionToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("%x", sum)
 }
@@ -152,7 +152,7 @@ func hashSessionToken(token string) string {
 // TokenHash untouched so a Save that only bumps LastActivity keeps it.
 func (s *Session) BeforeSave(tx *gorm.DB) error {
 	if s.Token != "" {
-		s.TokenHash = hashSessionToken(s.Token)
+		s.TokenHash = HashSessionToken(s.Token)
 	}
 	if !s.ValidUntil.IsZero() {
 		s.ValidUntil = s.ValidUntil.UTC()
@@ -188,7 +188,7 @@ type TrafficMetric struct {
 }
 
 // BeforeCreate normalizes Timestamp to UTC (also on CreateBatch):
-// db/timeseries.go buckets the stored wall-clock prefix as UTC, so a non-UTC
+// db/queries/timeseries.go buckets the stored wall-clock prefix as UTC, so a non-UTC
 // value would land in the wrong hour.
 func (t *TrafficMetric) BeforeCreate(tx *gorm.DB) error {
 	t.Timestamp = t.Timestamp.UTC()
@@ -530,4 +530,20 @@ type NotificationPreference struct {
 	PreferredChannel string    `gorm:"type:varchar(50)"`
 	CreatedAt        time.Time `gorm:"autoCreateTime"`
 	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
+}
+
+// Models lists every model, for AutoMigrate in the legacy migration bridge and
+// in tests that build a schema by hand.
+var Models = []interface{}{
+	&User{},
+	&Session{},
+	&TrafficMetric{},
+	&Token{},
+	&Counter{},
+	&BlockedClient{},
+	&Notification{},
+	&NotificationDelivery{},
+	&NotificationChannelLink{},
+	&NotificationLinkCode{},
+	&NotificationPreference{},
 }

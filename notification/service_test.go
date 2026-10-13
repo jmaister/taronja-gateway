@@ -9,16 +9,17 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestService(t *testing.T, cfg config.NotificationConfig) (*Service, db.NotificationRepository, db.UserRepository) {
+func newTestService(t *testing.T, cfg config.NotificationConfig) (*Service, repositories.NotificationRepository, repositories.UserRepository) {
 	t.Helper()
 	db.SetupTestDB(t.Name())
 	conn := db.GetConnection()
-	repo := db.NewNotificationRepositoryDB(conn)
-	userRepo := db.NewDBUserRepository(conn)
+	repo := repositories.NewNotificationRepositoryDB(conn)
+	userRepo := repositories.NewDBUserRepository(conn)
 	service := NewService(cfg, repo, userRepo, "https://gw.example.com/_/notifications/respond")
 	return service, repo, userRepo
 }

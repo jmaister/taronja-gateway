@@ -14,6 +14,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/static"
@@ -43,7 +44,7 @@ func createTestSession(gw *Gateway) *db.Session {
 	}
 
 	// Create a new session repository directly
-	sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+	sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 	err := sessionRepo.CreateSession(session.Token, session)
 	if err != nil {
 		panic("Failed to create test session: " + err.Error())

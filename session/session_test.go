@@ -8,16 +8,17 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 )
 
-var testSessionRepo db.SessionRepository
+var testSessionRepo repositories.SessionRepository
 var testSessionStore SessionStore // Use the interface
 
 // TestMain sets up the test database and repository.
 func TestMain(m *testing.M) {
 	db.SetupTestDB("TestSession")
-	testSessionRepo = db.NewSessionRepositoryDB(db.GetConnection())
+	testSessionRepo = repositories.NewSessionRepositoryDB(db.GetConnection())
 	testSessionStore = NewSessionStore(testSessionRepo, 24*time.Hour)
 
 	// httptest.NewRequest defaults every request's RemoteAddr to

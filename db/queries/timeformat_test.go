@@ -1,4 +1,4 @@
-package db
+package queries
 
 import (
 	"testing"
@@ -63,7 +63,7 @@ func TestParseStoredTimestamp(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseStoredTimestamp(tc.value)
+			got, err := ParseStoredTimestamp(tc.value)
 			require.NoError(t, err)
 			assert.True(t, tc.want.Equal(got), "want %v, got %v", tc.want, got)
 			wantOffset := func() int { _, o := tc.want.Zone(); return o }()
@@ -74,6 +74,6 @@ func TestParseStoredTimestamp(t *testing.T) {
 }
 
 func TestParseStoredTimestamp_Unparseable(t *testing.T) {
-	_, err := parseStoredTimestamp("not a timestamp at all")
+	_, err := ParseStoredTimestamp("not a timestamp at all")
 	assert.Error(t, err)
 }

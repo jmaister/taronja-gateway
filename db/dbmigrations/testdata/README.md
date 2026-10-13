@@ -1,4 +1,4 @@
-# db/testdata
+# db/dbmigrations/testdata
 
 Real, historical SQLite database files, kept as test fixtures — the
 `*.db` exception carved out of the repo's `.gitignore` for exactly this
@@ -10,19 +10,19 @@ Every migration test elsewhere in this package (`migrations_test.go`,
 against a fresh in-memory database. That's precise and fast, but it can
 only exercise what the person writing the test remembered to reproduce.
 The `parseStoredTimestamp`/`storedTimestampOffsetPrefix` fallback in
-`db/timeformat.go` exists because of a shape (a `time.Time` still carrying
+`db/queries/timeformat.go` exists because of a shape (a `time.Time` still carrying
 its monotonic clock reading, serialized as
 `2026-09-03 22:30:04.74361174 +0100 BST m=+13.399250358`) that nobody
 would have thought to reproduce synthetically — it only turned up by
 actually running an old build against a real database. Fixtures here make
 that kind of discovery repeatable instead of a one-off manual exercise:
-open the real file, run today's `runMigrations` (`db/migrate.go`) against
+open the real file, run today's `dbmigrations.Run` (`db/dbmigrations/migrate.go`) against
 it, and see what breaks.
 
 ## v0.0.24.db
 
 Built from the last tagged release before this project's `v1` schema
-work began (everything in `db/legacy_migrations.go` — the UTC timestamp
+work began (everything in `db/dbmigrations/legacy.go` — the UTC timestamp
 normalization and the JA4H/TLS-JA4/stable fingerprint consolidation — was
 written after this tag, so this file predates both). Reproduce it like
 this:
@@ -56,7 +56,7 @@ for i in 1 2 3 4 5; do curl http://127.0.0.1:8199/.env; done    # 404 x4, then 4
 Generated on a host running `Europe/London` (BST, `+01:00`) — deliberately
 not UTC, so every stored timestamp genuinely needs
 `migrateTimestampsToUTC`'s work, not just a no-op check. Contents at the
-time it was captured (`db/migration_v0_fixture_test.go` asserts against
+time it was captured (`db/dbmigrations/fixture_v0_test.go` asserts against
 exactly this):
 
 - One admin user (`tg_admin_provider`), one session, 11 `traffic_metrics`
@@ -70,11 +70,11 @@ exactly this):
   only here.
 - No `is_static_asset` column on `traffic_metrics` (added after this tag)
   and no `blocked_clients` table at all (added this session) — both must
-  appear after `runMigrations`' legacy bridge (AutoMigrate, specifically),
+  appear after `dbmigrations.Run`' legacy bridge (AutoMigrate, specifically),
   empty/defaulted, without erroring.
 - `PRAGMA user_version` is `0` — this file predates both the old
   PRAGMA-tracked migration scheme and golang-migrate itself, the same as
-  any other pre-upgrade database (see `db/migrate.go`'s
+  any other pre-upgrade database (see `db/dbmigrations/migrate.go`'s
   `needsLegacyBridge`).
 
 Never overwrite this file casually — `migration_v0_fixture_test.go` pins

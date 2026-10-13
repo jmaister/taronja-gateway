@@ -142,7 +142,7 @@ func NewTrafficMetric(req *http.Request) *db.TrafficMetric {
 		Path:           req.URL.Path,
 		HttpStatus:     0,
 		ResponseTimeNs: 0,
-		// UTC: db/timeseries.go buckets the stored value as UTC wall-clock time.
+		// UTC: db/queries/timeseries.go buckets the stored value as UTC wall-clock time.
 		Timestamp:     time.Now().UTC(),
 		ResponseSize:  0,
 		Error:         "",

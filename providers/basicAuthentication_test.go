@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/session"
@@ -20,7 +21,7 @@ import (
 )
 
 // setupTestBasicAuth creates test repositories for basic authentication testing
-func setupTestBasicAuth(testName string) (db.SessionRepository, db.UserRepository) {
+func setupTestBasicAuth(testName string) (repositories.SessionRepository, repositories.UserRepository) {
 	d := deps.NewTestWithName(testName)
 	return d.SessionRepo, d.UserRepo
 }
@@ -49,7 +50,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 	}
 
 	// Helper to create a standard test user and repo for each test case
-	setupUserAndRepo := func(t *testing.T) db.UserRepository {
+	setupUserAndRepo := func(t *testing.T) repositories.UserRepository {
 		// Use a unique ID to ensure each test gets its own database
 		testDBName := "basicAuth_" + strings.ReplaceAll(t.Name(), "/", "_") + "_" + fmt.Sprintf("%d", time.Now().UnixNano())
 

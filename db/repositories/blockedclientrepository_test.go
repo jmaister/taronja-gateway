@@ -1,17 +1,18 @@
-package db_test
+package repositories_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+	repo := repositories.NewBlockedClientRepositoryDB(db.GetConnection())
 
 	now := time.Now()
 	seed := []db.BlockedClient{
@@ -43,7 +44,7 @@ func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 	}
 
 	t.Run("lists everything, most recent first, with total count", func(t *testing.T) {
-		items, total, err := repo.List(db.BlockedClientFilter{}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{}, 10, 0)
 		require.NoError(t, err)
 		assert.EqualValues(t, 3, total)
 		require.Len(t, items, 3)
@@ -53,7 +54,7 @@ func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 	})
 
 	t.Run("filters by IP", func(t *testing.T) {
-		items, total, err := repo.List(db.BlockedClientFilter{IP: "203.0.113.1"}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{IP: "203.0.113.1"}, 10, 0)
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, total)
 		require.Len(t, items, 2)
@@ -63,7 +64,7 @@ func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 	})
 
 	t.Run("filters by country", func(t *testing.T) {
-		items, total, err := repo.List(db.BlockedClientFilter{Country: "Spain"}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{Country: "Spain"}, 10, 0)
 		require.NoError(t, err)
 		assert.EqualValues(t, 1, total)
 		require.Len(t, items, 1)
@@ -71,7 +72,7 @@ func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 	})
 
 	t.Run("respects limit and offset", func(t *testing.T) {
-		items, total, err := repo.List(db.BlockedClientFilter{}, 1, 1)
+		items, total, err := repo.List(repositories.BlockedClientFilter{}, 1, 1)
 		require.NoError(t, err)
 		assert.EqualValues(t, 3, total, "total count ignores limit/offset")
 		require.Len(t, items, 1)
@@ -79,7 +80,7 @@ func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 	})
 
 	t.Run("empty result for an IP with no blocks", func(t *testing.T) {
-		items, total, err := repo.List(db.BlockedClientFilter{IP: "203.0.113.99"}, 10, 0)
+		items, total, err := repo.List(repositories.BlockedClientFilter{IP: "203.0.113.99"}, 10, 0)
 		require.NoError(t, err)
 		assert.EqualValues(t, 0, total)
 		assert.Empty(t, items)
@@ -88,7 +89,7 @@ func TestBlockedClientRepository_CreateAndList(t *testing.T) {
 
 func TestBlockedClient_BeforeCreate_NormalizesToUTC(t *testing.T) {
 	db.SetupTestDB(t.Name())
-	repo := db.NewBlockedClientRepositoryDB(db.GetConnection())
+	repo := repositories.NewBlockedClientRepositoryDB(db.GetConnection())
 
 	nonUTC := time.FixedZone("CEST", 2*60*60)
 	bc := &db.BlockedClient{

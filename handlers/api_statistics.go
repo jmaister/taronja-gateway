@@ -10,6 +10,8 @@ import (
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/queries"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 )
 
 // GetRequestStatistics implements the API endpoint for retrieving request statistics.
@@ -31,7 +33,7 @@ func (s *StrictApiServer) GetRequestStatistics(ctx context.Context, request api.
 	return api.GetRequestStatistics200JSONResponse(stats), nil
 }
 
-func (s *StrictApiServer) collectRequestStatistics(filter db.TrafficFilter) (api.RequestStatistics, error) {
+func (s *StrictApiServer) collectRequestStatistics(filter queries.TrafficFilter) (api.RequestStatistics, error) {
 	repo := s.trafficMetricRepo
 	var firstErr error
 	check := func(err error) {
@@ -39,7 +41,7 @@ func (s *StrictApiServer) collectRequestStatistics(filter db.TrafficFilter) (api
 			firstErr = err
 		}
 	}
-	countBy := func(dimension db.Dimension) map[string]int {
+	countBy := func(dimension queries.Dimension) map[string]int {
 		counts, err := repo.CountBy(dimension, filter)
 		check(err)
 		return dropEmptyKeys(counts)
@@ -54,16 +56,16 @@ func (s *StrictApiServer) collectRequestStatistics(filter db.TrafficFilter) (api
 
 	return api.RequestStatistics{
 		TotalRequests:             int(total),
-		RequestsByStatus:          countBy(db.DimensionStatus),
+		RequestsByStatus:          countBy(queries.DimensionStatus),
 		AverageResponseTime:       float32(avgResponseTimeNs / 1e6),
 		AverageResponseSize:       float32(avgResponseSize),
-		RequestsByCountry:         countBy(db.DimensionCountry),
-		RequestsByDeviceType:      countBy(db.DimensionDeviceType),
-		RequestsByPlatform:        countBy(db.DimensionPlatform),
-		RequestsByBrowser:         countBy(db.DimensionBrowser),
-		RequestsByUser:            countBy(db.DimensionUser),
-		RequestsByFingerprint:     countBy(db.DimensionFingerprint),
-		RequestsByFingerprintType: countBy(db.DimensionFingerprintType),
+		RequestsByCountry:         countBy(queries.DimensionCountry),
+		RequestsByDeviceType:      countBy(queries.DimensionDeviceType),
+		RequestsByPlatform:        countBy(queries.DimensionPlatform),
+		RequestsByBrowser:         countBy(queries.DimensionBrowser),
+		RequestsByUser:            countBy(queries.DimensionUser),
+		RequestsByFingerprint:     countBy(queries.DimensionFingerprint),
+		RequestsByFingerprintType: countBy(queries.DimensionFingerprintType),
 	}, firstErr
 }
 
@@ -147,7 +149,7 @@ func defaultTimeSeriesStart(granularity api.TimeSeriesGranularity, end time.Time
 }
 
 // GetRequestTimeSeries implements GET /_/api/statistics/timeseries —
-// request/visitor counts bucketed over time. See db/timeseries.go for the
+// request/visitor counts bucketed over time. See db/queries/timeseries.go for the
 // bucketing and range validation.
 func (s *StrictApiServer) GetRequestTimeSeries(ctx context.Context, request api.GetRequestTimeSeriesRequestObject) (api.GetRequestTimeSeriesResponseObject, error) {
 	if _, ok := requireAdminSession(ctx); !ok {
@@ -163,8 +165,8 @@ func (s *StrictApiServer) GetRequestTimeSeries(ctx context.Context, request api.
 		return defaultTimeSeriesStart(granularity, end)
 	})
 
-	dbGranularity := db.TimeSeriesGranularity(granularity)
-	if err := db.ValidateTimeSeriesRange(*filter.Start, *filter.End, dbGranularity); err != nil {
+	dbGranularity := queries.TimeSeriesGranularity(granularity)
+	if err := queries.ValidateTimeSeriesRange(*filter.Start, *filter.End, dbGranularity); err != nil {
 		return api.GetRequestTimeSeries400JSONResponse{
 			Code:    http.StatusBadRequest,
 			Message: err.Error(),
@@ -229,7 +231,7 @@ func (s *StrictApiServer) GetBlockedClients(ctx context.Context, req api.GetBloc
 		return api.GetBlockedClients200JSONResponse{Items: []api.BlockedClient{}}, nil
 	}
 
-	var filter db.BlockedClientFilter
+	var filter repositories.BlockedClientFilter
 	if req.Params.Ip != nil {
 		filter.IP = *req.Params.Ip
 	}

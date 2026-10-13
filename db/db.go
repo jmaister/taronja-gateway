@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/db/dbmigrations"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -12,10 +13,10 @@ import (
 
 var conn *gorm.DB
 
-// utcNowFunc replaces GORM's clock so timestamps it sets (gorm.Model fields,
+// NowUTC replaces GORM's clock so timestamps it sets (gorm.Model fields,
 // autoCreateTime/autoUpdateTime) are UTC. Fields the application sets itself, such
 // as Session.ValidUntil, are normalized in BeforeSave hooks or at the call site.
-func utcNowFunc() time.Time {
+func NowUTC() time.Time {
 	return time.Now().UTC()
 }
 
@@ -38,14 +39,14 @@ func Init() {
 	// Migrated on a short-lived connection of its own, fully closed before
 	// the real, long-lived, pooled serving connection below ever opens —
 	// the gateway never has a connection open against this database for
-	// anything else while runMigrations runs. See runMigrations' own doc
+	// anything else while dbmigrations.Run runs. See dbmigrations.Run's doc
 	// comment for why this project uses golang-migrate here instead of
 	// GORM's AutoMigrate.
 	migrationConn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		panic("Failed to open database for migrations: " + err.Error())
 	}
-	if err := runMigrations(migrationConn); err != nil {
+	if err := dbmigrations.Run(migrationConn, migrationSchema); err != nil {
 		panic("Failed to migrate database: " + err.Error())
 	}
 	if err := migrationConn.Close(); err != nil {
@@ -56,7 +57,7 @@ func Init() {
 		DriverName: "sqlite",
 		DSN:        dsn,
 	}, &gorm.Config{
-		NowFunc: utcNowFunc,
+		NowFunc: NowUTC,
 	})
 	if err != nil {
 		panic("Failed to connect database: " + err.Error())
@@ -93,7 +94,7 @@ func SetupTestDB(testName string) {
 		DSN:        dbName,
 	}, &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent), // Suppress logging during tests
-		NowFunc: utcNowFunc,
+		NowFunc: NowUTC,
 	})
 	if err != nil {
 		panic("Failed to connect to test database: " + err.Error())
@@ -112,7 +113,7 @@ func SetupTestDB(testName string) {
 	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
-	if err := runMigrations(sqlDB); err != nil {
+	if err := dbmigrations.Run(sqlDB, migrationSchema); err != nil {
 		panic("Failed to migrate test database: " + err.Error())
 	}
 
@@ -136,3 +137,7 @@ func ResetConnection() {
 	}
 	conn = nil
 }
+
+// migrationSchema is what the migrations need from the schema; dbmigrations
+// cannot import this package, which imports it.
+var migrationSchema = dbmigrations.Schema{Models: Models, HashSessionToken: HashSessionToken}

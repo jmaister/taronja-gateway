@@ -5,7 +5,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
-	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/middleware"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/notification"
@@ -16,11 +16,11 @@ type StrictApiServer struct {
 	// No dependencies needed here if middleware handles session validation
 	// and places SessionData in context.
 	sessionStore      session.SessionStore
-	userRepo          db.UserRepository
-	trafficMetricRepo db.TrafficMetricRepository
-	tokenRepo         db.TokenRepository
-	countersRepo      db.CountersRepository
-	blockedClientRepo db.BlockedClientRepository
+	userRepo          repositories.UserRepository
+	trafficMetricRepo repositories.TrafficMetricRepository
+	tokenRepo         repositories.TokenRepository
+	countersRepo      repositories.CountersRepository
+	blockedClientRepo repositories.BlockedClientRepository
 	tokenService      *auth.TokenService
 	startTime         time.Time
 	// rate limiter instance for stats/config endpoints
@@ -40,7 +40,7 @@ type StrictApiServer struct {
 }
 
 // NewStrictApiServer creates a new StrictApiServer.
-func NewStrictApiServer(sessionStore session.SessionStore, userRepo db.UserRepository, trafficMetricRepo db.TrafficMetricRepository, tokenRepo db.TokenRepository, countersRepo db.CountersRepository, blockedClientRepo db.BlockedClientRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *builtin.RateLimiter, middlewareRegistry *middleware.Registry, notificationService *notification.Service) *StrictApiServer {
+func NewStrictApiServer(sessionStore session.SessionStore, userRepo repositories.UserRepository, trafficMetricRepo repositories.TrafficMetricRepository, tokenRepo repositories.TokenRepository, countersRepo repositories.CountersRepository, blockedClientRepo repositories.BlockedClientRepository, tokenService *auth.TokenService, startTime time.Time, rateLimiter *builtin.RateLimiter, middlewareRegistry *middleware.Registry, notificationService *notification.Service) *StrictApiServer {
 	return &StrictApiServer{
 		sessionStore:        sessionStore,
 		userRepo:            userRepo,

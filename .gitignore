@@ -21,8 +21,8 @@ coverage.html
 
 # ...except committed test fixtures — real, historical database files kept
 # to validate migrations against genuine old data instead of just a
-# synthetic reproduction. See db/testdata/README.md.
-!db/testdata/*.db
+# synthetic reproduction. See db/dbmigrations/testdata/README.md.
+!db/dbmigrations/testdata/*.db
 
 # Node.js dependencies
 webapp/node_modules/
