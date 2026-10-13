@@ -14,7 +14,7 @@ import (
 
 func TestGatewayLogout(t *testing.T) {
 	cfg := &config.GatewayConfig{
-		Management: config.ManagementConfig{Prefix: "/_"},                                            // Using a common test prefix
+		Management: config.ManagementConfig{},                                                        // Using a common test prefix
 		Server:     config.ServerConfig{Host: "localhost", Port: 8080, URL: "http://localhost:8080"}, // Ensure URL is set for NewGateway logic if needed
 		Routes:     []config.RouteConfig{},                                                           // Provide empty routes to prevent nil panic during setup
 		AuthenticationProviders: config.AuthenticationProviders{ // Ensure this is not nil if NewGateway accesses it
@@ -44,7 +44,7 @@ func TestGatewayLogout(t *testing.T) {
 	sessionKey := sessionData.Token // Get the token from the created session
 
 	// Create a request to the logout endpoint
-	logoutPath := cfg.Management.Prefix + "/logout"
+	logoutPath := config.ManagementPrefix + "/logout"
 	req := httptest.NewRequest("GET", logoutPath, nil)
 	req.AddCookie(&http.Cookie{
 		Name:  session.SessionCookieName,
@@ -103,7 +103,7 @@ func TestGatewayLogout(t *testing.T) {
 
 func TestGatewayLogoutWithNoSession(t *testing.T) {
 	cfg := &config.GatewayConfig{
-		Management: config.ManagementConfig{Prefix: "/_"},
+		Management: config.ManagementConfig{},
 		Server:     config.ServerConfig{Host: "localhost", Port: 8080, URL: "http://localhost:8080"},
 		Routes:     []config.RouteConfig{},
 		AuthenticationProviders: config.AuthenticationProviders{
@@ -121,7 +121,7 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 	}
 
 	// Create a request to the logout endpoint without a session cookie
-	logoutPath := cfg.Management.Prefix + "/logout"
+	logoutPath := config.ManagementPrefix + "/logout"
 	req := httptest.NewRequest("GET", logoutPath, nil)
 
 	recorder := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestGatewayLogoutWithNoSession(t *testing.T) {
 
 func TestGatewayLogoutWithRedirect(t *testing.T) {
 	cfg := &config.GatewayConfig{
-		Management: config.ManagementConfig{Prefix: "/_"},
+		Management: config.ManagementConfig{},
 		Server:     config.ServerConfig{Host: "localhost", Port: 8080, URL: "http://localhost:8080"},
 		Routes:     []config.RouteConfig{},
 		AuthenticationProviders: config.AuthenticationProviders{
@@ -192,7 +192,7 @@ func TestGatewayLogoutWithRedirect(t *testing.T) {
 	}
 
 	// Create a request to the logout endpoint with a redirect parameter
-	logoutPath := cfg.Management.Prefix + "/logout?redirect=/customlogin"
+	logoutPath := config.ManagementPrefix + "/logout?redirect=/customlogin"
 	req := httptest.NewRequest("GET", logoutPath, nil)
 	req.AddCookie(&http.Cookie{
 		Name:  session.SessionCookieName,

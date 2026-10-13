@@ -16,7 +16,7 @@ func TestBuildRuntime_RateLimiterUsesTheMiddlewareOptions(t *testing.T) {
 	cfg := &config.GatewayConfig{
 		Name:       "rate-limiter-test",
 		Server:     config.ServerConfig{Host: "127.0.0.1", Port: 8080},
-		Management: config.ManagementConfig{Prefix: "/_"},
+		Management: config.ManagementConfig{},
 		Middleware: []config.MiddlewareConfig{
 			config.NewMiddlewareConfig(builtin.NameRateLimiter, builtin.RateLimiterConfig{RequestsPerMinute: 5, BlockMinutes: 1}),
 		},
@@ -33,7 +33,7 @@ func TestBuildRuntime_AnalyticsMiddlewareGetTheirDependencies(t *testing.T) {
 	cfg := &config.GatewayConfig{
 		Name:       "analytics-test",
 		Server:     config.ServerConfig{Host: "127.0.0.1", Port: 8080},
-		Management: config.ManagementConfig{Prefix: "/_"},
+		Management: config.ManagementConfig{},
 		Middleware: []config.MiddlewareConfig{
 			config.NewMiddlewareConfig(builtin.NameJA4Fingerprint, nil),
 			config.NewMiddlewareConfig(builtin.NameSessionExtraction, nil),

@@ -94,12 +94,12 @@ func NewRouteChainBuilder(authMiddleware *AuthMiddleware, cacheMiddleware *HttpC
 // enabled) then cache control, which always applies.
 func routeSpecs(routeConfig config.RouteConfig) []middleware.MiddlewareSpec {
 	var specs []middleware.MiddlewareSpec
-	if routeConfig.Authentication.Enabled {
+	if routeConfig.Authenticated {
 		// Browser-facing routes (static, SPA) redirect to login; plain
 		// proxy/API routes answer 401.
 		specs = append(specs, middleware.MiddlewareSpec{
 			Name:   routeMiddlewareAuth,
-			Config: RouteAuthConfig{Redirect: routeConfig.Static || routeConfig.IsSPA},
+			Config: RouteAuthConfig{Redirect: routeConfig.IsStatic() || routeConfig.IsSPA},
 		})
 	}
 	return append(specs, middleware.MiddlewareSpec{

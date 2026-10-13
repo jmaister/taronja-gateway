@@ -69,7 +69,6 @@ func TestRouteConfig_To_AbsentIsNil(t *testing.T) {
 	path := writeRouteTestConfig(t, `routes:
   - name: static-route
     from: /static/*
-    static: true
     toFolder: .
 `)
 	cfg, err := LoadConfig(path)
@@ -82,7 +81,6 @@ func TestRouteConfig_To_EmptyStringIsNil(t *testing.T) {
 	path := writeRouteTestConfig(t, `routes:
   - name: explicit-empty
     from: /static/*
-    static: true
     toFolder: .
     to: ""
 `)
@@ -99,7 +97,6 @@ func TestRouteConfig_To_EmptyListIsEmptyNotNil(t *testing.T) {
 	path := writeRouteTestConfig(t, `routes:
   - name: explicit-empty-list
     from: /static/*
-    static: true
     toFolder: .
     to: []
 `)
@@ -122,17 +119,12 @@ func TestRouteConfig_To_InvalidShapeRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "'to' must be a string or a list of strings")
 }
 
-func TestRouteConfig_To_AbsentForProxyRoute_LeavesNilAtLoadTime(t *testing.T) {
-	// LoadConfig itself doesn't reject a proxy route with no `to:`
-	// configured at all (that's middleware.ValidateRouteConfiguration's job
-	// — see middleware/builtin/validation_test.go for that coverage); decoding one
-	// must still leave To nil, not error out or default to something.
+func TestRouteConfig_NoTargetRejected(t *testing.T) {
 	path := writeRouteTestConfig(t, `routes:
   - name: no-target
     from: /api/*
 `)
-	cfg, err := LoadConfig(path)
-	require.NoError(t, err)
-	require.Len(t, cfg.Routes, 1)
-	assert.Nil(t, cfg.Routes[0].To)
+	_, err := LoadConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "needs one of to, toFolder or toFile")
 }

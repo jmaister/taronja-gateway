@@ -9,13 +9,12 @@ import (
 )
 
 func TestValidateConfigOnly_ValidConfigPasses(t *testing.T) {
-	cfg := &config.GatewayConfig{}
-	cfg.Management.Prefix = "/_"
+	cfg := &config.GatewayConfig{Server: config.ServerConfig{Port: 8080}}
 	assert.NoError(t, ValidateConfigOnly(cfg))
 }
 
 func TestValidateConfigOnly_CatchesInvalidMiddlewareOptions(t *testing.T) {
-	cfg := &config.GatewayConfig{Middleware: []config.MiddlewareConfig{
+	cfg := &config.GatewayConfig{Server: config.ServerConfig{Port: 8080}, Middleware: []config.MiddlewareConfig{
 		config.NewMiddlewareConfig(NameCORS, CORSConfig{AllowedOrigins: []string{"*"}, AllowCredentials: true}),
 	}}
 	err := ValidateConfigOnly(cfg)
@@ -24,7 +23,7 @@ func TestValidateConfigOnly_CatchesInvalidMiddlewareOptions(t *testing.T) {
 }
 
 func TestValidateConfigOnly_CatchesBadDependencyGraph(t *testing.T) {
-	cfg := &config.GatewayConfig{Middleware: []config.MiddlewareConfig{config.NewMiddlewareConfig(NameSessionExtraction, nil)}}
+	cfg := &config.GatewayConfig{Server: config.ServerConfig{Port: 8080}, Middleware: []config.MiddlewareConfig{config.NewMiddlewareConfig(NameSessionExtraction, nil)}}
 	assert.Error(t, ValidateConfigOnly(cfg))
 }
 

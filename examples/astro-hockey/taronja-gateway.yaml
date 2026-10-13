@@ -5,7 +5,6 @@ server:
   port: 8080
   url: http://localhost:8080
 management:
-  prefix: _
 middleware:
   - name: logging
 
@@ -13,18 +12,14 @@ routes:
   - name: Favicon
     from: /favicon.svg
     toFile: ./dist/favicon.svg
-    static: true
   - name: Private
     from: /dashboard/*
     toFolder: ./dist
-    static: true
     removeFromPath: /dist
-    authentication:
-      enabled: true
+    authenticated: true
   - name: Public
     from: /
     toFolder: ./dist
-    static: true
     removeFromPath: /dist
 
 

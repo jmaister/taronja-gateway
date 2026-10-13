@@ -42,9 +42,9 @@ pattern with `*` but no `**` also matches at any depth:
 
 | Endpoint | Returns |
 |---|---|
-| `GET <prefix>/api/statistics/rate-limiter` | Tracked IPs with counts and block time (live). |
-| `GET <prefix>/api/rate-limiter/blocked?ip=&country=&limit=&offset=` | Every block ever recorded, newest first (`limit` max 200). |
-| `GET <prefix>/api/config/rate-limiter` | The options in force. |
+| `GET /_/api/statistics/rate-limiter` | Tracked IPs with counts and block time (live). |
+| `GET /_/api/rate-limiter/blocked?ip=&country=&limit=&offset=` | Every block ever recorded, newest first (`limit` max 200). |
+| `GET /_/api/config/rate-limiter` | The options in force. |
 
 The dashboard's **Rate Limiter** page shows the live table, an attacker map
 and the block history; click a country to filter the history.

@@ -144,7 +144,7 @@ The Taronja Gateway CLI provides the following commands:
     ```bash
     ./tg validate --config ./sample/config.yaml
     ```
-    Loads and validates the config — schema version, routes, admin settings, and the global middleware chain's dependencies — without starting the server, opening a database connection, or making any network calls. Prints `'<path>' is valid (version X.Y): M route(s), management prefix "<prefix>".` on success, or `FATAL: <error>` (exit code 1) on the first problem found. Safe to run in CI or before deploying a config change.
+    Loads and validates the config — schema version, routes, admin settings, and the global middleware chain's dependencies — without starting the server, opening a database connection, or making any network calls. Prints `'<path>' is valid (version X.Y): M route(s), management prefix "/_".` on success, or `FATAL: <error>` (exit code 1) on the first problem found. Safe to run in CI or before deploying a config change.
 
 # Configuration
 
@@ -163,9 +163,8 @@ server:
   url: http://localhost:8080
 
 management:
-  prefix: _
   session:
-    secondsDuration: 86400  # Session duration in seconds (24 hours)
+    durationSeconds: 86400  # Session duration in seconds (24 hours)
   admin:
     enabled: true
     username: admin
@@ -182,8 +181,6 @@ routes:
     from: /api/v1/*
     removeFromPath: "/api/v1/"
     to: https://api.example.com
-    authentication:
-      enabled: false
     options:
       cacheControlSeconds: 3600
 
@@ -230,10 +227,9 @@ Defines the gateway server settings.
 
 ### Management
 
-Controls the management API and dashboard.
+Controls the admin dashboard and user sessions. The gateway's own endpoints always live under `/_` (login `/_/login`, dashboard `/_/admin/`, API `/_/api/`), so avoid using `/_` in your routes.
 
-- `prefix`: URL prefix for management endpoints (default: `_`)
-- `session.secondsDuration`: Session timeout in seconds (e.g., 86400 = 24 hours)
+- `session.durationSeconds`: Session timeout in seconds (e.g., 86400 = 24 hours)
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
@@ -266,7 +262,7 @@ middleware:
 |---|---|
 | [`tracing`](doc/middleware/tracing.md) | OpenTelemetry span per request, exported over OTLP/HTTP |
 | [`compression`](doc/middleware/compression.md) | brotli/zstd/gzip/deflate response compression |
-| [`cors`](doc/middleware/cors.md) | CORS headers for the management API |
+| [`cors`](doc/middleware/cors.md) | CORS headers and preflights |
 | [`rate_limiter`](doc/middleware/rate-limiter.md) | Per-IP request and error limits, scanner blocking |
 | [`ja4_fingerprint`](doc/middleware/ja4-fingerprint.md) | JA4H fingerprint per request |
 | [`session_extraction`](doc/middleware/session-extraction.md) | Attaches the caller's session to the request |
@@ -283,9 +279,9 @@ Each route maps a `from` path pattern to a backend (`to`, a single URL or a list
 - `name`: human-readable route identifier
 - `from`: URL path pattern to match (supports `*` wildcards)
 - `to`: backend URL, or a list of URLs to load balance across
-- `toFile` / `toFolder` / `static`: serve static files
-- `removeFromPath`: prefix to remove before forwarding to the backend
-- `authentication.enabled`: require authentication for this route
+- `toFile` / `toFolder`: serve a file or a folder (a route sets exactly one of `to`, `toFile`, `toFolder`)
+- `removeFromPath`: prefix to remove before forwarding to the backend (proxy routes)
+- `authenticated: true`: require a logged-in user
 - `options.cacheControlSeconds`: cache duration in seconds (0 = no-cache)
 
 See [doc/routes.md](doc/routes.md) for examples and load balancing, and [doc/CACHE_CONTROL.md](doc/CACHE_CONTROL.md) for caching.
@@ -378,9 +374,9 @@ registry that checks dependencies. See
   ./tg middleware list --config ./sample/config.yaml
   ```
 - **Monitor** a running gateway (admin session required):
-  - `GET <prefix>/api/middleware` — status, dependencies, and health of every
+  - `GET /_/api/middleware` — status, dependencies, and health of every
     middleware
-  - `GET <prefix>/api/middleware/{name}/metrics` — request count, error
+  - `GET /_/api/middleware/{name}/metrics` — request count, error
     count, and average duration for one middleware
 - **Add a built-in middleware** — see
   [`doc/middleware_development.md`](doc/middleware_development.md).
@@ -392,7 +388,7 @@ registry that checks dependencies. See
 
 # Authentication on the APIs
 
-Proxied requests to routes with `authentication.enabled: true` carry `X-User-Id` and `X-User-Data` headers, set only when a valid session (cookie) or bearer token exists. See [doc/backend-integration.md](doc/backend-integration.md) for the header reference, the `X-User-Data` JSON structure, and a backend example.
+Proxied requests to routes with `authenticated: true` carry `X-User-Id` and `X-User-Data` headers, set only when a valid session (cookie) or bearer token exists. See [doc/backend-integration.md](doc/backend-integration.md) for the header reference, the `X-User-Data` JSON structure, and a backend example.
 
 # Getting the Current User from the Frontend
 

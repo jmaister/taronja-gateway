@@ -2,7 +2,7 @@
 
 Attaches the caller's session (cookie or bearer token), when there is one, to
 the request. It never blocks a request; route authentication is set per route
-with `authentication.enabled`.
+with `authenticated: true`.
 
 ```yaml
 middleware:

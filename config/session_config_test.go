@@ -12,10 +12,9 @@ func TestSessionDurationConfiguration(t *testing.T) {
 		config := &GatewayConfig{}
 
 		// Set defaults (as done in LoadConfig)
-		config.Management.Prefix = "/_"
-		config.Management.Session.SecondsDuration = 86400 // Default 24 hours
+		config.Management.Session.DurationSeconds = 86400 // Default 24 hours
 
-		assert.Equal(t, 86400, config.Management.Session.SecondsDuration)
+		assert.Equal(t, 86400, config.Management.Session.DurationSeconds)
 
 		// Verify it equals 24 hours
 		assert.Equal(t, 24*time.Hour, config.Management.Session.GetDuration())
@@ -25,7 +24,7 @@ func TestSessionDurationConfiguration(t *testing.T) {
 		config := &GatewayConfig{}
 
 		// Set custom duration (12 hours)
-		config.Management.Session.SecondsDuration = 43200 // 12 hours
+		config.Management.Session.DurationSeconds = 43200 // 12 hours
 
 		assert.Equal(t, 12*time.Hour, config.Management.Session.GetDuration())
 	})
@@ -36,7 +35,7 @@ func TestSessionDurationConfiguration(t *testing.T) {
 		config := &GatewayConfig{
 			Management: ManagementConfig{
 				Session: SessionConfig{
-					SecondsDuration: 7200, // 2 hours
+					DurationSeconds: 7200, // 2 hours
 				},
 			},
 		}
@@ -46,17 +45,17 @@ func TestSessionDurationConfiguration(t *testing.T) {
 
 	t.Run("short session duration (1 hour)", func(t *testing.T) {
 		config := &GatewayConfig{}
-		config.Management.Session.SecondsDuration = 3600 // 1 hour
+		config.Management.Session.DurationSeconds = 3600 // 1 hour
 
-		assert.Equal(t, 3600, config.Management.Session.SecondsDuration)
+		assert.Equal(t, 3600, config.Management.Session.DurationSeconds)
 		assert.Equal(t, 1*time.Hour, config.Management.Session.GetDuration())
 	})
 
 	t.Run("long session duration (7 days)", func(t *testing.T) {
 		config := &GatewayConfig{}
-		config.Management.Session.SecondsDuration = 604800 // 7 days
+		config.Management.Session.DurationSeconds = 604800 // 7 days
 
-		assert.Equal(t, 604800, config.Management.Session.SecondsDuration)
+		assert.Equal(t, 604800, config.Management.Session.DurationSeconds)
 		assert.Equal(t, 168*time.Hour, config.Management.Session.GetDuration()) // 7 days = 168 hours
 	})
 
@@ -78,9 +77,9 @@ func TestSessionDurationConfiguration(t *testing.T) {
 		for name, tc := range testCases {
 			t.Run(name, func(t *testing.T) {
 				config := &GatewayConfig{}
-				config.Management.Session.SecondsDuration = tc.seconds
+				config.Management.Session.DurationSeconds = tc.seconds
 
-				assert.Equal(t, tc.seconds, config.Management.Session.SecondsDuration)
+				assert.Equal(t, tc.seconds, config.Management.Session.DurationSeconds)
 				assert.Equal(t, tc.expected, config.Management.Session.GetDuration())
 			})
 		}

@@ -5,9 +5,8 @@ server:
   port: 8080
   url: http://localhost:8080
 management:
-  prefix: _
   session:
-    secondsDuration: 86400  # Session duration in seconds (24 hours = 86400 seconds)
+    durationSeconds: 86400  # Session duration in seconds (24 hours = 86400 seconds)
   admin:
     # Admin access to the dashboard
     # Only this user can access the /_/admin/ dashboard
@@ -52,7 +51,6 @@ routes:
   - name: Favicon
     from: /favicon.ico
     toFile: ./sample/webfiles/favicon.ico
-    static: true
   - name: V1 of the API
     from: /api/v1/*
     removeFromPath: "/api/v1/"
@@ -63,8 +61,7 @@ routes:
     from: /api/v2/*
     removeFromPath: "/api/v2/"
     to: https://jsonplaceholder.typicode.com
-    authentication:
-      enabled: true
+    authenticated: true
   - name: httpbin
     from: /api/httpbin/*
     removeFromPath: "/api/httpbin/"
@@ -73,29 +70,23 @@ routes:
     from: /api/httpbin-auth/*
     removeFromPath: "/api/httpbin-auth/"
     to: http://localhost:8081
-    authentication:
-      enabled: true
+    authenticated: true
   - name: SPA App
     from: /app/*
     removeFromPath: "/app/"
     to: http://localhost:8090
     isSPA: true
-    authentication:
-      enabled: true
+    authenticated: true
   - name: Static files
     from: /static
     toFolder: ./sample/webfiles
-    static: true
   - name: FrontEnd Authenticated
     from: /secret
     toFolder: ./sample/webfiles/secret
-    static: true
-    authentication:
-      enabled: true
+    authenticated: true
   - name: FrontEnd
     from: /
     toFolder: ./sample/webfiles
-    static: true
     options:
       cacheControlSeconds: 86400  # Cache for 1 day (86400 seconds)
 

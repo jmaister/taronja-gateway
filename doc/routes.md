@@ -17,9 +17,9 @@ Define routing rules for incoming requests. Each route can:
   balancing — see [Load Balancing](#load-balancing) below
 - `toFile`: Serve a single static file
 - `toFolder`: Serve files from a directory
-- `static`: Set to `true` for static file serving
-- `removeFromPath`: Remove prefix before forwarding to backend
-- `authentication.enabled`: Require authentication for this route
+- A route sets exactly one of `to`, `toFile` and `toFolder`.
+- `removeFromPath`: Remove prefix before forwarding to backend (proxy routes)
+- `authenticated: true`: Require a logged-in user for this route
 - `options.cacheControlSeconds`: Cache duration in seconds (0 = no-cache)
 
 **Example Routes:**
@@ -30,15 +30,12 @@ routes:
   - name: Favicon
     from: /favicon.ico
     toFile: ./sample/webfiles/favicon.ico
-    static: true
 
   # Public API - no authentication required
   - name: Public API v1
     from: /api/v1/*
     removeFromPath: "/api/v1/"
     to: https://jsonplaceholder.typicode.com
-    authentication:
-      enabled: false
     options:
       cacheControlSeconds: 300  # Cache for 5 minutes
 
@@ -47,8 +44,7 @@ routes:
     from: /api/v2/*
     removeFromPath: "/api/v2/"
     to: https://api.example.com
-    authentication:
-      enabled: true
+    authenticated: true
     options:
       cacheControlSeconds: 0  # No cache
 
@@ -56,7 +52,6 @@ routes:
   - name: CSS and JavaScript
     from: /assets/*
     toFolder: ./static/assets
-    static: true
     options:
       cacheControlSeconds: 604800  # Cache for 1 week
 
@@ -64,9 +59,7 @@ routes:
   - name: Protected Documents
     from: /documents/*
     toFolder: ./static/private-docs
-    static: true
-    authentication:
-      enabled: true
+    authenticated: true
     options:
       cacheControlSeconds: 3600  # Cache for 1 hour
 
@@ -74,7 +67,6 @@ routes:
   - name: Public Frontend
     from: /
     toFolder: ./static/public
-    static: true
     options:
       cacheControlSeconds: 86400  # Cache for 1 day
 
@@ -82,9 +74,7 @@ routes:
   - name: Admin Dashboard
     from: /admin/*
     toFolder: ./static/admin
-    static: true
-    authentication:
-      enabled: true
+    authenticated: true
     options:
       cacheControlSeconds: 0  # No cache for dashboard
 ```
@@ -101,8 +91,6 @@ backend instances:
     - http://api-1.internal:8080
     - http://api-2.internal:8080
     - http://api-3.internal:8080
-  authentication:
-    enabled: false
 ```
 
 Requests are distributed round-robin across the list. If a backend's

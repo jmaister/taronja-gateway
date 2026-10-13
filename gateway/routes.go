@@ -18,7 +18,7 @@ func (g *Gateway) configureUserRoutes() error {
 		var handler http.HandlerFunc
 
 		// Create the base handler (proxy or static)
-		if routeConfig.Static {
+		if routeConfig.IsStatic() {
 			handler = g.createStaticHandlerFunc(routeConfig)
 			if handler == nil {
 				// Skip to next route if handler creation failed
@@ -63,10 +63,10 @@ func (g *Gateway) configureUserRoutes() error {
 			basePattern := strings.TrimSuffix(pattern, "*")
 			g.Mux.HandleFunc(basePattern, handler)
 			log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
-				routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled, basePattern, pattern)
+				routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authenticated, basePattern, pattern)
 		} else {
 			// For static file routes, register both with and without trailing slash to avoid redirects
-			if routeConfig.Static && routeConfig.ToFile != "" {
+			if routeConfig.IsStatic() && routeConfig.ToFile != "" {
 				// Register without trailing slash
 				g.Mux.HandleFunc(routeConfig.From, handler)
 
@@ -78,7 +78,7 @@ func (g *Gateway) configureUserRoutes() error {
 				g.Mux.HandleFunc(patternWithSlash, handler)
 
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
-					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled,
+					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authenticated,
 					routeConfig.From, patternWithSlash)
 			} else {
 				// For other routes, ensure the pattern ends with a slash for consistency
@@ -87,7 +87,7 @@ func (g *Gateway) configureUserRoutes() error {
 				}
 				g.Mux.HandleFunc(pattern, handler)
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (pattern: %s)",
-					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authentication.Enabled, pattern)
+					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authenticated, pattern)
 			}
 		}
 	}

@@ -166,7 +166,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		r.Header.Del(session.UserDataHeader)
 
 		// For authenticated routes, extract user ID and set header
-		if routeConfig.Authentication.Enabled {
+		if routeConfig.Authenticated {
 
 			// Try to get session from request
 			var sessionObject *db.Session

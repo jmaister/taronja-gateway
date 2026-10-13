@@ -40,5 +40,5 @@ func validateConfigFile(configFilePath string) {
 		versionDesc = fmt.Sprintf("version %s", *cfg.Version)
 	}
 	fmt.Printf("'%s' is valid (%s): %d route(s), management prefix %q.\n",
-		configFilePath, versionDesc, len(cfg.Routes), cfg.Management.Prefix)
+		configFilePath, versionDesc, len(cfg.Routes), config.ManagementPrefix)
 }

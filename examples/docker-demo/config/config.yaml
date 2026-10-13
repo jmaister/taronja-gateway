@@ -13,9 +13,8 @@ server:
   url: http://localhost:8080
 
 management:
-  prefix: /_
   session:
-    secondsDuration: 86400 # 24 hours
+    durationSeconds: 86400 # 24 hours
   admin:
     enabled: true
     username: admin
@@ -59,7 +58,6 @@ routes:
   - name: Static site
     from: /
     toFolder: /srv/static-site
-    static: true
     options:
       cacheControlSeconds: 3600 # look at the Cache-Control response header on this route
 
@@ -68,9 +66,7 @@ routes:
   - name: Static site (authenticated)
     from: /secret
     toFolder: /srv/static-site-secret
-    static: true
-    authentication:
-      enabled: true
+    authenticated: true
 
   # --- Web/proxy route --------------------------------------------------
   # "web-service" is another container in docker-compose.yml (traefik/whoami

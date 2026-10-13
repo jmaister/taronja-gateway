@@ -35,7 +35,7 @@ explicitly.
 
 | Path | Type | Config |
 |---|---|---|
-| `/` | **static** | `toFolder: /srv/static-site`, `static: true` |
+| `/` | **static** | `toFolder: /srv/static-site` |
 | `/web/*` | **proxy** | `to: http://web-service:80` — a Compose service name, resolved by Docker's internal DNS |
 | `/_/admin/` | admin dashboard | built in; log in with `admin` / `admin123` |
 

@@ -119,14 +119,14 @@ func TestGatewayPropagatesTraceContextToBackend(t *testing.T) {
 
 	gwConfig := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
-		Management: config.ManagementConfig{Prefix: "/admin"},
+		Management: config.ManagementConfig{},
 		Middleware: tracingMiddleware(collector.Listener.Addr().String()),
 		Routes: []config.RouteConfig{
 			{
-				Name:           "TracedProxy",
-				From:           "/proxy",
-				To:             []string{backend.URL},
-				Authentication: config.AuthenticationConfig{Enabled: false},
+				Name:          "TracedProxy",
+				From:          "/proxy",
+				To:            []string{backend.URL},
+				Authenticated: false,
 			},
 		},
 	}
@@ -255,14 +255,14 @@ func TestGatewayTracing_DistributedSpanLinkageOverRealOTLP(t *testing.T) {
 
 	gwConfig := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
-		Management: config.ManagementConfig{Prefix: "/admin"},
+		Management: config.ManagementConfig{},
 		Middleware: tracingMiddleware(collector.Listener.Addr().String()),
 		Routes: []config.RouteConfig{
 			{
-				Name:           "TracedProxy",
-				From:           "/proxy",
-				To:             []string{backend.URL},
-				Authentication: config.AuthenticationConfig{Enabled: false},
+				Name:          "TracedProxy",
+				From:          "/proxy",
+				To:            []string{backend.URL},
+				Authenticated: false,
 			},
 		},
 	}

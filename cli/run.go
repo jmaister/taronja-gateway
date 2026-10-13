@@ -64,7 +64,7 @@ func (a *app) runGateway(configFilePath string) {
 	gatewayDeps := deps.NewProduction()
 
 	// Must run before NewGatewayWithDependencies, which reads the notification service.
-	shutdownNotifications, err := gateway.InitNotifications(context.Background(), cfg.Notification, cfg.Server, cfg.Management, gatewayDeps)
+	shutdownNotifications, err := gateway.InitNotifications(context.Background(), cfg.Notification, cfg.Server, gatewayDeps)
 	if err != nil {
 		log.Fatalf("FATAL: failed to initialize notifications: %v", err)
 	}
@@ -76,9 +76,9 @@ func (a *app) runGateway(configFilePath string) {
 
 	log.Printf("API Gateway '%s' listening on %s", cfg.Name, gw.Server.Addr)
 	log.Printf("Gateway public URL set to: %s", cfg.Server.URL)
-	log.Printf("Management API prefix: %s", cfg.Management.Prefix)
+	log.Printf("Management API prefix: %s", config.ManagementPrefix)
 
-	cfg.AuthenticationProviders.PrintOAuthCallbackURLs(cfg.Server.URL, cfg.Management.Prefix)
+	cfg.AuthenticationProviders.PrintOAuthCallbackURLs(cfg.Server.URL, config.ManagementPrefix)
 
 	serverErr := make(chan error, 1)
 	go func() {

@@ -14,9 +14,8 @@ server:
   url: http://localhost:18199
 
 management:
-  prefix: /_
   session:
-    secondsDuration: 86400 # 24 hours
+    durationSeconds: 86400 # 24 hours
   admin:
     enabled: true
     username: admin
@@ -31,7 +30,6 @@ routes:
   - name: Home page
     from: /
     toFolder: /srv/static-site
-    static: true
 
   # --- Proxy route ------------------------------------------------------
   # The part this example is actually about: a second service, reached by

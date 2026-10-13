@@ -13,7 +13,6 @@ import "github.com/jmaister/taronja-gateway/config"
 - [func MigrateConfigContent\(path string\) \(content \[\]byte, fromVersion \*string, err error\)](<#MigrateConfigContent>)
 - [type AdminConfig](<#AdminConfig>)
 - [type AuthProviderCredentials](<#AuthProviderCredentials>)
-- [type AuthenticationConfig](<#AuthenticationConfig>)
 - [type AuthenticationProviders](<#AuthenticationProviders>)
   - [func \(a \*AuthenticationProviders\) PrintOAuthCallbackURLs\(serverURL, managementPrefix string\)](<#AuthenticationProviders.PrintOAuthCallbackURLs>)
 - [type BasicAuthenticationConfig](<#BasicAuthenticationConfig>)
@@ -23,6 +22,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type GatewayConfig](<#GatewayConfig>)
   - [func LoadConfig\(filename string\) \(\*GatewayConfig, error\)](<#LoadConfig>)
   - [func \(c \*GatewayConfig\) HasAnyAuthentication\(\) bool](<#GatewayConfig.HasAnyAuthentication>)
+  - [func \(c \*GatewayConfig\) Validate\(\) error](<#GatewayConfig.Validate>)
 - [type GeolocationConfig](<#GeolocationConfig>)
 - [type ManagementConfig](<#ManagementConfig>)
 - [type MiddlewareConfig](<#MiddlewareConfig>)
@@ -34,6 +34,7 @@ import "github.com/jmaister/taronja-gateway/config"
   - [func \(w ResponseWebhookConfig\) IsConfigured\(\) bool](<#ResponseWebhookConfig.IsConfigured>)
 - [type RouteConfig](<#RouteConfig>)
   - [func \(route \*RouteConfig\) GetCacheControlHeader\(\) string](<#RouteConfig.GetCacheControlHeader>)
+  - [func \(r RouteConfig\) IsStatic\(\) bool](<#RouteConfig.IsStatic>)
   - [func \(route \*RouteConfig\) ShouldSetCacheHeader\(\) bool](<#RouteConfig.ShouldSetCacheHeader>)
 - [type RouteOptions](<#RouteOptions>)
 - [type RouteTargets](<#RouteTargets>)
@@ -51,6 +52,12 @@ import "github.com/jmaister/taronja-gateway/config"
 
 ```go
 const CurrentConfigVersion = "1.0"
+```
+
+<a name="ManagementPrefix"></a>ManagementPrefix is the fixed URL prefix of the gateway's own endpoints: login, dashboard \(/\_/admin/\), API \(/\_/api/\) and static assets.
+
+```go
+const ManagementPrefix = "/_"
 ```
 
 <a name="CompareConfigVersions"></a>
@@ -72,7 +79,7 @@ func MigrateConfigContent(path string) (content []byte, fromVersion *string, err
 MigrateConfigContent returns the file at path migrated to CurrentConfigVersion \(unchanged if already current or newer\) and never writes anything. fromVersion is the declared version, nil if the file has none.
 
 <a name="AdminConfig"></a>
-## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L194-L199>)
+## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L191-L196>)
 
 AdminConfig configures administrative access to the management dashboard. When enabled, allows a single admin user to access the dashboard at \<management.prefix\>/admin/
 
@@ -86,7 +93,7 @@ type AdminConfig struct {
 ```
 
 <a name="AuthProviderCredentials"></a>
-## type [AuthProviderCredentials](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L89-L92>)
+## type [AuthProviderCredentials](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L86-L89>)
 
 AuthProviderCredentials contains OAuth2 provider credentials. Required for OAuth2 authentication providers \(Google, GitHub\).
 
@@ -97,19 +104,8 @@ type AuthProviderCredentials struct {
 }
 ```
 
-<a name="AuthenticationConfig"></a>
-## type [AuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L28-L30>)
-
-AuthenticationConfig controls whether authentication is required for a specific route.
-
-```go
-type AuthenticationConfig struct {
-    Enabled bool `yaml:"enabled"` // Enable authentication requirement for this route. Default: false
-}
-```
-
 <a name="AuthenticationProviders"></a>
-## type [AuthenticationProviders](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L101-L105>)
+## type [AuthenticationProviders](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L98-L102>)
 
 AuthenticationProviders defines the available authentication methods. At least one should be enabled if any route requires authentication.
 
@@ -122,7 +118,7 @@ type AuthenticationProviders struct {
 ```
 
 <a name="AuthenticationProviders.PrintOAuthCallbackURLs"></a>
-### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L108>)
+### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L105>)
 
 ```go
 func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPrefix string)
@@ -131,7 +127,7 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
 
 <a name="BasicAuthenticationConfig"></a>
-## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L95-L97>)
+## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L92-L94>)
 
 BasicAuthenticationConfig controls basic authentication provider.
 
@@ -142,7 +138,7 @@ type BasicAuthenticationConfig struct {
 ```
 
 <a name="BrandingConfig"></a>
-## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L122-L124>)
+## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L119-L121>)
 
 BrandingConfig contains visual customization options for the gateway UI.
 
@@ -153,13 +149,13 @@ type BrandingConfig struct {
 ```
 
 <a name="EmailNotificationConfig"></a>
-## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L141-L149>)
+## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L138-L146>)
 
 EmailNotificationConfig configures the SMTP relay notifications with sendEmail: true are delivered through. This is a plain synchronous SMTP send per notification \(net/smtp\) — no queue, no retry — appropriate for the low volume a per\-user notification system produces; a high\-volume deployment should put a relay with its own queuing in front of this instead of expecting the gateway to grow one.
 
 ```go
 type EmailNotificationConfig struct {
-    Enabled  bool   `yaml:"enabled"`  // Enable email delivery. Default: false. Requires smtp.host and from at minimum.
+    Enabled  bool   `yaml:"enabled"`  // Enable email delivery. Default: false. Requires host and from.
     Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com"). Required when enabled.
     Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for STARTTLS, 465 for implicit TLS). Required when enabled.
     Username string `yaml:"username"` // SMTP authentication username. Can use environment variables. Optional — some relays allow unauthenticated local delivery.
@@ -170,7 +166,7 @@ type EmailNotificationConfig struct {
 ```
 
 <a name="EmailNotificationConfig.IsConfigured"></a>
-### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L153>)
+### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L150>)
 
 ```go
 func (e EmailNotificationConfig) IsConfigured() bool
@@ -179,18 +175,18 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L227-L238>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L223-L234>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
 ```go
 type GatewayConfig struct {
-    Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR or MAJOR.MINOR (e.g. "1.0"). Optional; nil when absent. See CurrentConfigVersion and version.go.
+    Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR.MINOR, quoted ("1.0") or not (1.0). Required: a file without it is treated as pre-1.0 and must be migrated with `tg migrate`.
     Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
     Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
-    Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
+    Management              ManagementConfig        `yaml:"management"`              // Admin dashboard and session settings. Optional.
     Routes                  []RouteConfig           `yaml:"routes"`                  // List of routing rules. At least one route required.
-    AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"` // Available authentication methods. Required.
+    AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"` // Login methods. Optional; without any, nobody can log in.
     Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
     Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
     Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
@@ -199,7 +195,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L241>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L237>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -208,7 +204,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L397>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L384>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -216,25 +212,33 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 
 HasAuthentication checks if any authentication is enabled in the config.
 
+<a name="GatewayConfig.Validate"></a>
+### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L339>)
+
+```go
+func (c *GatewayConfig) Validate() error
+```
+
+Validate checks the settings that do not depend on the filesystem or on middleware internals. LoadConfig runs it, and so do \`tg validate\` and gateway startup for configs built in code \(where port 0 means an OS\-assigned port, so the port is only required by LoadConfig\).
+
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L220-L222>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L216-L218>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
 ```go
 type GeolocationConfig struct {
-    IPLocateAPIKey string `yaml:"iplocateApiKey"` // iplocate.io API key; may use ${ENV_VAR}. Optional; without it geolocation is disabled.
+    IPLocateAPIKey string `yaml:"iplocateApiKey"` // iplocate.io API key; may use ${ENV_VAR}. Optional; without it the free freeipapi.com service is used.
 }
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L212-L216>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L209-L212>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
 ```go
 type ManagementConfig struct {
-    Prefix  string        `yaml:"prefix"`  // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
     Admin   AdminConfig   `yaml:"admin"`   // Admin dashboard access configuration
     Session SessionConfig `yaml:"session"` // Session lifetime configuration for authenticated users
 }
@@ -281,7 +285,7 @@ func (f *MiddlewareConfig) UnmarshalYAML(value *yaml.Node) error
 UnmarshalYAML keeps \`config\` as a raw node for the middleware to decode. A strict decoder would otherwise try to match its keys against yaml.Node's own fields.
 
 <a name="NotificationConfig"></a>
-## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L129-L133>)
+## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L126-L130>)
 
 NotificationConfig defines notification settings. Notifications are always stored; delivery over each independent, optional channel block \(email, Telegram\) is added on top. See notification.Provider for adding a channel.
 
@@ -294,7 +298,7 @@ type NotificationConfig struct {
 ```
 
 <a name="ResponseWebhookConfig"></a>
-## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L174-L184>)
+## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L171-L181>)
 
 ResponseWebhookConfig configures the HTTP callback POSTed to a single URL when a user responds to a notification, so the creating app need not poll. It is not a delivery channel.
 
@@ -313,7 +317,7 @@ type ResponseWebhookConfig struct {
 ```
 
 <a name="ResponseWebhookConfig.IsConfigured"></a>
-### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L188>)
+### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L185>)
 
 ```go
 func (w ResponseWebhookConfig) IsConfigured() bool
@@ -322,27 +326,26 @@ func (w ResponseWebhookConfig) IsConfigured() bool
 IsConfigured reports whether the response webhook has a URL to actually POST to.
 
 <a name="RouteConfig"></a>
-## type [RouteConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L74-L85>)
+## type [RouteConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L72-L82>)
 
 RouteConfig defines a single routing rule for the gateway. Routes can proxy to remote servers or serve static files.
 
 ```go
 type RouteConfig struct {
-    Name           string               `yaml:"name"`              // Human-readable route name for logging. Required.
-    From           string               `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
-    To             RouteTargets         `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
-    ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
-    ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
-    Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false
-    IsSPA          bool                 `yaml:"isSPA"`             // Enable SPA mode. For static routes: serves index.html on 404. For proxy routes: re-requests the upstream base URL on 404. Default: false
-    RemoveFromPath string               `yaml:"removeFromPath"`    // Path prefix to remove before proxying (e.g., "/api/v1/"). Optional.
-    Authentication AuthenticationConfig `yaml:"authentication"`    // Authentication requirements for this route
-    Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
+    Name           string        `yaml:"name"`              // Human-readable route name for logging. Required.
+    From           string        `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
+    To             RouteTargets  `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
+    ToFolder       string        `yaml:"toFolder"`          // Folder to serve static files from. A route sets exactly one of to, toFolder or toFile.
+    ToFile         string        `yaml:"toFile"`            // Single file to serve. A route sets exactly one of to, toFolder or toFile.
+    IsSPA          bool          `yaml:"isSPA"`             // SPA mode. Static routes serve index.html on 404; proxy routes re-request the upstream base URL on 404. Default: false
+    RemoveFromPath string        `yaml:"removeFromPath"`    // Path prefix removed before proxying (e.g., "/api/v1/"). Proxy routes only.
+    Authenticated  bool          `yaml:"authenticated"`     // Require a logged-in user. Default: false
+    Options        *RouteOptions `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
 }
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L456>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L443>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -350,8 +353,17 @@ func (route *RouteConfig) GetCacheControlHeader() string
 
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
+<a name="RouteConfig.IsStatic"></a>
+### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L359>)
+
+```go
+func (r RouteConfig) IsStatic() bool
+```
+
+IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
+
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L464>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L451>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -360,7 +372,7 @@ func (route *RouteConfig) ShouldSetCacheHeader() bool
 ShouldSetCacheHeader returns true if this route should set a Cache\-Control header.
 
 <a name="RouteOptions"></a>
-## type [RouteOptions](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L33-L35>)
+## type [RouteOptions](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L31-L33>)
 
 RouteOptions contains additional optional configuration for individual routes.
 
@@ -371,7 +383,7 @@ type RouteOptions struct {
 ```
 
 <a name="RouteTargets"></a>
-## type [RouteTargets](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L41>)
+## type [RouteTargets](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L39>)
 
 RouteTargets is one or more backend URLs for a proxy route. \`to:\` accepts a scalar or a list; lists are round\-robined with failover \(see gateway.newRoundRobinTransport\). Targets must be interchangeable replicas; use separate routes to send different paths elsewhere.
 
@@ -380,7 +392,7 @@ type RouteTargets []string
 ```
 
 <a name="RouteTargets.UnmarshalYAML"></a>
-### func \(\*RouteTargets\) [UnmarshalYAML](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L47>)
+### func \(\*RouteTargets\) [UnmarshalYAML](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L45>)
 
 ```go
 func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error
@@ -389,31 +401,31 @@ func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error
 UnmarshalYAML implements custom decoding so \`to:\` accepts a bare string or a list interchangeably. yaml.v3 calls this with the value node for the \`to:\` key itself \(not the whole route mapping\), so Kind is always either ScalarNode \(a string\) or SequenceNode \(a list\) for valid input.
 
 <a name="ServerConfig"></a>
-## type [ServerConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L21-L25>)
+## type [ServerConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L20-L24>)
 
-ServerConfig defines the gateway server's network configuration. All fields are required.
+ServerConfig defines the gateway server's network configuration.
 
 ```go
 type ServerConfig struct {
-    Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
-    Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
-    URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+    Host string `yaml:"host"` // Bind address. Default: "127.0.0.1" (localhost only); "0.0.0.0" listens on all interfaces.
+    Port int    `yaml:"port"` // Port number (e.g., 8080). Required.
+    URL  string `yaml:"url"`  // Public URL, used for OAuth redirects (e.g., "https://example.com"). Optional; a warning is logged when empty.
 }
 ```
 
 <a name="SessionConfig"></a>
-## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L202-L204>)
+## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L199-L201>)
 
 SessionConfig defines session lifetime for authenticated users.
 
 ```go
 type SessionConfig struct {
-    SecondsDuration int `yaml:"secondsDuration"` // Session duration in seconds. Default: 86400 (24 hours). After this time, users must re-authenticate.
+    DurationSeconds int `yaml:"durationSeconds"` // Session lifetime in seconds. Default: 86400 (24 hours). After this time, users must log in again.
 }
 ```
 
 <a name="SessionConfig.GetDuration"></a>
-### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L206>)
+### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L203>)
 
 ```go
 func (s *SessionConfig) GetDuration() time.Duration
@@ -422,7 +434,7 @@ func (s *SessionConfig) GetDuration() time.Duration
 
 
 <a name="TelegramNotificationConfig"></a>
-## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L160-L163>)
+## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L157-L160>)
 
 TelegramNotificationConfig configures delivery via a Telegram bot. Users link their account once through the deep link \(see doc/notifications.md\); only linked users receive messages. The bot long\-polls, so no inbound exposure is needed.
 
@@ -434,7 +446,7 @@ type TelegramNotificationConfig struct {
 ```
 
 <a name="TelegramNotificationConfig.IsConfigured"></a>
-### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L167>)
+### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L164>)
 
 ```go
 func (t TelegramNotificationConfig) IsConfigured() bool

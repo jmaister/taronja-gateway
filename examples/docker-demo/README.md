@@ -33,8 +33,8 @@ off disk on every request. After editing `config/config.yaml`, run
 
 | Path | Type | Config |
 |---|---|---|
-| `/`, `/second_page.html`, `/images/logo.png` | **static** | `toFolder: /srv/static-site`, `static: true` |
-| `/secret/` | **static, authenticated** | same as above plus `authentication.enabled: true` |
+| `/`, `/second_page.html`, `/images/logo.png` | **static** | `toFolder: /srv/static-site` |
+| `/secret/` | **static, authenticated** | same as above plus `authenticated: true` |
 | `/web/*` | **proxy** | `to: http://web-service:80` — a Compose service name, resolved by Docker's internal DNS, not `localhost` |
 | `/_/admin/` | admin dashboard | built in; log in with `admin` / `admin123` |
 

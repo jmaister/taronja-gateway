@@ -55,7 +55,7 @@ func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore ses
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
 		log.Printf("Registering Basic Authentication provider")
-		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo, gatewayConfig)
+		RegisterBasicAuth(mux, sessionStore, config.ManagementPrefix, userRepo, gatewayConfig)
 	}
 
 	if gatewayConfig.AuthenticationProviders.Github.ClientId != "" &&

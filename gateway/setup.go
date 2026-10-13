@@ -52,7 +52,7 @@ func buildRuntime(cfg *config.GatewayConfig, d *deps.Dependencies) (*gatewayRunt
 	}
 	handler := globalChain.Build(mux)
 
-	authMiddleware := builtin.NewAuthMiddleware(d.SessionStore, d.TokenService, cfg.Management.Prefix)
+	authMiddleware := builtin.NewAuthMiddleware(d.SessionStore, d.TokenService, config.ManagementPrefix)
 	cacheMiddleware := builtin.NewHttpCacheMiddleware()
 	routeChainBuilder := builtin.NewRouteChainBuilder(authMiddleware, cacheMiddleware)
 

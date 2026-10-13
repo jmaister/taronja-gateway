@@ -130,9 +130,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 			Server: config.ServerConfig{
 				URL: "http://localhost:8080",
 			},
-			Management: config.ManagementConfig{
-				Prefix: "/_",
-			},
+			Management: config.ManagementConfig{},
 			AuthenticationProviders: config.AuthenticationProviders{
 				Google: config.AuthProviderCredentials{
 					ClientId:     "test-client-id",
@@ -202,7 +200,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		gatewayConfig := &config.GatewayConfig{
 			Management: config.ManagementConfig{
 				Session: config.SessionConfig{
-					SecondsDuration: 86400, // 24 hours
+					DurationSeconds: 86400, // 24 hours
 				},
 			},
 		}
@@ -273,7 +271,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		gatewayConfig := &config.GatewayConfig{
 			Management: config.ManagementConfig{
 				Session: config.SessionConfig{
-					SecondsDuration: 86400, // 24 hours
+					DurationSeconds: 86400, // 24 hours
 				},
 			},
 		}

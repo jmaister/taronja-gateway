@@ -1,10 +1,5 @@
 # TODO tasks for the project
 
-## Remove prefix config
-
-We assume "_" is the prefix for all gateway routes, no need to configure it.
-Using /_tg/ might be a good one so we see the name of the project everywhere.
-
 # Route health checks
 
 Health check configuration for the routes configured in the gateway:

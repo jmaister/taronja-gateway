@@ -47,7 +47,6 @@ func createTestConfigNoAnalytics() *config.GatewayConfig {
 			Port: 8080,
 		},
 		Management: config.ManagementConfig{
-			Prefix: "/_",
 			Admin: config.AdminConfig{
 				Enabled:  false,
 				Username: "admin",
@@ -70,13 +69,10 @@ func createTestConfigNoAnalytics() *config.GatewayConfig {
 		},
 		Routes: []config.RouteConfig{
 			{
-				Name:   "test-api",
-				From:   "/api/*",
-				To:     []string{"http://localhost:3000"},
-				Static: false,
-				Authentication: config.AuthenticationConfig{
-					Enabled: false,
-				},
+				Name:          "test-api",
+				From:          "/api/*",
+				To:            []string{"http://localhost:3000"},
+				Authenticated: false,
 			},
 		},
 	}

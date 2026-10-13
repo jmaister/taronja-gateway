@@ -18,10 +18,10 @@ import (
 // d.NotificationRepo/d.UserRepo) and before NewGatewayWithDependencies
 // (registerOpenAPIRoutes reads d.NotificationService when wiring up
 // StrictApiServer).
-func InitNotifications(ctx context.Context, cfg config.NotificationConfig, serverCfg config.ServerConfig, managementCfg config.ManagementConfig, d *deps.Dependencies) (shutdown func(context.Context) error, err error) {
+func InitNotifications(ctx context.Context, cfg config.NotificationConfig, serverCfg config.ServerConfig, d *deps.Dependencies) (shutdown func(context.Context) error, err error) {
 	respondBaseURL := ""
 	if serverCfg.URL != "" {
-		respondBaseURL = strings.TrimSuffix(serverCfg.URL, "/") + managementCfg.Prefix + "/api/notifications/respond"
+		respondBaseURL = strings.TrimSuffix(serverCfg.URL, "/") + config.ManagementPrefix + "/api/notifications/respond"
 	}
 
 	service := notification.NewService(cfg, d.NotificationRepo, d.UserRepo, respondBaseURL)

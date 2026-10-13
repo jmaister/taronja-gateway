@@ -4,7 +4,7 @@ How backends and frontends behind the gateway identify the logged-in user, and h
 
 ## Authentication on the APIs
 
-When a request is proxied to a backend route that has `authentication.enabled: true`, Taronja Gateway injects HTTP headers into the request so the backend service can identify the authenticated user. These headers are only set when a valid session exists.
+When a request is proxied to a backend route that has `authenticated: true`, Taronja Gateway injects HTTP headers into the request so the backend service can identify the authenticated user. These headers are only set when a valid session exists.
 
 ### Headers Sent to Backend Routes
 
@@ -22,7 +22,7 @@ Every proxied request (authenticated or not) includes the following standard hea
 
 #### Authentication Headers
 
-These headers are added only on routes with `authentication.enabled: true` and when the user has a valid session:
+These headers are added only on routes with `authenticated: true` and when the user has a valid session:
 
 | Header        | Type     | Description                                                                 |
 |---------------|----------|-----------------------------------------------------------------------------|

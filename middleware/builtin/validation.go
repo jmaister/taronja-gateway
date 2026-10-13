@@ -42,7 +42,7 @@ func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.Ga
 	// Check if any routes require authentication
 	hasAuthRoutes := false
 	for _, route := range config.Routes {
-		if route.Authentication.Enabled {
+		if route.Authenticated {
 			hasAuthRoutes = true
 			break
 		}
@@ -87,90 +87,7 @@ func ValidateAuthenticationMiddleware(deps *deps.Dependencies, config *config.Ga
 		}
 	}
 
-	// Validate management prefix for redirects
-	if config.Management.Prefix == "" {
-		return &ValidationError{
-			Middleware: "authentication",
-			Message:    "management prefix is required when authentication is enabled",
-		}
-	}
-
 	log.Printf("Authentication middleware dependencies validated successfully")
-	return nil
-}
-
-// ValidateAdminAccess validates admin access configuration
-func ValidateAdminAccess(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	if !config.Management.Admin.Enabled {
-		// Admin not enabled, no validation needed
-		return nil
-	}
-
-	log.Printf("Validating admin access configuration...")
-
-	// Validate admin credentials
-	if config.Management.Admin.Username == "" {
-		return &ValidationError{
-			Middleware: "admin",
-			Message:    "admin username is required when admin is enabled",
-		}
-	}
-
-	if config.Management.Admin.Password == "" {
-		return &ValidationError{
-			Middleware: "admin",
-			Message:    "admin password is required when admin is enabled",
-		}
-	}
-
-	/*
-		if deps.GatewayConfig.Management.Admin.Email == "" {
-			return &ValidationError{
-				Middleware: "admin",
-				Message:    "admin email is required when admin is enabled",
-			}
-		}
-	*/
-
-	log.Printf("Admin access configuration validated successfully")
-	return nil
-}
-
-// ValidateRouteConfiguration validates route-specific middleware configuration
-func ValidateRouteConfiguration(deps *deps.Dependencies, config *config.GatewayConfig) error {
-	log.Printf("Validating route middleware configuration...")
-
-	for _, route := range config.Routes {
-		// Validate static routes
-		if route.Static {
-			if route.ToFile == "" && len(route.To) == 0 && route.ToFolder == "" {
-				return &ValidationError{
-					Middleware: "static",
-					Message:    fmt.Sprintf("static route '%s' must have either ToFile, ToFolder, or To configured", route.Name),
-				}
-			}
-		} else {
-			// Validate proxy routes
-			if len(route.To) == 0 {
-				return &ValidationError{
-					Middleware: "proxy",
-					Message:    fmt.Sprintf("proxy route '%s' must have To URL configured", route.Name),
-				}
-			}
-		}
-
-		// Validate cache configuration
-		if route.Options != nil && route.Options.CacheControlSeconds != nil {
-			if *route.Options.CacheControlSeconds < 0 {
-				return &ValidationError{
-					Middleware: "cache",
-					Message:    fmt.Sprintf("route '%s' has invalid cache control seconds: %d", route.Name, *route.Options.CacheControlSeconds),
-				}
-			}
-		}
-	}
-
-	log.Printf("Route middleware configuration validated successfully")
 	return nil
 }
 
@@ -188,32 +105,19 @@ func ValidateAllMiddleware(deps *deps.Dependencies, config *config.GatewayConfig
 		return err
 	}
 
-	// Validate admin access
-	if err := ValidateAdminAccess(deps, config); err != nil {
+	if err := ValidateConfigOnly(config); err != nil {
 		return err
-	}
-
-	// Validate route configuration
-	if err := ValidateRouteConfiguration(deps, config); err != nil {
-		return err
-	}
-
-	if err := ValidateGlobalMiddleware(config); err != nil {
-		return &ValidationError{Middleware: "middleware", Message: err.Error()}
 	}
 
 	log.Printf("All middleware validation completed successfully")
 	return nil
 }
 
-// ValidateConfigOnly runs the ValidateAllMiddleware checks that only inspect the
-// config and never dereference deps. It is what `tg validate` calls, since that
-// opens no database.
+// ValidateConfigOnly runs the checks that only inspect the config: the config
+// package's own Validate, then each middleware's options and dependencies. It
+// is what `tg validate` calls, since that opens no database.
 func ValidateConfigOnly(config *config.GatewayConfig) error {
-	if err := ValidateRouteConfiguration(nil, config); err != nil {
-		return err
-	}
-	if err := ValidateAdminAccess(nil, config); err != nil {
+	if err := config.Validate(); err != nil {
 		return err
 	}
 	if err := ValidateGlobalMiddleware(config); err != nil {
@@ -243,7 +147,7 @@ func LogMiddlewareStatus(config *config.GatewayConfig) {
 	authRoutes := 0
 	cacheRoutes := 0
 	for _, route := range config.Routes {
-		if route.Authentication.Enabled {
+		if route.Authenticated {
 			authRoutes++
 		}
 		if route.Options != nil && route.Options.CacheControlSeconds != nil {

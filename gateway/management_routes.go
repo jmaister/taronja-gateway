@@ -21,7 +21,7 @@ import (
 
 // configureManagementRoutes sets up internal gateway endpoints
 func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
-	prefix := g.GatewayConfig.Management.Prefix
+	prefix := config.ManagementPrefix
 	log.Printf("Registering management API routes under prefix: %s", prefix)
 
 	// Login Routes for Basic and OAuth2 Authentication
@@ -92,7 +92,7 @@ func (g *Gateway) registerDashboard(prefix string) {
 	}
 
 	// Wrap dashboard handler with admin session authentication
-	authenticatedDashboardHandler := builtin.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, g.GatewayConfig.Management.Prefix, true)
+	authenticatedDashboardHandler := builtin.SessionMiddleware(dashboardHandler, g.Dependencies.SessionStore, g.Dependencies.TokenService, true, config.ManagementPrefix, true)
 
 	g.Mux.HandleFunc(dashboardPath, authenticatedDashboardHandler)
 	log.Printf("Registered Dashboard Route: %-25s | Path: %s | Auth admin required: %t", "Dashboard", dashboardPath, true)
@@ -118,7 +118,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
-	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, g.GatewayConfig.Management.Prefix, false)
+	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, config.ManagementPrefix, false)
 
 	// Define custom ResponseErrorHandlerFunc
 	responseErrorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
@@ -163,7 +163,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 		// Middlewares: []api.MiddlewareFunc{},
 		// ErrorHandlerFunc can be customized if needed
 		Middlewares: []api.MiddlewareFunc{
-			// middleware.SessionMiddlewareFunc(g.SessionStore, false, g.GatewayConfig.Management.Prefix),
+			// middleware.SessionMiddlewareFunc(g.SessionStore, false, config.ManagementPrefix),
 		},
 	})
 	// Ensure the pattern ends with a trailing slash for ServeMux to correctly match subpaths
@@ -188,7 +188,7 @@ func (g *Gateway) registerLoginRoutes() {
 	}
 
 	// Login page handler
-	loginPath := cfg.Management.Prefix + "/login"
+	loginPath := config.ManagementPrefix + "/login"
 	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
 		// Reads the live config. The redirect is sanitized so .RedirectURL is always a
 		// safe same-origin path wherever the template embeds it.

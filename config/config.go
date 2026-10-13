@@ -17,17 +17,15 @@ import (
 // --- Configuration Structs ---
 
 // ServerConfig defines the gateway server's network configuration.
-// All fields are required.
 type ServerConfig struct {
-	Host string `yaml:"host"` // Server bind address (e.g., "127.0.0.1" for localhost only, "0.0.0.0" for all interfaces)
-	Port int    `yaml:"port"` // Server port number (e.g., 8080). Required.
-	URL  string `yaml:"url"`  // Full external URL for OAuth redirects (e.g., "https://example.com" or "http://localhost:8080")
+	Host string `yaml:"host"` // Bind address. Default: "127.0.0.1" (localhost only); "0.0.0.0" listens on all interfaces.
+	Port int    `yaml:"port"` // Port number (e.g., 8080). Required.
+	URL  string `yaml:"url"`  // Public URL, used for OAuth redirects (e.g., "https://example.com"). Optional; a warning is logged when empty.
 }
 
-// AuthenticationConfig controls whether authentication is required for a specific route.
-type AuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"` // Enable authentication requirement for this route. Default: false
-}
+// ManagementPrefix is the fixed URL prefix of the gateway's own endpoints:
+// login, dashboard (/_/admin/), API (/_/api/) and static assets.
+const ManagementPrefix = "/_"
 
 // RouteOptions contains additional optional configuration for individual routes.
 type RouteOptions struct {
@@ -72,16 +70,15 @@ func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error {
 // RouteConfig defines a single routing rule for the gateway.
 // Routes can proxy to remote servers or serve static files.
 type RouteConfig struct {
-	Name           string               `yaml:"name"`              // Human-readable route name for logging. Required.
-	From           string               `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
-	To             RouteTargets         `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
-	ToFolder       string               `yaml:"toFolder"`          // Local folder path for static content. Mutually exclusive with ToFile. Required if Static=true and ToFile not set.
-	ToFile         string               `yaml:"toFile"`            // Specific file path for static content. Mutually exclusive with ToFolder. Optional.
-	Static         bool                 `yaml:"static"`            // Enable static file serving. Default: false
-	IsSPA          bool                 `yaml:"isSPA"`             // Enable SPA mode. For static routes: serves index.html on 404. For proxy routes: re-requests the upstream base URL on 404. Default: false
-	RemoveFromPath string               `yaml:"removeFromPath"`    // Path prefix to remove before proxying (e.g., "/api/v1/"). Optional.
-	Authentication AuthenticationConfig `yaml:"authentication"`    // Authentication requirements for this route
-	Options        *RouteOptions        `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
+	Name           string        `yaml:"name"`              // Human-readable route name for logging. Required.
+	From           string        `yaml:"from"`              // Incoming request path pattern (e.g., "/api/*", "/"). Must start with "/". Required.
+	To             RouteTargets  `yaml:"to,omitempty"`      // Target URL(s) for proxying (e.g., "https://api.example.com", or a list of them for load balancing). Required for proxy routes. See RouteTargets.
+	ToFolder       string        `yaml:"toFolder"`          // Folder to serve static files from. A route sets exactly one of to, toFolder or toFile.
+	ToFile         string        `yaml:"toFile"`            // Single file to serve. A route sets exactly one of to, toFolder or toFile.
+	IsSPA          bool          `yaml:"isSPA"`             // SPA mode. Static routes serve index.html on 404; proxy routes re-request the upstream base URL on 404. Default: false
+	RemoveFromPath string        `yaml:"removeFromPath"`    // Path prefix removed before proxying (e.g., "/api/v1/"). Proxy routes only.
+	Authenticated  bool          `yaml:"authenticated"`     // Require a logged-in user. Default: false
+	Options        *RouteOptions `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
 }
 
 // AuthProviderCredentials contains OAuth2 provider credentials.
@@ -139,7 +136,7 @@ type NotificationConfig struct {
 // deployment should put a relay with its own queuing in front of this
 // instead of expecting the gateway to grow one.
 type EmailNotificationConfig struct {
-	Enabled  bool   `yaml:"enabled"`  // Enable email delivery. Default: false. Requires smtp.host and from at minimum.
+	Enabled  bool   `yaml:"enabled"`  // Enable email delivery. Default: false. Requires host and from.
 	Host     string `yaml:"host"`     // SMTP server hostname (e.g., "smtp.gmail.com"). Required when enabled.
 	Port     int    `yaml:"port"`     // SMTP server port (e.g., 587 for STARTTLS, 465 for implicit TLS). Required when enabled.
 	Username string `yaml:"username"` // SMTP authentication username. Can use environment variables. Optional — some relays allow unauthenticated local delivery.
@@ -200,17 +197,16 @@ type AdminConfig struct {
 
 // SessionConfig defines session lifetime for authenticated users.
 type SessionConfig struct {
-	SecondsDuration int `yaml:"secondsDuration"` // Session duration in seconds. Default: 86400 (24 hours). After this time, users must re-authenticate.
+	DurationSeconds int `yaml:"durationSeconds"` // Session lifetime in seconds. Default: 86400 (24 hours). After this time, users must log in again.
 }
 
 func (s *SessionConfig) GetDuration() time.Duration {
-	return time.Duration(s.SecondsDuration) * time.Second
+	return time.Duration(s.DurationSeconds) * time.Second
 }
 
 // ManagementConfig defines the management API and dashboard settings.
 // The management API provides endpoints for metrics, user management, and admin dashboard.
 type ManagementConfig struct {
-	Prefix  string        `yaml:"prefix"`  // URL prefix for management endpoints. Default: "/_". All management endpoints will be under this prefix.
 	Admin   AdminConfig   `yaml:"admin"`   // Admin dashboard access configuration
 	Session SessionConfig `yaml:"session"` // Session lifetime configuration for authenticated users
 }
@@ -218,19 +214,19 @@ type ManagementConfig struct {
 // GeolocationConfig defines IP geolocation service settings.
 // Used to enrich analytics with geographic information about request origins.
 type GeolocationConfig struct {
-	IPLocateAPIKey string `yaml:"iplocateApiKey"` // iplocate.io API key; may use ${ENV_VAR}. Optional; without it geolocation is disabled.
+	IPLocateAPIKey string `yaml:"iplocateApiKey"` // iplocate.io API key; may use ${ENV_VAR}. Optional; without it the free freeipapi.com service is used.
 }
 
 // GatewayConfig is the root configuration structure for Taronja Gateway.
 // It contains all settings needed to run the gateway including server, routing, authentication, and management.
 // Configuration is loaded from a YAML file and supports environment variable expansion (${VAR_NAME}).
 type GatewayConfig struct {
-	Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR or MAJOR.MINOR (e.g. "1.0"). Optional; nil when absent. See CurrentConfigVersion and version.go.
+	Version                 *string                 `yaml:"version,omitempty"`       // Config schema version, MAJOR.MINOR, quoted ("1.0") or not (1.0). Required: a file without it is treated as pre-1.0 and must be migrated with `tg migrate`.
 	Name                    string                  `yaml:"name"`                    // Gateway instance name for identification. Required.
 	Server                  ServerConfig            `yaml:"server"`                  // Server network configuration. Required.
-	Management              ManagementConfig        `yaml:"management"`              // Management API and dashboard configuration. Required.
+	Management              ManagementConfig        `yaml:"management"`              // Admin dashboard and session settings. Optional.
 	Routes                  []RouteConfig           `yaml:"routes"`                  // List of routing rules. At least one route required.
-	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"` // Available authentication methods. Required.
+	AuthenticationProviders AuthenticationProviders `yaml:"authenticationProviders"` // Login methods. Optional; without any, nobody can log in.
 	Branding                BrandingConfig          `yaml:"branding,omitempty"`      // UI branding customization. Optional.
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
@@ -260,8 +256,8 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	config := &GatewayConfig{}
 
 	// Set defaults *before* unmarshalling
-	config.Management.Prefix = "/_"                   // Default prefix
-	config.Management.Session.SecondsDuration = 86400 // Default 24 hours
+	config.Server.Host = "127.0.0.1"
+	config.Management.Session.DurationSeconds = 86400
 
 	// The version is checked before the strict decode so an old config gets the
 	// "run tg migrate" message instead of an unknown-field error.
@@ -282,29 +278,21 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config data from '%s': %w", filename, err)
 	}
 
-	// --- Post-Unmarshal Validation and Path Resolution ---
-	// Validate server config
 	if config.Server.Port == 0 {
 		return nil, fmt.Errorf("server.port must be specified")
 	}
 	if config.Server.URL == "" {
 		log.Printf("Warning: server.url is not set in config. OAuth redirects might not work correctly.")
 	}
-
-	// Validate management config
-	if config.Management.Prefix == "" {
-		log.Printf("Warning: management.prefix is empty, defaulting to '/_'.")
-		config.Management.Prefix = "/_"
+	if !config.HasAnyAuthentication() {
+		log.Printf("WARNING: No authentication providers are configured. Consider enabling at least one authentication method.")
 	}
-	config.Management.Prefix = "/" + strings.Trim(config.Management.Prefix, "/") // Ensure leading/no trailing slash
 
-	// Process admin credentials
-	// If admin access is enabled, ensure both username and password are set
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
 	if config.Management.Admin.Enabled {
-		if config.Management.Admin.Username == "" || config.Management.Admin.Password == "" {
-			return nil, fmt.Errorf("admin access is enabled but username and/or password is not set")
-		}
-		// Hash the password if it's not already hashed
 		if !encryption.IsPasswordHashed(config.Management.Admin.Password) {
 			hashedPassword, err := encryption.GeneratePasswordHash(config.Management.Admin.Password)
 			if err != nil {
@@ -314,74 +302,19 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 			log.Printf("Admin password has been hashed for security")
 		}
 	} else {
-		// If admin access is not enabled, clear username and password
 		config.Management.Admin.Username = ""
 		config.Management.Admin.Password = ""
 		log.Printf("Admin access is disabled")
 	}
 
-	if err := validateMiddleware(config.Middleware); err != nil {
-		return nil, err
-	}
-
-	// Validate authentication providers
-	if !config.HasAnyAuthentication() {
-		log.Printf("WARNING: No authentication providers are configured. Consider enabling at least one authentication method:")
-	}
-
-	// Resolve static route paths
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
-	log.Printf("Current working directory: %s", currentDir)
-
 	for i := range config.Routes {
 		route := &config.Routes[i]
-
-		if route.Static {
-			// Validate that ToFolder and ToFile are mutually exclusive
-			if route.ToFolder != "" && route.ToFile != "" {
-				return nil, fmt.Errorf("route '%s' cannot have both 'toFolder' and 'toFile' specified, they are mutually exclusive", route.Name)
-			}
-
-			// Validate that at least one of ToFolder or ToFile is specified
-			if route.ToFolder == "" && route.ToFile == "" {
-				return nil, fmt.Errorf("route '%s' is marked as static but neither 'toFolder' nor 'toFile' is specified", route.Name)
-			}
-
-			// Resolve folder path
-			if route.ToFolder != "" {
-				originalPath := route.ToFolder
-				resolvedPath := originalPath
-				if !filepath.IsAbs(originalPath) {
-					resolvedPath = filepath.Join(currentDir, originalPath)
-				}
-				route.ToFolder = filepath.Clean(resolvedPath)
-
-				if originalPath != route.ToFolder && !filepath.IsAbs(originalPath) {
-					log.Printf("Route '%s' folder path resolved. Original: '%s', Resolved: '%s'",
-						route.Name, originalPath, route.ToFolder)
-				}
-			}
-
-			// Resolve file path
-			if route.ToFile != "" {
-				originalPath := route.ToFile
-				resolvedPath := originalPath
-				if !filepath.IsAbs(originalPath) {
-					resolvedPath = filepath.Join(currentDir, originalPath)
-				}
-				route.ToFile = filepath.Clean(resolvedPath)
-
-				if originalPath != route.ToFile && !filepath.IsAbs(originalPath) {
-					log.Printf("Route '%s' file path resolved. Original: '%s', Resolved: '%s'",
-						route.Name, originalPath, route.ToFile)
-				}
-			}
-		}
-
-		// Validate route 'From' path? Ensure it starts with '/'?
+		route.ToFolder = resolvePath(currentDir, route.ToFolder)
+		route.ToFile = resolvePath(currentDir, route.ToFile)
 		if !strings.HasPrefix(route.From, "/") {
 			log.Printf("Warning: Route '%s' From path '%s' does not start with '/'. Adding prefix.", route.Name, route.From)
 			route.From = "/" + route.From
@@ -389,6 +322,60 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 	}
 
 	return config, nil
+}
+
+// resolvePath makes a relative static path absolute against dir; "" stays "".
+func resolvePath(dir, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Clean(filepath.Join(dir, path))
+}
+
+// Validate checks the settings that do not depend on the filesystem or on
+// middleware internals. LoadConfig runs it, and so do `tg validate` and gateway
+// startup for configs built in code (where port 0 means an OS-assigned port, so
+// the port is only required by LoadConfig).
+func (c *GatewayConfig) Validate() error {
+	if c.Management.Admin.Enabled && (c.Management.Admin.Username == "" || c.Management.Admin.Password == "") {
+		return fmt.Errorf("management.admin is enabled but username and/or password is not set")
+	}
+	if c.Management.Session.DurationSeconds < 0 {
+		return fmt.Errorf("management.session.durationSeconds cannot be negative")
+	}
+	if err := validateMiddleware(c.Middleware); err != nil {
+		return err
+	}
+	for _, route := range c.Routes {
+		if err := route.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// IsStatic reports whether the route serves files (toFolder or toFile) rather
+// than proxying (to).
+func (r RouteConfig) IsStatic() bool {
+	return r.ToFolder != "" || r.ToFile != ""
+}
+
+func (r RouteConfig) validate() error {
+	targets := 0
+	for _, set := range []bool{len(r.To) > 0, r.ToFolder != "", r.ToFile != ""} {
+		if set {
+			targets++
+		}
+	}
+	switch {
+	case targets == 0:
+		return fmt.Errorf("route '%s' needs one of to, toFolder or toFile", r.Name)
+	case targets > 1:
+		return fmt.Errorf("route '%s' sets more than one of to, toFolder and toFile", r.Name)
+	case r.Options != nil && r.Options.CacheControlSeconds != nil && *r.Options.CacheControlSeconds < 0:
+		return fmt.Errorf("route '%s': options.cacheControlSeconds cannot be negative", r.Name)
+	}
+	return nil
 }
 
 // --- Helper Functions ---
@@ -423,7 +410,7 @@ type loginPageData struct {
 func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPageData {
 	data := loginPageData{
 		RedirectURL:      redirectURL,
-		ManagementPrefix: gatewayConfig.Management.Prefix,
+		ManagementPrefix: ManagementPrefix,
 	}
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""

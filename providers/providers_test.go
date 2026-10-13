@@ -43,7 +43,7 @@ func createTestAuthProvider() *AuthenticationProvider {
 	gatewayConfig := &config.GatewayConfig{
 		Management: config.ManagementConfig{
 			Session: config.SessionConfig{
-				SecondsDuration: 86400, // 24 hours
+				DurationSeconds: 86400, // 24 hours
 			},
 		},
 	}
@@ -578,7 +578,7 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 	gatewayConfig := &config.GatewayConfig{
 		Management: config.ManagementConfig{
 			Session: config.SessionConfig{
-				SecondsDuration: 86400, // 24 hours
+				DurationSeconds: 86400, // 24 hours
 			},
 		},
 	}

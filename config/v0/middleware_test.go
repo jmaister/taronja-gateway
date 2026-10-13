@@ -37,7 +37,8 @@ func entryNames(entries []config.MiddlewareConfig) []string {
 func TestMoveMiddlewareToRoot_ManagementFlagsKeepTheOldOrder(t *testing.T) {
 	out, entries := migratedMiddleware(t, `name: Test
 management:
-  prefix: /_
+  admin:
+    enabled: false
   logging: true
   compression: true
   analytics: true
@@ -52,7 +53,7 @@ tracing:
   endpoint: localhost:4318
 `)
 	assert.Equal(t, []string{"tracing", "compression", "cors", "rate_limiter", "ja4_fingerprint", "session_extraction", "traffic_metrics", "logging"}, entryNames(entries))
-	assert.Contains(t, out, "prefix: /_", "other management keys stay")
+	assert.Contains(t, out, "admin:\n    enabled: false", "other management keys stay")
 	assert.Contains(t, out, "# per IP", "comments inside moved blocks survive")
 	assert.Contains(t, out, "  - name: rate_limiter\n    config:\n      requestsPerMinute: 100", "2-space indentation")
 

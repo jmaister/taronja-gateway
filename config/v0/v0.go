@@ -8,10 +8,10 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-// UpgradeToV1 flattens notification.email.smtp.* and moves the middleware
-// settings into the root `middleware` list.
+// UpgradeToV1 flattens notification.email.smtp.*, moves the middleware
+// settings into the root `middleware` list and applies the 1.0 field renames.
 func UpgradeToV1(raw []byte) []byte {
-	return editYAML(raw, flattenNotificationEmailSMTP, moveMiddlewareToRoot)
+	return editYAML(raw, flattenNotificationEmailSMTP, moveMiddlewareToRoot, renameFields)
 }
 
 // flattenNotificationEmailSMTP moves notification.email.smtp.* up to

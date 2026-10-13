@@ -38,7 +38,7 @@ func newLoadBalancedTestGateway(t *testing.T, targets []string) *Gateway {
 	t.Helper()
 	cfg := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
-		Management: config.ManagementConfig{Prefix: "/admin"},
+		Management: config.ManagementConfig{},
 		Routes: []config.RouteConfig{
 			{
 				Name: "Load Balanced",

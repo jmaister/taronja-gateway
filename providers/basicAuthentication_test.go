@@ -36,9 +36,8 @@ func TestRegisterBasicAuth(t *testing.T) {
 	createTestConfig := func() *config.GatewayConfig {
 		return &config.GatewayConfig{
 			Management: config.ManagementConfig{
-				Prefix: managementPrefix,
 				Session: config.SessionConfig{
-					SecondsDuration: 86400, // 24 hours
+					DurationSeconds: 86400, // 24 hours
 				},
 				Admin: config.AdminConfig{
 					Enabled:  false,
@@ -316,7 +315,6 @@ func TestRegisterBasicAuth(t *testing.T) {
 		// Create config with admin enabled
 		testConfig := &config.GatewayConfig{
 			Management: config.ManagementConfig{
-				Prefix: managementPrefix,
 				Admin: config.AdminConfig{
 					Enabled:  true,
 					Username: "configadmin",

@@ -82,7 +82,7 @@ func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 	oauthConfig := &oauth2.Config{
 		ClientID:     gatewayConfig.AuthenticationProviders.Google.ClientId,
 		ClientSecret: gatewayConfig.AuthenticationProviders.Google.ClientSecret,
-		RedirectURL:  fmt.Sprintf("%s%s/auth/google/callback", gatewayConfig.Server.URL, gatewayConfig.Management.Prefix),
+		RedirectURL:  fmt.Sprintf("%s%s/auth/google/callback", gatewayConfig.Server.URL, config.ManagementPrefix),
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"},
 		Endpoint:     google.Endpoint,
 	}

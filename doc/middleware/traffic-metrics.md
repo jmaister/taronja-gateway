@@ -28,9 +28,9 @@ middleware:
 
 | Endpoint | Returns |
 |---|---|
-| `GET <prefix>/api/statistics/requests` | Counts by status, country, device, platform, browser, user, fingerprint. |
-| `GET <prefix>/api/statistics/requests/details` | Individual requests. |
-| `GET <prefix>/api/statistics/timeseries` | Requests, visitors, errors and response time per time bucket. |
+| `GET /_/api/statistics/requests` | Counts by status, country, device, platform, browser, user, fingerprint. |
+| `GET /_/api/statistics/requests/details` | Individual requests. |
+| `GET /_/api/statistics/timeseries` | Requests, visitors, errors and response time per time bucket. |
 
 All three take the same filters: `start_date`, `end_date`, `is_static`,
 `status_code`, `country`, `device_type`, `platform`, `browser`, `username`,

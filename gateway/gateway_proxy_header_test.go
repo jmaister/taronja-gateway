@@ -71,13 +71,13 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 	// This will allow us to test the header passing without authentication issues
 	gwConfig := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
-		Management: config.ManagementConfig{Prefix: "/admin"},
+		Management: config.ManagementConfig{},
 		Routes: []config.RouteConfig{
 			{
-				Name:           "ProxyWithAuth",
-				From:           "/proxy",
-				To:             []string{backend.URL},
-				Authentication: config.AuthenticationConfig{Enabled: false}, // Disable authentication for this test
+				Name:          "ProxyWithAuth",
+				From:          "/proxy",
+				To:            []string{backend.URL},
+				Authenticated: false, // Disable authentication for this test
 			},
 		},
 	}
@@ -141,7 +141,7 @@ func TestGatewayProxiesXUserIdHeader(t *testing.T) {
 
 // TestGatewayStripsForgedUserHeadersOnNoAuthRoute is the regression test for
 // a real gap: createProxyHandlerFunc only ever set X-User-Id/X-User-Data
-// from a validated session inside its `if routeConfig.Authentication.Enabled`
+// from a validated session inside its `if routeConfig.Authenticated`
 // branch — on a route that doesn't require gateway auth, the original,
 // client-supplied request (headers included) was forwarded to the backend
 // completely unmodified, so a direct client could set its own X-User-Id/
@@ -161,13 +161,13 @@ func TestGatewayStripsForgedUserHeadersOnNoAuthRoute(t *testing.T) {
 
 	gwConfig := &config.GatewayConfig{
 		Server:     config.ServerConfig{Host: "localhost", Port: 0},
-		Management: config.ManagementConfig{Prefix: "/admin"},
+		Management: config.ManagementConfig{},
 		Routes: []config.RouteConfig{
 			{
-				Name:           "PublicProxy",
-				From:           "/public",
-				To:             []string{backend.URL},
-				Authentication: config.AuthenticationConfig{Enabled: false},
+				Name:          "PublicProxy",
+				From:          "/public",
+				To:            []string{backend.URL},
+				Authenticated: false,
 			},
 		},
 	}
@@ -239,13 +239,13 @@ func TestGatewayForwardedProto(t *testing.T) {
 
 			gwConfig := &config.GatewayConfig{
 				Server:     config.ServerConfig{Host: "localhost", Port: 0},
-				Management: config.ManagementConfig{Prefix: "/admin"},
+				Management: config.ManagementConfig{},
 				Routes: []config.RouteConfig{
 					{
-						Name:           "ProtoTest",
-						From:           "/proto",
-						To:             []string{backend.URL},
-						Authentication: config.AuthenticationConfig{Enabled: false},
+						Name:          "ProtoTest",
+						From:          "/proto",
+						To:            []string{backend.URL},
+						Authenticated: false,
 					},
 				},
 			}
@@ -300,13 +300,13 @@ func TestGatewayForwardedHost(t *testing.T) {
 
 			gwConfig := &config.GatewayConfig{
 				Server:     config.ServerConfig{Host: "localhost", Port: 0, URL: tt.serverURL},
-				Management: config.ManagementConfig{Prefix: "/admin"},
+				Management: config.ManagementConfig{},
 				Routes: []config.RouteConfig{
 					{
-						Name:           "HostTest",
-						From:           "/host",
-						To:             []string{backend.URL},
-						Authentication: config.AuthenticationConfig{Enabled: false},
+						Name:          "HostTest",
+						From:          "/host",
+						To:            []string{backend.URL},
+						Authenticated: false,
 					},
 				},
 			}

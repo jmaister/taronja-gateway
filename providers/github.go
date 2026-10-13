@@ -164,7 +164,7 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 	oauthConfig := &oauth2.Config{
 		ClientID:     gatewayConfig.AuthenticationProviders.Github.ClientId,
 		ClientSecret: gatewayConfig.AuthenticationProviders.Github.ClientSecret,
-		RedirectURL:  fmt.Sprintf("%s%s/auth/github/callback", gatewayConfig.Server.URL, gatewayConfig.Management.Prefix),
+		RedirectURL:  fmt.Sprintf("%s%s/auth/github/callback", gatewayConfig.Server.URL, config.ManagementPrefix),
 		Scopes:       []string{"read:user", "user:email"},
 		Endpoint:     github.Endpoint,
 	}

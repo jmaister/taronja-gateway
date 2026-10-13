@@ -12,7 +12,7 @@ authenticationProviders:
 **OAuth2 Providers:** each one below is independent and optional — enable
 as many side by side as you like (the login page shows a button for each
 configured one). The redirect/callback URL you register with the provider
-must match `<server.url><management.prefix>/auth/<provider>/callback`
+must match `<server.url>/_/auth/<provider>/callback`
 exactly (scheme, host, port, and path) — the samples below assume the
 defaults (`http://localhost:8080`, prefix `/_`).
 

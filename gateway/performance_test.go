@@ -132,7 +132,7 @@ func BenchmarkAuthenticatedRequest(b *testing.B) {
 	defer log.SetOutput(originalOutput)
 
 	cfg := createTestConfig()
-	cfg.Routes[0].Authentication.Enabled = true // Enable authentication for this route
+	cfg.Routes[0].Authenticated = true // Enable authentication for this route
 	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
@@ -400,7 +400,6 @@ func createTestConfig() *config.GatewayConfig {
 			Port: 8080,
 		},
 		Management: config.ManagementConfig{
-			Prefix: "/_",
 			Admin: config.AdminConfig{
 				Enabled:  false,
 				Username: "admin",
@@ -429,13 +428,10 @@ func createTestConfig() *config.GatewayConfig {
 		},
 		Routes: []config.RouteConfig{
 			{
-				Name:   "test-api",
-				From:   "/api/*",
-				To:     []string{testBackendServerURL},
-				Static: false,
-				Authentication: config.AuthenticationConfig{
-					Enabled: false,
-				},
+				Name:          "test-api",
+				From:          "/api/*",
+				To:            []string{testBackendServerURL},
+				Authenticated: false,
 			},
 		},
 	}

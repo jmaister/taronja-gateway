@@ -11,7 +11,8 @@ schema is either "the structure changed" (bump `MAJOR`, needs a real
 migration) or "a field was added/removed with no structural change" (bump
 `MINOR`, no migration needed at all — see below). A bare major number
 (`version: 1`, no dot) is also accepted and treated as `1.0`, for backward
-compatibility with configs migrated before `MINOR` versions existed.
+compatibility with configs migrated before `MINOR` versions existed. Quoting
+is optional: `version: "1.0"`, `version: '1.0'` and `version: 1.0` are the same.
 
 On startup, the gateway logs the version it detected and what it currently
 supports:
@@ -85,7 +86,7 @@ touched; there's no content transformation to run. Real content migrations,
 like the one below, are the exception, reserved for an actual structural
 change (typically paired with a `MAJOR` bump).
 
-**What changes for a pre-v1.0.0 config:** two content migrations, plus
+**What changes for a pre-v1.0.0 config:** three content migrations, plus
 stamping `version: "1.0"` on the file.
 
 1. A `notification.email.smtp:` block (the v0.0.24-era shape) is flattened
@@ -119,7 +120,6 @@ stamping `version: "1.0"` on the file.
    ```yaml
    # before
    management:
-     prefix: _
      logging: true
      analytics: true
      rateLimiter:
@@ -127,8 +127,6 @@ stamping `version: "1.0"` on the file.
        blockMinutes: 15
 
    # after
-   management:
-     prefix: _
    middleware:
      - name: rate_limiter
        config:
@@ -140,7 +138,19 @@ stamping `version: "1.0"` on the file.
      - name: logging
    ```
 
-A config with neither (most of them) only gets the `version: "1.0"` line
+3. Field renames:
+
+   | Before | After |
+   |---|---|
+   | `management.prefix` | removed: the gateway's endpoints are always under `/_` |
+   | `management.session.secondsDuration` | `management.session.durationSeconds` |
+   | route `static: true` | removed: `toFolder`/`toFile` make a route static |
+   | route `authentication: {enabled: true}` | route `authenticated: true` |
+
+   A route that relied on a custom `management.prefix` now finds the
+   management endpoints under `/_`.
+
+A config with none of these only gets the `version: "1.0"` line
 added and is otherwise byte-for-byte unchanged. When something does move,
 the file is re-encoded: comments and `${VAR_NAME}` placeholders are kept,
 but spacing around comments and blank lines may change.

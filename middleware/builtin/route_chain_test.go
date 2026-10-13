@@ -14,11 +14,11 @@ func TestRouteSpecs_OrderAndRedirect(t *testing.T) {
 	plain := routeSpecs(config.RouteConfig{})
 	assert.Equal(t, []string{routeMiddlewareCache}, specNames(plain))
 
-	api := routeSpecs(config.RouteConfig{Authentication: config.AuthenticationConfig{Enabled: true}})
+	api := routeSpecs(config.RouteConfig{Authenticated: true})
 	assert.Equal(t, []string{routeMiddlewareAuth, routeMiddlewareCache}, specNames(api))
 	assert.False(t, api[0].Config.(RouteAuthConfig).Redirect)
 
-	spa := routeSpecs(config.RouteConfig{IsSPA: true, Authentication: config.AuthenticationConfig{Enabled: true}})
+	spa := routeSpecs(config.RouteConfig{IsSPA: true, Authenticated: true})
 	assert.True(t, spa[0].Config.(RouteAuthConfig).Redirect)
 }
 
