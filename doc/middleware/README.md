@@ -1,73 +1,47 @@
 # Middleware
 
-Global middleware runs on every request, top to bottom, before it reaches a
-route. It is configured in one place, the root `middleware:` list of the
-config file, and each middleware has its own page here with its options and
-dependencies.
+Global middleware runs on every request, top to bottom, before the route.
+List it under the root `middleware:` key:
 
 ```yaml
 middleware:
   - name: compression
+  - name: cors
+    config:
+      allowedOrigins: ["https://app.example.com"]
   - name: rate_limiter
     config:
-      requestsPerMinute: 100
+      requestsPerMinute: 300
       blockMinutes: 15
   - name: ja4_fingerprint
   - name: session_extraction
   - name: traffic_metrics
   - name: logging
-    enabled: false   # kept in the list, not running
+    enabled: false   # kept, not running
 ```
 
-Every entry takes the same three keys:
+| Key | Description |
+|---|---|
+| `name` | Middleware name, once per list. |
+| `enabled` | `false` to skip an entry. Default `true`. |
+| `config` | Options; unknown keys are rejected. |
 
-| Key | Required | Meaning |
+No `middleware:` key means none runs. Check a config without starting the
+gateway with `tg validate --config <file>` or `tg middleware list --config <file>`.
+
+| Middleware | Depends on | Does |
 |---|---|---|
-| `name` | yes | Which middleware (see the table below). Each name may appear once. |
-| `enabled` | no | `false` keeps the entry without running it. Default `true`. |
-| `config` | no | The middleware's own options. Unknown keys are rejected. |
+| [`tracing`](tracing.md) | — | OpenTelemetry span per request. |
+| [`compression`](compression.md) | — | brotli/zstd/gzip/deflate responses. |
+| [`cors`](cors.md) | — | CORS headers and preflights. |
+| [`rate_limiter`](rate-limiter.md) | — | Per-IP limits, scanner blocking. |
+| [`ja4_fingerprint`](ja4-fingerprint.md) | — | Request fingerprint header. |
+| [`session_extraction`](session-extraction.md) | `ja4_fingerprint` | Attaches the caller's session. |
+| [`traffic_metrics`](traffic-metrics.md) | `session_extraction`, `ja4_fingerprint` | Records requests for the dashboard. |
+| [`logging`](logging.md) | — | One log line per request. |
 
-With no `middleware:` key, no middleware runs. `tg middleware list --config <file>`
-prints the chain a config resolves to; `tg validate` checks names, options
-and dependencies without starting the gateway.
+Dependencies must come earlier in the list. The order above is the suggested
+one: `tracing` first, `cors` before `rate_limiter`, `logging` last.
 
-## Available middleware
-
-In the order the sample config lists them:
-
-| Middleware | Options | Depends on | Summary |
-|---|---|---|---|
-| [`tracing`](tracing.md) | `endpoint` (required), `insecure` | — | OpenTelemetry span per request, trace context forwarded to backends. |
-| [`compression`](compression.md) | none | — | brotli, zstd, gzip or deflate, negotiated via Accept-Encoding. |
-| [`cors`](cors.md) | origins, methods, headers, credentials, max age | — | CORS headers and preflight answers. |
-| [`rate_limiter`](rate-limiter.md) | per-IP limits, block time, scanner detection | — | Limits request rate per client IP and blocks scanners. |
-| [`ja4_fingerprint`](ja4-fingerprint.md) | none | — | Computes a JA4H fingerprint per request. |
-| [`session_extraction`](session-extraction.md) | none | `ja4_fingerprint` | Attaches the caller's session to the request, without enforcing login. |
-| [`traffic_metrics`](traffic-metrics.md) | `excludeStaticAssets` | `session_extraction`, `ja4_fingerprint` | Records each request for the statistics dashboard. |
-| [`logging`](logging.md) | none | — | Logs each request (method, path, status, duration). |
-
-A dependency must appear earlier in the list; the gateway refuses to start
-otherwise. The dashboard's statistics pages need the three analytics middleware
-(`ja4_fingerprint`, `session_extraction`, `traffic_metrics`).
-
-### Ordering
-
-Order is yours to choose, but a few placements matter:
-
-- `tracing` first, so its span covers the whole request.
-- `compression` near the top: it wraps the response writer, and middleware
-  after it still see the uncompressed status and size.
-- `cors` before `rate_limiter`, so preflights are answered without being
-  counted or blocked.
-- `logging` last, so it logs the final status.
-
-Route-level behavior (authentication, cache-control headers) is configured on
-each route, not here; see [Routes](../../README.md#routes) and
-[`doc/CACHE_CONTROL.md`](../CACHE_CONTROL.md).
-
-## Writing a middleware
-
-A middleware is one file in `middleware/builtin/` holding its name, its options
-type, its validation and a factory, registered in
-`middleware/builtin/global.go`. See
-[`doc/middleware_development.md`](../middleware_development.md).
+Route authentication and cache headers are set per route, see
+[Routes](../../README.md#routes).

@@ -1,126 +1,50 @@
-# Rate Limiter
+# rate_limiter
 
-**Middleware name:** `rate_limiter`
-**Suggested position:** second — right after [`cors`](cors.md), before
-analytics or logging.
-**Depends on:** nothing.
-**Enabled by default:** no; list it under `middleware:`.
-
-## What it does
-
-An in-memory rate limiter keyed by client IP, with three independent limits
-that can be used separately or together:
-
-1. **Requests per minute** — blocks an IP once it exceeds a request-count
-   threshold in a rolling one-minute window.
-2. **Error count** — blocks an IP once it accumulates too many `401`/`404`
-   responses within the block window, a simple signal for credential
-   stuffing or brute-force probing.
-3. **Vulnerability scan detection** — blocks an IP once it triggers too many
-   `404`s specifically on a configured list of known-scanner-probe paths
-   (`/wp-admin/*`, `/.env`, `/.git/*`, and whatever else you list), separate
-   from the general error count above so a handful of legitimate 404s
-   elsewhere on the site don't count against it.
-
-Once blocked, every request from that IP gets an immediate `429 Too Many
-Requests` with a `Retry-After` header, without reaching the rest of the
-chain, until the block window expires.
-
-State is entirely in-memory (a `sync.Map` of per-IP entries, each holding
-its own recent-request/error/scan timestamps) — it is **not** persisted or
-shared across gateway instances, and a restart clears it. A background
-goroutine periodically prunes expired timestamps and removes IPs with no
-remaining activity, so long-running processes don't accumulate unbounded
-memory from one-off visitors.
-
-## Enabling it
-
-Not listed, or listed with `requestsPerMinute`, `maxErrors` and
-`vulnerabilityScan` all unset, it passes every request through.
+Per-IP limits in memory (not shared between instances, cleared on restart).
+A blocked IP gets `429` with `Retry-After` until the block expires.
 
 ```yaml
 middleware:
   - name: rate_limiter
     config:
       requestsPerMinute: 300
-      maxErrors: 20
+      maxErrors: 20            # 401/404 responses
       blockMinutes: 15
+      vulnerabilityScan:
+        urls: ["/wp-admin/*", "/*.php", "/.env"]
+        max404: 3
+        blockMinutes: 60
 ```
 
-## Config options
+| Option | Default | Description |
+|---|---|---|
+| `requestsPerMinute` | `0` (off) | Requests per IP in a rolling minute. |
+| `maxErrors` | `0` (off) | `401`/`404` responses per IP within `blockMinutes`. |
+| `blockMinutes` | — | Block time for the two checks above. Required when any check is on. |
+| `blockedClientRetentionDays` | `90` | How long block events are kept in the database. |
+| `vulnerabilityScan.urls` | `[]` | Paths scanners probe (glob patterns, see below). |
+| `vulnerabilityScan.max404` | `0` (off) | `404`s on those paths before blocking. |
+| `vulnerabilityScan.blockMinutes` | — | Block time for scanners. Required when `max404` is set. |
 
-All under the entry's `config:` block. Every numeric value is "0 disables that specific check"; the
-three checks are independent, so you can enable any subset of them.
+**Depends on:** nothing.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `requestsPerMinute` | `int` | `0` (disabled) | Max requests per IP in a rolling 60-second window before it's blocked. |
-| `maxErrors` | `int` | `0` (disabled) | Max `401`/`404` responses per IP within `blockMinutes` before it's blocked. |
-| `blockMinutes` | `int` | `0` (no blocking) | How long, in minutes, a blocked IP stays blocked. Shared by the `requestsPerMinute` and `maxErrors` checks; the vulnerability scan check has its own `vulnerabilityScan.blockMinutes` (see below). |
-| `vulnerabilityScan.urls` | `[]string` | `[]` (disabled) | Path patterns to watch for `404`s on — see the wildcard syntax below. |
-| `vulnerabilityScan.max404` | `int` | `0` (disabled) | Max `404`s on a watched path per IP before it's blocked. |
-| `vulnerabilityScan.blockMinutes` | `int` | `0` | How long, in minutes, an IP blocked for scanning stays blocked. |
-
-### Vulnerability scan path patterns
-
-Patterns support `*` and `**` glob wildcards
-([doublestar](https://github.com/bmatcuk/doublestar) syntax). A bare `*`
-segment (no `**` anywhere in the pattern) is automatically expanded to also
-match at any nesting depth, not just where you wrote it — so you rarely need
-`**` yourself:
+Scan patterns use [doublestar](https://github.com/bmatcuk/doublestar) globs; a
+pattern with `*` but no `**` also matches at any depth:
 
 | Pattern | Matches |
 |---|---|
-| `/wp-admin/*` | `/wp-admin/anything`, and (via the automatic expansion) `/some/nested/wp-admin/anything` too |
-| `/*.php` | `/admin.php`, `/deep/nested/admin.php` |
-| `/.env` | `/.env` exactly |
-| `/backup/*.zip` | `/backup/x.zip`, `/backup/a/b/x.zip` |
-| `/api/**/status` | `/api/status`, `/api/v1/status`, `/api/v1/nested/status` — an explicit `**` here means you're intentionally matching "status at the end, anything in between", not relying on the automatic expansion |
+| `/wp-admin/*` | `/wp-admin/x`, `/a/b/wp-admin/x` |
+| `/*.php` | `/admin.php`, `/a/b/admin.php` |
+| `/.env` | `/.env` only |
+| `/api/**/status` | `/api/status`, `/api/v1/x/status` |
 
-Patterns are checked once per configured entry per `404` response; matching
-stops at the first hit. This list only needs common attack-surface paths
-you actually want flagged — it does not need to (and should not) include
-your application's real routes.
+## Admin API and dashboard
 
-## Introspection
+| Endpoint | Returns |
+|---|---|
+| `GET <prefix>/api/statistics/rate-limiter` | Tracked IPs with counts and block time (live). |
+| `GET <prefix>/api/rate-limiter/blocked?ip=&country=&limit=&offset=` | Every block ever recorded, newest first (`limit` max 200). |
+| `GET <prefix>/api/config/rate-limiter` | The options in force. |
 
-- **`GET <prefix>/api/statistics/rate-limiter`** (admin-only) — every
-  tracked IP's current request/error/scan-404 counts and block-until time.
-  This is a live snapshot only: once a block expires and the IP goes quiet,
-  the background cleanup goroutine (see "What it does" above) deletes its
-  entry entirely, so a since-expired block has no trace here.
-- **`GET <prefix>/api/rate-limiter/blocked`** (admin-only) — the persistent
-  history of block events, unaffected by that cleanup. Optional `ip` and
-  `country` filters, `limit`/`offset` pagination (default `limit=50`, max `200`). Each entry
-  records which of the three checks tripped (`reason`:
-  `rate_limit`/`max_errors`/`vulnerability_scan`), the matched path for
-  scan blocks, how many times the threshold was hit, the block's start/end
-  time, and the same user-agent/geo/fingerprint/lat-long fields already
-  collected for traffic metrics. A block is written here at the moment
-  it's imposed — independently of whether the in-memory entry above later
-  gets cleaned up — so it's the answer to "was this IP blocked last week,
-  and why."
-  All three of the above are rendered together on the **Rate Limiter**
-  admin dashboard page (`webapp/src/pages/RateLimiterStatsPage.tsx`): live
-  stats in the "IP Statistics" table, an "Attacker Map" (clustered world
-  map, `BlockedClientsWorldMap.tsx`, lazy-loaded the same way as the
-  traffic-requests map on the Request Details page) with a "Top Attacker
-  Countries" breakdown, and full history in "Blocked Clients History"
-  below that.
-- **`GET <prefix>/api/config/rate-limiter`** (admin-only) — the effective
-  configuration currently in force.
-- **Health check** (`GET <prefix>/api/middleware`, `tg middleware list`):
-  reports `healthy` whenever a rate limiter instance exists, with the
-  message naming how many IPs are tracked and how many are currently
-  blocked — the rate limiter has no failure mode of its own, so this is
-  operational visibility, not an outage detector.
-
-## See also
-
-- [Middleware Architecture](../../README.md#middleware-architecture) — the
-  factory/registry system, and how to inspect the running chain.
-- [doc/middleware/cors.md](cors.md) — runs immediately before this one in
-  the suggested order.
-- `doc/TODO.md`'s "Rate limiter" section for remaining planned work (request-
-  details filtering by IP/user-agent/date-range; the persistent-registry
-  and attacker-map items are both done).
+The dashboard's **Rate Limiter** page shows the live table, an attacker map
+and the block history; click a country to filter the history.
