@@ -89,6 +89,20 @@ powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jmaister/taronja
 
 The Windows installer places the binary in `%USERPROFILE%\bin`. Add this directory to your PATH to use `tg` from anywhere.
 
+### Installing a specific version
+
+Both installers take an optional version, e.g. to go back to an earlier release:
+
+```bash
+curl -fsSL https://github.com/jmaister/taronja-gateway/raw/main/scripts/install.sh | bash -s -- 0.0.24
+```
+
+```bat
+install.bat 0.0.24
+```
+
+A config file must match the gateway's config version: keep a copy of your old config before migrating it.
+
 ### Try it with Docker
 
 Prefer to see it running before installing anything? [`examples/docker-demo`](examples/docker-demo/) is a `docker compose up --build` away from a full stack with one of each route type (static, authenticated static, reverse proxy), the admin dashboard, and Google/GitHub OAuth wired up to `.env` — see its README.
