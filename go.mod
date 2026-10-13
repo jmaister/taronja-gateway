@@ -138,3 +138,5 @@ require (
 	mvdan.cc/sh/v3 v3.13.1 // indirect
 	mvdan.cc/xurls/v2 v2.2.0 // indirect
 )
+
+ignore node_modules
