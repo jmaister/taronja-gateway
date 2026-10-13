@@ -2,7 +2,6 @@ package dbmigrations
 
 import (
 	"database/sql"
-	"embed"
 	"errors"
 	"fmt"
 	"log"
@@ -11,14 +10,6 @@ import (
 	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
-
-// migrationFiles embeds every numbered SQL migration under db/dbmigrations/migrations/
-// into the compiled binary — same convention this project already uses for
-// webapp/dist and static/ (see main.go/static/static.go), so a migration
-// ships with the binary and needs no separate file to deploy alongside it.
-//
-//go:embed migrations/*.sql
-var migrationFiles embed.FS
 
 // legacyBridgeDoneVersion is the PRAGMA user_version written once the legacy
 // bridge completes. It reuses the old system's counter with a value that system
@@ -50,7 +41,7 @@ func Run(sqlDB *sql.DB, schema Schema) error {
 		}
 	}
 
-	src, err := iofs.New(migrationFiles, "migrations")
+	src, err := iofs.New(schema.Migrations, ".")
 	if err != nil {
 		return fmt.Errorf("loading embedded migrations: %w", err)
 	}

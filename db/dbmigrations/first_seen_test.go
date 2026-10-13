@@ -1,11 +1,11 @@
 package dbmigrations_test
 
 import (
+	"io/fs"
 	"testing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
-	"github.com/jmaister/taronja-gateway/db/dbmigrations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ func TestFingerprintFirstSeenMigration_BackfillsExistingRows(t *testing.T) {
 		require.NoError(t, gdb.Create(m).Error, i)
 	}
 
-	sqlText, err := dbmigrations.MigrationFiles.ReadFile("migrations/0002_fingerprint_first_seen.up.sql")
+	sqlText, err := fs.ReadFile(db.MigrationSchema().Migrations, "0002_fingerprint_first_seen.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, gdb.Exec(string(sqlText)).Error)
 

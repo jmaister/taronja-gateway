@@ -331,4 +331,4 @@ func TestRunMigrations_LegacyBridgeIsIdempotent(t *testing.T) {
 	assert.NotEqual(t, 0, untouchedOffset, "second dbmigrations.Run call should have skipped the already-applied legacy bridge, not re-normalized it")
 }
 
-var testSchema = dbmigrations.Schema{Models: db.Models, HashSessionToken: db.HashSessionToken}
+var testSchema = db.MigrationSchema()

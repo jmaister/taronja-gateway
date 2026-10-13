@@ -3,6 +3,7 @@ package dbmigrations
 import (
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log"
 	"strings"
 	"time"
@@ -22,6 +23,8 @@ import (
 // Schema is what the migrations need from the db package, passed in because
 // db imports this package.
 type Schema struct {
+	// Migrations holds the numbered *.up.sql files at its root (db/migrations).
+	Migrations fs.FS
 	// Models are AutoMigrated by the legacy bridge.
 	Models []interface{}
 	// HashSessionToken must match how sessions store token hashes.

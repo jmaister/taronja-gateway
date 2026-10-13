@@ -2,6 +2,8 @@ package db
 
 import (
 	"database/sql"
+	"embed"
+	"io/fs"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db/dbmigrations"
@@ -46,7 +48,7 @@ func Init() {
 	if err != nil {
 		panic("Failed to open database for migrations: " + err.Error())
 	}
-	if err := dbmigrations.Run(migrationConn, migrationSchema); err != nil {
+	if err := dbmigrations.Run(migrationConn, MigrationSchema()); err != nil {
 		panic("Failed to migrate database: " + err.Error())
 	}
 	if err := migrationConn.Close(); err != nil {
@@ -113,7 +115,7 @@ func SetupTestDB(testName string) {
 	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
-	if err := dbmigrations.Run(sqlDB, migrationSchema); err != nil {
+	if err := dbmigrations.Run(sqlDB, MigrationSchema()); err != nil {
 		panic("Failed to migrate test database: " + err.Error())
 	}
 
@@ -138,6 +140,18 @@ func ResetConnection() {
 	conn = nil
 }
 
-// migrationSchema is what the migrations need from the schema; dbmigrations
-// cannot import this package, which imports it.
-var migrationSchema = dbmigrations.Schema{Models: Models, HashSessionToken: HashSessionToken}
+// migrationFiles embeds the numbered SQL migrations in db/migrations, so they
+// ship inside the binary.
+//
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
+// MigrationSchema is what dbmigrations.Run needs from this package; dbmigrations
+// cannot import db, which imports it.
+func MigrationSchema() dbmigrations.Schema {
+	migrations, err := fs.Sub(migrationFiles, "migrations")
+	if err != nil {
+		panic(err) // the embed pattern above guarantees the directory exists
+	}
+	return dbmigrations.Schema{Migrations: migrations, Models: Models, HashSessionToken: HashSessionToken}
+}

@@ -8,7 +8,6 @@ var (
 	MigrateLegacyFingerprintColumns = migrateLegacyFingerprintColumns
 	MigrateSessionTokensToHashed    = migrateSessionTokensToHashed
 	UTCTimestampColumns             = utcTimestampColumns
-	MigrationFiles                  = migrationFiles
 )
 
 const LegacyBridgeDoneVersion = legacyBridgeDoneVersion
