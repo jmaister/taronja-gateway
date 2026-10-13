@@ -42,12 +42,6 @@ func (g *Gateway) createStaticHandlerFunc(routeConfig config.RouteConfig) http.H
 	isDir = fileInfo.IsDir()
 	log.Printf("Static Route [%s]: Path '%s' is directory: %t", routeConfig.Name, fsPath, isDir)
 
-	// Check if removeFromPath is used with static routes (not applicable)
-	if routeConfig.RemoveFromPath != "" {
-		log.Printf("Warning: Static Route [%s]: 'removeFromPath' field (%s) is not applicable to static routes and will be ignored. This field is only used for proxy routes.",
-			routeConfig.Name, routeConfig.RemoveFromPath)
-	}
-
 	if isDir {
 		// Directory serving
 		fs := http.Dir(fsPath) // Serve from the resolved directory path

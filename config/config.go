@@ -76,7 +76,7 @@ type RouteConfig struct {
 	ToFolder       string        `yaml:"toFolder"`          // Folder to serve static files from. A route sets exactly one of to, toFolder or toFile.
 	ToFile         string        `yaml:"toFile"`            // Single file to serve. A route sets exactly one of to, toFolder or toFile.
 	IsSPA          bool          `yaml:"isSPA"`             // SPA mode. Static routes serve index.html on 404; proxy routes re-request the upstream base URL on 404. Default: false
-	RemoveFromPath string        `yaml:"removeFromPath"`    // Path prefix removed before proxying (e.g., "/api/v1/"). Proxy routes only.
+	RemoveFromPath string        `yaml:"removeFromPath"`    // Path prefix removed before proxying, on a path-segment boundary (e.g., "/api/v1"). Proxy routes only.
 	Authenticated  bool          `yaml:"authenticated"`     // Require a logged-in user. Default: false
 	Options        *RouteOptions `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
 }
@@ -372,6 +372,8 @@ func (r RouteConfig) validate() error {
 		return fmt.Errorf("route '%s' needs one of to, toFolder or toFile", r.Name)
 	case targets > 1:
 		return fmt.Errorf("route '%s' sets more than one of to, toFolder and toFile", r.Name)
+	case r.IsStatic() && r.RemoveFromPath != "":
+		return fmt.Errorf("route '%s': removeFromPath only applies to proxy routes (to)", r.Name)
 	case r.Options != nil && r.Options.CacheControlSeconds != nil && *r.Options.CacheControlSeconds < 0:
 		return fmt.Errorf("route '%s': options.cacheControlSeconds cannot be negative", r.Name)
 	}

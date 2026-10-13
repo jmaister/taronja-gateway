@@ -18,7 +18,11 @@ Define routing rules for incoming requests. Each route can:
 - `toFile`: Serve a single static file
 - `toFolder`: Serve files from a directory
 - A route sets exactly one of `to`, `toFile` and `toFolder`.
-- `removeFromPath`: Remove prefix before forwarding to backend (proxy routes)
+- `removeFromPath`: Prefix removed before forwarding (proxy routes only), on a
+  path-segment boundary: `/api` turns `/api/users` into `/users` and leaves
+  `/apiary` alone. A path in `to` is then prepended once:
+  `to: http://backend/v2` + `removeFromPath: /api` sends `/api/users` to
+  `http://backend/v2/users`.
 - `authenticated: true`: Require a logged-in user for this route
 - `options.cacheControlSeconds`: Cache duration in seconds (0 = no-cache)
 

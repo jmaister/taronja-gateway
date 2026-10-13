@@ -44,34 +44,14 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 	// Store the original director
 	originalDirector := proxy.Director
 
-	// Create a custom director that modifies the request
 	proxy.Director = func(req *http.Request) {
-		// Call the original director first
+		// The original director joins the target's path itself; the incoming
+		// path is rebuilt below so the target path is joined exactly once,
+		// after removeFromPath is stripped.
+		incoming := req.URL.Path
 		originalDirector(req)
-
-		// Apply path stripping and join logic
-		if routeConfig.RemoveFromPath != "" {
-			if strings.HasPrefix(req.URL.Path, routeConfig.RemoveFromPath) {
-				req.URL.Path = strings.TrimPrefix(req.URL.Path, routeConfig.RemoveFromPath)
-
-				if len(req.URL.Path) > 0 && !strings.HasPrefix(req.URL.Path, "/") {
-					req.URL.Path = "/" + req.URL.Path
-				} else if len(req.URL.Path) == 0 {
-					req.URL.Path = "/"
-				}
-
-				// When using RemoveFromPath, we should NOT join with targetURL.Path
-				// as that would reintroduce the prefix we just removed
-				req.URL.RawPath = req.URL.EscapedPath()
-			} else {
-				req.URL.Path = singleJoiningSlash(targetURL.Path, req.URL.Path)
-				req.URL.RawPath = req.URL.EscapedPath()
-			}
-		} else {
-			// No RemoveFromPath, just join as before
-			req.URL.Path = singleJoiningSlash(targetURL.Path, req.URL.Path)
-			req.URL.RawPath = req.URL.EscapedPath()
-		}
+		req.URL.Path = singleJoiningSlash(targetURL.Path, stripPathPrefix(incoming, routeConfig.RemoveFromPath))
+		req.URL.RawPath = ""
 
 		// trustedForwardedHost only forwards hosts this gateway is configured for;
 		// forwarding a client-supplied Host would allow Host-header poisoning of
@@ -229,6 +209,20 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 }
 
 // singleJoiningSlash remains unchanged
+// stripPathPrefix removes prefix from path on a segment boundary: "/api" (or
+// "/api/") strips "/api" and "/api/x", never "/apiary". The result keeps a
+// leading slash.
+func stripPathPrefix(path, prefix string) string {
+	base := strings.TrimSuffix(prefix, "/")
+	if base == "" || (path != base && !strings.HasPrefix(path, base+"/")) {
+		return path
+	}
+	if rest := strings.TrimPrefix(path, base); rest != "" {
+		return rest
+	}
+	return "/"
+}
+
 func singleJoiningSlash(a, b string) string {
 	aslash := strings.HasSuffix(a, "/")
 	bslash := strings.HasPrefix(b, "/")

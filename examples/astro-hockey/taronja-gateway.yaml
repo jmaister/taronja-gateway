@@ -15,12 +15,10 @@ routes:
   - name: Private
     from: /dashboard/*
     toFolder: ./dist
-    removeFromPath: /dist
     authenticated: true
   - name: Public
     from: /
     toFolder: ./dist
-    removeFromPath: /dist
 
 
 authenticationProviders:

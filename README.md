@@ -280,7 +280,7 @@ Each route maps a `from` path pattern to a backend (`to`, a single URL or a list
 - `from`: URL path pattern to match (supports `*` wildcards)
 - `to`: backend URL, or a list of URLs to load balance across
 - `toFile` / `toFolder`: serve a file or a folder (a route sets exactly one of `to`, `toFile`, `toFolder`)
-- `removeFromPath`: prefix to remove before forwarding to the backend (proxy routes)
+- `removeFromPath`: prefix removed before forwarding (proxy routes, whole path segments only; a path in `to` is prepended after)
 - `authenticated: true`: require a logged-in user
 - `options.cacheControlSeconds`: cache duration in seconds (0 = no-cache)
 

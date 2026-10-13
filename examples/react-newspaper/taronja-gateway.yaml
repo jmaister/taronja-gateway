@@ -16,13 +16,11 @@ routes:
     from: /premium/*
     toFolder: ./dist
     isSPA: true
-    removeFromPath: /dist
     authenticated: true
   - name: Public
     from: /
     toFolder: ./dist
     isSPA: true
-    removeFromPath: /dist
 
 
 authenticationProviders:

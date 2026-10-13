@@ -61,13 +61,14 @@ func TestValidate_Routes(t *testing.T) {
 		route RouteConfig
 		want  string
 	}{
-		"proxy":            {RouteConfig{Name: "r", From: "/", To: RouteTargets{"http://x"}}, ""},
-		"folder":           {RouteConfig{Name: "r", From: "/", ToFolder: "."}, ""},
-		"file":             {RouteConfig{Name: "r", From: "/", ToFile: "index.html"}, ""},
-		"no target":        {RouteConfig{Name: "r", From: "/"}, "needs one of"},
-		"to and folder":    {RouteConfig{Name: "r", From: "/", To: RouteTargets{"http://x"}, ToFolder: "."}, "more than one"},
-		"folder and file":  {RouteConfig{Name: "r", From: "/", ToFolder: ".", ToFile: "a"}, "more than one"},
-		"negative caching": {RouteConfig{Name: "r", From: "/", ToFolder: ".", Options: &RouteOptions{CacheControlSeconds: &neg}}, "cacheControlSeconds"},
+		"proxy":                      {RouteConfig{Name: "r", From: "/", To: RouteTargets{"http://x"}}, ""},
+		"folder":                     {RouteConfig{Name: "r", From: "/", ToFolder: "."}, ""},
+		"file":                       {RouteConfig{Name: "r", From: "/", ToFile: "index.html"}, ""},
+		"no target":                  {RouteConfig{Name: "r", From: "/"}, "needs one of"},
+		"to and folder":              {RouteConfig{Name: "r", From: "/", To: RouteTargets{"http://x"}, ToFolder: "."}, "more than one"},
+		"folder and file":            {RouteConfig{Name: "r", From: "/", ToFolder: ".", ToFile: "a"}, "more than one"},
+		"static with removeFromPath": {RouteConfig{Name: "r", From: "/", ToFolder: ".", RemoveFromPath: "/dist"}, "removeFromPath only applies"},
+		"negative caching":           {RouteConfig{Name: "r", From: "/", ToFolder: ".", Options: &RouteOptions{CacheControlSeconds: &neg}}, "cacheControlSeconds"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

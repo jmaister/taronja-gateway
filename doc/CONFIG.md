@@ -204,7 +204,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L384>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L386>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -338,14 +338,14 @@ type RouteConfig struct {
     ToFolder       string        `yaml:"toFolder"`          // Folder to serve static files from. A route sets exactly one of to, toFolder or toFile.
     ToFile         string        `yaml:"toFile"`            // Single file to serve. A route sets exactly one of to, toFolder or toFile.
     IsSPA          bool          `yaml:"isSPA"`             // SPA mode. Static routes serve index.html on 404; proxy routes re-request the upstream base URL on 404. Default: false
-    RemoveFromPath string        `yaml:"removeFromPath"`    // Path prefix removed before proxying (e.g., "/api/v1/"). Proxy routes only.
+    RemoveFromPath string        `yaml:"removeFromPath"`    // Path prefix removed before proxying, on a path-segment boundary (e.g., "/api/v1"). Proxy routes only.
     Authenticated  bool          `yaml:"authenticated"`     // Require a logged-in user. Default: false
     Options        *RouteOptions `yaml:"options,omitempty"` // Additional route options (cache control, etc.). Optional.
 }
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L443>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L445>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -363,7 +363,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L451>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L453>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool

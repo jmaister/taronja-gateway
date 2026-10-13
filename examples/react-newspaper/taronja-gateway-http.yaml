@@ -16,13 +16,11 @@ routes:
     from: /premium/*
     to: http://localhost:4173/
     isSPA: true
-    removeFromPath: /dist
     authenticated: true
   - name: Public
     from: /
     to: http://localhost:4173/
     isSPA: true
-    removeFromPath: /dist
 
 
 authenticationProviders:
