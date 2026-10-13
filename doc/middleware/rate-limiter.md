@@ -28,6 +28,40 @@ middleware:
 
 **Depends on:** nothing.
 
+## How it works
+
+A sliding-window log per client IP (the connecting address, or the
+right-most untrusted `X-Forwarded-For` entry behind a trusted proxy). Each IP
+keeps the timestamps of its recent requests, `401`/`404` responses and
+scanner `404`s; there are no fixed buckets, so a burst can't slip through at a
+window edge.
+
+On every request:
+
+1. **Already blocked?** Answer `429` with `Retry-After` (seconds left). The
+   request is not forwarded and not counted.
+2. **Request rate.** Add the request's timestamp, drop timestamps older than
+   60 s. More than `requestsPerMinute` left: block for `blockMinutes` and answer
+   this request with `429` too.
+3. **Forward the request.** The checks below run on the response, so they
+   block the *next* request, not this one.
+4. **Errors.** A `401` or `404` adds a timestamp; timestamps older than
+   `blockMinutes` are dropped. More than `maxErrors` left: block for
+   `blockMinutes`.
+5. **Scanners.** A `404` on a path matching `vulnerabilityScan.urls` also adds
+   a scan timestamp (so it counts in step 4 as well); timestamps older than
+   `vulnerabilityScan.blockMinutes` are dropped. More than `max404` left: block
+   for `vulnerabilityScan.blockMinutes`.
+
+A limit trips at the first event *over* it: `requestsPerMinute: 100` allows
+100 requests in any 60 s and blocks on the 101st. Requests refused while
+blocked don't count, so the request log is empty when the block ends.
+
+Every block is also written to the database for the history page. A
+background task (every `blockMinutes`, at least once a minute) drops IPs with
+no recent activity and no active block. State is per gateway process: it is
+not shared between instances and starts empty after a restart.
+
 Scan patterns use [doublestar](https://github.com/bmatcuk/doublestar) globs; a
 pattern with `*` but no `**` also matches at any depth:
 

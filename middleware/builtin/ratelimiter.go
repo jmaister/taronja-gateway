@@ -173,7 +173,13 @@ func (rl *RateLimiter) Close() {
 	})
 }
 
-// Handler is the middleware implementation.
+// Handler applies a sliding-window log per client IP. A blocked IP gets 429
+// without being counted. Otherwise the request's timestamp is logged and
+// timestamps older than a minute dropped; more than RequestsPerMinute blocks
+// the IP for BlockMinutes, rejecting this request too. After the response, a
+// 401/404 is logged against MaxErrors (window and block: BlockMinutes) and a
+// 404 on a scan pattern against VulnerabilityScan.Max404 (window and block:
+// VulnerabilityScan.BlockMinutes); those blocks apply from the next request.
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	// if no limits are configured simply pass through
 	if !rl.cfg.IsEnabled() {
