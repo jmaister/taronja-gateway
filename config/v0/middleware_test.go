@@ -1,20 +1,22 @@
-package config
+package v0_test
 
 import (
 	"testing"
 
+	"github.com/jmaister/taronja-gateway/config"
+	v0 "github.com/jmaister/taronja-gateway/config/v0"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v3"
 )
 
-func migratedMiddleware(t *testing.T, raw string) (string, []MiddlewareConfig) {
+func migratedMiddleware(t *testing.T, raw string) (string, []config.MiddlewareConfig) {
 	t.Helper()
-	out := string(migrateLegacyToV1([]byte(raw)))
+	out := string(v0.UpgradeToV1([]byte(raw)))
 	var cfg struct {
-		Management map[string]any     `yaml:"management"`
-		Middleware []MiddlewareConfig `yaml:"middleware"`
-		Tracing    any                `yaml:"tracing"`
+		Management map[string]any            `yaml:"management"`
+		Middleware []config.MiddlewareConfig `yaml:"middleware"`
+		Tracing    any                       `yaml:"tracing"`
 	}
 	require.NoError(t, yaml.Unmarshal([]byte(out), &cfg), out)
 	for _, key := range []string{"logging", "compression", "analytics", "excludeStaticAssets", "rateLimiter", "cors"} {
@@ -24,7 +26,7 @@ func migratedMiddleware(t *testing.T, raw string) (string, []MiddlewareConfig) {
 	return out, cfg.Middleware
 }
 
-func entryNames(entries []MiddlewareConfig) []string {
+func entryNames(entries []config.MiddlewareConfig) []string {
 	names := make([]string, len(entries))
 	for i, f := range entries {
 		names[i] = f.Name
@@ -119,5 +121,5 @@ middleware:
 
 func TestMoveMiddlewareToRoot_LeavesConfigsWithoutMiddlewareSettingsByteForByte(t *testing.T) {
 	raw := "name: Test   # keep spacing\nserver:\n    port: 8080\n"
-	assert.Equal(t, "version: 1.0\n"+raw, string(migrateLegacyToV1([]byte(raw))))
+	assert.Equal(t, raw, string(v0.UpgradeToV1([]byte(raw))), "nothing to move: returned byte for byte")
 }
