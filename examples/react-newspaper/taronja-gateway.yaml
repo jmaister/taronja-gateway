@@ -14,8 +14,8 @@ middleware:
 
 routes:
   - name: Favicon
-    from: /favicon.svg
-    toFile: ./dist/favicon.svg
+    from: /vite.svg
+    toFile: ./dist/vite.svg
   - name: Private
     from: /premium/*
     toFolder: ./dist
