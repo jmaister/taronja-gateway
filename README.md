@@ -109,7 +109,7 @@ Prefer to see it running before installing anything? [`examples/docker-demo`](ex
 
 ### Docker Image
 
-Every [GitHub Release](https://github.com/jmaister/taronja-gateway/releases) publishes `ghcr.io/jmaister/taronja-gateway:<version>` and `:latest` (see `.github/workflows/docker-release.yml`) — pull it directly instead of building the `Dockerfile` yourself:
+Every [GitHub Release](https://github.com/jmaister/taronja-gateway/releases) publishes `ghcr.io/jmaister/taronja-gateway:<version>` and `:latest` for linux/amd64 and linux/arm64 (Apple Silicon); pre-releases get only `:<version>` (see `.github/workflows/docker-release.yml`) — pull it directly instead of building the `Dockerfile` yourself:
 
 ```bash
 docker run --rm -p 8080:8080 \

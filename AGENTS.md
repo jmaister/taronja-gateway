@@ -480,7 +480,7 @@ webapp/src/
 - react-router-dom 7.14, @tanstack/react-query 5
 - chart.js 4.5, maplibre-gl 5.24
 - date-fns 4.1
-- taronja-gateway-react-sdk 0.0.24 (local, points to `../sdk` in dev)
+- taronja-gateway-react-sdk 0.0.24 (from npm, not the local `../sdk`)
 - vitest 4.1, jsdom 29 (no test files in webapp yet; SDK has tests)
 - TypeScript 7, oxlint (`.oxlintrc.json`), @tailwindcss/vite
 
@@ -523,7 +523,7 @@ webapp/src/
   - `sdk-release.yml` — publish SDK to npm (triggered on tag or manual workflow dispatch)
   - `clients.yml` — generate and push the OpenAPI-generated clients to a separate repo (triggered on tag or manual workflow dispatch)
   - `release.yml` — build release binaries via GoReleaser (its own `dockers:` integration is unused — see `.goreleaser.yml`'s comment; the image is built separately, below)
-  - `docker-release.yml` — build and push `ghcr.io/jmaister/taronja-gateway:<version>`/`:latest` on every GitHub Release, with a `workflow_dispatch` build-only dry run
+  - `docker-release.yml` — build and push `ghcr.io/jmaister/taronja-gateway:<version>` (linux/amd64 and linux/arm64, `tg version` stamped) on every GitHub Release, plus `:latest` unless it is a pre-release, with a `workflow_dispatch` build-only dry run
   - `docker-pr.yml` — build and push `ghcr.io/jmaister/taronja-gateway:pr-<number>` on every push to a same-repo (non-fork) PR, plus a daily job that deletes `pr-*` images older than 5 days (needs a `GHCR_CLEANUP_TOKEN` repo secret — see the workflow's own comment for why `GITHUB_TOKEN` isn't enough for this specific operation)
 
 ---

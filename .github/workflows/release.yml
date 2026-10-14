@@ -28,26 +28,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: webapp/package-lock.json
 
-      - name: Generate API client
-        run: |
-          cd webapp
-          npm install
-          npm run gen:api
-
-      - name: Set up GoReleaser
+      # GoReleaser's before hooks (.goreleaser.yml) install, generate and
+      # build the webapp; nothing here may modify tracked files, or
+      # GoReleaser refuses to release a dirty tree.
+      - name: Release with GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Optional: If you didn't add coverage-treemap.svg to extra_files in .goreleaser.yml,
-      # you can upload it separately:
-      - name: Upload coverage treemap to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: coverage-treemap.svg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

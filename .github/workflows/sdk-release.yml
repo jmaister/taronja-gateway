@@ -13,8 +13,8 @@ on:
 
 jobs:
   # Runs unconditionally (release or workflow_dispatch dry run), with no
-  # access to NPM_TOKEN — everything here is safe for anyone who can
-  # trigger this workflow to see run.
+  # publish rights — everything here is safe for anyone who can trigger
+  # this workflow to see run.
   build-and-test:
     runs-on: ubuntu-latest
     permissions:
@@ -22,6 +22,7 @@ jobs:
     outputs:
       tag: ${{ steps.release_version.outputs.tag }}
       version: ${{ steps.release_version.outputs.version }}
+      dist_tag: ${{ steps.release_version.outputs.dist_tag }}
     defaults:
       run:
         shell: bash
@@ -64,10 +65,17 @@ jobs:
 
           echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Pre-releases (1.2.3-rc.1) go to the `next` dist-tag; npm refuses
+          # to publish them without one.
+          if [[ "$VERSION" == *-* ]]; then
+            echo "dist_tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         working-directory: ./sdk
-        run: npm install
+        run: npm ci
 
       - name: Stamp package version from release tag
         working-directory: ./sdk
@@ -77,26 +85,20 @@ jobs:
 
       - name: Test and build package
         working-directory: ./sdk
+        env:
+          DIST_TAG: ${{ steps.release_version.outputs.dist_tag }}
         run: |
           npm test
           npm run build
-          npm pack --dry-run
+          npm publish --dry-run --access public --tag "$DIST_TAG"
 
-  # Separate job, not just a conditional step in build-and-test, because
-  # GitHub Environment protection rules (required reviewers) only ever
-  # gate at the job level. Rebuilds from scratch rather than sharing
-  # build-and-test's workspace (a fresh runner starts with nothing) —
-  # simpler and more robust than passing build output between jobs via
-  # actions/upload-artifact for a build this fast.
+  # Separate job so an environment protection rule (required reviewers)
+  # can gate it; `npm-publish` has none today, so it runs right away.
   #
-  # environment: npm-publish only actually gates anything once a required
-  # reviewer is configured for that environment name in this repo's
-  # Settings -> Environments -> npm-publish -> "Required reviewers". Until
-  # that one-time setup happens, referencing an environment with no
-  # protection rules has no effect and this job runs immediately, same as
-  # before this existed — see the needs-validation item this closes in the
-  # security audit for why Write-level repo access (not just Admin) can
-  # trigger this today, and why that setup is worth doing.
+  # Publishes with npm trusted publishing (OIDC, `id-token: write`): no npm
+  # token is stored. One-time setup on npmjs.com, package settings ->
+  # Trusted publisher -> GitHub Actions: owner jmaister, repository
+  # taronja-gateway, workflow sdk-release.yml, environment npm-publish.
   publish:
     needs: build-and-test
     if: ${{ github.event_name == 'release' }}
@@ -122,7 +124,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./sdk
-        run: npm install
+        run: npm ci
 
       - name: Stamp package version from release tag
         working-directory: ./sdk
@@ -136,9 +138,9 @@ jobs:
 
       - name: Publish package to npm
         working-directory: ./sdk
-        run: npm publish --provenance --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ needs.build-and-test.outputs.dist_tag }}
+        run: npm publish --provenance --access public --tag "$DIST_TAG"
 
   report-dry-run:
     needs: build-and-test

@@ -46,9 +46,10 @@ jobs:
         id: sha
         run: echo "short=$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
-      # No provenance/SBOM attestations: they turn the image into an index
-      # with untagged child versions, which the cleanup below could not
-      # tell apart from the children of release images.
+      # Single platform (linux/amd64) and no provenance/SBOM attestations:
+      # both turn the image into an index with untagged child versions,
+      # which the cleanup below could not tell apart from the children of
+      # release images.
       - name: Build and push PR image
         uses: docker/build-push-action@v6
         with:
@@ -56,6 +57,9 @@ jobs:
           push: true
           provenance: false
           sbom: false
+          build-args: |
+            VERSION=pr-${{ github.event.pull_request.number }}-${{ steps.sha.outputs.short }}
+            COMMIT=${{ github.event.pull_request.head.sha }}
           tags: |
             ghcr.io/jmaister/taronja-gateway:pr-${{ github.event.pull_request.number }}
             ghcr.io/jmaister/taronja-gateway:pr-${{ github.event.pull_request.number }}-${{ steps.sha.outputs.short }}
@@ -68,7 +72,7 @@ jobs:
       # Posts (or updates, matched by the hidden marker) the pull command and
       # image link on the PR, and prints them in the log and run summary.
       - name: Comment the image link on the PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           SHORT_SHA: ${{ steps.sha.outputs.short }}
         with:

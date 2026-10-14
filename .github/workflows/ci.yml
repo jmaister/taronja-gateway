@@ -25,7 +25,7 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: '22'
+        node-version: '24'
         cache: 'npm'
         cache-dependency-path: |
           sdk/package-lock.json
@@ -37,7 +37,7 @@ jobs:
       run: |
         go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
         cd webapp
-        npm install
+        npm ci
         npm run gen:api
 
     # --repository.url/--repository.default-branch must match Makefile's
@@ -68,7 +68,7 @@ jobs:
     - name: Build React SDK and App
       run: |
         cd sdk
-        npm install
+        npm ci
         npm run build
         cd ../webapp
         npm run build
@@ -168,7 +168,7 @@ jobs:
 
           const commentBody = table;
 
-          const { data: comments } = await github.rest.issues.listComments({
+          const comments = await github.paginate(github.rest.issues.listComments, {
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number,

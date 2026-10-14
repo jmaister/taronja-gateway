@@ -96,7 +96,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release_version.outputs.version }}
         run: |
-          npm install
+          npm ci
           npm version "$RELEASE_VERSION" --no-git-tag-version
           npm test
           npm run build
@@ -191,7 +191,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.generate-clients.outputs.version }}
         run: |
-          npm install
+          npm ci
           npm version "$RELEASE_VERSION" --no-git-tag-version
           npm run build
 

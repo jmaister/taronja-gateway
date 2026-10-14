@@ -70,6 +70,9 @@ jobs:
           push: false
           load: true
           tags: taronja-gateway:ci
+          build-args: |
+            VERSION=${{ steps.release_version.outputs.version }}
+            COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
@@ -82,7 +85,11 @@ jobs:
         # binary actually starts (catches e.g. a missing shared lib or a
         # CGO_ENABLED mismatch) rather than crashing before it can even
         # print its own help text.
-        run: docker run --rm taronja-gateway:ci --help
+        env:
+          VERSION: ${{ steps.release_version.outputs.version }}
+        run: |
+          docker run --rm taronja-gateway:ci --help >/dev/null
+          docker run --rm taronja-gateway:ci version | tee /dev/stderr | grep -q "v$VERSION"
 
   # Separate job so the two GHCR pushes (:VERSION and :latest) only ever
   # happen for a real release, never a workflow_dispatch dry run —
@@ -91,11 +98,10 @@ jobs:
   #
   # Uses the default, ephemeral GITHUB_TOKEN (scoped to just this run,
   # never persisted anywhere outside GitHub's control) rather than a
-  # long-lived external secret like sdk-release.yml's NPM_TOKEN or
-  # clients.yml's CLIENTS_REPO_TOKEN — so this doesn't need those two
-  # workflows' extra "environment: ...-publish" gate, which exists
-  # specifically to protect a credential that would otherwise remain
-  # valid and exfiltratable long after the run ends. release.yml's own
+  # long-lived external secret like clients.yml's CLIENTS_REPO_TOKEN — so
+  # this doesn't need an "environment: ...-publish" gate, which exists
+  # to protect a credential that would otherwise remain valid and
+  # exfiltratable long after the run ends. release.yml's own
   # goreleaser job publishes GitHub Releases the same ungated way, using
   # the same GITHUB_TOKEN, for the same reason.
   publish:
@@ -112,6 +118,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # Only the final `apk add` stage runs emulated; Go cross-compiles.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -122,20 +132,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Pre-releases (v1.2.3-rc.1) never move :latest.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ needs.build-and-test.outputs.version }}
+            COMMIT=${{ github.sha }}
           tags: |
             ghcr.io/jmaister/taronja-gateway:${{ needs.build-and-test.outputs.version }}
-            ghcr.io/jmaister/taronja-gateway:latest
+            ${{ !github.event.release.prerelease && 'ghcr.io/jmaister/taronja-gateway:latest' || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
             org.opencontainers.image.title=taronja-gateway
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.build-and-test.outputs.version }}
+
+      - name: Check both platforms of the published image
+        env:
+          IMAGE: ghcr.io/jmaister/taronja-gateway:${{ needs.build-and-test.outputs.version }}
+          VERSION: ${{ needs.build-and-test.outputs.version }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm --platform "$platform" "$IMAGE" version | tee /dev/stderr | grep -q "v$VERSION"
+          done
 
   report-dry-run:
     needs: build-and-test

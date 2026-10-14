@@ -4,12 +4,9 @@ project_name: taronja-gateway
 
 before:
   hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
-    # Build the webapp before building the Go binary
-    - bash -c "cd sdk && npm install"
-    - bash -c "cd sdk && npm run build"
-    - bash -c "cd webapp && npm install"
+    # The webapp is embedded in the binary (main.go's //go:embed webapp/dist).
+    # npm ci installs exactly the lockfile and never rewrites it.
+    - bash -c "cd webapp && npm ci"
     - bash -c "cd webapp && npm run gen:api"
     - bash -c "cd webapp && npm run build"
 
