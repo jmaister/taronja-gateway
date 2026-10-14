@@ -75,7 +75,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./sdk
-        run: npm ci
+        run: |
+          npm install -g npm@^11.19.0  # `npm stage` needs 11.19+
+          npm ci
 
       - name: Stamp package version from release tag
         working-directory: ./sdk
@@ -90,15 +92,18 @@ jobs:
         run: |
           npm test
           npm run build
-          npm publish --dry-run --access public --tag "$DIST_TAG"
+          npm stage publish --dry-run --access public --tag "$DIST_TAG"
 
   # Separate job so an environment protection rule (required reviewers)
   # can gate it; `npm-publish` has none today, so it runs right away.
   #
-  # Publishes with npm trusted publishing (OIDC, `id-token: write`): no npm
-  # token is stored. One-time setup on npmjs.com, package settings ->
-  # Trusted publisher -> GitHub Actions: owner jmaister, repository
-  # taronja-gateway, workflow sdk-release.yml, environment npm-publish.
+  # Stages the package with npm trusted publishing (OIDC, `id-token: write`;
+  # no npm token is stored). npm only allows staging for this workflow, so
+  # a release is not public until a maintainer approves it with 2FA on
+  # npmjs.com or with `npm stage approve <stage-id>`. One-time setup on
+  # npmjs.com, package settings -> Trusted publisher -> GitHub Actions:
+  # owner jmaister, repository taronja-gateway, workflow sdk-release.yml,
+  # environment npm-publish, permission "npm stage publish".
   publish:
     needs: build-and-test
     if: ${{ github.event_name == 'release' }}
@@ -124,7 +129,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./sdk
-        run: npm ci
+        run: |
+          npm install -g npm@^11.19.0  # `npm stage` needs 11.19+
+          npm ci
 
       - name: Stamp package version from release tag
         working-directory: ./sdk
@@ -136,11 +143,24 @@ jobs:
         working-directory: ./sdk
         run: npm run build
 
-      - name: Publish package to npm
+      - name: Stage package on npm
         working-directory: ./sdk
         env:
           DIST_TAG: ${{ needs.build-and-test.outputs.dist_tag }}
-        run: npm publish --provenance --access public --tag "$DIST_TAG"
+          VERSION: ${{ needs.build-and-test.outputs.version }}
+        run: |
+          npm stage publish --provenance --access public --tag "$DIST_TAG"
+          {
+            echo "### taronja-gateway-react-sdk@$VERSION is staged, not yet published"
+            echo
+            echo "Approve it with 2FA on https://www.npmjs.com/package/taronja-gateway-react-sdk"
+            echo "or from a terminal:"
+            echo
+            echo '```'
+            echo "npm stage list taronja-gateway-react-sdk"
+            echo "npm stage approve <stage-id>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   report-dry-run:
     needs: build-and-test
