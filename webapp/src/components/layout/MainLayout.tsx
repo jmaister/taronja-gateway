@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useLocation } from 'react-router-dom';
@@ -31,8 +31,7 @@ const MainLayout = ({ children }: MainLayoutProps) => {
   const location = useLocation();
   // Derived entirely from location.pathname — no need to also hold it in
   // state and sync it via an effect (that pattern causes an extra render
-  // on every route change, and is exactly what eslint-plugin-react-hooks'
-  // set-state-in-effect rule flags).
+  // on every route change).
   const pageTitle = getPageTitleFromPath(location.pathname);
 
   const toggleMobileSidebar = () => {

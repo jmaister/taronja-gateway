@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext'; // Ensure currentUser is exported and imported if not already
 
@@ -44,6 +44,7 @@ const NewspaperLayout: React.FC<NewspaperLayoutProps> = ({ children }) => {
                   Welcome, {currentUser.username || currentUser.email || 'User'}!
                 </span>
                 <button
+                  type="button"
                   onClick={handleLogout}
                   className="text-sm sm:text-base bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-all duration-200 shadow-md hover:shadow-lg border border-red-500"
                 >

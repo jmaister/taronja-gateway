@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import { useUserTokens, useCreateToken, useRevokeToken } from '../services/tokens';
-import { TokenCreateRequest, TokenCreateResponse, TokenResponse } from '@/apiclient';
+import type { TokenCreateRequest, TokenCreateResponse, TokenResponse } from '@/apiclient';
 import { Button } from './ui/Button';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { FormField } from './ui/FormField';

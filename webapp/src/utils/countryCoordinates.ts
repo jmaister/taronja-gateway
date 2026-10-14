@@ -90,5 +90,5 @@ export const countryCoordinates: Record<string, [number, number]> = {
 };
 
 export function getCountryCoordinates(countryName: string): [number, number] {
-    return countryCoordinates[countryName] || countryCoordinates["Unknown"] || [0, 0];
+    return countryCoordinates[countryName] || countryCoordinates.Unknown || [0, 0];
 }

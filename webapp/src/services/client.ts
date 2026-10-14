@@ -32,7 +32,7 @@ export interface ApiResult<T> {
 
 // Helper to handle API responses: throws on error, returns data
 export function handleResponse<T>(response: ApiResult<T>): T {
-  if (response && response.error) {
+  if (response?.error) {
     // Throw a real Error (not the raw { code, message } API error object)
     // so `error instanceof Error` checks and String(error) work consistently
     // wherever a query/mutation's error is rendered, not just the call

@@ -1,4 +1,4 @@
-import { RequestDetail } from "@/apiclient";
+import type { RequestDetail } from "@/apiclient";
 import { getSafeLocale } from "../lib/intl";
 import { formatBytes } from "../lib/format";
 import { FilterToggle } from "./FilterToggle";

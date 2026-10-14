@@ -7,8 +7,8 @@ import {
   Title,
   Tooltip,
   Legend,
-  ChartData,
-  ChartOptions,
+  type ChartData,
+  type ChartOptions,
 } from 'chart.js';
 
 // Register Chart.js components
@@ -81,7 +81,7 @@ const SampleBarChart = () => {
         bodyFont: { family: 'Inter, sans-serif', size: 12 },
         padding: 10,
         callbacks: {
-          label: function(context) {
+          label: (context) => {
             let label = context.dataset.label || '';
             if (label) {
               label += ': ';
@@ -103,9 +103,9 @@ const SampleBarChart = () => {
         ticks: {
           color: '#718096', // Tailwind gray-500 (text)
           font: { family: 'Inter, sans-serif', size: 11 },
-          callback: function(value) {
+          callback: (value) => {
             if (Number(value) >= 1000) {
-              return (Number(value) / 1000) + 'K';
+              return `${Number(value) / 1000}K`;
             }
             return Number(value);
           }

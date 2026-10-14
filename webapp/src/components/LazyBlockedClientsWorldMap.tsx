@@ -1,4 +1,4 @@
-import { BlockedClient } from "@/apiclient";
+import type { BlockedClient } from "@/apiclient";
 import { lazy, Suspense } from "react";
 
 // Lazy load the heavy map component — see LazyRequestsWorldMap.tsx, same

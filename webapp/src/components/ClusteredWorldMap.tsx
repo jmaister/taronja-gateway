@@ -1,5 +1,5 @@
 import { useRef, useMemo } from "react";
-import { Map, Source, Layer } from "react-map-gl/maplibre";
+import { Map as MapGL, Source, Layer } from "react-map-gl/maplibre";
 import { getCountryCoordinates } from "../utils/countryCoordinates";
 import { Card } from "./ui/Card";
 import { FilterToggle } from "./FilterToggle";
@@ -92,8 +92,9 @@ export function ClusteredWorldMap<T>({
 }: ClusteredWorldMapProps<T>) {
     const mapRef = useRef<MapRef>(null);
 
+    const clusterLayerId = `${sourceId}-clusters`;
     const clusterLayer: LayerProps = useMemo(() => ({
-        id: `${sourceId}-clusters`,
+        id: clusterLayerId,
         type: 'circle',
         source: sourceId,
         filter: ['has', 'point_count'],
@@ -104,7 +105,7 @@ export function ClusteredWorldMap<T>({
             ],
             'circle-radius': ['step', ['get', 'point_count'], 12, 5, 16, 10, 20, 20, 24, 30, 28],
         },
-    }), [sourceId, colors]);
+    }), [clusterLayerId, sourceId, colors]);
 
     const clusterCountLayer: LayerProps = useMemo(() => ({
         id: `${sourceId}-cluster-count`,
@@ -239,14 +240,14 @@ export function ClusteredWorldMap<T>({
             </div>
 
             <div className="w-full h-[500px] overflow-hidden rounded-lg">
-                <Map
+                <MapGL
                     initialViewState={{
                         latitude: 20,
                         longitude: 0,
                         zoom: 1.0,
                     }}
                     mapStyle={maplibreStyle}
-                    interactiveLayerIds={[clusterLayer.id!]}
+                    interactiveLayerIds={[clusterLayerId]}
                     onClick={onClick}
                     ref={mapRef}
                 >
@@ -262,7 +263,7 @@ export function ClusteredWorldMap<T>({
                         <Layer {...clusterCountLayer} />
                         <Layer {...unclusteredPointLayer} />
                     </Source>
-                </Map>
+                </MapGL>
             </div>
 
             {/* Country statistics */}

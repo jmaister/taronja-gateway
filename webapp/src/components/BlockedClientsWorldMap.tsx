@@ -1,5 +1,5 @@
 import { ClusteredWorldMap } from "./ClusteredWorldMap";
-import { BlockedClient } from "@/apiclient";
+import type { BlockedClient } from "@/apiclient";
 
 interface BlockedClientsWorldMapProps {
     blockedClients: BlockedClient[];

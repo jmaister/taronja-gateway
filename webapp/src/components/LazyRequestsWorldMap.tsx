@@ -1,4 +1,4 @@
-import { RequestDetail } from "@/apiclient";
+import type { RequestDetail } from "@/apiclient";
 import { lazy, Suspense } from "react";
 
 // Lazy load the heavy map component

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    TrafficFilterState,
+    type TrafficFilterState,
     activeDimensionCount,
     filterFromSearchParams,
     filterToSearchParams,

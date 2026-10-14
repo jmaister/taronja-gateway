@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 
 interface PremiumArticlePageProps {
   id: string | number;
@@ -46,7 +46,7 @@ const PremiumArticlePage: React.FC<PremiumArticlePageProps> = ({ id }) => {
       </div>
 
       <footer className="mt-8 border-t border-amber-300 pt-4">
-        <button className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-150">
+        <button type="button" className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-150">
           Explore More Premium Content
         </button>
       </footer>

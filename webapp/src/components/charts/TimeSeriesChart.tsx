@@ -9,8 +9,8 @@ import {
     Tooltip,
     Legend,
     Filler,
-    ChartData,
-    ChartOptions,
+    type ChartData,
+    type ChartOptions,
 } from 'chart.js';
 import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';

@@ -7,17 +7,17 @@ describe('getCountryCoordinates', () => {
     });
 
     it('falls back to "Unknown" for a name not in the table', () => {
-        expect(getCountryCoordinates('Atlantis')).toEqual(countryCoordinates['Unknown']);
+        expect(getCountryCoordinates('Atlantis')).toEqual(countryCoordinates.Unknown);
     });
 
     it('falls back to "Unknown" for an empty string', () => {
-        expect(getCountryCoordinates('')).toEqual(countryCoordinates['Unknown']);
+        expect(getCountryCoordinates('')).toEqual(countryCoordinates.Unknown);
     });
 
     it('is case-sensitive — a differently-cased known name still falls back', () => {
         // The table only has exact entries ("United States", not "united states");
         // this locks in that behavior rather than silently changing it later.
-        expect(getCountryCoordinates('united states')).toEqual(countryCoordinates['Unknown']);
+        expect(getCountryCoordinates('united states')).toEqual(countryCoordinates.Unknown);
     });
 
     it('every table entry is a valid [longitude, latitude] pair', () => {

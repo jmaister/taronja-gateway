@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "golang.go",
+        "biomejs.biome",
         "codeandstuff.package-json-upgrade",
         "andrejunges.handlebars",
         "bradlc.vscode-tailwindcss",

@@ -482,7 +482,7 @@ webapp/src/
 - date-fns 4.1
 - taronja-gateway-react-sdk 0.0.24 (local, points to `../sdk` in dev)
 - vitest 4.1, jsdom 29 (no test files in webapp yet; SDK has tests)
-- ESLint 9, @tailwindcss/vite
+- Biome 2 (lint only, `biome.json`), @tailwindcss/vite
 
 **⚠️ Known inconsistency:** [`webapp/.copilot-instructions.md`](./webapp/.copilot-instructions.md) describes DaisyUI conventions, but DaisyUI is **not** in `webapp/package.json` — verify before using DaisyUI classes in new code (the project currently uses custom `components/ui/` instead).
 
@@ -512,7 +512,7 @@ webapp/src/
 | `npm run build` | Vite build → `dist/` |
 | `npm run preview` | Preview production build locally |
 | `npm run test` | Run Vitest (currently no tests in webapp; SDK tests run separately) |
-| `npm run lint` | ESLint check |
+| `npm run lint` | Biome lint (`biome lint .`) |
 | `npm run analyze` | Build + generate bundle-size HTML report (`dist/bundle-stats.html`) |
 
 ### CI/CD

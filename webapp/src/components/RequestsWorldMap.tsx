@@ -1,5 +1,5 @@
 import { ClusteredWorldMap } from "./ClusteredWorldMap";
-import { RequestDetail } from "@/apiclient";
+import type { RequestDetail } from "@/apiclient";
 
 interface RequestsWorldMapProps {
     requests: RequestDetail[];

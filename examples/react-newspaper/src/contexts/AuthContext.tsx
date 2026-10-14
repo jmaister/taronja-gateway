@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { fetchMe } from '../services/apiService'; // Only importing fetchMe since we removed logout functionality
 
 // User Interface (can also be moved to a shared types file)
@@ -28,7 +28,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // isLoading starts true and only covers the first check: background checks
   // must not swap protected pages for the loading screen.
   // State is only set in the promise callbacks, after fetchMe resolves.
-  const checkUserSession = () =>
+  const checkUserSession = useCallback(() =>
     fetchMe()
       .then((userData) => {
         // fetchMe returns null on 401
@@ -41,7 +41,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsAuthenticated(false);
         setCurrentUser(null);
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => setIsLoading(false)), []);
 
   useEffect(() => {
     // Initial session check
@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         clearInterval(intervalRef.current);
       }
     };
-  }, []);
+  }, [checkUserSession]);
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, currentUser, isLoading, checkUserSession }}>
