@@ -12,7 +12,7 @@ The React SDK release should use the main repository release tag as the single s
 ## Release contract
 
 - Create a GitHub release with a tag such as `v0.2.0`.
-- `.github/workflows/sdk-release.yml` strips the leading `v`, stamps that version into `sdk/package.json`, runs the SDK tests and build, then publishes `taronja-gateway-react-sdk` to npm: under `latest`, or `next` for a pre-release such as `v0.2.0-rc.1`.
+- `.github/workflows/sdk-release.yml` strips the leading `v`, stamps that version into `sdk/package.json`, runs the SDK tests and build, then stages `taronja-gateway-react-sdk` on npm: under `latest`, or `next` for a pre-release such as `v0.2.0-rc.1`. It is public only after a maintainer approves it with 2FA, on the package page on npmjs.com or with `npm stage list taronja-gateway-react-sdk` and `npm stage approve <stage-id>` (npm 11.19+).
 - `.github/workflows/clients.yml` uses the same release tag to build the SDK, generate the Go client, and push both into `jmaister/taronja-gateway-clients`.
 - The clients repository receives these tags:
   - `v0.2.0` for the umbrella client release.
@@ -21,7 +21,7 @@ The React SDK release should use the main repository release tag as the single s
 
 ## Required setup
 
-- npm trusted publishing (no token): on npmjs.com, `taronja-gateway-react-sdk` -> Settings -> Trusted publisher -> GitHub Actions, with owner `jmaister`, repository `taronja-gateway`, workflow `sdk-release.yml` and environment `npm-publish`.
+- npm trusted publishing (no token): on npmjs.com, `taronja-gateway-react-sdk` -> Settings -> Trusted publisher -> GitHub Actions, with owner `jmaister`, repository `taronja-gateway`, workflow `sdk-release.yml`, environment `npm-publish` and permission "npm stage publish".
 - `CLIENTS_REPO_TOKEN` secret: GitHub token with push access to `jmaister/taronja-gateway-clients`.
 
 ## Why this is the best fit here
