@@ -10,9 +10,9 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  # Builds and pushes ghcr.io/jmaister/taronja-gateway:pr-<number>, updated
-  # on every push to the PR — lets anyone `docker pull` and try a PR's
-  # actual built image without waiting for a release.
+  # Builds and pushes ghcr.io/jmaister/taronja-gateway:pr-<number> (moves
+  # with every push) and :pr-<number>-<sha> (one per push), so anyone can
+  # `docker pull` a PR's image without waiting for a release.
   #
   # Only for a PR whose branch lives in this same repo, never a fork: a
   # fork PR's GITHUB_TOKEN is always read-only regardless of the
@@ -42,24 +42,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Short commit SHA
+        id: sha
+        run: echo "short=$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      # No provenance/SBOM attestations: they turn the image into an index
+      # with untagged child versions, which the cleanup below could not
+      # tell apart from the children of release images.
       - name: Build and push PR image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/jmaister/taronja-gateway:pr-${{ github.event.pull_request.number }}
+          provenance: false
+          sbom: false
+          tags: |
+            ghcr.io/jmaister/taronja-gateway:pr-${{ github.event.pull_request.number }}
+            ghcr.io/jmaister/taronja-gateway:pr-${{ github.event.pull_request.number }}-${{ steps.sha.outputs.short }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
             org.opencontainers.image.title=taronja-gateway
             org.opencontainers.image.revision=${{ github.event.pull_request.head.sha }}
 
-      # Posts (or updates, on a later push to the same PR — matched by the
-      # hidden marker below, so this never piles up duplicate comments)
-      # the pull command and a link to the image, since the tag itself
-      # isn't otherwise visible anywhere in the PR UI.
+      # Posts (or updates, matched by the hidden marker) the pull command and
+      # image link on the PR, and prints them in the log and run summary.
       - name: Comment the image link on the PR
         uses: actions/github-script@v7
+        env:
+          SHORT_SHA: ${{ steps.sha.outputs.short }}
         with:
           script: |
             const marker = '<!-- docker-pr-image-comment -->';
@@ -75,43 +86,35 @@ jobs:
               '',
               `[View on GHCR](${packageUrl})`,
               '',
-              'Updated on every push to this PR; deleted automatically once this PR goes 5 days without a new push (see `.github/workflows/docker-pr.yml`).',
+              `This push: \`${tag}-${process.env.SHORT_SHA}\``,
+              '',
+              'Updated on every push to this PR. Each push is deleted 7 days after it was built (see `.github/workflows/docker-pr.yml`).',
             ].join('\n');
 
-            const comments = await github.rest.issues.listComments({
+            core.info(`Image:   ${tag} (${tag}-${process.env.SHORT_SHA})`);
+            core.info(`Pull:    docker pull ${tag}`);
+            core.info(`GHCR:    ${packageUrl}`);
+            await core.summary.addRaw(body.replace(marker, '')).write();
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo,
               issue_number: context.issue.number,
             });
-            const existing = comments.data.find((c) => c.body && c.body.includes(marker));
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
             if (existing) {
               await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
             } else {
               await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
             }
 
-  # Runs daily (and on demand via workflow_dispatch) rather than on PR
-  # close, so a long-open PR's image survives as long as it keeps getting
-  # pushed to, but a PR nobody's touched in 5 days loses its image the
-  # same way a merged/closed one eventually does — "expire", not "delete
-  # the moment the PR closes".
+  # Runs daily (and on demand via workflow_dispatch): deletes every image
+  # version carrying a pr-* tag that was built more than 7 days ago. Each
+  # push has its own pr-<N>-<sha> tag, so superseded pushes expire too;
+  # untagged versions are never touched (release images keep theirs).
   #
-  # Needs GHCR_CLEANUP_TOKEN: a classic PAT with the read:packages and
-  # delete:packages scopes, added as a repo secret. This can't use the
-  # default GITHUB_TOKEN the way build-and-push's push above does —
-  # deleting package versions owned by a *user* account (jmaister is a
-  # personal account, not a GitHub org) requires a real PAT belonging to
-  # that account; GITHUB_TOKEN's packages:write only covers publishing
-  # for a personal-owned package, not deleting from it. (Org-owned
-  # packages don't have this restriction, for what it's worth — this
-  # split is a GitHub platform behavior, not a choice made here.)
-  #
-  # This is the one part of this workflow that couldn't be verified
-  # end-to-end while writing it: there was no published pr-* image yet to
-  # test deletion against. Skips instead of failing until the secret
-  # exists, so this doesn't show as a red scheduled run before that
-  # one-time setup happens — but do a manual `workflow_dispatch` run once
-  # it's set to confirm it actually deletes something, rather than
-  # trusting this comment.
+  # Needs GHCR_CLEANUP_TOKEN: a classic PAT with read:packages and
+  # delete:packages. GITHUB_TOKEN cannot delete versions of a package owned
+  # by a personal account. Skips until the secret exists.
   cleanup-expired-images:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -128,7 +131,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Delete pr-* images older than 5 days
+      - name: Delete pr-* images older than 7 days
         if: steps.check_token.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN }}
@@ -136,15 +139,10 @@ jobs:
           set -euo pipefail
           OWNER="jmaister"
           PACKAGE="taronja-gateway"
-          CUTOFF_EPOCH=$(date -u -d '5 days ago' +%s)
+          CUTOFF_EPOCH=$(date -u -d '7 days ago' +%s)
 
-          # A version is eligible once it's older than the cutoff and
-          # either untagged (a stale digest left behind when a pr-<N> tag
-          # moved to a newer push) or still tagged pr-<N> itself (a PR
-          # nobody's pushed to in 5+ days) — release/:latest versions
-          # never match the pr- prefix, so this never touches them.
           gh api "/users/$OWNER/packages/container/$PACKAGE/versions" --paginate \
-            --jq ".[] | select((.created_at | fromdateiso8601) < $CUTOFF_EPOCH) | select((.metadata.container.tags | length == 0) or (.metadata.container.tags | any(startswith(\"pr-\")))) | .id" \
+            --jq ".[] | select((.created_at | fromdateiso8601) < $CUTOFF_EPOCH) | select(.metadata.container.tags | any(startswith(\"pr-\"))) | .id" \
           | while read -r id; do
               echo "Deleting package version $id"
               gh api -X DELETE "/users/$OWNER/packages/container/$PACKAGE/versions/$id"
