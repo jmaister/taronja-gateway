@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
@@ -24,7 +24,7 @@ type GithubUserDataFetcher struct {
 	OAuthConfig *oauth2.Config
 }
 
-func (f *GithubUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (f *GithubUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	// Create request to GitHub API
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {
@@ -32,7 +32,7 @@ func (f *GithubUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 	}
 
 	// Set authorization header
-	req.Header.Set("Authorization", "token "+accessToken)
+	req.Header.Set("Authorization", "token "+token.AccessToken)
 	req.Header.Set("Accept", "application/json")
 
 	// Make the request
@@ -68,7 +68,7 @@ func (f *GithubUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 	// GitHub might not expose the user's email directly, so we need to fetch it separately
 	email := githubUser.Email
 	if email == "" {
-		email, err = fetchGitHubEmail(accessToken)
+		email, err = fetchGitHubEmail(token.AccessToken)
 		if err != nil {
 			// Not a critical error, just log it
 			fmt.Printf("Warning: Could not fetch GitHub user email: %v\n", err)
@@ -154,7 +154,7 @@ func fetchGitHubEmail(accessToken string) (string, error) {
 }
 
 // RegisterGithubAuth configures and registers GitHub OAuth2 authentication
-func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) {
 	if gatewayConfig.AuthenticationProviders.Github.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret == "" {
 		return // Skip if not configured
@@ -164,7 +164,7 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 	oauthConfig := &oauth2.Config{
 		ClientID:     gatewayConfig.AuthenticationProviders.Github.ClientId,
 		ClientSecret: gatewayConfig.AuthenticationProviders.Github.ClientSecret,
-		RedirectURL:  fmt.Sprintf("%s%s/auth/github/callback", gatewayConfig.Server.URL, gatewayConfig.Management.Prefix),
+		RedirectURL:  fmt.Sprintf("%s%s/auth/github/callback", gatewayConfig.Server.URL, config.ManagementPrefix),
 		Scopes:       []string{"read:user", "user:email"},
 		Endpoint:     github.Endpoint,
 	}

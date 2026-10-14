@@ -2,18 +2,23 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { CounterAdjustmentRequest, UserCountersResponse } from '@/apiclient/types.gen';
-import { useAdjustCounters, useAllUserCounters, useAvailableCounters, useCounterHistory } from '@/services/services';
+import { useAdjustCounters, useAllUserCounters, useAvailableCounters, useCounterHistory } from '@/services/counters';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { FormField } from '../components/ui/FormField';
 import { Input } from '../components/ui/Input';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StatusPill } from '../components/ui/StatusPill';
+import { formatDate, formatDateTime } from '../lib/format';
+import { SkeletonRows } from '../components/QueryState';
 
 export function CountersManagementPage() {
     const [counterId, setCounterId] = useState<string>('credits');
     const [selectedUser, setSelectedUser] = useState<string | null>(null);
     const [adjustmentForm, setAdjustmentForm] = useState<CounterAdjustmentRequest>({ amount: 0, description: '' });
+    const [showAdjustConfirm, setShowAdjustConfirm] = useState(false);
+    const [adjustSuccessMessage, setAdjustSuccessMessage] = useState<string | null>(null);
 
     const {
         data: availableCounters,
@@ -64,7 +69,7 @@ export function CountersManagementPage() {
                 </CardHeader>
                 <CardContent>
                     {errorAvailableCounters && (
-                        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger">
+                        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger" role="alert">
                             <div className="font-semibold">Error loading available counters</div>
                             <div className="mt-1 text-sm text-danger/80">{errorAvailableCounters.message}</div>
                             <div className="mt-2 text-xs text-danger/70">
@@ -128,7 +133,7 @@ export function CountersManagementPage() {
             </Card>
 
             {pageError && (
-                <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger">
+                <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger" role="alert">
                     {pageError}
                 </div>
             )}
@@ -153,7 +158,7 @@ export function CountersManagementPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {loadingUsers && !allUserCounters && <p className="text-muted-fg">Loading user counters…</p>}
+                    {loadingUsers && !allUserCounters && <SkeletonRows />}
 
                     {!counterId.trim() && (
                         <p className="py-8 text-center text-muted-fg">Please enter a counter ID.</p>
@@ -208,7 +213,7 @@ export function CountersManagementPage() {
                                                 )}
                                             </td>
                                             <td className="border-b border-border px-3 py-3">
-                                                {new Date(user.last_updated).toLocaleDateString()}
+                                                {formatDate(user.last_updated)}
                                             </td>
                                             <td className="border-b border-border px-3 py-3">
                                                 <div className="flex flex-wrap gap-2">
@@ -281,13 +286,10 @@ export function CountersManagementPage() {
                             <div className="flex items-end">
                                 <Button
                                     className="w-full"
-                                    onClick={() =>
-                                        adjustCountersMutation.mutate({
-                                            counterId,
-                                            userId: selectedUser,
-                                            adjustment: adjustmentForm,
-                                        })
-                                    }
+                                    onClick={() => {
+                                        setAdjustSuccessMessage(null);
+                                        setShowAdjustConfirm(true);
+                                    }}
                                     disabled={
                                         mutationLoading ||
                                         adjustmentForm.amount === 0 ||
@@ -299,8 +301,14 @@ export function CountersManagementPage() {
                             </div>
                         </div>
 
+                        {adjustSuccessMessage && (
+                            <div className="mt-6 rounded-lg border border-success/30 bg-success/5 p-4 text-success" role="alert">
+                                {adjustSuccessMessage}
+                            </div>
+                        )}
+
                         {adjustCountersMutation.error && (
-                            <div className="mt-6 rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger">
+                            <div className="mt-6 rounded-lg border border-danger/30 bg-danger/5 p-4 text-danger" role="alert">
                                 <strong>Adjustment Error:</strong>{' '}
                                 {adjustCountersMutation.error instanceof Error
                                     ? adjustCountersMutation.error.message
@@ -351,10 +359,10 @@ export function CountersManagementPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {counterHistory.transactions.map((transaction: any) => (
+                                        {counterHistory.transactions.map((transaction) => (
                                             <tr key={transaction.id} className="hover:bg-muted/40">
                                                 <td className="border-b border-border px-3 py-3">
-                                                    {new Date(transaction.created_at).toLocaleString()}
+                                                    {formatDateTime(transaction.created_at)}
                                                 </td>
                                                 <td className="border-b border-border px-3 py-3">
                                                     <span
@@ -381,6 +389,34 @@ export function CountersManagementPage() {
                     </CardContent>
                 </Card>
             )}
+
+            <ConfirmDialog
+                open={showAdjustConfirm}
+                title={`Adjust ${counterLabel}?`}
+                description={`This will ${adjustmentForm.amount > 0 ? 'add' : 'deduct'} ${Math.abs(
+                    adjustmentForm.amount
+                )} ${counterLabel.toLowerCase()} ${adjustmentForm.amount > 0 ? 'to' : 'from'} user ${selectedUser}. Reason: "${adjustmentForm.description}".`}
+                confirmLabel={mutationLoading ? 'Adjusting…' : 'Adjust'}
+                variant="primary"
+                isLoading={mutationLoading}
+                onCancel={() => setShowAdjustConfirm(false)}
+                onConfirm={() => {
+                    if (!selectedUser) return;
+                    adjustCountersMutation.mutate(
+                        { counterId, userId: selectedUser, adjustment: adjustmentForm },
+                        {
+                            onSuccess: () => {
+                                setShowAdjustConfirm(false);
+                                setAdjustSuccessMessage(
+                                    `${counterLabel} adjusted successfully for user ${selectedUser}.`
+                                );
+                                setAdjustmentForm({ amount: 0, description: '' });
+                            },
+                            onError: () => setShowAdjustConfirm(false),
+                        }
+                    );
+                }}
+            />
         </div>
     );
 }

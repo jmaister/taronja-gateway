@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/lucsky/cuid"
 )
 
@@ -17,12 +18,12 @@ const (
 
 // TokenService handles token generation, validation and management
 type TokenService struct {
-	tokenRepo db.TokenRepository
-	userRepo  db.UserRepository
+	tokenRepo repositories.TokenRepository
+	userRepo  repositories.UserRepository
 }
 
 // NewTokenService creates a new token service
-func NewTokenService(tokenRepo db.TokenRepository, userRepo db.UserRepository) *TokenService {
+func NewTokenService(tokenRepo repositories.TokenRepository, userRepo repositories.UserRepository) *TokenService {
 	return &TokenService{
 		tokenRepo: tokenRepo,
 		userRepo:  userRepo,

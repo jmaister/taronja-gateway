@@ -1,12 +1,15 @@
 import { getUserAvatar, getUserDisplayName, getUserInitials, useTaronjaAuth } from 'taronja-gateway-react-sdk';
+import { useState } from 'react';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
+import { TelegramConnectionSection } from '../components/TelegramConnectionSection';
 
 /**
  * ProfilePage component - Full page view for user profile
  */
 export const ProfilePage = () => {
     const { isAuthenticated, currentUser, isLoading, logout } = useTaronjaAuth();
+    const [today] = useState(() => new Date().toLocaleDateString());
 
     if (isLoading) {
         return (
@@ -163,7 +166,7 @@ export const ProfilePage = () => {
                 <div className="bg-surface-2 px-6 py-4 border-t border-border">
                     <div className="flex justify-between items-center">
                         <div className="text-sm text-muted-fg">
-                            Last updated: {new Date().toLocaleDateString()}
+                            Last updated: {today}
                         </div>
                         <Button variant="danger" onClick={() => void logout()}>
                             Logout
@@ -171,6 +174,8 @@ export const ProfilePage = () => {
                     </div>
                 </div>
             </Card>
+
+            <TelegramConnectionSection />
         </div>
     );
 };

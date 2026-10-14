@@ -29,7 +29,7 @@ func BenchmarkStaticRequestNoAnalytics(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		// Static files might return 404 if not found, that's ok for performance testing
 		if rr.Code != http.StatusOK && rr.Code != http.StatusNotFound {
@@ -47,9 +47,6 @@ func createTestConfigNoAnalytics() *config.GatewayConfig {
 			Port: 8080,
 		},
 		Management: config.ManagementConfig{
-			Prefix:    "/_",
-			Analytics: false, // Disabled analytics
-			Logging:   false, // Disabled logging
 			Admin: config.AdminConfig{
 				Enabled:  false,
 				Username: "admin",
@@ -72,13 +69,10 @@ func createTestConfigNoAnalytics() *config.GatewayConfig {
 		},
 		Routes: []config.RouteConfig{
 			{
-				Name:   "test-api",
-				From:   "/api/*",
-				To:     "http://localhost:3000",
-				Static: false,
-				Authentication: config.AuthenticationConfig{
-					Enabled: false,
-				},
+				Name:          "test-api",
+				From:          "/api/*",
+				To:            []string{"http://localhost:3000"},
+				Authenticated: false,
 			},
 		},
 	}

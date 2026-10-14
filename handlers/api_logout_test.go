@@ -8,27 +8,28 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupLogoutTestServer() (*StrictApiServer, db.SessionRepository) {
+func setupLogoutTestServer() (*StrictApiServer, repositories.SessionRepository) {
 	db.SetupTestDB("setupLogoutTestServer")
 	testDB := db.GetConnection()
 
 	// Create database repositories for testing
-	userRepo := db.NewDBUserRepository(testDB)
-	sessionRepo := db.NewSessionRepositoryDB(testDB)
+	userRepo := repositories.NewDBUserRepository(testDB)
+	sessionRepo := repositories.NewSessionRepositoryDB(testDB)
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-	trafficMetricRepo := db.NewTrafficMetricRepository(testDB)
-	tokenRepo := db.NewTokenRepositoryDB(testDB)
-	countersRepo := db.NewDBCountersRepository(testDB)
+	trafficMetricRepo := repositories.NewTrafficMetricRepository(testDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(testDB)
+	countersRepo := repositories.NewDBCountersRepository(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	startTime := time.Now()
 
-	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, countersRepo, tokenService, startTime, nil), sessionRepo
+	return NewStrictApiServer(sessionStore, userRepo, trafficMetricRepo, tokenRepo, countersRepo, nil, tokenService, startTime, nil, nil, nil), sessionRepo
 }
 
 func TestLogoutUser(t *testing.T) {
@@ -73,15 +74,15 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check cache control header
-		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", logoutResp.Headers.CacheControl)
+		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", *logoutResp.Headers.CacheControl)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
-		assert.Contains(t, logoutResp.Headers.SetCookie, "Max-Age=0")
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, "Max-Age=0")
 
 		// Verify session was deleted from store
 		foundSession, err := sessionRepo.FindSessionByToken(sessionToken)
@@ -126,7 +127,7 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location is custom URL
-		assert.Equal(t, "/custom-redirect", logoutResp.Headers.Location)
+		assert.Equal(t, "/custom-redirect", *logoutResp.Headers.Location)
 
 		// Verify session was deleted from store
 		foundSession, err := sessionRepo.FindSessionByToken(sessionToken)
@@ -155,15 +156,15 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check cache control header
-		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", logoutResp.Headers.CacheControl)
+		assert.Equal(t, "no-store, no-cache, must-revalidate, post-check=0, pre-check=0", *logoutResp.Headers.CacheControl)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
-		assert.Contains(t, logoutResp.Headers.SetCookie, "Max-Age=0")
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, "Max-Age=0")
 	})
 
 	t.Run("LogoutWithEmptySessionToken", func(t *testing.T) {
@@ -188,11 +189,11 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
 	})
 
 	t.Run("LogoutWithInvalidSessionToken", func(t *testing.T) {
@@ -217,11 +218,11 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/"
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
 
 		// Check that Set-Cookie header is present to clear the session cookie
-		assert.NotEmpty(t, logoutResp.Headers.SetCookie)
-		assert.Contains(t, logoutResp.Headers.SetCookie, session.SessionCookieName)
+		assert.NotEmpty(t, *logoutResp.Headers.SetCookie)
+		assert.Contains(t, *logoutResp.Headers.SetCookie, session.SessionCookieName)
 
 		// Verify the invalid token still doesn't exist (nothing should have been created)
 		foundSession, err := sessionRepo.FindSessionByToken(invalidToken)
@@ -252,6 +253,32 @@ func TestLogoutUser(t *testing.T) {
 		assert.True(t, ok, "Response should be LogoutUser302Response")
 
 		// Check redirect location defaults to "/" when empty
-		assert.Equal(t, "/", logoutResp.Headers.Location)
+		assert.Equal(t, "/", *logoutResp.Headers.Location)
+	})
+
+	// TestLogoutUser/RejectsOpenRedirect is the regression test for the
+	// vulnerability: LogoutUser is reachable with no session at all (see
+	// LogoutWithNoSession above), and used to pass request.Params.Redirect
+	// straight into the 302 Location header — a link to this gateway's own
+	// trusted domain with ?redirect=https://evil.example completed a real
+	// logout, then bounced the browser to an attacker-controlled page.
+	t.Run("RejectsOpenRedirect", func(t *testing.T) {
+		s, _ := setupLogoutTestServer()
+		ctx := context.Background()
+
+		evilRedirect := "https://evil.example/phish"
+		req := api.LogoutUserRequestObject{
+			Params: api.LogoutUserParams{
+				TgSessionToken: nil,
+				Redirect:       &evilRedirect,
+			},
+		}
+
+		resp, err := s.LogoutUser(ctx, req)
+		require.NoError(t, err)
+
+		logoutResp, ok := resp.(api.LogoutUser302Response)
+		require.True(t, ok, "Response should be LogoutUser302Response")
+		assert.Equal(t, "/", *logoutResp.Headers.Location, "an absolute-URL redirect target must be rejected, not forwarded to the client")
 	})
 }

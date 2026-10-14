@@ -1,25 +1,34 @@
 @echo off
 REM Windows installer for taronja-gateway (tg)
-REM Downloads the latest GoReleaser Windows artifact from GitHub and installs tg.exe to %USERPROFILE%\bin
+REM Downloads a GoReleaser Windows artifact from GitHub and installs tg.exe to %USERPROFILE%\bin
+REM Usage: install.bat [version]   (e.g. 0.0.24; default: latest release)
 
 setlocal enabledelayedexpansion
 
 set REPO=jmaister/taronja-gateway
 set TG_BIN=tg.exe
 set INSTALL_DIR=%USERPROFILE%\bin
-set API_URL=https://api.github.com/repos/%REPO%/releases/latest
+set VERSION=%~1
+if defined VERSION if /I "!VERSION:~0,1!"=="v" set VERSION=!VERSION:~1!
+if defined VERSION (
+    set API_URL=https://api.github.com/repos/%REPO%/releases/tags/v!VERSION!
+    set RELEASE=release v!VERSION!
+) else (
+    set API_URL=https://api.github.com/repos/%REPO%/releases/latest
+    set RELEASE=latest release
+)
 set ZIP_URL=
 
 REM Create install dir if it doesn't exist
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
-REM Get latest release info and extract the Windows tar.gz URL (GoReleaser artifact)
-powershell -Command "Invoke-WebRequest -Uri '%API_URL%' -OutFile 'latest.json'"
+REM Get the release info and extract the Windows tar.gz URL (GoReleaser artifact)
+powershell -Command "Invoke-WebRequest -Uri '!API_URL!' -OutFile 'latest.json'"
 for /f "delims=" %%i in ('powershell -Command "(Get-Content latest.json | Out-String | ConvertFrom-Json).assets | Where-Object { $_.name -like '*Windows_x86_64.tar.gz' } | Select-Object -ExpandProperty browser_download_url"') do set ZIP_URL=%%i
 
 REM Debug: print ZIP_URL
 if "%ZIP_URL%"=="" (
-    echo ERROR: Could not find a Windows GoReleaser artifact download URL in the latest release.
+    echo ERROR: Could not find a Windows GoReleaser artifact download URL in the !RELEASE!.
     if exist latest.json type latest.json
     del latest.json
     exit /b 1

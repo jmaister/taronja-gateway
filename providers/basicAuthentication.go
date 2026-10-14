@@ -6,11 +6,17 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/encryption"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
 	// For session.ExtractClientInfo, session.SessionCookieName
 )
+
+// dummyPasswordHash is compared against (and discarded) when no user matches, so an
+// unknown username costs the same argon2id time as a wrong password and response
+// time cannot be used to enumerate usernames.
+const dummyPasswordHash = "$argon2id$v=19$m=19456,t=2,p=1$Kv75i1B3Xx82V25DUgi+ig$PfmOrccHiXOZi6RZ6WOPNuh9Gaab+Fg0fIRe0hOUR4s"
 
 // parseLoginCredentials parses username and password from form data (both URL-encoded and multipart)
 func parseLoginCredentials(r *http.Request) (username, password string) {
@@ -36,7 +42,9 @@ func parseLoginCredentials(r *http.Request) (username, password string) {
 	return username, password
 }
 
-// getRedirectURL extracts the redirect URL from various sources in the request
+// getRedirectURL extracts the redirect URL from various sources in the
+// request, sanitized to a same-origin path — see
+// session.SanitizeRedirectPath's doc comment for why.
 func getRedirectURL(r *http.Request) string {
 	redirectURL := r.Form.Get("redirect")
 	if redirectURL == "" && r.MultipartForm != nil && r.MultipartForm.Value != nil {
@@ -47,10 +55,7 @@ func getRedirectURL(r *http.Request) string {
 	if redirectURL == "" {
 		redirectURL = r.URL.Query().Get("redirect")
 	}
-	if redirectURL == "" {
-		redirectURL = "/" // Default redirect
-	}
-	return redirectURL
+	return session.SanitizeRedirectPath(redirectURL)
 }
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
@@ -66,7 +71,8 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 		Value:    sessionObject.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(gatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
@@ -75,17 +81,14 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 }
 
 // RegisterBasicAuth registers basic authentication handlers for login.
-// It now uses db.SessionRepository.
-func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo db.UserRepository, gatewayConfig *config.GatewayConfig) {
+// It now uses repositories.SessionRepository.
+func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo repositories.UserRepository, gatewayConfig *config.GatewayConfig) {
 	basicLoginPath := managementPrefix + "/auth/basic/login"
 
 	checkSessionAndRedirect := func(w http.ResponseWriter, r *http.Request) bool {
-		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from db.SessionRepository
+		_, isValid := sessionStore.ValidateSession(r) // Use ValidateSession from repositories.SessionRepository
 		if isValid {
-			redirectURL := r.URL.Query().Get("redirect")
-			if redirectURL == "" {
-				redirectURL = "/"
-			}
+			redirectURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return true
 		}
@@ -117,6 +120,11 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 		}
 
 		if user == nil {
+			// Equalize timing with dummyPasswordHash; the result is discarded and only an
+			// error from ComparePassword itself matters.
+			if _, err := encryption.ComparePassword(password, dummyPasswordHash); err != nil {
+				log.Printf("Dummy password comparison failed unexpectedly: %v", err)
+			}
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}

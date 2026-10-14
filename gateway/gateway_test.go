@@ -15,6 +15,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/static"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,20 +35,17 @@ func TestNewGateway(t *testing.T) {
 					Host: "localhost",
 					Port: 8080,
 				},
-				Management: config.ManagementConfig{
-					Prefix: "/admin",
-				},
+				Management: config.ManagementConfig{},
 				Routes: []config.RouteConfig{
 					{
 						Name: "Test Route",
 						From: "/",
-						To:   "http://localhost:8081",
+						To:   []string{"http://localhost:8081"},
 					},
 					{
 						Name:     "Test Route 2",
 						From:     "/static",
 						ToFolder: "./static",
-						Static:   true,
 					},
 				},
 			},
@@ -167,13 +165,10 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			name: "Single file serving - no auth",
 			routes: []config.RouteConfig{
 				{
-					Name:   "Single File Route",
-					From:   "/file",
-					ToFile: testFilePath,
-					Static: true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: false,
-					},
+					Name:          "Single File Route",
+					From:          "/file",
+					ToFile:        testFilePath,
+					Authenticated: false,
 				},
 			},
 			requestPath:    "/file",
@@ -185,13 +180,10 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			name: "Single file serving - with auth",
 			routes: []config.RouteConfig{
 				{
-					Name:   "Protected File Route",
-					From:   "/protected-file",
-					ToFile: testFilePath,
-					Static: true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: true,
-					},
+					Name:          "Protected File Route",
+					From:          "/protected-file",
+					ToFile:        testFilePath,
+					Authenticated: true,
 				},
 			},
 			requestPath:    "/protected-file",
@@ -203,13 +195,10 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			name: "Folder serving - no auth",
 			routes: []config.RouteConfig{
 				{
-					Name:     "Folder Route",
-					From:     "/folder/",
-					ToFolder: tempDir,
-					Static:   true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: false,
-					},
+					Name:          "Folder Route",
+					From:          "/folder/",
+					ToFolder:      tempDir,
+					Authenticated: false,
 				},
 			},
 			requestPath:    "/folder/" + testFileName,
@@ -221,13 +210,10 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			name: "Folder serving with index.html - no auth",
 			routes: []config.RouteConfig{
 				{
-					Name:     "Folder with Index Route",
-					From:     "/indexed/",
-					ToFolder: subDir,
-					Static:   true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: false,
-					},
+					Name:          "Folder with Index Route",
+					From:          "/indexed/",
+					ToFolder:      subDir,
+					Authenticated: false,
 				},
 			},
 			requestPath:    "/indexed/",
@@ -239,13 +225,10 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			name: "Folder serving - with auth",
 			routes: []config.RouteConfig{
 				{
-					Name:     "Protected Folder Route",
-					From:     "/protected-folder/",
-					ToFolder: tempDir,
-					Static:   true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: true,
-					},
+					Name:          "Protected Folder Route",
+					From:          "/protected-folder/",
+					ToFolder:      tempDir,
+					Authenticated: true,
 				},
 			},
 			requestPath:    "/protected-folder/" + testFileName,
@@ -257,22 +240,16 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			name: "Mixed routes - static and proxy",
 			routes: []config.RouteConfig{
 				{
-					Name:   "File Route",
-					From:   "/api-file",
-					ToFile: testFilePath,
-					Static: true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: false,
-					},
+					Name:          "File Route",
+					From:          "/api-file",
+					ToFile:        testFilePath,
+					Authenticated: false,
 				},
 				{
-					Name:     "Folder Route",
-					From:     "/assets/",
-					ToFolder: tempDir,
-					Static:   true,
-					Authentication: config.AuthenticationConfig{
-						Enabled: false,
-					},
+					Name:          "Folder Route",
+					From:          "/assets/",
+					ToFolder:      tempDir,
+					Authenticated: false,
 				},
 			},
 			requestPath:    "/assets/" + testFileName,
@@ -290,11 +267,8 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 					Host: "localhost",
 					Port: 0, // Use port 0 to let the system assign an available port
 				},
-				Management: config.ManagementConfig{
-					Prefix:  "/admin",
-					Logging: false,
-				},
-				Routes: tt.routes,
+				Management: config.ManagementConfig{},
+				Routes:     tt.routes,
 			}
 
 			// Create a new gateway
@@ -347,7 +321,7 @@ func TestGatewayStaticFileRouting(t *testing.T) {
 			if tt.expectAuth && resp.StatusCode == http.StatusFound {
 				// Verify redirect to login page for protected routes
 				location := resp.Header.Get("Location")
-				assert.Contains(t, location, "/admin/login", "Expected redirect to login page")
+				assert.Contains(t, location, "/_/login", "Expected redirect to login page")
 				assert.Contains(t, location, "redirect=", "Expected redirect parameter in login URL")
 			}
 
@@ -391,7 +365,6 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 					Name:   "Valid File",
 					From:   "/file",
 					ToFile: testFilePath,
-					Static: true,
 				},
 			},
 			expectError: false,
@@ -404,7 +377,6 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 					Name:     "Valid Folder",
 					From:     "/folder/",
 					ToFolder: tempDir,
-					Static:   true,
 				},
 			},
 			expectError: false,
@@ -416,7 +388,7 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 				{
 					Name: "Empty To",
 					From: "/empty",
-					To:   "",
+					To:   nil,
 				},
 			},
 			expectError: true, // Validation should catch this configuration error early
@@ -429,18 +401,16 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 					Name:   "File Route",
 					From:   "/file",
 					ToFile: testFilePath,
-					Static: true,
 				},
 				{
 					Name:     "Folder Route",
 					From:     "/folder/",
 					ToFolder: tempDir,
-					Static:   true,
 				},
 				{
 					Name: "Proxy Route",
 					From: "/api",
-					To:   "http://localhost:8080",
+					To:   []string{"http://localhost:8080"},
 				},
 			},
 			expectError: false,
@@ -456,10 +426,8 @@ func TestGatewayConfigurationErrors(t *testing.T) {
 					Host: "localhost",
 					Port: 8080,
 				},
-				Management: config.ManagementConfig{
-					Prefix: "/admin",
-				},
-				Routes: tt.routes,
+				Management: config.ManagementConfig{},
+				Routes:     tt.routes,
 			}
 
 			// Create a new gateway
@@ -494,37 +462,25 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 			Host: "localhost",
 			Port: 0,
 		},
-		Management: config.ManagementConfig{
-			Prefix:  "/admin",
-			Logging: false,
-		},
+		Management: config.ManagementConfig{},
 		Routes: []config.RouteConfig{
 			{
-				Name:   "Public File",
-				From:   "/public",
-				ToFile: testFilePath,
-				Static: true,
-				Authentication: config.AuthenticationConfig{
-					Enabled: false,
-				},
+				Name:          "Public File",
+				From:          "/public",
+				ToFile:        testFilePath,
+				Authenticated: false,
 			},
 			{
-				Name:   "Protected File",
-				From:   "/protected",
-				ToFile: testFilePath,
-				Static: true,
-				Authentication: config.AuthenticationConfig{
-					Enabled: true,
-				},
+				Name:          "Protected File",
+				From:          "/protected",
+				ToFile:        testFilePath,
+				Authenticated: true,
 			},
 			{
-				Name:     "Protected Folder",
-				From:     "/protected-folder/",
-				ToFolder: tempDir,
-				Static:   true,
-				Authentication: config.AuthenticationConfig{
-					Enabled: true,
-				},
+				Name:          "Protected Folder",
+				From:          "/protected-folder/",
+				ToFolder:      tempDir,
+				Authenticated: true,
 			},
 		},
 	}
@@ -581,7 +537,7 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 		assert.Equal(t, http.StatusFound, resp.StatusCode)
 
 		location := resp.Header.Get("Location")
-		assert.Contains(t, location, "/admin/login")
+		assert.Contains(t, location, "/_/login")
 		assert.Contains(t, location, "redirect=")
 	})
 
@@ -593,7 +549,7 @@ func TestGatewayAuthenticationIntegration(t *testing.T) {
 		assert.Equal(t, http.StatusFound, resp.StatusCode)
 
 		location := resp.Header.Get("Location")
-		assert.Contains(t, location, "/admin/login")
+		assert.Contains(t, location, "/_/login")
 		assert.Contains(t, location, "redirect=")
 	})
 
@@ -628,18 +584,14 @@ func TestHelloEndpoint(t *testing.T) {
 			Host: "localhost",
 			Port: 0, // Use port 0 to let the system assign an available port
 		},
-		Management: config.ManagementConfig{
-			Prefix:  "/admin",
-			Logging: true,
-		},
+		Management: config.ManagementConfig{},
+		Middleware: []config.MiddlewareConfig{config.NewMiddlewareConfig(builtin.NameLogging, nil)},
 		Routes: []config.RouteConfig{
 			{
-				Name: "Hello Endpoint",
-				From: "/hello",
-				To:   testServer.URL, // Forward to our test server
-				Authentication: config.AuthenticationConfig{
-					Enabled: false, // No authentication
-				},
+				Name:          "Hello Endpoint",
+				From:          "/hello",
+				To:            []string{testServer.URL}, // Forward to our test server
+				Authenticated: false,
 			},
 		},
 	}
@@ -717,6 +669,90 @@ func TestHelloEndpoint(t *testing.T) {
 	}
 }
 
+// TestProxyBackendUnreachable_ReturnsBadGatewayInstantly is a regression test for a bug
+// where the reverse proxy's ErrorHandler called rw.(http.Hijacker).Hijack() to "check"
+// whether a response had already been written, then abandoned the hijacked connection
+// without writing or closing anything. Since the plain http.ResponseWriter net/http hands
+// out for a real connection implements Hijacker, and neither Logging nor Analytics wrap it
+// unless explicitly enabled (both default false), this fired on every upstream failure in
+// an out-of-the-box config: the client received nothing at all and hung until its own
+// timeout instead of getting a fast 502. This must use a real listener (as TestHelloEndpoint
+// does), not httptest.NewRecorder, because only a real connection's ResponseWriter
+// implements http.Hijacker in the first place.
+func TestProxyBackendUnreachable_ReturnsBadGatewayInstantly(t *testing.T) {
+	// Bind a listener and immediately close it, so its address is guaranteed to refuse
+	// connections (nothing is listening there any more).
+	deadListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to allocate a dead address: %v", err)
+	}
+	deadAddr := deadListener.Addr().String()
+	deadListener.Close()
+
+	cfg := &config.GatewayConfig{
+		Server: config.ServerConfig{
+			Host: "localhost",
+			Port: 0,
+		},
+		Management: config.ManagementConfig{
+			// Deliberately left at the zero value (false): Logging and Analytics
+			// off is the out-of-the-box default, and is what exposes the raw,
+			// hijackable http.ResponseWriter to the proxy's ErrorHandler.
+		},
+		Routes: []config.RouteConfig{
+			{
+				Name:          "Unreachable Backend",
+				From:          "/down",
+				To:            []string{"http://" + deadAddr},
+				Authenticated: false,
+			},
+		},
+	}
+
+	deps := deps.NewTest()
+	gateway, err := NewGatewayWithDependencies(cfg, nil, deps)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+
+	listener, err := net.Listen("tcp", gateway.Server.Addr)
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	port := listener.Addr().(*net.TCPAddr).Port
+	serverURL := fmt.Sprintf("http://localhost:%d", port)
+
+	go func() {
+		_ = gateway.Server.Serve(listener)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// A short client timeout: if the bug is present, the connection is hijacked and
+	// abandoned, so this request would hang and the test would fail on timeout instead
+	// of asserting on a fast, well-formed 502.
+	client := &http.Client{Timeout: 3 * time.Second}
+	start := time.Now()
+	resp, err := client.Get(serverURL + "/down")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Request to an unreachable backend should still get an HTTP response (fast 502), not hang/error out: %v (after %v)", err, elapsed)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("Expected 502 Bad Gateway, got %v", resp.StatusCode)
+	}
+	if elapsed > time.Second {
+		t.Errorf("Expected an immediate error response, took %v", elapsed)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = gateway.Server.Shutdown(ctx)
+}
+
 // TestGatewaySPARouting tests SPA (Single Page Application) routing functionality
 func TestGatewaySPARouting(t *testing.T) {
 	// Create temporary directory structure for testing SPA
@@ -771,7 +807,6 @@ window.onload = function() {
 					Name:     "SPA Route",
 					From:     "/*",
 					ToFolder: tempDir,
-					Static:   true,
 					IsSPA:    true,
 				},
 			},
@@ -787,7 +822,6 @@ window.onload = function() {
 					Name:     "SPA Route",
 					From:     "/*",
 					ToFolder: tempDir,
-					Static:   true,
 					IsSPA:    true,
 				},
 			},
@@ -803,7 +837,6 @@ window.onload = function() {
 					Name:     "SPA Route",
 					From:     "/*",
 					ToFolder: tempDir,
-					Static:   true,
 					IsSPA:    true,
 				},
 			},
@@ -819,7 +852,6 @@ window.onload = function() {
 					Name:     "SPA Route",
 					From:     "/*",
 					ToFolder: tempDir,
-					Static:   true,
 					IsSPA:    true,
 				},
 			},
@@ -835,7 +867,6 @@ window.onload = function() {
 					Name:     "Non-SPA Route",
 					From:     "/*",
 					ToFolder: tempDir,
-					Static:   true,
 					IsSPA:    false, // SPA disabled
 				},
 			},
@@ -851,7 +882,6 @@ window.onload = function() {
 					Name:     "SPA Route with Prefix",
 					From:     "/app/*",
 					ToFolder: tempDir,
-					Static:   true,
 					IsSPA:    true,
 				},
 			},
@@ -870,10 +900,8 @@ window.onload = function() {
 					Host: "127.0.0.1",
 					Port: 0, // Let OS choose port
 				},
-				Management: config.ManagementConfig{
-					Prefix: "/_",
-				},
-				Routes: tt.routes,
+				Management: config.ManagementConfig{},
+				Routes:     tt.routes,
 			}
 
 			// Create gateway
@@ -975,14 +1003,12 @@ func TestProxySPAFallback(t *testing.T) {
 					Host: "127.0.0.1",
 					Port: 0,
 				},
-				Management: config.ManagementConfig{
-					Prefix: "/_",
-				},
+				Management: config.ManagementConfig{},
 				Routes: []config.RouteConfig{
 					{
 						Name:  "Proxy SPA Route",
 						From:  "/*",
-						To:    upstream.URL,
+						To:    []string{upstream.URL},
 						IsSPA: tt.isSPA,
 					},
 				},

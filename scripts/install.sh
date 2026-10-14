@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # Linux/macOS installer for taronja-gateway (tg)
-# Downloads the latest GoReleaser artifact from GitHub and installs tg to $HOME/.local/bin
+# Downloads a GoReleaser artifact from GitHub and installs tg to $HOME/.local/bin
+# Usage: install.sh [version]   (e.g. 0.0.24; default: latest release)
 
 set -e
 REPO="jmaister/taronja-gateway"
 TG_BIN="tg"
 INSTALL_DIR="$HOME/.local/bin"
-API_URL="https://api.github.com/repos/$REPO/releases/latest"
+VERSION="${1#v}"
+if [ -n "$VERSION" ]; then
+    API_URL="https://api.github.com/repos/$REPO/releases/tags/v$VERSION"
+    RELEASE="release v$VERSION"
+else
+    API_URL="https://api.github.com/repos/$REPO/releases/latest"
+    RELEASE="latest release"
+fi
 
 mkdir -p "$INSTALL_DIR"
 
@@ -37,7 +45,7 @@ esac
 TAR_NAME="${PLATFORM}_${ARCHSTR}.tar.gz"
 TAR_URL=$(curl -s "$API_URL" | grep browser_download_url | grep "$TAR_NAME" | cut -d '"' -f 4)
 if [ -z "$TAR_URL" ]; then
-    echo "ERROR: Could not find a $PLATFORM $ARCHSTR GoReleaser artifact download URL in the latest release."
+    echo "ERROR: Could not find a $PLATFORM $ARCHSTR GoReleaser artifact download URL in the $RELEASE."
     exit 1
 fi
 

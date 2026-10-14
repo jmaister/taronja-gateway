@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
@@ -35,8 +37,10 @@ type UserInfo struct {
 	Provider      string `json:"provider"`
 }
 
+// UserDataFetcher turns a completed OAuth2 token exchange into UserInfo. The
+// request is passed for providers that need data from the callback itself.
 type UserDataFetcher interface {
-	FetchUserData(accessToken string) (*UserInfo, error)
+	FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error)
 }
 
 // Define the AuthProvider interface
@@ -44,14 +48,14 @@ type AuthProvider interface {
 	Name() string
 }
 
-// RegisterProviders registers all enabled authentication providers.
-// It now accepts db.SessionRepository.
-func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+// RegisterProviders registers all enabled authentication providers. ctx bounds
+// any background goroutine a provider starts during registration.
+func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) {
 	log.Printf("Registering authentication providers...")
 
 	if gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled {
 		log.Printf("Registering Basic Authentication provider")
-		RegisterBasicAuth(mux, sessionStore, gatewayConfig.Management.Prefix, userRepo, gatewayConfig)
+		RegisterBasicAuth(mux, sessionStore, config.ManagementPrefix, userRepo, gatewayConfig)
 	}
 
 	if gatewayConfig.AuthenticationProviders.Github.ClientId != "" &&
@@ -69,6 +73,10 @@ func RegisterProviders(mux *http.ServeMux, sessionStore session.SessionStore, ga
 	} else {
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
+
+	// Microsoft, Facebook, and Apple registration lives on the
+	// wip/microsoft-apple-facebook-auth branch — moved out of this branch
+	// untested (see that branch's log for why), to come back to later.
 }
 
 type SimpleAuthProvider struct {
@@ -84,15 +92,28 @@ func NewSimpleAuthProvider(name string) *SimpleAuthProvider {
 }
 
 // AuthenticationProvider manages OAuth2 authentication flows.
-// It now uses db.SessionRepository.
+// It now uses repositories.SessionRepository.
 type AuthenticationProvider struct {
 	Provider      AuthProvider
 	LongName      string
 	OAuthConfig   *oauth2.Config
 	Fetcher       UserDataFetcher
-	UserRepo      db.UserRepository
+	UserRepo      repositories.UserRepository
 	SessionStore  session.SessionStore
 	GatewayConfig *config.GatewayConfig
+
+	// ClientSecretFunc, when set, regenerates OAuthConfig.ClientSecret before every
+	// token exchange, for providers whose secret is short-lived. Otherwise nil.
+	ClientSecretFunc func() (string, error)
+
+	// ResponseMode, when set, is sent as the OAuth2 response_mode
+	// authorization parameter. Apple requires "form_post" whenever
+	// name/email scopes are requested — its callback then arrives as a
+	// POST form body instead of GET query params (Callback below reads
+	// state/code via r.FormValue, which transparently covers both).
+	// Every other provider here leaves this empty for the default,
+	// GET-based redirect.
+	ResponseMode string
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -107,8 +128,8 @@ func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProvid
 }
 
 // NewAuthenticationProvider creates a new AuthenticationProvider.
-// It now accepts db.SessionRepository.
-func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur db.UserRepository, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) *AuthenticationProvider {
+// It now accepts repositories.SessionRepository.
+func NewAuthenticationProvider(oauthConfig *oauth2.Config, provider AuthProvider, longName string, ur repositories.UserRepository, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) *AuthenticationProvider {
 	// baseUrl is not directly needed here if redirectURL is in oauthConfig
 	log.Printf("Registering %s Auth Provider. Redirecting to URL=%s", longName, oauthConfig.RedirectURL)
 
@@ -131,21 +152,28 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	authCodeURL := ap.OAuthConfig.AuthCodeURL(state)
-
-	// Get redirect URL from query parameters, default to "/"
-	originalURL := r.URL.Query().Get("redirect")
-	if originalURL == "" {
-		originalURL = "/"
+	var opts []oauth2.AuthCodeOption
+	if ap.ResponseMode != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("response_mode", ap.ResponseMode))
 	}
+	authCodeURL := ap.OAuthConfig.AuthCodeURL(state, opts...)
 
-	// Set cookie for the redirect URL
+	// Get redirect URL from query parameters, sanitized to a same-origin
+	// path before it's ever stored — see session.SanitizeRedirectPath's
+	// doc comment for why: this cookie survives a real round trip through
+	// the OAuth provider and back, so Callback below must be able to trust
+	// whatever it finds in it.
+	originalURL := session.SanitizeRedirectPath(r.URL.Query().Get("redirect"))
+
+	// SameSite=Lax, not Strict: the provider's redirect back is a cross-site top-level
+	// navigation, and Strict would drop these cookies and break every OAuth login.
 	http.SetCookie(w, &http.Cookie{
 		Name:     RedirectUrlCookieName,
 		Value:    originalURL,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   300, // 5 minutes
 	})
 
@@ -155,7 +183,8 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   300, // 5 minutes
 	})
 
@@ -164,10 +193,19 @@ func (ap *AuthenticationProvider) Login(w http.ResponseWriter, r *http.Request) 
 }
 
 // Callback handles the OAuth2 callback.
-// Uses db.SessionRepository methods.
+// Uses repositories.SessionRepository methods.
 func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
-	code := r.URL.Query().Get("code")
+	// r.FormValue reads from the URL query for every provider's GET
+	// callback, and additionally from a POST body for Apple's
+	// response_mode=form_post callback — one code path covers both, no
+	// need to branch on r.Method.
+	if err := r.ParseForm(); err != nil {
+		log.Printf("Error parsing callback request: %v", err)
+		http.Error(w, "Invalid callback request", http.StatusBadRequest)
+		return
+	}
+	state := r.FormValue("state")
+	code := r.FormValue("code")
 
 	// Retrieve the state from cookie
 	stateCookie, err := r.Cookie(StateCookieName)
@@ -183,12 +221,32 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1, // Delete immediately
 	})
 
+	// oauthConfig starts out as the provider's shared config and is only
+	// ever replaced below, never mutated in place: ap.OAuthConfig is one
+	// instance shared by every concurrent Callback call for this provider,
+	// so writing a freshly-generated secret directly onto it would race
+	// with other in-flight callbacks reading or overwriting the same
+	// field. A per-request copy keeps each call's secret to itself.
+	oauthConfig := ap.OAuthConfig
+	if ap.ClientSecretFunc != nil {
+		secret, err := ap.ClientSecretFunc()
+		if err != nil {
+			log.Printf("Error generating client secret for %s: %v", ap.Provider.Name(), err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		cfgCopy := *ap.OAuthConfig
+		cfgCopy.ClientSecret = secret
+		oauthConfig = &cfgCopy
+	}
+
 	// Exchange code for token
-	token, err := ap.OAuthConfig.Exchange(r.Context(), code)
+	token, err := oauthConfig.Exchange(r.Context(), code)
 	if err != nil {
 		log.Printf("Error exchanging code for token: %v", err)
 		http.Error(w, "Failed to exchange auth code", http.StatusInternalServerError)
@@ -196,7 +254,7 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Fetch user data using the token
-	userInfo, err := ap.Fetcher.FetchUserData(token.AccessToken)
+	userInfo, err := ap.Fetcher.FetchUserData(r, token)
 	if err != nil {
 		log.Printf("Error loading user data from provider %s: %v", ap.Provider.Name(), err)
 		http.Error(w, "Error loading user data from provider", http.StatusInternalServerError)
@@ -212,16 +270,18 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 
 	if user == nil {
 		user = &db.User{
-			Email:          userInfo.Email,
-			Username:       userInfo.Username, // Or generate one if not provided/unique
-			Name:           userInfo.Name,
-			GivenName:      userInfo.GivenName,
-			FamilyName:     userInfo.FamilyName,
-			Picture:        userInfo.Picture,
-			Locale:         userInfo.Locale,
-			Provider:       ap.Provider.Name(),
-			ProviderId:     userInfo.ID,
-			EmailConfirmed: true, // Typically true for OAuth
+			Email:      userInfo.Email,
+			Username:   userInfo.Username, // Or generate one if not provided/unique
+			Name:       userInfo.Name,
+			GivenName:  userInfo.GivenName,
+			FamilyName: userInfo.FamilyName,
+			Picture:    userInfo.Picture,
+			Locale:     userInfo.Locale,
+			Provider:   ap.Provider.Name(),
+			ProviderId: userInfo.ID,
+			// EmailConfirmed follows the provider's verified-email signal, so a provider
+			// reporting unverified emails cannot be used to claim someone else's address.
+			EmailConfirmed: userInfo.VerifiedEmail,
 		}
 		if user.Username == "" { // Fallback for username if not provided
 			user.Username = userInfo.Email
@@ -247,7 +307,10 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		user.Picture = userInfo.Picture
 		user.Locale = userInfo.Locale
 		user.ProviderId = userInfo.ID // Update ProviderId in case it changed or wasn't set
-		user.EmailConfirmed = true    // Re-confirm email
+		// See the account-creation branch's comment on EmailConfirmed
+		// above for why this follows the provider's signal rather than
+		// being unconditionally true.
+		user.EmailConfirmed = userInfo.VerifiedEmail
 		if err := ap.UserRepo.UpdateUser(user); err != nil {
 			log.Printf("Error updating user %s: %v", user.Email, err)
 			// Non-critical, proceed with login
@@ -272,23 +335,39 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 		Value:    sessionObj.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   session.RequestIsSecure(r),
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(ap.GatewayConfig.Management.Session.GetDuration().Seconds()),
 	})
 
 	redirectURL := "/"
 	redirectCookie, err := r.Cookie(RedirectUrlCookieName)
 	if err == nil && redirectCookie.Value != "" {
-		redirectURL = redirectCookie.Value
-		// Clear the redirect cookie
-		http.SetCookie(w, &http.Cookie{Name: RedirectUrlCookieName, Value: "", Path: "/", MaxAge: -1})
+		// Sanitized again here, not just when Login first set the cookie:
+		// cookies aren't signed, so nothing stops a client from editing its
+		// own before completing the OAuth round trip.
+		redirectURL = session.SanitizeRedirectPath(redirectCookie.Value)
+		// Clear the redirect cookie — same HttpOnly/Secure/SameSite as when
+		// Login first set it, not just Name/Path/MaxAge: a Set-Cookie
+		// clearing one out needs matching attributes to reliably overwrite
+		// the original in every browser, not risk leaving a stale duplicate
+		// behind under a different attribute combination.
+		http.SetCookie(w, &http.Cookie{
+			Name:     RedirectUrlCookieName,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   session.RequestIsSecure(r),
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   -1,
+		})
 	}
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // Logout handles the logout process.
-// Uses db.SessionRepository.DeleteSession.
+// Uses repositories.SessionRepository.DeleteSession.
 func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(session.SessionCookieName)
 	if err == nil && cookie != nil {
@@ -298,7 +377,8 @@ func (ap *AuthenticationProvider) Logout(w http.ResponseWriter, r *http.Request)
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   r.TLS != nil,
+			Secure:   session.RequestIsSecure(r),
+			SameSite: http.SameSiteLaxMode,
 			MaxAge:   -1,
 		})
 	}

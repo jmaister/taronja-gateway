@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,17 +122,15 @@ func fetchGoogleUserDataWithCustomURL(f *GoogleUserDataFetcher, accessToken, bas
 func TestRegisterGoogleAuth(t *testing.T) {
 	t.Run("register with valid configuration", func(t *testing.T) {
 		mux := http.NewServeMux()
-		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+		sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
-		userRepo := db.NewDBUserRepository(nil)
+		userRepo := repositories.NewDBUserRepository(nil)
 
 		gatewayConfig := &config.GatewayConfig{
 			Server: config.ServerConfig{
 				URL: "http://localhost:8080",
 			},
-			Management: config.ManagementConfig{
-				Prefix: "/_",
-			},
+			Management: config.ManagementConfig{},
 			AuthenticationProviders: config.AuthenticationProviders{
 				Google: config.AuthProviderCredentials{
 					ClientId:     "test-client-id",
@@ -159,11 +158,11 @@ func TestRegisterGoogleAuth(t *testing.T) {
 
 	t.Run("skip registration with missing credentials", func(t *testing.T) {
 		mux := http.NewServeMux()
-		sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+		sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 		db.SetupTestDB("TestGoogleAuth")
 		gormDB := db.GetConnection()
-		userRepo := db.NewDBUserRepository(gormDB)
+		userRepo := repositories.NewDBUserRepository(gormDB)
 
 		gatewayConfig := &config.GatewayConfig{
 			AuthenticationProviders: config.AuthenticationProviders{
@@ -193,15 +192,15 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		// Setup test repositories
 		db.SetupTestDB("TestGoogleAuth")
 		gormDB := db.GetConnection()
-		userRepo := db.NewDBUserRepository(gormDB)
-		sessionRepo := db.NewSessionRepositoryDB(gormDB)
+		userRepo := repositories.NewDBUserRepository(gormDB)
+		sessionRepo := repositories.NewSessionRepositoryDB(gormDB)
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 
 		// Create mock gateway config
 		gatewayConfig := &config.GatewayConfig{
 			Management: config.ManagementConfig{
 				Session: config.SessionConfig{
-					SecondsDuration: 86400, // 24 hours
+					DurationSeconds: 86400, // 24 hours
 				},
 			},
 		}
@@ -264,15 +263,15 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 	t.Run("OAuth2 callback with invalid state", func(t *testing.T) {
 		db.SetupTestDB("TestGoogleAuth")
 		gormDB := db.GetConnection()
-		userRepo := db.NewDBUserRepository(gormDB)
-		sessionRepo := db.NewSessionRepositoryDB(gormDB)
+		userRepo := repositories.NewDBUserRepository(gormDB)
+		sessionRepo := repositories.NewSessionRepositoryDB(gormDB)
 		sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
 
 		// Create mock gateway config
 		gatewayConfig := &config.GatewayConfig{
 			Management: config.ManagementConfig{
 				Session: config.SessionConfig{
-					SecondsDuration: 86400, // 24 hours
+					DurationSeconds: 86400, // 24 hours
 				},
 			},
 		}
@@ -308,7 +307,7 @@ type MockGoogleUserDataFetcher struct {
 	err      error
 }
 
-func (m *MockGoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (m *MockGoogleUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

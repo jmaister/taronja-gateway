@@ -8,6 +8,7 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,8 +20,8 @@ func TestTokenHandlersAdmin(t *testing.T) {
 	testDB := db.GetConnection()
 
 	// Setup repositories and services with database
-	userRepo := db.NewDBUserRepository(testDB)
-	tokenRepo := db.NewTokenRepositoryDB(testDB)
+	userRepo := repositories.NewDBUserRepository(testDB)
+	tokenRepo := repositories.NewTokenRepositoryDB(testDB)
 	tokenService := auth.NewTokenService(tokenRepo, userRepo)
 
 	// Create test server
@@ -86,9 +87,9 @@ func TestTokenHandlersAdmin(t *testing.T) {
 		response, err := server.ListTokens(ctx, request)
 		require.NoError(t, err)
 
-		errorResponse, ok := response.(api.ListTokens401JSONResponse)
+		errorResponse, ok := response.(api.ListTokens403JSONResponse)
 		assert.True(t, ok)
-		assert.Equal(t, 401, errorResponse.Code)
+		assert.Equal(t, 403, errorResponse.Code)
 		assert.Contains(t, errorResponse.Message, "Admin access required")
 	})
 
@@ -157,9 +158,9 @@ func TestTokenHandlersAdmin(t *testing.T) {
 		response, err := server.CreateToken(ctx, request)
 		require.NoError(t, err)
 
-		errorResponse, ok := response.(api.CreateToken401JSONResponse)
+		errorResponse, ok := response.(api.CreateToken403JSONResponse)
 		assert.True(t, ok)
-		assert.Equal(t, 401, errorResponse.Code)
+		assert.Equal(t, 403, errorResponse.Code)
 		assert.Contains(t, errorResponse.Message, "Admin access required")
 	})
 
@@ -257,9 +258,9 @@ func TestTokenHandlersAdmin(t *testing.T) {
 		response, err := server.GetToken(ctx, request)
 		require.NoError(t, err)
 
-		errorResponse, ok := response.(api.GetToken401JSONResponse)
+		errorResponse, ok := response.(api.GetToken403JSONResponse)
 		assert.True(t, ok)
-		assert.Equal(t, 401, errorResponse.Code)
+		assert.Equal(t, 403, errorResponse.Code)
 		assert.Contains(t, errorResponse.Message, "Admin access required")
 	})
 
@@ -324,9 +325,9 @@ func TestTokenHandlersAdmin(t *testing.T) {
 		response, err := server.DeleteToken(ctx, request)
 		require.NoError(t, err)
 
-		errorResponse, ok := response.(api.DeleteToken401JSONResponse)
+		errorResponse, ok := response.(api.DeleteToken403JSONResponse)
 		assert.True(t, ok)
-		assert.Equal(t, 401, errorResponse.Code)
+		assert.Equal(t, 403, errorResponse.Code)
 		assert.Contains(t, errorResponse.Message, "Admin access required")
 	})
 

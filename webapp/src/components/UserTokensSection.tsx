@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
-import { useUserTokens, useCreateToken, useRevokeToken } from '../services/services';
-import { TokenCreateRequest, TokenCreateResponse, TokenResponse } from '@/apiclient';
+import type React from 'react';
+import { useState } from 'react';
+import { useUserTokens, useCreateToken, useRevokeToken } from '../services/tokens';
+import type { TokenCreateRequest, TokenCreateResponse, TokenResponse } from '@/apiclient';
 import { Button } from './ui/Button';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { FormField } from './ui/FormField';
 import { Input } from './ui/Input';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { StatusPill } from './ui/StatusPill';
+import { formatDateTime } from '../lib/format';
 
 interface UserTokensSectionProps {
     userId: string;
@@ -15,6 +18,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newToken, setNewToken] = useState<TokenCreateResponse | null>(null);
     const [copied, setCopied] = useState(false);
+    const [tokenPendingRevoke, setTokenPendingRevoke] = useState<{ id: string; name: string } | null>(null);
 
     // Form state for creating new token
     const [tokenName, setTokenName] = useState('');
@@ -22,7 +26,9 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     const [neverExpires, setNeverExpires] = useState(false);
 
     // TanStack Query hooks
-    const { data: tokens, isLoading: isLoadingTokens, error } = useUserTokens(userId);
+    const { data: tokens, isLoading: isLoadingTokens, error, dataUpdatedAt } = useUserTokens(userId);
+    // Earliest expiry the form accepts: the time the section was opened.
+    const [minExpiresAt] = useState(() => new Date().toISOString().slice(0, 16));
     const createTokenMutation = useCreateToken();
     const revokeTokenMutation = useRevokeToken();
 
@@ -53,28 +59,27 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
         }
     };
 
-    const handleRevokeToken = async (tokenId: string, tokenName: string) => {
-        if (!confirm(`Are you sure you want to revoke the token "${tokenName}"? This action cannot be undone.`)) {
-            return;
-        }
-
-        try {
-            await revokeTokenMutation.mutateAsync(tokenId);
-        } catch (err) {
-            console.error('Failed to revoke token:', err);
-        }
+    const handleRevokeToken = (tokenId: string, tokenName: string) => {
+        setTokenPendingRevoke({ id: tokenId, name: tokenName });
     };
 
-    const formatDate = (dateString: string | null | undefined) => {
-        if (!dateString) return 'Never';
-        return new Date(dateString).toLocaleString();
+    const confirmRevokeToken = async () => {
+        if (!tokenPendingRevoke) return;
+        try {
+            await revokeTokenMutation.mutateAsync(tokenPendingRevoke.id);
+            setTokenPendingRevoke(null);
+        } catch (err) {
+            // Leave the dialog open and let the error banner (wired to
+            // revokeTokenMutation.error below) explain what happened.
+            console.error('Failed to revoke token:', err);
+        }
     };
 
     const getStatusBadge = (token: TokenResponse) => {
         if (token.revoked_at) {
             return <StatusPill variant="danger">Revoked</StatusPill>;
         }
-        if (token.expires_at && new Date(token.expires_at) < new Date()) {
+        if (token.expires_at && Date.parse(token.expires_at) < dataUpdatedAt) {
             return <StatusPill variant="warning">Expired</StatusPill>;
         }
         if (token.is_active) {
@@ -88,7 +93,8 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     };
 
     // Show error message from mutations or queries
-    const errorMessage = error || createTokenMutation.error || revokeTokenMutation.error;
+    const activeError = error || createTokenMutation.error || revokeTokenMutation.error;
+    const errorMessage = activeError instanceof Error ? activeError.message : activeError ? String(activeError) : null;
 
     return (
         <div className="mt-8">
@@ -105,8 +111,8 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
 
             {/* Error Message */}
             {errorMessage && (
-                <div className="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-danger">
-                    {String(errorMessage)}
+                <div className="mb-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-danger" role="alert">
+                    {errorMessage}
                 </div>
             )}
 
@@ -165,8 +171,8 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                         <div className="text-xs text-muted-fg">ID: {token.id}</div>
                                     </td>
                                     <td className="px-4 py-3">{getStatusBadge(token)}</td>
-                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDate(token.created_at)}</td>
-                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDate(token.expires_at)}</td>
+                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDateTime(token.created_at)}</td>
+                                    <td className="px-4 py-3 text-sm text-muted-fg">{formatDateTime(token.expires_at)}</td>
                                     <td className="px-4 py-3 text-sm text-muted-fg">{token.usage_count} times</td>
                                     <td className="px-4 py-3 text-sm">
                                         {token.is_active && !token.revoked_at && (
@@ -226,7 +232,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                                 id="expiresAt"
                                                 value={expiresAt}
                                                 onChange={(e) => setExpiresAt(e.target.value)}
-                                                min={new Date().toISOString().slice(0, 16)}
+                                                min={minExpiresAt}
                                             />
                                         </FormField>
                                     )}
@@ -290,10 +296,10 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                     <strong className="text-fg">Token Name:</strong> {newToken.token_info.name}
                                 </p>
                                 <p>
-                                    <strong className="text-fg">Created:</strong> {formatDate(newToken.token_info.created_at)}
+                                    <strong className="text-fg">Created:</strong> {formatDateTime(newToken.token_info.created_at)}
                                 </p>
                                 <p>
-                                    <strong className="text-fg">Expires:</strong> {formatDate(newToken.token_info.expires_at)}
+                                    <strong className="text-fg">Expires:</strong> {formatDateTime(newToken.token_info.expires_at)}
                                 </p>
                             </div>
 
@@ -304,6 +310,21 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                     </Card>
                 </div>
             )}
+
+            <ConfirmDialog
+                open={tokenPendingRevoke !== null}
+                title="Revoke this token?"
+                description={
+                    tokenPendingRevoke
+                        ? `Are you sure you want to revoke the token "${tokenPendingRevoke.name}"? This action cannot be undone.`
+                        : ''
+                }
+                confirmLabel={revokeTokenMutation.isPending ? 'Revoking…' : 'Revoke'}
+                variant="danger"
+                isLoading={revokeTokenMutation.isPending}
+                onCancel={() => setTokenPendingRevoke(null)}
+                onConfirm={confirmRevokeToken}
+            />
         </div>
     );
 };

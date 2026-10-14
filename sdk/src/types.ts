@@ -72,7 +72,10 @@ export interface RequestStatistics {
     requestsByPlatform: Record<string, number>;
     requestsByBrowser: Record<string, number>;
     requestsByUser: Record<string, number>;
-    requestsByJA4Fingerprint: Record<string, number>;
+    /** Grouped by the consolidated client fingerprint (see requestsByFingerprintType for the algorithm breakdown). */
+    requestsByFingerprint: Record<string, number>;
+    /** Grouped by which fingerprinting algorithm produced the value: "ja4_tls", "stable", or "ja4h". */
+    requestsByFingerprintType: Record<string, number>;
 }
 
 export interface RequestDetail {
@@ -93,6 +96,11 @@ export interface RequestDetail {
     platform_version: string;
     browser: string;
     browser_version: string;
+    is_static: boolean;
+    /** The consolidated client fingerprint value — see fingerprint_type for which algorithm produced it. */
+    fingerprint: string;
+    /** Which fingerprinting algorithm produced `fingerprint`: "ja4_tls", "stable", "ja4h", or "" if fingerprint is empty too. */
+    fingerprint_type: string;
 }
 
 export interface RequestDetailsResponse {

@@ -1,29 +1,24 @@
+version: "1.0"
 name: Hockey (Astro)
 server:
   host: 127.0.0.1
   port: 8080
   url: http://localhost:8080
 management:
-  prefix: _
-  logging: true
+middleware:
+  - name: logging
 
 routes:
   - name: Favicon
     from: /favicon.svg
     toFile: ./dist/favicon.svg
-    static: true
   - name: Private
     from: /dashboard/*
     toFolder: ./dist
-    static: true
-    removeFromPath: /dist
-    authentication:
-      enabled: true
+    authenticated: true
   - name: Public
     from: /
     toFolder: ./dist
-    static: true
-    removeFromPath: /dist
 
 
 authenticationProviders:
@@ -39,10 +34,9 @@ authenticationProviders:
 notification:
   email:
     enabled: true
-    smtp:
-      host: 127.0.0.1
-      port: 1025
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      from: ${SMTP_FROM}
-      fromName: ${SMTP_FROM_NAME}
+    host: 127.0.0.1
+    port: 1025
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: ${SMTP_FROM}
+    fromName: ${SMTP_FROM_NAME}

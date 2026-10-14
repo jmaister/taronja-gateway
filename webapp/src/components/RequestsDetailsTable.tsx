@@ -1,8 +1,18 @@
-import { RequestDetail } from "@/apiclient";
+import type { RequestDetail } from "@/apiclient";
 import { getSafeLocale } from "../lib/intl";
+import { formatBytes } from "../lib/format";
+import { FilterToggle } from "./FilterToggle";
 
 
-export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }) {
+export function RequestsDetailsTable({
+    requests,
+    onCountrySelect,
+    activeCountry,
+}: {
+    requests: RequestDetail[];
+    onCountrySelect?: (country: string) => void;
+    activeCountry?: string;
+}) {
     const locale = getSafeLocale();
 
     const numberFormatter = new Intl.NumberFormat(locale);
@@ -21,15 +31,6 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
     const totalTime = requests.reduce((sum, req) => sum + req.response_time, 0);
     const totalBytes = requests.reduce((sum, req) => sum + req.response_size, 0);
 
-    // Format bytes with appropriate units
-    const formatBytes = (bytes: number): string => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
-
     // Format time with appropriate units
     const formatTime = (ms: number): string => {
         if (ms < 1000) return `${decimalFormatter.format(ms)} ms`;
@@ -38,6 +39,14 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
         return `${decimalFormatter.format(ms / 3600000)} h`;
     };
     
+    if (totalRequests === 0) {
+        return (
+            <div className="w-full rounded-lg border border-border bg-surface p-6 text-center text-sm text-muted-fg shadow-soft">
+                No requests in this period.
+            </div>
+        );
+    }
+
     return (
         <div className="w-full">
             <div className="mb-2 flex flex-wrap gap-4 text-sm text-muted-fg">
@@ -52,6 +61,7 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                         <tr>
                             <th className="min-w-36 border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Timestamp</th>
                             <th className="min-w-48 border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Path</th>
+                            <th className="w-20 border-b border-border px-2 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Type</th>
                             <th className="min-w-24 border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">User</th>
                             <th className="w-16 border-b border-border px-2 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-fg">Status</th>
                             <th className="w-20 border-b border-border px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-muted-fg">Time (ms)</th>
@@ -75,6 +85,17 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                                     </a>
                                 </div>
                             </td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm">
+                                <span
+                                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                        req.is_static
+                                            ? "bg-surface-2 text-muted-fg"
+                                            : "bg-primary/10 text-primary"
+                                    }`}
+                                >
+                                    {req.is_static ? "Static" : "Dynamic"}
+                                </span>
+                            </td>
                             <td className="px-3 py-2 whitespace-nowrap text-sm">
                                 {req.username ? (
                                     <a 
@@ -91,7 +112,20 @@ export function RequestsDetailsTable({ requests }: { requests: RequestDetail[] }
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.status_code}</td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{decimalFormatter.format(req.response_time)}</td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-right">{numberFormatter.format(req.response_size)}</td>
-                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.country}</td>
+                            <td className="px-2 py-2 whitespace-nowrap text-sm text-center">
+                                {onCountrySelect && req.country ? (
+                                    <FilterToggle
+                                        label={req.country}
+                                        active={req.country === activeCountry}
+                                        onToggle={() => onCountrySelect(req.country)}
+                                        className="px-1"
+                                    >
+                                        {req.country}
+                                    </FilterToggle>
+                                ) : (
+                                    req.country
+                                )}
+                            </td>
                             <td className="px-2 py-2 whitespace-nowrap text-sm text-center">{req.city}</td>
                             <td className="px-2 py-2 text-sm" title={req.device_type}>
                                 <div className="max-w-20 truncate">{req.device_type}</div>

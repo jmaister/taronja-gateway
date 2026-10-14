@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/jmaister/taronja-gateway/config"
-	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -23,9 +23,9 @@ type GoogleUserDataFetcher struct {
 	OAuthConfig *oauth2.Config
 }
 
-func (f *GoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, error) {
+func (f *GoogleUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token) (*UserInfo, error) {
 	// Make a request to the Google userinfo API using the access token
-	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
+	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (f *GoogleUserDataFetcher) FetchUserData(accessToken string) (*UserInfo, er
 }
 
 // RegisterGoogleAuth configures and registers Google OAuth2 authentication
-func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo db.UserRepository) {
+func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) {
 	if gatewayConfig.AuthenticationProviders.Google.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Google.ClientSecret == "" {
 		return // Skip if not configured
@@ -82,7 +82,7 @@ func RegisterGoogleAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 	oauthConfig := &oauth2.Config{
 		ClientID:     gatewayConfig.AuthenticationProviders.Google.ClientId,
 		ClientSecret: gatewayConfig.AuthenticationProviders.Google.ClientSecret,
-		RedirectURL:  fmt.Sprintf("%s%s/auth/google/callback", gatewayConfig.Server.URL, gatewayConfig.Management.Prefix),
+		RedirectURL:  fmt.Sprintf("%s%s/auth/google/callback", gatewayConfig.Server.URL, config.ManagementPrefix),
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"},
 		Endpoint:     google.Endpoint,
 	}

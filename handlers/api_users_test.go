@@ -28,9 +28,12 @@ func setupTestServer() *StrictApiServer {
 		dependencies.TrafficMetricRepo,
 		dependencies.TokenRepo,
 		dependencies.CountersRepo,
+		dependencies.BlockedClientRepo,
 		dependencies.TokenService,
 		dependencies.StartTime,
 		nil, // no rate limiter for tests
+		nil, // no middleware registry for tests
+		dependencies.NotificationService,
 	)
 }
 
@@ -38,7 +41,35 @@ func TestCreateUser(t *testing.T) {
 	s := setupTestServer()
 	defer db.ResetConnection()
 
-	ctx := context.Background()
+	ctx := sessionContext("admin-id", true)
+
+	t.Run("rejects a non-admin caller", func(t *testing.T) {
+		userRequest := api.CreateUserJSONRequestBody{
+			Username: "shouldnotexist",
+			Email:    openapi_types.Email("shouldnotexist@example.com"),
+			Password: "password123",
+		}
+		resp, err := s.CreateUser(sessionContext("regular-user", false), api.CreateUserRequestObject{Body: &userRequest})
+		require.NoError(t, err)
+		errResp, ok := resp.(api.CreateUser401JSONResponse)
+		require.True(t, ok, "Expected CreateUser401JSONResponse")
+		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
+
+		_, dbErr := s.userRepo.FindUserByIdOrUsername("", "shouldnotexist", "")
+		assert.Error(t, dbErr, "a rejected call must not create the user")
+	})
+
+	t.Run("rejects an unauthenticated caller", func(t *testing.T) {
+		userRequest := api.CreateUserJSONRequestBody{
+			Username: "alsoshouldnotexist",
+			Email:    openapi_types.Email("alsoshouldnotexist@example.com"),
+			Password: "password123",
+		}
+		resp, err := s.CreateUser(context.Background(), api.CreateUserRequestObject{Body: &userRequest})
+		require.NoError(t, err)
+		_, ok := resp.(api.CreateUser401JSONResponse)
+		assert.True(t, ok, "Expected CreateUser401JSONResponse")
+	})
 
 	t.Run("Success", func(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
@@ -179,7 +210,14 @@ func TestListUsers(t *testing.T) {
 	s := setupTestServer()
 	defer db.ResetConnection()
 
-	ctx := context.Background()
+	ctx := sessionContext("admin-id", true)
+
+	t.Run("rejects a non-admin caller", func(t *testing.T) {
+		resp, err := s.ListUsers(sessionContext("regular-user", false), api.ListUsersRequestObject{})
+		require.NoError(t, err)
+		_, ok := resp.(api.ListUsers401JSONResponse)
+		assert.True(t, ok, "Expected ListUsers401JSONResponse")
+	})
 
 	t.Run("NoUsers", func(t *testing.T) {
 		req := api.ListUsersRequestObject{}
@@ -214,7 +252,7 @@ func TestGetUserById(t *testing.T) {
 	s := setupTestServer()
 	defer db.ResetConnection()
 
-	ctx := context.Background()
+	ctx := sessionContext("admin-id", true)
 
 	// Create a user to be fetched
 	userRequest := api.CreateUserJSONRequestBody{
@@ -242,6 +280,15 @@ func TestGetUserById(t *testing.T) {
 		assert.Equal(t, "getmeuser", getResp.Username)
 		require.NotNil(t, getResp.Email)
 		assert.Equal(t, openapi_types.Email("getme@example.com"), *getResp.Email)
+
+		// Regression test: CreatedAt/UpdatedAt were documented as populated
+		// (dbUserToAPIUserResponse's own comment claimed it) but the struct
+		// literal never actually set them, so api.UserResponse never carried
+		// them even though db.User (via gorm.Model) always has real values.
+		require.NotNil(t, getResp.CreatedAt, "expected CreatedAt to be populated from db.User")
+		require.NotNil(t, getResp.UpdatedAt, "expected UpdatedAt to be populated from db.User")
+		assert.WithinDuration(t, time.Now(), *getResp.CreatedAt, time.Minute)
+		assert.WithinDuration(t, time.Now(), *getResp.UpdatedAt, time.Minute)
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
@@ -268,5 +315,13 @@ func TestGetUserById(t *testing.T) {
 		require.True(t, ok, "Expected GetUserById400JSONResponse")
 		assert.Equal(t, http.StatusBadRequest, errResp.Code)
 		assert.Equal(t, "User ID path parameter is required", errResp.Message)
+	})
+
+	t.Run("rejects a non-admin caller", func(t *testing.T) {
+		req := api.GetUserByIdRequestObject{UserId: userID}
+		resp, err := s.GetUserById(sessionContext("regular-user", false), req)
+		require.NoError(t, err)
+		_, ok := resp.(api.GetUserById401JSONResponse)
+		assert.True(t, ok, "Expected GetUserById401JSONResponse")
 	})
 }

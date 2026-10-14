@@ -1,7 +1,6 @@
 import { UserBadge } from '../UserProfile';
 import { ThemeSwitcher } from '../theme/ThemeSwitcher';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 
 interface HeaderProps {
   pageTitle?: string;
@@ -49,11 +48,6 @@ const Header = ({
           <p className="hidden text-xs text-muted-fg sm:block">
             Taronja Gateway Admin
           </p>
-        </div>
-
-        {/* Search */}
-        <div className="hidden w-[22rem] lg:block">
-          <Input placeholder="Search…" aria-label="Search" />
         </div>
 
         <ThemeSwitcher />

@@ -1,36 +1,56 @@
+version: "1.0" # Config schema version. See "Config file versioning" in README.md.
 name: Example Gateway Configuration
 server:
   host: 127.0.0.1
   port: 8080
   url: http://localhost:8080
 management:
-  prefix: _
-  logging: true
-  analytics: true
   session:
-    secondsDuration: 86400  # Session duration in seconds (24 hours = 86400 seconds)
+    durationSeconds: 86400  # Session duration in seconds (24 hours = 86400 seconds)
   admin:
     # Admin access to the dashboard
     # Only this user can access the /_/admin/ dashboard
     enabled: true
     username: admin
     password: admin123  # This will be automatically hashed for security
-  rateLimiter:
-    # Simple in-memory rate limiting (0 to disable)
-    requestsPerMinute: 100   # general request rate limit per IP
-    maxErrors: 20            # number of 401/404 errors before blocking
-    blockMinutes: 15         # how long to block offending IPs    # optional scanner detection: paths that should never exist
-    vulnerabilityScan:
-      urls:
-        - "/*.php"
-        - "/.env"
-      max404: 3              # block after three hits to watched paths
-      blockMinutes: 15       # length of block for scanner IP
+# Global middleware, run top to bottom. Each one is documented, with its
+# options, in doc/middleware/. Remove an entry (or set enabled: false) to
+# turn it off; `tg middleware list --config <file>` shows the resolved chain.
+middleware:
+  # - name: tracing             # OpenTelemetry span per request, see doc/middleware/tracing.md
+  #   config:
+  #     endpoint: localhost:4318  # OTLP/HTTP collector host:port, no scheme
+  #     insecure: true            # plain HTTP; most local collectors need this
+  - name: compression           # brotli/zstd/gzip/deflate, negotiated via Accept-Encoding
+  - name: cors
+    config:
+      # Only needed when a separately hosted frontend calls the management
+      # API directly; the dashboard itself is served same-origin.
+      allowedOrigins:
+        - "https://app.example.com"
+      allowCredentials: true    # requires an explicit origin list, not "*"
+  - name: rate_limiter
+    config:
+      requestsPerMinute: 100    # general request rate limit per IP
+      maxErrors: 20             # number of 401/404 errors before blocking
+      blockMinutes: 15          # how long to block offending IPs
+      vulnerabilityScan:        # optional scanner detection: paths that should never exist
+        urls:
+          - "/*.php"
+          - "/.env"
+        max404: 3               # block after three hits to watched paths
+        blockMinutes: 15        # length of block for scanner IP
+  # Analytics for the dashboard: traffic_metrics needs the two before it.
+  - name: ja4_fingerprint
+  - name: session_extraction
+  - name: traffic_metrics
+    config:
+      excludeStaticAssets: false  # true skips CSS/JS/images/fonts/...
+  - name: logging
 routes:
   - name: Favicon
     from: /favicon.ico
     toFile: ./sample/webfiles/favicon.ico
-    static: true
   - name: V1 of the API
     from: /api/v1/*
     removeFromPath: "/api/v1/"
@@ -41,8 +61,7 @@ routes:
     from: /api/v2/*
     removeFromPath: "/api/v2/"
     to: https://jsonplaceholder.typicode.com
-    authentication:
-      enabled: true
+    authenticated: true
   - name: httpbin
     from: /api/httpbin/*
     removeFromPath: "/api/httpbin/"
@@ -51,29 +70,23 @@ routes:
     from: /api/httpbin-auth/*
     removeFromPath: "/api/httpbin-auth/"
     to: http://localhost:8081
-    authentication:
-      enabled: true
+    authenticated: true
   - name: SPA App
     from: /app/*
     removeFromPath: "/app/"
     to: http://localhost:8090
     isSPA: true
-    authentication:
-      enabled: true
+    authenticated: true
   - name: Static files
     from: /static
     toFolder: ./sample/webfiles
-    static: true
   - name: FrontEnd Authenticated
     from: /secret
     toFolder: ./sample/webfiles/secret
-    static: true
-    authentication:
-      enabled: true
+    authenticated: true
   - name: FrontEnd
     from: /
     toFolder: ./sample/webfiles
-    static: true
     options:
       cacheControlSeconds: 86400  # Cache for 1 day (86400 seconds)
 
@@ -87,6 +100,9 @@ authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
+  # Microsoft, Facebook, and "Sign in with Apple" existed here but moved to
+  # the wip/microsoft-apple-facebook-auth branch, untested — to come back
+  # to later.
 
 branding:
   logoUrl: /static/logo.png
@@ -97,10 +113,25 @@ geolocation:
 notification:
   email:
     enabled: true
-    smtp:
-      host: 127.0.0.1
-      port: 1025
-      username: ${SMTP_USERNAME}
-      password: ${SMTP_PASSWORD}
-      from: ${SMTP_FROM}
-      fromName: ${SMTP_FROM_NAME}
+    host: 127.0.0.1
+    port: 1025
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: ${SMTP_FROM}
+    fromName: ${SMTP_FROM_NAME}
+  # Telegram delivery: uncomment and set a bot token from @BotFather to let
+  # users link their gateway account to a Telegram chat (GET
+  # /_/notifications/telegram/link) and receive notifications there too,
+  # including tappable action buttons. See doc/notifications.md.
+  # telegram:
+  #   enabled: true
+  #   botToken: ${TELEGRAM_BOT_TOKEN}
+  # Outbound callback fired once when a user responds to a notification,
+  # so the app that created it learns about the response without polling.
+  # secret is optional but recommended — it HMAC-SHA256-signs each request
+  # body (X-Taronja-Signature: sha256=<hex>) so the receiver can verify the
+  # call actually came from this gateway. See doc/notifications.md.
+  # responseWebhook:
+  #   enabled: true
+  #   url: https://your-app.example.com/webhooks/taronja-notifications
+  #   secret: ${NOTIFICATION_WEBHOOK_SECRET}

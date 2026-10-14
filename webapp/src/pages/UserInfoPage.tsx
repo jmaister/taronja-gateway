@@ -1,29 +1,14 @@
 import { useParams, Link } from 'react-router-dom'; 
-import { UserTokensSection } from '../components/UserTokensSection'; 
-import { useUser } from '@/services/services';
+import { formatLongDateTime } from '../lib/format';
+import { UserTokensSection } from '../components/UserTokensSection';
+import { UserNotificationsSection } from '../components/UserNotificationsSection';
+import { useUser } from '@/services/users';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 
-interface UserInfoPageProps {
-  // Props are empty for now
-}
-
-export function UserInfoPage({}: UserInfoPageProps) {
+export function UserInfoPage() {
   const { userId } = useParams<{ userId: string }>(); 
   
   const {data:user, isLoading, isError, error} = useUser(userId || '');
-
-  const formatDate = (dateString?: string | null): string => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleDateString(undefined, { 
-        year: 'numeric', month: 'long', day: 'numeric', 
-        hour: '2-digit', minute: '2-digit' 
-      });
-    } catch (e) {
-      console.error("Error formatting date:", e);
-      return dateString; 
-    }
-  };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -67,14 +52,17 @@ export function UserInfoPage({}: UserInfoPageProps) {
               <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Provider:</span> {user.provider}
             </div>
             <div className="mb-2.5">
-              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Created At:</span> {formatDate(user.createdAt)}
+              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Created At:</span> {formatLongDateTime(user.createdAt)}
             </div>
             <div className="mb-2.5">
-              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Updated At:</span> {formatDate(user.updatedAt)}
+              <span className="inline-block min-w-[100px] font-semibold text-muted-fg">Updated At:</span> {formatLongDateTime(user.updatedAt)}
             </div>
 
             {/* User Tokens Section */}
             <UserTokensSection userId={user.id} />
+
+            {/* User Notifications Section */}
+            <UserNotificationsSection userId={user.id} />
           </div>
         )}
 

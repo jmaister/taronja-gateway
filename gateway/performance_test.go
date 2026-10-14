@@ -14,7 +14,9 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
+	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/static"
 )
 
@@ -42,7 +44,7 @@ func createTestSession(gw *Gateway) *db.Session {
 	}
 
 	// Create a new session repository directly
-	sessionRepo := db.NewSessionRepositoryDB(db.GetConnection())
+	sessionRepo := repositories.NewSessionRepositoryDB(db.GetConnection())
 	err := sessionRepo.CreateSession(session.Token, session)
 	if err != nil {
 		panic("Failed to create test session: " + err.Error())
@@ -50,6 +52,18 @@ func createTestSession(gw *Gateway) *db.Session {
 
 	return session
 }
+
+// These benchmarks and tests exercise gw.handler, not gw.Mux. gw.Mux is only
+// the route table: request routing plus whatever middleware individual
+// routes attach directly (auth, cache-control). gw.handler is
+// gw.Mux wrapped in the global middleware chain (JA4H fingerprinting,
+// session extraction, traffic metrics, logging — see buildRuntime in
+// setup.go) and is what actually serves traffic in production. Calling
+// gw.Mux.ServeHTTP here would silently skip that entire chain, which is
+// exactly what let the uaparser.NewFromSaved()-per-request bug in
+// session/clientinfo.go (~200ms and ~45MB per analytics-tracked request) go
+// undetected by every benchmark in this file for as long as it did — see
+// doc/PERFORMANCE_ANALYSIS.md's "August 2026 update" section.
 
 // BenchmarkAPIRequest benchmarks the handling of API requests
 func BenchmarkAPIRequest(b *testing.B) {
@@ -73,7 +87,7 @@ func BenchmarkAPIRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			b.Errorf("Expected status 200, got %d", rr.Code)
@@ -102,7 +116,7 @@ func BenchmarkStaticRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			b.Errorf("Expected status 200, got %d", rr.Code)
@@ -118,7 +132,7 @@ func BenchmarkAuthenticatedRequest(b *testing.B) {
 	defer log.SetOutput(originalOutput)
 
 	cfg := createTestConfig()
-	cfg.Routes[0].Authentication.Enabled = true // Enable authentication for this route
+	cfg.Routes[0].Authenticated = true // Enable authentication for this route
 	gw, err := NewTestGateway(cfg, &static.StaticAssetsFS)
 	if err != nil {
 		b.Fatalf("Failed to create gateway: %v", err)
@@ -139,7 +153,7 @@ func BenchmarkAuthenticatedRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 
 		// Should get 200 (mock backend returns OK)
 		if rr.Code != http.StatusOK {
@@ -202,7 +216,7 @@ func BenchmarkProfileAPIRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 	}
 
 	// Memory profile
@@ -237,7 +251,7 @@ func TestMemoryUsage(t *testing.T) {
 	for i := 0; i < numRequests; i++ {
 		req := httptest.NewRequest("GET", "/_/health", nil)
 		rr := httptest.NewRecorder()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 	}
 
 	// Force garbage collection and measure memory after
@@ -282,7 +296,7 @@ func TestConcurrentRequests(t *testing.T) {
 			for j := 0; j < requestsPerGoroutine; j++ {
 				req := httptest.NewRequest("GET", "/_/health", nil)
 				rr := httptest.NewRecorder()
-				gw.Mux.ServeHTTP(rr, req)
+				gw.handler.ServeHTTP(rr, req)
 
 				if rr.Code != http.StatusOK {
 					t.Errorf("Expected status 200, got %d", rr.Code)
@@ -333,7 +347,7 @@ func TestRequestLatency(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		start := time.Now()
-		gw.Mux.ServeHTTP(rr, req)
+		gw.handler.ServeHTTP(rr, req)
 		latencies[i] = time.Since(start)
 
 		if rr.Code != http.StatusOK {
@@ -386,15 +400,18 @@ func createTestConfig() *config.GatewayConfig {
 			Port: 8080,
 		},
 		Management: config.ManagementConfig{
-			Prefix:    "/_",
-			Analytics: true,
-			Logging:   true,
 			Admin: config.AdminConfig{
 				Enabled:  false,
 				Username: "admin",
 				Email:    "admin@example.com",
 				Password: "password",
 			},
+		},
+		Middleware: []config.MiddlewareConfig{
+			config.NewMiddlewareConfig(builtin.NameJA4Fingerprint, nil),
+			config.NewMiddlewareConfig(builtin.NameSessionExtraction, nil),
+			config.NewMiddlewareConfig(builtin.NameTrafficMetrics, nil),
+			config.NewMiddlewareConfig(builtin.NameLogging, nil),
 		},
 		AuthenticationProviders: config.AuthenticationProviders{
 			Basic: config.BasicAuthenticationConfig{
@@ -411,13 +428,10 @@ func createTestConfig() *config.GatewayConfig {
 		},
 		Routes: []config.RouteConfig{
 			{
-				Name:   "test-api",
-				From:   "/api/*",
-				To:     testBackendServerURL,
-				Static: false,
-				Authentication: config.AuthenticationConfig{
-					Enabled: false,
-				},
+				Name:          "test-api",
+				From:          "/api/*",
+				To:            []string{testBackendServerURL},
+				Authenticated: false,
 			},
 		},
 	}

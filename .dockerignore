@@ -1,0 +1,17 @@
+# Kept minimal and safe rather than clever: excludes things that are either
+# huge and irrelevant to a build (node_modules, .git) or definitely
+# regenerated inside the build itself (webapp/dist, the TS API client) —
+# not every directory unrelated to a Go/webapp build, so a future addition
+# elsewhere in the repo doesn't silently start missing from image builds.
+.git/
+**/node_modules/
+**/dist/
+webapp/src/apiclient/
+tg
+tg.exe
+*.db
+*.db-shm
+*.db-wal
+.env
+cover.out
+coverage.html

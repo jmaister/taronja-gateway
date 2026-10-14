@@ -1,6 +1,12 @@
 package db
 
 import (
+	"database/sql"
+	"embed"
+	"io/fs"
+	"time"
+
+	"github.com/jmaister/taronja-gateway/db/dbmigrations"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -8,6 +14,13 @@ import (
 )
 
 var conn *gorm.DB
+
+// NowUTC replaces GORM's clock so timestamps it sets (gorm.Model fields,
+// autoCreateTime/autoUpdateTime) are UTC. Fields the application sets itself, such
+// as Session.ValidUntil, are normalized in BeforeSave hooks or at the call site.
+func NowUTC() time.Time {
+	return time.Now().UTC()
+}
 
 func Init() {
 	// Don't re-initialize if already done
@@ -25,10 +38,29 @@ func Init() {
 		"_pragma=busy_timeout(30000)&" +
 		"_pragma=temp_store(memory)"
 
+	// Migrated on a short-lived connection of its own, fully closed before
+	// the real, long-lived, pooled serving connection below ever opens —
+	// the gateway never has a connection open against this database for
+	// anything else while dbmigrations.Run runs. See dbmigrations.Run's doc
+	// comment for why this project uses golang-migrate here instead of
+	// GORM's AutoMigrate.
+	migrationConn, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		panic("Failed to open database for migrations: " + err.Error())
+	}
+	if err := dbmigrations.Run(migrationConn, MigrationSchema()); err != nil {
+		panic("Failed to migrate database: " + err.Error())
+	}
+	if err := migrationConn.Close(); err != nil {
+		panic("Failed to close migration connection: " + err.Error())
+	}
+
 	db, err := gorm.Open(sqlite.Dialector{
 		DriverName: "sqlite",
 		DSN:        dsn,
-	}, &gorm.Config{})
+	}, &gorm.Config{
+		NowFunc: NowUTC,
+	})
 	if err != nil {
 		panic("Failed to connect database: " + err.Error())
 	}
@@ -43,12 +75,6 @@ func Init() {
 	sqlDB.SetMaxOpenConns(10)
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
-
-	// Migrate the schema
-	err2 := db.AutoMigrate(&User{}, &Session{}, &TrafficMetric{}, &Token{}, &Counter{})
-	if err2 != nil {
-		panic("Failed to migration DB: " + err2.Error())
-	}
 
 	conn = db
 }
@@ -69,7 +95,8 @@ func SetupTestDB(testName string) {
 		DriverName: "sqlite",
 		DSN:        dbName,
 	}, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent), // Suppress logging during tests
+		Logger:  logger.Default.LogMode(logger.Silent), // Suppress logging during tests
+		NowFunc: NowUTC,
 	})
 	if err != nil {
 		panic("Failed to connect to test database: " + err.Error())
@@ -81,20 +108,14 @@ func SetupTestDB(testName string) {
 		panic("Failed to get underlying sql.DB: " + err.Error())
 	}
 
-	// Set connection pool settings
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
+	// Without cache=shared, each pooled connection to "file::memory:" gets its own
+	// empty database, so extra connections fail with "no such table". Use one
+	// connection, set before migrating: the database dies when its last connection closes.
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(0) // No limit for SQLite
 
-	// Migrate all schemas
-	err = db.AutoMigrate(
-		&User{},
-		&Session{},
-		&TrafficMetric{},
-		&Token{},
-		&Counter{},
-	)
-	if err != nil {
+	if err := dbmigrations.Run(sqlDB, MigrationSchema()); err != nil {
 		panic("Failed to migrate test database: " + err.Error())
 	}
 
@@ -117,4 +138,20 @@ func ResetConnection() {
 		}
 	}
 	conn = nil
+}
+
+// migrationFiles embeds the numbered SQL migrations in db/migrations, so they
+// ship inside the binary.
+//
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
+// MigrationSchema is what dbmigrations.Run needs from this package; dbmigrations
+// cannot import db, which imports it.
+func MigrationSchema() dbmigrations.Schema {
+	migrations, err := fs.Sub(migrationFiles, "migrations")
+	if err != nil {
+		panic(err) // the embed pattern above guarantees the directory exists
+	}
+	return dbmigrations.Schema{Migrations: migrations, Models: Models, HashSessionToken: HashSessionToken}
 }

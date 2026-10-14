@@ -1,4 +1,7 @@
-import React from 'react';
+import type React from 'react';
+
+// Demo content: articles are "published" the day the app loads.
+const PUBLISHED = new Date().toLocaleDateString();
 
 interface PremiumArticlePageProps {
   id: string | number;
@@ -21,7 +24,7 @@ const PremiumArticlePage: React.FC<PremiumArticlePageProps> = ({ id }) => {
         <h1 className="text-3xl md:text-4xl font-bold text-amber-800 font-serif mb-2">
           {articleTitle}
         </h1>
-        <p className="text-sm text-amber-600">Published exclusively for subscribers on: {new Date().toLocaleDateString()}</p>
+        <p className="text-sm text-amber-600">Published exclusively for subscribers on: {PUBLISHED}</p>
       </header>
 
       <div className="prose prose-lg max-w-none text-justify text-gray-700">
@@ -46,7 +49,7 @@ const PremiumArticlePage: React.FC<PremiumArticlePageProps> = ({ id }) => {
       </div>
 
       <footer className="mt-8 border-t border-amber-300 pt-4">
-        <button className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-150">
+        <button type="button" className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-150">
           Explore More Premium Content
         </button>
       </footer>

@@ -11,7 +11,6 @@ routes:
   - name: Static Assets
     from: /assets/*
     toFolder: ./static/assets
-    static: true
     options:
       cacheControlSeconds: 86400  # Cache for 1 day
   
@@ -24,7 +23,6 @@ routes:
   - name: Default Route
     from: /
     toFolder: ./public
-    static: true
     # No options = no cache control header
 ```
 
@@ -44,7 +42,6 @@ The `cacheControlSeconds` field supports the following values:
 - name: Images
   from: /images/*
   toFolder: ./static/images
-  static: true
   options:
     cacheControlSeconds: 604800  # 1 week (7 * 24 * 60 * 60)
 ```
