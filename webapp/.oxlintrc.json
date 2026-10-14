@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "oxc"],
+  "categories": { "correctness": "error" },
+  "ignorePatterns": ["dist", "src/apiclient"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/set-state-in-effect": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-unused-vars": ["error", { "varsIgnorePattern": "^[A-Z_]" }]
+  }
+}

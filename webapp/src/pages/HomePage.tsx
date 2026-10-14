@@ -1,4 +1,5 @@
 import { getUserDisplayName, useTaronjaAuth } from 'taronja-gateway-react-sdk';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
@@ -10,6 +11,7 @@ import { useRateLimiterConfig } from '../services/rateLimiter';
 export const HomePage = () => {
     const { currentUser, isLoading, isAuthenticated } = useTaronjaAuth();
     const { data: rateLimiterConfig, isLoading: configLoading } = useRateLimiterConfig();
+    const [today] = useState(() => new Date().toLocaleDateString());
 
     if (isLoading) {
         return (
@@ -224,7 +226,7 @@ export const HomePage = () => {
                         </div>
                         <div className="text-center">
                             <div className="text-2xl font-semibold text-primary">
-                                {new Date().toLocaleDateString()}
+                                {today}
                             </div>
                             <div className="text-sm text-muted-fg">Today's Date</div>
                         </div>

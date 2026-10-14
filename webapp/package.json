@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "biome lint .",
+    "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest",
-    "analyze": "vite build --mode analyze"
+    "analyze": "vite build --mode analyze",
+    "gen:api": "npx --yes -p @hey-api/openapi-ts@0.99.0 -p typescript@6.0.3 openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch"
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.2",
@@ -24,8 +25,6 @@
     "taronja-gateway-react-sdk": "0.0.24"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
-    "@hey-api/openapi-ts": "^0.99.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query-devtools": "5.104.2",
     "@types/node": "26.6.5",
@@ -33,9 +32,10 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "jsdom": "30.1.2",
+    "oxlint": "1.88.0",
     "rollup-plugin-visualizer": "7.1.1",
     "tailwindcss": "4.3.3",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vite": "8.3.4",
     "vitest": "5.0.4"
   }

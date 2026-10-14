@@ -468,11 +468,11 @@ webapp/src/
 **API Client Generation:**
 - OpenAPI spec: [`api/taronja-gateway-api.yaml`](./api/taronja-gateway-api.yaml)
 - Tool: `@hey-api/openapi-ts` (via `make gen`, executed in root Makefile)
-- Command (`make gen`'s actual recipe): `cd webapp && npm install && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch` — run from inside `webapp/`, not the repo root
+- Command: `cd webapp && npm run gen:api` (what `make gen`, CI, the release workflow, GoReleaser and the Dockerfile all run)
 - Regenerated whenever the spec changes; files carry auto-generated headers (`// This file is auto-generated`)
 - `webapp/src/apiclient` is gitignored (a generated artifact, same as `webapp/dist`), so a fresh checkout has no client at all until `make gen` (or the command above) is run once
-- **Fixed toolchain gotcha, keep it fixed**: `@hey-api/openapi-ts` is a pinned `devDependency` in `webapp/package.json` (not invoked via bare `npx --yes` from the repo root) specifically because that resolves its own isolated `typescript` dependency — which as of writing pulls in `typescript@7.x`, the from-scratch Go-based compiler rewrite, incompatible with `@hey-api/openapi-ts`'s TS AST codegen (`Cannot read properties of undefined (reading 'SyntaxKind')` / `'LineFeed'`, across multiple `@hey-api/openapi-ts` versions). Running it from inside `webapp/` as a local devDependency makes npm resolve its `typescript` peer against the workspace's own pinned `typescript` (6.0.3, which works) instead. If this starts failing again after a `@hey-api/openapi-ts` or `typescript` version bump, that's almost certainly the same class of issue recurring — don't revert to bare `npx --yes` from root as a "fix." `.github/workflows/ci.yml` and `.github/workflows/release.yml` both had this exact bare `npx --yes` bug live (unnoticed since it happened to work on whatever GitHub Actions' runners resolved) until they were fixed to match — see their "Generate API client"/"Generate Go API code and TypeScript client" steps.
-- **CI enforces more than it used to**: `ci.yml` now also runs `gofmt -l` (against `git ls-files '*.go'`, not a bare recursive `gofmt -l .`, since that would also pick up vendored `.go` files under `webapp/node_modules` that aren't ours to reformat), `go vet ./...`, `npm run lint`, and `npx tsc --noEmit` for webapp — and a "Check generated files are up to date" step that regenerates `api/api.gen.go` and `doc/CONFIG.md` and fails the build on any diff. None of these existed before; concretely, `tsc --noEmit` would have caught two real bugs (a missing `UserResponse.createdAt`/`updatedAt` mapping, a JSON-import type error) that shipped silently earlier in this project's history because nothing ran it.
+- **Toolchain gotcha**: `@hey-api/openapi-ts` builds code with TypeScript's JavaScript compiler API, which TypeScript 7 (the Go rewrite) no longer has (`Cannot read properties of undefined (reading 'AnyKeyword')`). The webapp type-checks with TypeScript 7, so `gen:api` runs the generator through `npx -p @hey-api/openapi-ts@<v> -p typescript@6.0.3`, which installs it with its own TypeScript 6. npm `overrides` cannot do this (`typescript` is a peer dependency). Bump the two versions in that script together.
+- **CI enforces more than it used to**: `ci.yml` now also runs `gofmt -l` (against `git ls-files '*.go'`, not a bare recursive `gofmt -l .`, since that would also pick up vendored `.go` files under `webapp/node_modules` that aren't ours to reformat), `go vet ./...`, `npm run lint` (oxlint), and `npx tsc --noEmit` for webapp — and a "Check generated files are up to date" step that regenerates `api/api.gen.go` and `doc/CONFIG.md` and fails the build on any diff. None of these existed before; concretely, `tsc --noEmit` would have caught two real bugs (a missing `UserResponse.createdAt`/`updatedAt` mapping, a JSON-import type error) that shipped silently earlier in this project's history because nothing ran it.
 
 **Dependencies** (key packages in [`webapp/package.json`](./webapp/package.json)):
 - React 19, react-dom 19, TypeScript 6
@@ -482,7 +482,7 @@ webapp/src/
 - date-fns 4.1
 - taronja-gateway-react-sdk 0.0.24 (local, points to `../sdk` in dev)
 - vitest 4.1, jsdom 29 (no test files in webapp yet; SDK has tests)
-- Biome 2 (lint only, `biome.json`), @tailwindcss/vite
+- TypeScript 7, oxlint (`.oxlintrc.json`), @tailwindcss/vite
 
 **⚠️ Known inconsistency:** [`webapp/.copilot-instructions.md`](./webapp/.copilot-instructions.md) describes DaisyUI conventions, but DaisyUI is **not** in `webapp/package.json` — verify before using DaisyUI classes in new code (the project currently uses custom `components/ui/` instead).
 
@@ -512,7 +512,8 @@ webapp/src/
 | `npm run build` | Vite build → `dist/` |
 | `npm run preview` | Preview production build locally |
 | `npm run test` | Run Vitest (currently no tests in webapp; SDK tests run separately) |
-| `npm run lint` | Biome lint (`biome lint .`) |
+| `npm run lint` | oxlint (`.oxlintrc.json`) |
+| `npm run gen:api` | Regenerate `src/apiclient` from the OpenAPI spec |
 | `npm run analyze` | Build + generate bundle-size HTML report (`dist/bundle-stats.html`) |
 
 ### CI/CD

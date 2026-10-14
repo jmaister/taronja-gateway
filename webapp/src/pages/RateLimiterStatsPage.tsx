@@ -125,7 +125,7 @@ export function RateLimiterStatsPage() {
         return () => clearInterval(id);
     });
 
-    const blockedCount = stats?.filter(s => new Date(s.blockedUntil) > new Date()).length ?? 0;
+    const blockedCount = stats?.filter(s => Date.parse(s.blockedUntil) > dataUpdatedAt).length ?? 0;
     const totalIPs = stats?.length ?? 0;
 
     return (
@@ -208,8 +208,8 @@ export function RateLimiterStatsPage() {
                                     {[...stats]
                                         .sort((a, b) => {
                                             // Sort blocked IPs first, then by request count descending
-                                            const aBlocked = new Date(a.blockedUntil) > new Date();
-                                            const bBlocked = new Date(b.blockedUntil) > new Date();
+                                            const aBlocked = Date.parse(a.blockedUntil) > dataUpdatedAt;
+                                            const bBlocked = Date.parse(b.blockedUntil) > dataUpdatedAt;
                                             if (aBlocked !== bBlocked) return aBlocked ? -1 : 1;
                                             return b.requests - a.requests;
                                         })

@@ -31,22 +31,14 @@ jobs:
           sdk/package-lock.json
           webapp/package-lock.json
 
-    # Runs `npx @hey-api/openapi-ts` from inside webapp/, after `npm install`
-    # there, rather than a bare `npx --yes @hey-api/openapi-ts` from the repo
-    # root. The bare form resolves its own isolated `typescript` dependency,
-    # which can land on a version incompatible with @hey-api/openapi-ts's own
-    # codegen (this actually happened locally: typescript@7.x, the from-
-    # scratch Go-based rewrite, broke it outright). Running it from webapp/
-    # makes npm resolve the `@hey-api/openapi-ts` devDependency already
-    # pinned in webapp/package.json, whose typescript peer then resolves
-    # against the workspace's own pinned typescript instead. See AGENTS.md's
-    # "API Client Generation" section for the full explanation.
+    # `npm run gen:api` runs @hey-api/openapi-ts with its own TypeScript 6
+    # (see AGENTS.md's "API Client Generation").
     - name: Generate Go API code and TypeScript client
       run: |
         go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config api/cfg.yaml api/taronja-gateway-api.yaml
         cd webapp
         npm install
-        npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
+        npm run gen:api
 
     # --repository.url/--repository.default-branch must match Makefile's
     # config-docs target exactly — see its comment for why: without them,

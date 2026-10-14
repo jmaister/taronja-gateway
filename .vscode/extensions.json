@@ -1,7 +1,7 @@
 {
     "recommendations": [
         "golang.go",
-        "biomejs.biome",
+        "oxc.oxc-vscode",
         "codeandstuff.package-json-upgrade",
         "andrejunges.handlebars",
         "bradlc.vscode-tailwindcss",

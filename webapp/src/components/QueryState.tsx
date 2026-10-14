@@ -52,7 +52,6 @@ export function SkeletonRows({ rows = 4 }: { rows?: number }) {
     return (
         <div className="p-6 space-y-3">
             {[...Array(rows)].map((_, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows never reorder
                 <div key={i} className="animate-pulse h-8 rounded bg-muted"></div>
             ))}
         </div>

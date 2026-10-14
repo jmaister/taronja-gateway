@@ -17,14 +17,12 @@ FROM node:24-alpine AS webapp-builder
 WORKDIR /src
 
 # The TypeScript API client (webapp/src/apiclient) is generated from the
-# OpenAPI spec, not committed (gitignored) — see AGENTS.md's "API Client
-# Generation" section for why this must run from inside webapp/ after
-# `npm install`, not a bare `npx --yes @hey-api/openapi-ts`.
+# OpenAPI spec, not committed (gitignored), by `npm run gen:api`.
 COPY api/taronja-gateway-api.yaml api/taronja-gateway-api.yaml
 COPY webapp/package.json webapp/package-lock.json webapp/
 RUN cd webapp && npm ci
 COPY webapp/ webapp/
-RUN cd webapp && npx @hey-api/openapi-ts -i ../api/taronja-gateway-api.yaml -o src/apiclient -c @hey-api/client-fetch
+RUN cd webapp && npm run gen:api
 RUN cd webapp && npm run build
 
 # --- Stage 2: build the Go binary ---

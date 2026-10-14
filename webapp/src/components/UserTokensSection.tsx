@@ -26,7 +26,9 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
     const [neverExpires, setNeverExpires] = useState(false);
 
     // TanStack Query hooks
-    const { data: tokens, isLoading: isLoadingTokens, error } = useUserTokens(userId);
+    const { data: tokens, isLoading: isLoadingTokens, error, dataUpdatedAt } = useUserTokens(userId);
+    // Earliest expiry the form accepts: the time the section was opened.
+    const [minExpiresAt] = useState(() => new Date().toISOString().slice(0, 16));
     const createTokenMutation = useCreateToken();
     const revokeTokenMutation = useRevokeToken();
 
@@ -77,7 +79,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
         if (token.revoked_at) {
             return <StatusPill variant="danger">Revoked</StatusPill>;
         }
-        if (token.expires_at && new Date(token.expires_at) < new Date()) {
+        if (token.expires_at && Date.parse(token.expires_at) < dataUpdatedAt) {
             return <StatusPill variant="warning">Expired</StatusPill>;
         }
         if (token.is_active) {
@@ -230,7 +232,7 @@ export const UserTokensSection = ({ userId }: UserTokensSectionProps) => {
                                                 id="expiresAt"
                                                 value={expiresAt}
                                                 onChange={(e) => setExpiresAt(e.target.value)}
-                                                min={new Date().toISOString().slice(0, 16)}
+                                                min={minExpiresAt}
                                             />
                                         </FormField>
                                     )}

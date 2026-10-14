@@ -2,6 +2,8 @@ import type React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext'; // Ensure currentUser is exported and imported if not already
 
+const YEAR = new Date().getFullYear();
+
 interface NewspaperLayoutProps {
   children: React.ReactNode;
 }
@@ -66,7 +68,7 @@ const NewspaperLayout: React.FC<NewspaperLayoutProps> = ({ children }) => {
         {children}
       </main>
       <footer className="bg-slate-900 text-slate-300 p-6 text-center mt-auto">
-        <p>&copy; {new Date().getFullYear()} The React Times. All rights reserved. Crafted with React & Tailwind CSS.</p>
+        <p>&copy; {YEAR} The React Times. All rights reserved. Crafted with React & Tailwind CSS.</p>
       </footer>
     </div>
   );
