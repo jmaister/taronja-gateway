@@ -25,29 +25,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const intervalRef = useRef<number | null>(null);
 
-  const checkUserSession = async () => {
-    setIsLoading(true);
-    try {
-      const userData = await fetchMe(); // Use apiService
-      if (userData) {
-        setIsAuthenticated(true);
+  // isLoading starts true and only covers the first check: background checks
+  // must not swap protected pages for the loading screen.
+  // State is only set in the promise callbacks, after fetchMe resolves.
+  const checkUserSession = () =>
+    fetchMe()
+      .then((userData) => {
+        // fetchMe returns null on 401
+        setIsAuthenticated(userData !== null);
         setCurrentUser(userData);
-      } else {
-        // fetchMe returned null (e.g., 401)
+      })
+      .catch((error) => {
+        // Errors from fetchMe (network, unexpected server response)
+        console.error('Error during session check:', error);
         setIsAuthenticated(false);
         setCurrentUser(null);
-      }
-    } catch (error) {
-      // Errors from fetchMe (network, unexpected server response)
-      console.error('Error during session check:', error);
-      setIsAuthenticated(false);
-      setCurrentUser(null);
-      // If error is an ApiError, you could potentially inspect error.status
-      // For now, any error during fetchMe leads to logged-out state.
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      })
+      .finally(() => setIsLoading(false));
 
   useEffect(() => {
     // Initial session check
