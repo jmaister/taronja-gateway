@@ -38,14 +38,18 @@ test:
 # e2e-tagged tests against them, and stop the services again (also on failure).
 E2E_COMPOSE := docker compose -f e2e/docker-compose.yml
 
+# Zitadel writes its service account tokens to e2e/.zitadel as the host
+# user, so the tests can read them.
 e2e-up:
-	$(E2E_COMPOSE) up -d --wait
+	mkdir -p e2e/.zitadel
+	E2E_UID=$$(id -u) E2E_GID=$$(id -g) $(E2E_COMPOSE) up -d --wait
 
 e2e-down:
 	$(E2E_COMPOSE) down -v
+	rm -rf e2e/.zitadel
 
 e2e: e2e-up
-	go test -tags e2e -count=1 ./e2e/... ; status=$$?; $(E2E_COMPOSE) down -v; exit $$status
+	go test -tags e2e -count=1 ./e2e/... ; status=$$?; $(MAKE) e2e-down; exit $$status
 
 bench:
 	@echo "Running benchmarks..."

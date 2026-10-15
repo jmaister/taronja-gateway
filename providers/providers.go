@@ -28,6 +28,9 @@ const StateCookieName = "OAuthState"
 // Its value is the session's CSRF token, so it only works for that session.
 const LinkIntentCookieName = "tg_link_intent"
 
+// PKCEVerifierCookieName holds the PKCE code verifier between Login and Callback.
+const PKCEVerifierCookieName = "tg_pkce_verifier"
+
 // AccountPath is the signed-in user's account page.
 const AccountPath = config.ManagementPrefix + "/account"
 
@@ -82,6 +85,11 @@ func RegisterProviders(ctx context.Context, mux *http.ServeMux, sessionStore ses
 		log.Printf("Google Authentication provider not configured, skipping registration")
 	}
 
+	if len(gatewayConfig.AuthenticationProviders.OIDC) > 0 {
+		log.Printf("Registering %d OIDC Authentication provider(s)", len(gatewayConfig.AuthenticationProviders.OIDC))
+		RegisterOIDCAuth(mux, sessionStore, gatewayConfig, userRepo, accountsService)
+	}
+
 	// Microsoft, Facebook, and Apple registration lives on the
 	// wip/microsoft-apple-facebook-auth branch — moved out of this branch
 	// untested (see that branch's log for why), to come back to later.
@@ -125,6 +133,15 @@ type AuthenticationProvider struct {
 	// Every other provider here leaves this empty for the default,
 	// GET-based redirect.
 	ResponseMode string
+
+	// UsePKCE adds a PKCE (S256) challenge to the authorization request and
+	// the verifier to the token exchange.
+	UsePKCE bool
+
+	// Prepare, when set, runs before the provider's endpoints are used (for
+	// OIDC: discovery). An error answers 503, so a provider that is down does
+	// not break the rest of the gateway.
+	Prepare func(ctx context.Context) error
 }
 
 func NewOauth2Config(authProvider AuthProvider, providerCreds *config.AuthProviderCredentials, baseUrl string, endpoint oauth2.Endpoint) *oauth2.Config {
@@ -185,6 +202,9 @@ func (ap *AuthenticationProvider) Link(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ap *AuthenticationProvider) startAuth(w http.ResponseWriter, r *http.Request, redirect string) {
+	if !ap.prepare(w, r) {
+		return
+	}
 	state, err := generateState()
 	if err != nil {
 		log.Printf("Error generating state: %v", err)
@@ -195,6 +215,19 @@ func (ap *AuthenticationProvider) startAuth(w http.ResponseWriter, r *http.Reque
 	var opts []oauth2.AuthCodeOption
 	if ap.ResponseMode != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("response_mode", ap.ResponseMode))
+	}
+	if ap.UsePKCE {
+		verifier := oauth2.GenerateVerifier()
+		opts = append(opts, oauth2.S256ChallengeOption(verifier))
+		http.SetCookie(w, &http.Cookie{
+			Name:     PKCEVerifierCookieName,
+			Value:    verifier,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   session.RequestIsSecure(r),
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   300,
+		})
 	}
 	authCodeURL := ap.OAuthConfig.AuthCodeURL(state, opts...)
 
@@ -239,6 +272,9 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	// callback, and additionally from a POST body for Apple's
 	// response_mode=form_post callback — one code path covers both, no
 	// need to branch on r.Method.
+	if !ap.prepare(w, r) {
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		log.Printf("Error parsing callback request: %v", err)
 		http.Error(w, "Invalid callback request", http.StatusBadRequest)
@@ -286,7 +322,18 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Exchange code for token
-	token, err := oauthConfig.Exchange(r.Context(), code)
+	var exchangeOpts []oauth2.AuthCodeOption
+	if ap.UsePKCE {
+		verifierCookie, err := r.Cookie(PKCEVerifierCookieName)
+		if err != nil || verifierCookie.Value == "" {
+			log.Printf("Missing PKCE verifier cookie for %s", ap.Provider.Name())
+			http.Error(w, "Login expired, please try again", http.StatusBadRequest)
+			return
+		}
+		clearCookie(w, r, PKCEVerifierCookieName)
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(verifierCookie.Value))
+	}
+	token, err := oauthConfig.Exchange(r.Context(), code, exchangeOpts...)
 	if err != nil {
 		log.Printf("Error exchanging code for token: %v", err)
 		http.Error(w, "Failed to exchange auth code", http.StatusInternalServerError)
@@ -366,6 +413,20 @@ func (ap *AuthenticationProvider) Callback(w http.ResponseWriter, r *http.Reques
 	}
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+// prepare runs ap.Prepare, answering 503 if it fails.
+func (ap *AuthenticationProvider) prepare(w http.ResponseWriter, r *http.Request) bool {
+	if ap.Prepare == nil {
+		return true
+	}
+	err := ap.Prepare(r.Context())
+	if err != nil {
+		log.Printf("%s login is unavailable: %v", ap.LongName, err)
+		http.Error(w, ap.LongName+" login is unavailable right now. Try again later or use another login method.", http.StatusServiceUnavailable)
+		return false
+	}
+	return true
 }
 
 // finishLink links the external account to the signed-in user who started

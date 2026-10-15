@@ -137,6 +137,17 @@ func labelOr(labels map[string]string, key string) string {
 	return key
 }
 
+// providerLabel names a login method for people: built-in ones from
+// providerLabels, OIDC providers by their configured label.
+func (g *Gateway) providerLabel(name string) string {
+	for _, p := range g.GatewayConfig.AuthenticationProviders.OIDC {
+		if p.Name == name {
+			return p.DisplayLabel()
+		}
+	}
+	return labelOr(providerLabels, name)
+}
+
 func (g *Gateway) newAuthPage(title string) authPage {
 	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl}
 }
@@ -485,7 +496,7 @@ func (g *Gateway) renderAccountPage(w http.ResponseWriter, status int, acct *acc
 		if id.LastLoginAt != nil {
 			lastLogin = id.LastLoginAt.Local().Format("2006-01-02 15:04")
 		}
-		view.Identities = append(view.Identities, identityView{ID: id.ID, ProviderLabel: labelOr(providerLabels, id.Provider), Email: id.Email, LastLogin: lastLogin})
+		view.Identities = append(view.Identities, identityView{ID: id.ID, ProviderLabel: g.providerLabel(id.Provider), Email: id.Email, LastLogin: lastLogin})
 	}
 	providerCfg := g.GatewayConfig.AuthenticationProviders
 	for _, p := range []struct {
@@ -494,6 +505,11 @@ func (g *Gateway) renderAccountPage(w http.ResponseWriter, status int, acct *acc
 	}{{"google", providerCfg.Google}, {"github", providerCfg.Github}} {
 		if p.creds.ClientId != "" && p.creds.ClientSecret != "" && !linked[p.name] {
 			view.Linkable = append(view.Linkable, linkableProvider{Label: providerLabels[p.name], LinkPath: config.ManagementPrefix + "/auth/" + p.name + "/link"})
+		}
+	}
+	for _, p := range providerCfg.OIDC {
+		if !linked[p.Name] {
+			view.Linkable = append(view.Linkable, linkableProvider{Label: p.DisplayLabel(), LinkPath: config.ManagementPrefix + "/auth/" + p.Name + "/link"})
 		}
 	}
 
@@ -520,7 +536,7 @@ func (g *Gateway) renderAccountPage(w http.ResponseWriter, status int, acct *acc
 	for _, e := range events {
 		label := labelOr(eventLabels, e.Type)
 		if e.Provider != "" {
-			label += " · " + labelOr(providerLabels, e.Provider)
+			label += " · " + g.providerLabel(e.Provider)
 		}
 		view.Events = append(view.Events, eventView{Label: label, When: e.CreatedAt.Local().Format("2006-01-02 15:04"), IP: e.IPAddress})
 	}

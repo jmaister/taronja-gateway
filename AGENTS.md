@@ -23,7 +23,7 @@ taronja-gateway/
 ├── gateway/                    # HTTP server assembly, routing, reverse proxy
 ├── handlers/                   # OpenAPI handler implementations (one per resource)
 ├── middleware/                 # Plumbing: Middleware/Chain, health, metrics; builtin/ holds the implementations
-├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
+├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2, generic OIDC)
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
 ├── accounts/                   # Sign-up, password reset, email login, account linking, sessions, activity log
@@ -42,7 +42,7 @@ taronja-gateway/
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
 ├── test/                       # Load-test plan (JMeter)
-├── e2e/                        # End-to-end tests (build tag e2e) + docker-compose.yml with Mailpit
+├── e2e/                        # End-to-end tests (build tag e2e) + docker-compose.yml with Mailpit and Zitadel
 └── .github/
     ├── copilot-instructions.md # GitHub Copilot conventions (Go style, test patterns)
     └── workflows/              # CI/CD pipelines
@@ -228,6 +228,8 @@ of-REST shape above (its client secret is a JWT the gateway signs itself,
 `FetchUserData` decodes the ID token from the exchange response instead,
 verified against Apple's published public keys); `microsoft.go`/
 `facebook.go` are the "normal-shaped" examples alongside `google.go`.
+
+**Generic OIDC (`oidc.go`):** `authenticationProviders.oidc` is a list; each entry becomes an `AuthenticationProvider` named by its `name` (validated in `config.validateOIDCProviders`). Two optional `AuthenticationProvider` fields exist for it: `Prepare` (runs discovery before the endpoints are used; an error answers 503) and `UsePKCE` (S256 challenge in `startAuth`, verifier kept in the `tg_pkce_verifier` cookie for `Callback`). Discovery (`oidcDiscovery.load`) is lazy, cached once it succeeds, retried until then, and checks the document's `issuer`; it fills `oauthConfig.Endpoint` once under its mutex (and `AuthStyleInParams` for a public client with no secret). `OIDCUserDataFetcher` maps the userinfo response; `email_verified` may be a bool or the string "true"; `trustEmail` overrides it. Tests: `oidc_test.go` (fake provider that checks the PKCE verifier) and `e2e/zitadel_test.go` (real Zitadel).
 
 **Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`github.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape, the wip branch's `apple.go`):
 1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
@@ -521,7 +523,7 @@ webapp/src/
 | `make build` | Regenerate API client (`make gen`), build webapp (`npm run build`), build Go binary with embedded assets; produces `tg` executable |
 | `make run` | Run gateway with sample config (`tg run --config sample/config.yaml`) |
 | `make test` | `go test -cover ./...` — runs all Go unit tests with coverage; uses testify + in-memory DBs |
-| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, accounts, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
+| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit, Zitadel), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, accounts, OIDC login, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
 | `make gen` | Regenerate Go OpenAPI server (`oapi-codegen`) + TS API client (`@hey-api/openapi-ts`) |
 | `make config-docs` | Generate [`doc/CONFIG.md`](./doc/CONFIG.md) from `config/` package comments via `gomarkdoc` |
 | `make cover` | Run tests + open coverage HTML report |
