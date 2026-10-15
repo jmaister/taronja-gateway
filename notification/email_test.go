@@ -159,7 +159,27 @@ func TestEmailProvider(t *testing.T) {
 		assert.Contains(t, server.rcptTo, "parent@example.com")
 		assert.Contains(t, server.data, "Subject: Track added")
 		assert.Contains(t, server.data, "A new track was added to your folder.")
-		assert.Contains(t, server.data, "From: Taronja Gateway <gateway@example.com>")
+		assert.Contains(t, server.data, `From: "Taronja Gateway" <gateway@example.com>`)
+	})
+
+	t.Run("Send encodes non-ASCII headers", func(t *testing.T) {
+		server := newFakeSMTPServer(t)
+		defer server.close()
+		host, port := server.addr()
+
+		provider := NewEmailProvider(config.EmailNotificationConfig{
+			Enabled: true, Host: host, Port: port, From: "gateway@example.com", FromName: "Taronja Café",
+		})
+		_, err := provider.Send(context.Background(), SendRequest{
+			Notification: &db.Notification{Title: "Déploiement ✅", Body: "Corps en UTF-8: ñ"},
+			Recipient:    "parent@example.com",
+		})
+		require.NoError(t, err)
+		time.Sleep(20 * time.Millisecond)
+
+		assert.Contains(t, server.data, "Subject: =?utf-8?q?D=C3=A9ploiement_=E2=9C=85?=")
+		assert.Contains(t, server.data, "From: =?utf-8?q?Taronja_Caf=C3=A9?= <gateway@example.com>")
+		assert.Contains(t, server.data, "Corps en UTF-8: ñ", "the body is sent as UTF-8 as declared in Content-Type")
 	})
 
 	t.Run("Send includes action links when the notification has actions and a respond token", func(t *testing.T) {
