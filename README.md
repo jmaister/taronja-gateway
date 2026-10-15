@@ -398,7 +398,7 @@ chain, checking names, options and dependencies. See
 
 # Building and Releasing
 
-`make build`, `make test`, `make cover` and `make dev` cover day-to-day development. Releases are built and published with [GoReleaser](https://goreleaser.com/). See [doc/building-and-releasing.md](doc/building-and-releasing.md).
+`make build`, `make test`, `make cover` and `make dev` cover day-to-day development. `make e2e` runs the end-to-end tests against real services in Docker (see [doc/e2e.md](doc/e2e.md)). Releases are built and published with [GoReleaser](https://goreleaser.com/). See [doc/building-and-releasing.md](doc/building-and-releasing.md).
 
 
 # Authentication on the APIs

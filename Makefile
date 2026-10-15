@@ -34,6 +34,19 @@ test:
 	@echo "Running tests..."
 	go test -cover ./...
 
+# End-to-end tests: start the services in e2e/docker-compose.yml, run the
+# e2e-tagged tests against them, and stop the services again (also on failure).
+E2E_COMPOSE := docker compose -f e2e/docker-compose.yml
+
+e2e-up:
+	$(E2E_COMPOSE) up -d --wait
+
+e2e-down:
+	$(E2E_COMPOSE) down -v
+
+e2e: e2e-up
+	go test -tags e2e -count=1 ./e2e/... ; status=$$?; $(E2E_COMPOSE) down -v; exit $$status
+
 bench:
 	@echo "Running benchmarks..."
 	go test -v ./gateway -bench=. -benchtime=2s
@@ -171,5 +184,5 @@ else
 endif
 
 # Default target
-.PHONY: all build build-windows run dev test bench fullbuild cover clean fmt tidy
+.PHONY: all build build-windows run dev test e2e e2e-up e2e-down bench fullbuild cover clean fmt tidy
 all: build

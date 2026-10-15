@@ -1,0 +1,21 @@
+# Services the end-to-end tests run against. Started by `make e2e`, or by hand:
+#   docker compose -f e2e/docker-compose.yml up -d --wait
+# Host ports are fixed so the tests (and a browser) can find them; override
+# with the variables below if they clash with something local.
+name: taronja-e2e
+
+services:
+  # Catches every email the gateway sends. Web UI: http://localhost:18025
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "${E2E_MAILPIT_SMTP_PORT:-11025}:1025"
+      - "${E2E_MAILPIT_HTTP_PORT:-18025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
