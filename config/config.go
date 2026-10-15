@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -96,9 +98,66 @@ type BasicAuthenticationConfig struct {
 // AuthenticationProviders defines the available authentication methods.
 // At least one should be enabled if any route requires authentication.
 type AuthenticationProviders struct {
-	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
-	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
-	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
+	Basic  BasicAuthenticationConfig `yaml:"basic"`          // Basic username/password authentication
+	Google AuthProviderCredentials   `yaml:"google"`         // Google OAuth2 authentication. Optional.
+	Github AuthProviderCredentials   `yaml:"github"`         // GitHub OAuth2 authentication. Optional.
+	OIDC   []OIDCProviderConfig      `yaml:"oidc,omitempty"` // Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...). Optional; one entry per provider.
+}
+
+// OIDCProviderConfig is one OpenID Connect identity provider. Its endpoints
+// are read from <issuer>/.well-known/openid-configuration, so only the issuer
+// and the client credentials are needed. PKCE is always used.
+type OIDCProviderConfig struct {
+	Name         string   `yaml:"name"`             // Short ID used in the URLs (/_/auth/<name>/login and /_/auth/<name>/callback). Lowercase letters, digits and '-'. Required.
+	Label        string   `yaml:"label"`            // Shown on the login button ("Login with <label>"). Default: the name.
+	Issuer       string   `yaml:"issuer"`           // Issuer URL, e.g. "https://auth.example.com". Required.
+	ClientId     string   `yaml:"clientId"`         // Client ID registered at the provider. Can use environment variables. Required.
+	ClientSecret string   `yaml:"clientSecret"`     // Client secret. Can use environment variables. Optional: leave it empty for a public (PKCE-only) client.
+	Scopes       []string `yaml:"scopes,omitempty"` // Scopes to request. Default: openid, email, profile.
+	// TrustEmail treats every email this provider returns as verified, for
+	// providers that do not send the email_verified claim. Only enable it for
+	// a provider you control: it lets the provider's users claim any address.
+	// Default: false.
+	TrustEmail bool `yaml:"trustEmail"`
+}
+
+// DisplayLabel returns the login button label.
+func (o OIDCProviderConfig) DisplayLabel() string {
+	if o.Label != "" {
+		return o.Label
+	}
+	return o.Name
+}
+
+// oidcNamePattern keeps names safe as a URL segment.
+var oidcNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}$`)
+
+// reservedProviderNames are taken by the built-in login methods.
+var reservedProviderNames = map[string]bool{"basic": true, "google": true, "github": true}
+
+func validateOIDCProviders(providers []OIDCProviderConfig) error {
+	seen := map[string]bool{}
+	for i, p := range providers {
+		where := fmt.Sprintf("authenticationProviders.oidc[%d]", i)
+		if !oidcNamePattern.MatchString(p.Name) {
+			return fmt.Errorf("%s.name %q must be 1-30 lowercase letters, digits or '-'", where, p.Name)
+		}
+		if reservedProviderNames[p.Name] {
+			return fmt.Errorf("%s.name %q is reserved for a built-in login method", where, p.Name)
+		}
+		if seen[p.Name] {
+			return fmt.Errorf("%s.name %q is used twice", where, p.Name)
+		}
+		seen[p.Name] = true
+		issuer, err := url.Parse(p.Issuer)
+		if err != nil || (issuer.Scheme != "https" && issuer.Scheme != "http") || issuer.Host == "" {
+			return fmt.Errorf("%s.issuer must be an http(s) URL, got %q", where, p.Issuer)
+		}
+		if p.ClientId == "" {
+			return fmt.Errorf("%s.clientId is required", where)
+		}
+	}
+	return nil
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -112,6 +171,10 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		githubCallback := fmt.Sprintf("%s%s/auth/github/callback", serverURL, managementPrefix)
 		fmt.Println("[OAUTH] GitHub callback URL:")
 		fmt.Println("   ", githubCallback)
+	}
+	for _, p := range a.OIDC {
+		fmt.Printf("[OAUTH] %s (OIDC) callback URL:\n", p.DisplayLabel())
+		fmt.Println("   ", fmt.Sprintf("%s%s/auth/%s/callback", serverURL, managementPrefix, p.Name))
 	}
 }
 
@@ -343,6 +406,9 @@ func (c *GatewayConfig) Validate() error {
 	if c.Management.Session.DurationSeconds < 0 {
 		return fmt.Errorf("management.session.durationSeconds cannot be negative")
 	}
+	if err := validateOIDCProviders(c.AuthenticationProviders.OIDC); err != nil {
+		return err
+	}
 	if err := validateMiddleware(c.Middleware); err != nil {
 		return err
 	}
@@ -387,6 +453,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
+		len(c.AuthenticationProviders.OIDC) > 0 ||
 		c.Management.Admin.Enabled
 }
 
@@ -402,12 +469,19 @@ type loginPageData struct {
 		Github struct {
 			Enabled bool
 		}
+		OIDC []OIDCLoginButton
 	}
 	Branding         BrandingConfig
 	RedirectURL      string
 	Message          string
 	Error            string
 	ManagementPrefix string
+}
+
+// OIDCLoginButton is one OIDC provider's button on the login page.
+type OIDCLoginButton struct {
+	Name  string
+	Label string
 }
 
 // NewLoginPageData creates and populates a LoginPageData struct.
@@ -419,6 +493,9 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
+	for _, p := range gatewayConfig.AuthenticationProviders.OIDC {
+		data.AuthenticationProviders.OIDC = append(data.AuthenticationProviders.OIDC, OIDCLoginButton{Name: p.Name, Label: p.DisplayLabel()})
+	}
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }

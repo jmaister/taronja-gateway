@@ -1,7 +1,7 @@
 # Accounts: linking, password, sessions, activity
 
-Users log in with OAuth providers (Google, GitHub) or with basic
-username/password. The gateway keeps one user per
+Users log in with OAuth/OIDC providers (Google, GitHub, any OpenID Connect
+provider) or with basic username/password. The gateway keeps one user per
 person, however many logins they use, and gives them an account page.
 
 ## Pages
@@ -16,8 +16,8 @@ can find it.
 
 ## Linking several logins to one account
 
-Each user can have several external logins (Google, GitHub) in
-`user_identities`. On an OAuth login:
+Each user can have several external logins (Google, GitHub, OIDC) in
+`user_identities`. On an OAuth/OIDC login:
 
 1. A login already linked to a user logs in that user, even if its email
    changed since.
@@ -44,7 +44,7 @@ Users created before this feature keep logging in as before: migration
 - Email and whether it is confirmed.
 - Change the password (or set one, for users who only used OAuth). The current
   password is required if there is one; other sessions are signed out.
-- Linked accounts, with Unlink and "Link Google/GitHub" buttons.
+- Linked accounts, with Unlink and "Link ..." buttons.
 - Open sessions (browser, OS, IP, location, last activity), each with a revoke
   button, and "Sign out all other sessions".
 - Recent activity: logins (with the method), failed password logins, account
@@ -62,4 +62,4 @@ Forms are protected against CSRF with a token derived from the session.
 - Tables `user_identities` and `auth_events` (migration `0004_accounts`).
 - Tests: `accounts/service_test.go`, `providers/providers_test.go`
   (`TestCallbackLinksAccounts`) and the end-to-end tests in
-  `e2e/accounts_test.go`.
+  `e2e/accounts_test.go` and `e2e/zitadel_test.go`.

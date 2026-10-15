@@ -49,9 +49,22 @@ type testGateway struct {
 // may use {{URL}} and {{PORT}} for the gateway's own address.
 func startGateway(t *testing.T, configYAML string) *testGateway {
 	t.Helper()
+	listener, _ := listenGateway(t)
+	return startGatewayOn(t, listener, configYAML)
+}
 
+// listenGateway reserves the gateway's address before it starts, for tests
+// that must register its URL somewhere first (e.g. an OIDC redirect URI).
+func listenGateway(t *testing.T) (net.Listener, string) {
+	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
+	return listener, fmt.Sprintf("http://127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port)
+}
+
+// startGatewayOn is startGateway on a listener from listenGateway.
+func startGatewayOn(t *testing.T, listener net.Listener, configYAML string) *testGateway {
+	t.Helper()
 	port := listener.Addr().(*net.TCPAddr).Port
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 
