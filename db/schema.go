@@ -532,6 +532,22 @@ type NotificationPreference struct {
 	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
 }
 
+// FeatureFlagTypeBoolean is the only FeatureFlag.Type today: the flag is on or
+// off. Typed values (integer, float, date, ...) are meant to become new type
+// constants plus a value column, without changing how existing flags behave.
+const FeatureFlagTypeBoolean = "boolean"
+
+// FeatureFlag is a named switch an admin flips at runtime, read by frontends
+// through the API and by backends through the X-Feature-Flags header.
+type FeatureFlag struct {
+	Key         string    `gorm:"primaryKey;column:key;type:varchar(100);not null"`
+	Description string    `gorm:"type:text"`
+	Type        string    `gorm:"type:varchar(20);not null;default:boolean"`
+	Enabled     bool      `gorm:"not null;default:false"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
 // Models lists every model, for AutoMigrate in the legacy migration bridge and
 // in tests that build a schema by hand.
 var Models = []interface{}{
@@ -546,4 +562,5 @@ var Models = []interface{}{
 	&NotificationChannelLink{},
 	&NotificationLinkCode{},
 	&NotificationPreference{},
+	&FeatureFlag{},
 }

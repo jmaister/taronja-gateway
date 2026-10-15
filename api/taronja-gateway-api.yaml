@@ -1726,6 +1726,269 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /flags:
+    get:
+      summary: Current feature flag values
+      description: >
+        Public map of every feature flag key to its value, for frontends to
+        decide what to show. No session is required, so do not put secrets in
+        flag keys. Backends behind proxy routes get the enabled keys in the
+        X-Feature-Flags request header instead.
+      operationId: getFeatureFlagValues
+      tags:
+        - FeatureFlags
+      security:
+        - {}
+      responses:
+        '200':
+          description: Feature flag values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureFlagValues'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/feature-flags:
+    get:
+      summary: List feature flags (admin only)
+      operationId: listFeatureFlags
+      tags:
+        - FeatureFlags
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Every feature flag, ordered by key
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeatureFlag'
+        '401':
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a feature flag (admin only)
+      operationId: createFeatureFlag
+      tags:
+        - FeatureFlags
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeatureFlagCreateRequest'
+      responses:
+        '201':
+          description: Feature flag created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureFlag'
+        '400':
+          description: Invalid key or type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A flag with this key already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/feature-flags/{key}:
+    get:
+      summary: Get a feature flag (admin only)
+      operationId: getFeatureFlag
+      tags:
+        - FeatureFlags
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Feature flag key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The feature flag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureFlag'
+        '401':
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Feature flag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      summary: Update a feature flag (admin only)
+      description: Only the fields present in the body change.
+      operationId: updateFeatureFlag
+      tags:
+        - FeatureFlags
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Feature flag key
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeatureFlagUpdateRequest'
+      responses:
+        '200':
+          description: The updated feature flag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureFlag'
+        '401':
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Feature flag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete a feature flag (admin only)
+      operationId: deleteFeatureFlag
+      tags:
+        - FeatureFlags
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Feature flag key
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Feature flag deleted
+        '401':
+          description: Unauthorized (not logged in)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Feature flag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/admin/counters:
     get:
       summary: Get list of available counter types (admin only)
@@ -1946,6 +2209,73 @@ components:
         - timestamp
         - uptime
         - database
+    FeatureFlagType:
+      type: string
+      description: Value type of a flag. Only boolean (on/off) exists today.
+      enum:
+        - boolean
+    FeatureFlag:
+      type: object
+      properties:
+        key:
+          type: string
+          example: "new-checkout"
+        description:
+          type: string
+          example: "Checkout flow v2"
+        type:
+          $ref: '#/components/schemas/FeatureFlagType'
+        enabled:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - key
+        - description
+        - type
+        - enabled
+        - createdAt
+        - updatedAt
+    FeatureFlagCreateRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          description: 1-100 lowercase letters, digits, '-', '_' or '.', starting with a letter or digit.
+          example: "new-checkout"
+        description:
+          type: string
+        type:
+          $ref: '#/components/schemas/FeatureFlagType'
+        enabled:
+          type: boolean
+          default: false
+      required:
+        - key
+    FeatureFlagUpdateRequest:
+      type: object
+      properties:
+        description:
+          type: string
+        enabled:
+          type: boolean
+    FeatureFlagValues:
+      type: object
+      properties:
+        flags:
+          type: object
+          additionalProperties:
+            type: boolean
+          example:
+            new-checkout: true
+            dark-mode: false
+      required:
+        - flags
     Error:
       type: object
       properties:

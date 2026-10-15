@@ -20,6 +20,7 @@ export {
     type TaronjaClientOptions,
 } from './client';
 export { TaronjaGatewayError } from './errors';
+export { useFeatureFlag, useFeatureFlags, type FeatureFlagsState } from './flags';
 export {
     RequireAdmin,
     RequireAuth,
@@ -38,6 +39,7 @@ export type {
     CurrentUser,
     DateRangeQuery,
     ErrorResponse,
+    FeatureFlagValues,
     HealthResponse,
     LogoutResult,
     PaginationQuery,
