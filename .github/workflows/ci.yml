@@ -197,3 +197,22 @@ jobs:
       with:
         version: "~> v2"
         args: check
+
+  # End-to-end tests against the real services in e2e/docker-compose.yml
+  # (Mailpit for email). The gateway runs in-process, so no webapp build is
+  # needed.
+  e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.27'
+        cache: true
+
+    - name: Run e2e tests
+      run: make e2e
