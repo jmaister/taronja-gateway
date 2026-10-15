@@ -72,11 +72,12 @@ func (g *Gateway) configureUserRoutes() error {
 				g.Mux.HandleFunc(routeConfig.From, handler)
 
 				// Also register with trailing slash
+				// unless From already ends in one ("/"): registering it twice panics.
 				patternWithSlash := routeConfig.From
 				if !strings.HasSuffix(patternWithSlash, "/") {
 					patternWithSlash += "/"
+					g.Mux.HandleFunc(patternWithSlash, handler)
 				}
-				g.Mux.HandleFunc(patternWithSlash, handler)
 
 				log.Printf("Registered User Route  : %-25s | From: %-20s | To: %s | Auth: %t (patterns: %s, %s)",
 					routeConfig.Name, routeConfig.From, formatTargets(routeConfig.To), routeConfig.Authenticated,
