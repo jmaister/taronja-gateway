@@ -1,0 +1,14 @@
+{{define "content"}}
+<form method="POST" action="{{.Prefix}}/signup">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" value="{{.Email}}" autocomplete="email" required autofocus>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
+    <span class="muted">At least 8 characters.</span>
+    <input type="hidden" name="redirect" value="{{.Redirect}}">
+    <button type="submit">Create account</button>
+</form>
+<div class="links">
+    Already have an account? <a href="{{.Prefix}}/login{{if .Redirect}}?redirect={{urlquery .Redirect}}{{end}}">Log in</a>
+</div>
+{{end}}

@@ -46,6 +46,10 @@ Features table, shows what is implemented and what is planned.
 | - OAuth2: Facebook¹           | 🚧       |        |
 | - OAuth2: Apple (Sign in with Apple)¹ | 🚧 |        |
 | Authentication: Token         | ✅       | v0.0.9 |
+| Self-service accounts (sign-up, email confirmation, password reset) | ✅ | unreleased |
+| Passwordless login by email link or code | ✅ | unreleased |
+| Several logins per account (account linking) | ✅ | unreleased |
+| Account page: password, sessions, recent activity | ✅ | unreleased |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
@@ -312,6 +316,8 @@ authenticationProviders:
 ```
 
 See [doc/authentication-providers.md](doc/authentication-providers.md) for the OAuth2 setup and callback URLs.
+
+With `notification.email` and `server.url` set, the gateway also handles accounts itself, no external identity provider needed: self-service sign-up with email confirmation (`basic.signup: true`), password reset, passwordless login by emailed link or code (`emailLogin.enabled: true`), linking Google and GitHub to one account, and an account page at `/_/account` where users change their password, see and sign out their sessions, and review recent activity. See [doc/accounts.md](doc/accounts.md).
 
 ### Branding
 

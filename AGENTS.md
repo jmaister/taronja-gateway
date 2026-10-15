@@ -26,6 +26,7 @@ taronja-gateway/
 ├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
+├── accounts/                   # Sign-up, password reset, email login, account linking, sessions, activity log
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -350,6 +351,17 @@ gateway user's WhatsApp number" otherwise), mirror
 `NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
 `telegram.go`.
 
+### `accounts/` — Self-service Accounts
+
+Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) holds the flows, with no HTTP handlers; the pages are in `gateway/account_routes.go` (templates `static/*.html` inside `static/auth_layout.html`, parsed by `parseAuthTemplates`). Emails go through `notification.EmailProvider.SendMessage` (the `accounts.Mailer` interface), not the notification store.
+- **Tables** (migration `0004_accounts`): `auth_tokens` (one-time email tokens; only SHA-256 hashes of the link token, the 6-digit code — salted with the token ID — and the browser binding are stored), `user_identities` (provider + subject per external login; backfilled from `users.provider/provider_id` for Google/GitHub), `auth_events` (activity log).
+- **Sign-up never creates an unverified user**: the pending password hash lives in the verification token and the `users` row is created by `VerifyEmail`. So basic login needs no "unconfirmed" check, and nobody can squat an address.
+- **OAuth login** goes through `ResolveExternalLogin` (in `providers.AuthenticationProvider.Callback`): identity by (provider, subject) first, then same-email auto-link only when `canAutoLink` (provider-verified email, account email confirmed or no password, not the config admin, not previously unlinked — checked via an `identity_unlinked` event), else `ErrLinkRequired` → `/_/login?error=link_required`. This replaced the old 409 "account already exists with a different login method". An unverified provider email no longer creates a user (`?error=email_not_verified`).
+- **Linking** from the account page: POST `/_/auth/{provider}/link` (session + CSRF) sets the `tg_link_intent` cookie to the session's CSRF token; `Callback` sees it and calls `LinkIdentity` for the signed-in user instead of logging in.
+- **CSRF** for account forms: `accounts.CSRFToken(sessionToken)` (a hash of the session token), checked by `gateway.withAccount`.
+- **Emailed links** open a confirm page (`confirm_link.html`) and use the token on POST, so link-prefetching mail scanners cannot burn it.
+- Model IDs for `AuthToken`/`UserIdentity` are set in `BeforeCreate`, not `BeforeSave`: GORM runs `BeforeSave` on `Model(&X{}).Update(...)` too, and an ID set there ends up in the `WHERE`, so the update silently matches nothing.
+
 ### `featureflag/` — Feature Flags
 
 Zero-config on/off switches (`db.FeatureFlag`, migration `0003_feature_flags`; `Type` is always `boolean` today, kept so typed values can be added as new types plus a value column). `featureflag.Service` wraps `repositories.FeatureFlagRepository`, validates keys (`^[a-z0-9][a-z0-9._-]{0,99}$`, safe for a comma-separated header and a URL segment) and caches the key→value map in memory; every write through the service drops the cache (a generation counter stops a load that overlapped a write from re-caching stale values). Built in `deps.NewProduction`/`NewTestWithName` as `Dependencies.FeatureFlags`, handed to `StrictApiServer` with `SetFeatureFlags`.
@@ -509,7 +521,7 @@ webapp/src/
 | `make build` | Regenerate API client (`make gen`), build webapp (`npm run build`), build Go binary with embedded assets; produces `tg` executable |
 | `make run` | Run gateway with sample config (`tg run --config sample/config.yaml`) |
 | `make test` | `go test -cover ./...` — runs all Go unit tests with coverage; uses testify + in-memory DBs |
-| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
+| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, accounts, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
 | `make gen` | Regenerate Go OpenAPI server (`oapi-codegen`) + TS API client (`@hey-api/openapi-ts`) |
 | `make config-docs` | Generate [`doc/CONFIG.md`](./doc/CONFIG.md) from `config/` package comments via `gomarkdoc` |
 | `make cover` | Run tests + open coverage HTML report |

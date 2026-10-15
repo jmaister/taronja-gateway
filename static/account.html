@@ -1,0 +1,106 @@
+{{define "content"}}
+{{with .Account}}
+<div class="row">
+    <div>
+        <strong>{{.Email}}</strong>
+        {{if .EmailConfirmed}}<span class="badge ok">confirmed</span>{{else}}<span class="badge warn">not confirmed</span>{{end}}
+        {{if .Name}}<div class="muted">{{.Name}}</div>{{end}}
+    </div>
+    <div>
+        <a href="/">Back to the app</a> ·
+        <a href="{{$.Prefix}}/logout">Log out</a>
+    </div>
+</div>
+{{if and (not .EmailConfirmed) .CanConfirmEmail}}
+<form method="POST" action="{{$.Prefix}}/account/verify-email">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="secondary">Send me a confirmation email</button>
+</form>
+{{end}}
+
+<h2>Password</h2>
+<form method="POST" action="{{$.Prefix}}/account/password">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{if .HasPassword}}
+    <label for="current_password">Current password</label>
+    <input type="password" id="current_password" name="current_password" autocomplete="current-password" required>
+    {{else}}
+    <p class="muted">You log in without a password. Set one to also log in with your email and password.</p>
+    {{end}}
+    <label for="new_password">New password</label>
+    <input type="password" id="new_password" name="new_password" autocomplete="new-password" minlength="8" required>
+    <span class="muted">At least 8 characters. Other sessions are signed out.</span>
+    <button type="submit">{{if .HasPassword}}Change password{{else}}Set password{{end}}</button>
+</form>
+
+<h2>Linked accounts</h2>
+{{if .Identities}}
+<table>
+    <tr><th>Provider</th><th>Account</th><th>Last used</th><th></th></tr>
+    {{range .Identities}}
+    <tr>
+        <td>{{.ProviderLabel}}</td>
+        <td>{{.Email}}</td>
+        <td class="muted">{{.LastLogin}}</td>
+        <td style="text-align:right">
+            <form method="POST" action="{{$.Prefix}}/account/identities/unlink">
+                <input type="hidden" name="csrf" value="{{$.Account.CSRF}}">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="small">Unlink</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+</table>
+{{else}}
+<p class="muted">No external accounts are linked.</p>
+{{end}}
+{{range .Linkable}}
+<form method="POST" action="{{.LinkPath}}">
+    <input type="hidden" name="csrf" value="{{$.Account.CSRF}}">
+    <button type="submit" class="secondary">Link {{.Label}}</button>
+</form>
+{{end}}
+
+<h2>Sessions</h2>
+<table>
+    <tr><th>Device</th><th>IP / location</th><th>Last active</th><th></th></tr>
+    {{range .Sessions}}
+    <tr>
+        <td>{{.Device}}{{if .Current}} <span class="badge ok">this device</span>{{end}}</td>
+        <td>{{.IP}}{{if .Location}}<div class="muted">{{.Location}}</div>{{end}}</td>
+        <td class="muted">{{.LastActive}}</td>
+        <td style="text-align:right">
+            <form method="POST" action="{{$.Prefix}}/account/sessions/revoke">
+                <input type="hidden" name="csrf" value="{{$.Account.CSRF}}">
+                <input type="hidden" name="session" value="{{.Hash}}">
+                <button type="submit" class="small">{{if .Current}}Log out{{else}}Revoke{{end}}</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+</table>
+{{if gt (len .Sessions) 1}}
+<form method="POST" action="{{$.Prefix}}/account/sessions/revoke-others">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="secondary">Sign out all other sessions</button>
+</form>
+{{end}}
+
+<h2>Recent activity</h2>
+{{if .Events}}
+<table>
+    <tr><th>What</th><th>When</th><th>IP</th></tr>
+    {{range .Events}}
+    <tr>
+        <td>{{.Label}}</td>
+        <td class="muted">{{.When}}</td>
+        <td class="muted">{{.IP}}</td>
+    </tr>
+    {{end}}
+</table>
+{{else}}
+<p class="muted">Nothing yet.</p>
+{{end}}
+{{end}}
+{{end}}

@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/db/repositories"
@@ -60,21 +61,11 @@ func getRedirectURL(r *http.Request) string {
 
 // createSessionAndRedirect creates a session for the user, sets the session cookie, and redirects
 func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.User, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig) {
-	sessionObject, err := sessionStore.NewSession(r, user, user.Provider, gatewayConfig.Management.Session.GetDuration())
+	_, err := StartSession(w, r, user, user.Provider, sessionStore, gatewayConfig)
 	if err != nil {
 		http.Error(w, "Internal Server Error: Could not create session", http.StatusInternalServerError)
 		return
 	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     session.SessionCookieName,
-		Value:    sessionObject.Token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   session.RequestIsSecure(r),
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(gatewayConfig.Management.Session.GetDuration().Seconds()),
-	})
 
 	redirectURL := getRedirectURL(r)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -82,7 +73,7 @@ func createSessionAndRedirect(w http.ResponseWriter, r *http.Request, user *db.U
 
 // RegisterBasicAuth registers basic authentication handlers for login.
 // It now uses repositories.SessionRepository.
-func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo repositories.UserRepository, gatewayConfig *config.GatewayConfig) {
+func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, managementPrefix string, userRepo repositories.UserRepository, gatewayConfig *config.GatewayConfig, accountsService *accounts.Service) {
 	basicLoginPath := managementPrefix + "/auth/basic/login"
 
 	checkSessionAndRedirect := func(w http.ResponseWriter, r *http.Request) bool {
@@ -145,10 +136,12 @@ func RegisterBasicAuth(mux *http.ServeMux, sessionStore session.SessionStore, ma
 			return
 		}
 		if !matches {
+			accountsService.Record(user.ID, db.AuthEventLoginFailed, "basic", accounts.ClientFromRequest(r))
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
+		accountsService.Record(user.ID, db.AuthEventLogin, "basic", accounts.ClientFromRequest(r))
 		createSessionAndRedirect(w, r, user, sessionStore, gatewayConfig)
 	})
 

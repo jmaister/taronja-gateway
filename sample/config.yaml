@@ -94,6 +94,13 @@ routes:
 authenticationProviders:
   basic:
     enabled: true
+    # Let visitors create an account at /_/signup (needs notification.email
+    # and server.url). With email configured, "Forgot your password?" works
+    # automatically.
+    signup: false
+  # Passwordless login: a one-time link and code by email.
+  emailLogin:
+    enabled: false
   google:
     clientId: ${GOOGLE_CLIENT_ID}
     clientSecret: ${GOOGLE_CLIENT_SECRET}
