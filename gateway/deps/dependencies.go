@@ -7,6 +7,7 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/db/repositories"
+	"github.com/jmaister/taronja-gateway/featureflag"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
@@ -29,6 +30,7 @@ type Dependencies struct {
 	// Services
 	SessionStore session.SessionStore
 	TokenService *auth.TokenService
+	FeatureFlags *featureflag.Service
 	// NotificationService is nil until gateway.InitNotifications sets it —
 	// unlike the repositories above, it needs config.NotificationConfig
 	// (SMTP/Telegram credentials), which isn't available yet inside
@@ -86,6 +88,7 @@ func NewProduction() *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
+	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -104,6 +107,7 @@ func NewProduction() *Dependencies {
 		NotificationRepo:  notificationRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
+		FeatureFlags:      featureFlags,
 		// NotificationService is left nil here — gateway.InitNotifications
 		// sets it once config.NotificationConfig is available (see its own
 		// doc comment for why that can't happen inside NewProduction).
@@ -130,6 +134,7 @@ func NewTestWithName(testName string) *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
+	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)
@@ -155,6 +160,7 @@ func NewTestWithName(testName string) *Dependencies {
 		NotificationRepo:    notificationRepo,
 		SessionStore:        sessionStore,
 		TokenService:        tokenService,
+		FeatureFlags:        featureFlags,
 		NotificationService: notificationService,
 		StartTime:           time.Now(),
 	}

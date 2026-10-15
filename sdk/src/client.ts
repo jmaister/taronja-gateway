@@ -8,6 +8,7 @@ import type {
     CurrentUser,
     DateRangeQuery,
     ErrorResponse,
+    FeatureFlagValues,
     HealthResponse,
     LogoutResult,
     PaginationQuery,
@@ -52,6 +53,8 @@ export interface CounterLookupOptions extends RequestOptions, PaginationQuery {
 export interface TaronjaClient {
     getLoginUrl(options?: { redirectTo?: string }): string;
     getHealth(options?: RequestOptions): Promise<HealthResponse>;
+    /** Every feature flag key mapped to its value. Public: no login needed. */
+    getFeatureFlags(options?: RequestOptions): Promise<Record<string, boolean>>;
     getCurrentUser(options?: RequestOptions): Promise<CurrentUser | null>;
     logout(options?: LogoutOptions): Promise<LogoutResult>;
     getOpenApiYaml(options?: RequestOptions): Promise<string>;
@@ -202,6 +205,11 @@ export function createTaronjaClient(options: TaronjaClientOptions = {}): Taronja
 
         getHealth(options) {
             return request<HealthResponse>('/health', { method: 'GET', signal: options?.signal });
+        },
+
+        async getFeatureFlags(options) {
+            const response = await request<FeatureFlagValues>('/flags', { method: 'GET', signal: options?.signal });
+            return response.flags ?? {};
         },
 
         async getCurrentUser(options) {

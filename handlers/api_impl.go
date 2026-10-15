@@ -6,6 +6,7 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/db/repositories"
+	"github.com/jmaister/taronja-gateway/featureflag"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
@@ -33,6 +34,9 @@ type StrictApiServer struct {
 	// returns 503, the same way GetTelegramLinkCode does for an
 	// unconfigured Telegram provider.
 	notificationService *notification.Service
+	// featureFlags backs /flags and /api/feature-flags*. Set with
+	// SetFeatureFlags; nil in tests that don't call those endpoints.
+	featureFlags *featureflag.Service
 	// excludeStaticAssets mirrors the traffic_metrics middleware option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
@@ -61,4 +65,9 @@ var _ api.StrictServerInterface = (*StrictApiServer)(nil)
 // SetExcludeStaticAssets records the traffic_metrics excludeStaticAssets option for the statistics API.
 func (s *StrictApiServer) SetExcludeStaticAssets(exclude bool) {
 	s.excludeStaticAssets = exclude
+}
+
+// SetFeatureFlags sets the feature flag service for the feature flag endpoints.
+func (s *StrictApiServer) SetFeatureFlags(featureFlags *featureflag.Service) {
+	s.featureFlags = featureFlags
 }

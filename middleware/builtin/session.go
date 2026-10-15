@@ -49,6 +49,8 @@ var OperationWithNoSecurity = []string{
 	// parameter itself is the credential (checked inside the handler, not
 	// here). See its OpenAPI description in taronja-gateway-api.yaml.
 	"RespondToNotificationByToken",
+	// GetFeatureFlagValues is read by frontends before anyone logs in.
+	"GetFeatureFlagValues",
 	// Add any other operations that should not require authentication (cookie or token)
 }
 

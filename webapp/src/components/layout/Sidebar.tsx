@@ -29,6 +29,8 @@ const Sidebar = ({
       ]
     },
     { name: 'Counters', icon: '💰', path: '/counters' },
+    { name: 'Feature Flags', icon: '🚩', path: '/feature-flags' },
+    { name: 'Feature Flags', icon: '🚩', path: '/feature-flags' },
     { name: 'Middleware', icon: '🧩', path: '/middleware' },
     { name: 'Notification Channels', icon: '🔔', path: '/notifications/channels' },
     {

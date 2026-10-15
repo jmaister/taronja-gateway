@@ -19,6 +19,7 @@ It serves as an entry point for your API server and your frontend application, h
 - [Authentication on the APIs](#authentication-on-the-apis)
 - [Getting the Current User from the Frontend](#getting-the-current-user-from-the-frontend)
 - [Login and Logout Links from a Web Page](#login-and-logout-links-from-a-web-page)
+- [Feature Flags](#feature-flags)
 
 # Features
 
@@ -59,7 +60,7 @@ Features table, shows what is implemented and what is planned.
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
 | - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       | v0.0.22 |
 | - Persistent block-event history, with a per-country attacker map | ✅ | v1.0.0 |
-| Feature Flags                 | 🚧       |        |
+| Feature Flags (on/off, no config needed) | ✅ | unreleased |
 | Circuit breaker               | 🚧       |        |
 | Caching                       | 🚧       |        |
 | Load Balancing                | ✅       | v1.0.0 |
@@ -411,3 +412,13 @@ A frontend served through the gateway can fetch the current user from the gatewa
 # Login and Logout Links from a Web Page
 
 Plain links to the gateway's login and logout endpoints are enough. See [doc/backend-integration.md](doc/backend-integration.md#login-and-logout-links-from-a-web-page).
+
+# Feature Flags
+
+Feature flags need no configuration: create them in the dashboard (**Feature Flags** page) or the admin API, and flip them at runtime without redeploying. Today a flag is on or off.
+
+- **Frontends** read `GET /_/flags`, which is public (no login): `{"flags": {"new-checkout": true, "dark-mode": false}}`. With the React SDK: `const enabled = useFeatureFlag('new-checkout')`.
+- **Backends** behind proxy routes get the enabled keys in the `X-Feature-Flags` request header, sorted and comma-separated (`dark-mode,new-checkout`). The gateway drops any copy of this header the client sent.
+- **Admins** manage flags with `GET/POST /_/api/feature-flags` and `GET/PATCH/DELETE /_/api/feature-flags/{key}`.
+
+Keys are 1-100 lowercase letters, digits, `-`, `_` or `.`. Since `/_/flags` is public, do not put secrets in flag keys.
