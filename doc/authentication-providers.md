@@ -92,6 +92,15 @@ How it works:
 
 The end-to-end tests run this against a real Zitadel (`e2e/zitadel_test.go`).
 
+## Already logged in
+
+`/_/login` redirects on the server to `?redirect=` (or `/`) when the request
+already has a valid gateway session, so a logged-in user never sees the login
+page. One gateway session covers every route and app behind the same host.
+The login page itself never redirects to an external provider on its own:
+users always choose how to log in. Logout ends the gateway session only; the
+session at the provider stays, as with any other app that uses it.
+
 Microsoft (Entra ID / Azure AD), Facebook, and Apple ("Sign in with
 Apple") setup instructions moved to the `wip/microsoft-apple-facebook-auth`
 branch along with their implementation — untested, coming back to this
