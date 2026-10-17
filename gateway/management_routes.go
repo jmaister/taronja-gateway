@@ -190,13 +190,29 @@ func (g *Gateway) registerLoginRoutes() {
 
 	// Login page handler
 	loginPath := config.ManagementPrefix + "/login"
-	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query()
-		g.renderLoginPage(w, r, http.StatusOK, pageMessages[query.Get("msg")], pageErrors[query.Get("error")])
-	})
+	g.Mux.HandleFunc(loginPath, g.handleLoginPage)
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
 
 	g.registerAccountRoutes()
+}
+
+// handleLoginPage serves /_/login. A user who is already logged in goes
+// straight to ?redirect=; otherwise the login page is shown.
+func (g *Gateway) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	redirect := session.SanitizeRedirectPath(query.Get("redirect"))
+	// Never back to the login page itself, or it would redirect forever.
+	if strings.HasPrefix(redirect, config.ManagementPrefix+"/login") {
+		redirect = "/"
+	}
+
+	result := builtin.ValidateSessionFromRequest(r, g.Dependencies.SessionStore, g.Dependencies.TokenService)
+	if result.IsAuthenticated && result.Session != nil {
+		http.Redirect(w, r, redirect, http.StatusFound)
+		return
+	}
+
+	g.renderLoginPage(w, r, http.StatusOK, pageMessages[query.Get("msg")], pageErrors[query.Get("error")])
 }
 
 // renderLoginPage renders login.html with an optional notice and error.
