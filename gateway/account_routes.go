@@ -17,7 +17,7 @@ import (
 
 // authPageNames are the account page templates, each rendered inside
 // auth_layout.html.
-var authPageNames = []string{"message.html", "account.html"}
+var authPageNames = []string{"message.html", "account.html", "notification.html"}
 
 func parseAuthTemplates(fs embed.FS) (map[string]*template.Template, error) {
 	templates := make(map[string]*template.Template, len(authPageNames))
@@ -45,6 +45,8 @@ type authPage struct {
 	LinkURL   string
 	LinkLabel string
 	Account   *accountView
+	// Notification is the page an SMS/WhatsApp link opens.
+	Notification *notificationView
 }
 
 type accountView struct {

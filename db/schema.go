@@ -342,6 +342,10 @@ const (
 	NotificationChannelWeb      = "web" // not an external delivery — used for RespondedVia when the user answered from the in-app list, not a link/button
 	NotificationChannelEmail    = "email"
 	NotificationChannelTelegram = "telegram"
+	// NotificationChannelSMS and NotificationChannelWhatsApp both deliver to
+	// the user's phone number (UserPhone).
+	NotificationChannelSMS      = "sms"
+	NotificationChannelWhatsApp = "whatsapp"
 	// NotificationChannelResponseWebhook is a NotificationDelivery.Channel
 	// value only — it never appears as a Notification.RespondedVia (the
 	// webhook doesn't answer a notification, it reports that one was
@@ -586,6 +590,47 @@ type AuthEvent struct {
 	CreatedAt time.Time `gorm:"autoCreateTime;index"`
 }
 
+// UserPhone is a user's phone number, in E.164 format ("+34600123456"). It is
+// the address of every phone-based notification channel (SMS, WhatsApp). It
+// lives in its own table rather than a users column: new databases get users
+// from the Go models before the SQL migrations run, so a later ALTER TABLE
+// ADD COLUMN would fail on them.
+type UserPhone struct {
+	UserID string `gorm:"primaryKey;column:user_id;type:varchar(255);not null"`
+	Phone  string `gorm:"type:varchar(20);not null;index"`
+	// VerifiedAt is when the user proved they own the number. Nil for a
+	// number entered by an admin, which is still used for delivery.
+	VerifiedAt *time.Time
+	UpdatedAt  time.Time `gorm:"autoUpdateTime"`
+}
+
+// BeforeSave normalizes VerifiedAt to UTC.
+func (p *UserPhone) BeforeSave(tx *gorm.DB) error {
+	if p.VerifiedAt != nil {
+		verifiedAt := p.VerifiedAt.UTC()
+		p.VerifiedAt = &verifiedAt
+	}
+	return nil
+}
+
+// NotificationLinkToken is the hashed token of a short link to one
+// notification's page (/_/n/<token>), sent on channels with no room for one
+// link per action (SMS, WhatsApp). One per notification and channel attempt,
+// separate from Notification.RespondTokenHash, which the email links use.
+type NotificationLinkToken struct {
+	TokenHash      string    `gorm:"primaryKey;column:token_hash;type:varchar(64);not null"`
+	NotificationID string    `gorm:"type:varchar(255);not null;index"`
+	Channel        string    `gorm:"type:varchar(50);not null"`
+	ExpiresAt      time.Time `gorm:"not null"`
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+}
+
+// BeforeSave normalizes ExpiresAt to UTC.
+func (t *NotificationLinkToken) BeforeSave(tx *gorm.DB) error {
+	t.ExpiresAt = t.ExpiresAt.UTC()
+	return nil
+}
+
 // FeatureFlagTypeBoolean is the only FeatureFlag.Type today: the flag is on or
 // off. Typed values (integer, float, date, ...) are meant to become new type
 // constants plus a value column, without changing how existing flags behave.
@@ -619,4 +664,6 @@ var Models = []interface{}{
 	&FeatureFlag{},
 	&UserIdentity{},
 	&AuthEvent{},
+	&UserPhone{},
+	&NotificationLinkToken{},
 }

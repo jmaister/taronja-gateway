@@ -54,6 +54,22 @@ seconds. First start takes about 40 seconds.
   again reuses it; an unverified Zitadel email is refused; a Zitadel login
   is not linked by itself to an existing account that never confirmed its
   email, and the account owner links it from the account page instead.
+- `phone_channels_test.go`: SMS and WhatsApp against the **real** BulkGate
+  and Meta Graph APIs (there is no emulator for either). With invalid
+  credentials, which needs no account, the gateway must parse each
+  provider's real error and not retry it; `E2E_OFFLINE=1` skips these
+  without internet. Two live tests deliver a real message when credentials
+  are set, and are skipped otherwise:
+  `E2E_BULKGATE_APPLICATION_ID`, `E2E_BULKGATE_APPLICATION_TOKEN` and
+  `E2E_SMS_TO` (BulkGate's 14-day trial is free), and
+  `E2E_WHATSAPP_PHONE_NUMBER_ID`, `E2E_WHATSAPP_ACCESS_TOKEN` and
+  `E2E_WHATSAPP_TO` (a Meta developer app's free test number sends the
+  pre-approved `hello_world` template to up to five allowlisted numbers;
+  `E2E_WHATSAPP_TEMPLATE`, `E2E_WHATSAPP_LANGUAGE` and
+  `E2E_WHATSAPP_BODY_VARIABLES` pick your own template). The exact request
+  payloads are checked against fake servers in
+  `notification/phone_channels_test.go` and through the HTTP API in
+  `gateway/phone_notifications_test.go`.
 - `featureflags_test.go`: flags created and toggled by an admin show up on the
   public `/_/flags` endpoint and in the `X-Feature-Flags` header a proxied
   backend receives, and a client cannot forge that header.

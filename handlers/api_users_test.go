@@ -47,7 +47,7 @@ func TestCreateUser(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
 			Username: "shouldnotexist",
 			Email:    openapi_types.Email("shouldnotexist@example.com"),
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		resp, err := s.CreateUser(sessionContext("regular-user", false), api.CreateUserRequestObject{Body: &userRequest})
 		require.NoError(t, err)
@@ -63,7 +63,7 @@ func TestCreateUser(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
 			Username: "alsoshouldnotexist",
 			Email:    openapi_types.Email("alsoshouldnotexist@example.com"),
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		resp, err := s.CreateUser(context.Background(), api.CreateUserRequestObject{Body: &userRequest})
 		require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestCreateUser(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
 			Username: "testuser",
 			Email:    openapi_types.Email("testuser@example.com"),
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		req := api.CreateUserRequestObject{
 			Body: &userRequest,
@@ -103,7 +103,7 @@ func TestCreateUser(t *testing.T) {
 	t.Run("MissingUsername", func(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
 			Email:    openapi_types.Email("nousername@example.com"),
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		req := api.CreateUserRequestObject{
 			Body: &userRequest,
@@ -114,13 +114,13 @@ func TestCreateUser(t *testing.T) {
 		errResp, ok := resp.(api.CreateUser400JSONResponse)
 		require.True(t, ok, "Expected CreateUser400JSONResponse")
 		assert.Equal(t, http.StatusBadRequest, errResp.Code)
-		assert.Contains(t, errResp.Message, "Username, email, and password are required")
+		assert.Contains(t, errResp.Message, "Username and email are required")
 	})
 
 	t.Run("MissingEmail", func(t *testing.T) {
 		userRequest := api.CreateUserJSONRequestBody{
 			Username: "noemailuser",
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		req := api.CreateUserRequestObject{
 			Body: &userRequest,
@@ -131,7 +131,7 @@ func TestCreateUser(t *testing.T) {
 		errResp, ok := resp.(api.CreateUser400JSONResponse)
 		require.True(t, ok, "Expected CreateUser400JSONResponse")
 		assert.Equal(t, http.StatusBadRequest, errResp.Code)
-		assert.Contains(t, errResp.Message, "Username, email, and password are required")
+		assert.Contains(t, errResp.Message, "Username and email are required")
 	})
 
 	t.Run("MissingPassword", func(t *testing.T) {
@@ -143,12 +143,14 @@ func TestCreateUser(t *testing.T) {
 			Body: &userRequest,
 		}
 
+		// A contact who is only notified: created without a password.
 		resp, err := s.CreateUser(ctx, req)
 		require.NoError(t, err)
-		errResp, ok := resp.(api.CreateUser400JSONResponse)
-		require.True(t, ok, "Expected CreateUser400JSONResponse")
-		assert.Equal(t, http.StatusBadRequest, errResp.Code)
-		assert.Contains(t, errResp.Message, "Username, email, and password are required")
+		created, ok := resp.(api.CreateUser201JSONResponse)
+		require.True(t, ok, "Expected CreateUser201JSONResponse, got %T", resp)
+		stored, err := s.userRepo.FindUserByIdOrUsername(created.Id, "", "")
+		require.NoError(t, err)
+		assert.Empty(t, stored.Password, "no password: cannot log in with one")
 	})
 
 	t.Run("ConflictUsername", func(t *testing.T) {
@@ -156,7 +158,7 @@ func TestCreateUser(t *testing.T) {
 		initialUserRequest := api.CreateUserJSONRequestBody{
 			Username: "conflictuser",
 			Email:    openapi_types.Email("conflict1@example.com"),
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		initialReq := api.CreateUserRequestObject{Body: &initialUserRequest}
 		_, err := s.CreateUser(ctx, initialReq)
@@ -166,7 +168,7 @@ func TestCreateUser(t *testing.T) {
 		conflictUserRequest := api.CreateUserJSONRequestBody{
 			Username: "conflictuser", // Same username
 			Email:    openapi_types.Email("conflict2@example.com"),
-			Password: "password456",
+			Password: strPtr("password456"),
 		}
 		conflictReq := api.CreateUserRequestObject{Body: &conflictUserRequest}
 		resp, err := s.CreateUser(ctx, conflictReq)
@@ -183,7 +185,7 @@ func TestCreateUser(t *testing.T) {
 		initialUserRequest := api.CreateUserJSONRequestBody{
 			Username: "emailconflictuser",
 			Email:    openapi_types.Email("conflict@example.com"), // This email will be conflicted
-			Password: "password123",
+			Password: strPtr("password123"),
 		}
 		initialReq := api.CreateUserRequestObject{Body: &initialUserRequest}
 		_, err := s.CreateUser(ctx, initialReq)
@@ -193,7 +195,7 @@ func TestCreateUser(t *testing.T) {
 		conflictUserRequest := api.CreateUserJSONRequestBody{
 			Username: "anotheruser",
 			Email:    openapi_types.Email("conflict@example.com"), // Same email
-			Password: "password456",
+			Password: strPtr("password456"),
 		}
 		conflictReq := api.CreateUserRequestObject{Body: &conflictUserRequest}
 		resp, err := s.CreateUser(ctx, conflictReq)
@@ -231,9 +233,9 @@ func TestListUsers(t *testing.T) {
 
 	t.Run("WithUsers", func(t *testing.T) {
 		// Create a couple of users
-		user1Req := api.CreateUserJSONRequestBody{Username: "user1", Email: "user1@example.com", Password: "p1"}
+		user1Req := api.CreateUserJSONRequestBody{Username: "user1", Email: "user1@example.com", Password: strPtr("p1")}
 		_, _ = s.CreateUser(ctx, api.CreateUserRequestObject{Body: &user1Req})
-		user2Req := api.CreateUserJSONRequestBody{Username: "user2", Email: "user2@example.com", Password: "p2"}
+		user2Req := api.CreateUserJSONRequestBody{Username: "user2", Email: "user2@example.com", Password: strPtr("p2")}
 		_, _ = s.CreateUser(ctx, api.CreateUserRequestObject{Body: &user2Req})
 
 		req := api.ListUsersRequestObject{}
@@ -258,7 +260,7 @@ func TestGetUserById(t *testing.T) {
 	userRequest := api.CreateUserJSONRequestBody{
 		Username: "getmeuser",
 		Email:    openapi_types.Email("getme@example.com"),
-		Password: "password123",
+		Password: strPtr("password123"),
 	}
 	createReq := api.CreateUserRequestObject{Body: &userRequest}
 	createResp, err := s.CreateUser(ctx, createReq)
@@ -325,3 +327,5 @@ func TestGetUserById(t *testing.T) {
 		assert.True(t, ok, "Expected GetUserById401JSONResponse")
 	})
 }
+
+func strPtr(s string) *string { return &s }

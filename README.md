@@ -55,6 +55,7 @@ Features table, shows what is implemented and what is planned.
 | Response Compression (brotli/zstd/gzip/deflate) | ✅ | v1.0.0 |
 | Distributed Tracing (OpenTelemetry) | ✅ | v1.0.0 |
 | Notifications (in-app, email, Telegram) | ✅ | v1.0.0 |
+| - SMS (BulkGate) and WhatsApp (Meta Cloud API) to the user's phone | ✅ | unreleased |
 | - Multi-recipient, per-user delivery channel, automatic retries | ✅ | v1.0.0 |
 | - Sent/failed/pending status, per notification and per batch | ✅ | v1.0.0 |
 | - Outbound webhook on user response                | ✅ | v1.0.0 |
@@ -357,6 +358,18 @@ notification:
   telegram:
     enabled: true
     botToken: ${TELEGRAM_BOT_TOKEN}   # from @BotFather
+
+  sms:                                # to the user's phone number, via BulkGate
+    enabled: true
+    bulkgate:
+      applicationId: ${BULKGATE_APPLICATION_ID}
+      applicationToken: ${BULKGATE_APPLICATION_TOKEN}
+
+  whatsapp:                           # via Meta's Cloud API, as one approved template
+    enabled: true
+    phoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID}
+    accessToken: ${WHATSAPP_ACCESS_TOKEN}
+    template: { name: taronja_notification, language: es, linkButton: true }
 ```
 
 ## Environment Variables

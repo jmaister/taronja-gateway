@@ -28,6 +28,7 @@ type Dependencies struct {
 	NotificationRepo  repositories.NotificationRepository
 	UserIdentityRepo  repositories.UserIdentityRepository
 	AuthEventRepo     repositories.AuthEventRepository
+	UserPhoneRepo     repositories.UserPhoneRepository
 
 	// Services
 	SessionStore session.SessionStore
@@ -92,6 +93,7 @@ func NewProduction() *Dependencies {
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
 	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
 	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
+	userPhoneRepo := repositories.NewUserPhoneRepositoryDB(gormDB)
 	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 24 hour duration
@@ -111,6 +113,7 @@ func NewProduction() *Dependencies {
 		NotificationRepo:  notificationRepo,
 		UserIdentityRepo:  userIdentityRepo,
 		AuthEventRepo:     authEventRepo,
+		UserPhoneRepo:     userPhoneRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		FeatureFlags:      featureFlags,
@@ -142,6 +145,7 @@ func NewTestWithName(testName string) *Dependencies {
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
 	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
 	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
+	userPhoneRepo := repositories.NewUserPhoneRepositoryDB(gormDB)
 	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 1 hour duration for tests
@@ -156,6 +160,7 @@ func NewTestWithName(testName string) *Dependencies {
 	// (see notification.NewService's nil-provider-map-entry behavior for
 	// an unconfigured channel).
 	notificationService := notification.NewService(config.NotificationConfig{}, notificationRepo, userRepo, "")
+	notificationService.ConfigurePhoneChannels(userPhoneRepo, "")
 
 	return &Dependencies{
 		DB:                  gormDB,
@@ -168,6 +173,7 @@ func NewTestWithName(testName string) *Dependencies {
 		NotificationRepo:    notificationRepo,
 		UserIdentityRepo:    userIdentityRepo,
 		AuthEventRepo:       authEventRepo,
+		UserPhoneRepo:       userPhoneRepo,
 		SessionStore:        sessionStore,
 		TokenService:        tokenService,
 		FeatureFlags:        featureFlags,
