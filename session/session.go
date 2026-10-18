@@ -42,6 +42,10 @@ type TokenService interface {
 type SessionStoreDB struct {
 	Repo            repositories.SessionRepository
 	SessionDuration time.Duration
+	// RenewFor, when set, makes sessions sliding: a session in use is renewed
+	// to now+RenewFor (at most once an hour), so only that much inactivity
+	// logs the user out. The gateway sets it to management.session's duration.
+	RenewFor time.Duration
 }
 
 // NewSessionStore creates a new SessionStoreDB instance with the provided session repository.
@@ -69,6 +73,12 @@ func (s *SessionStoreDB) ValidateSession(r *http.Request) (*db.Session, bool) {
 		return nil, false
 	}
 	sessionData.LastActivity = now
+	if needsRenewal(sessionData.ValidUntil, now, s.RenewFor) {
+		sessionData.ValidUntil = now.Add(s.RenewFor)
+		if renewal := renewalFrom(r.Context()); renewal != nil {
+			renewal.set(sessionData.Token, s.RenewFor)
+		}
+	}
 	_ = s.Repo.UpdateSession(sessionData)
 	return sessionData, true
 }

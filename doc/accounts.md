@@ -46,7 +46,9 @@ Users created before this feature keep logging in as before: migration
   password is required if there is one; other sessions are signed out.
 - Linked accounts, with Unlink and "Link ..." buttons.
 - Open sessions (browser, OS, IP, location, last activity), each with a revoke
-  button, and "Sign out all other sessions".
+  button, and "Sign out all other sessions". Sessions renew while used and
+  end after `management.session.durationSeconds` (15 days by default)
+  without use, or when revoked here, or on a password change.
 - Recent activity: logins (with the method), failed password logins, account
   creation, password changes, linking, revoked sessions.
 
