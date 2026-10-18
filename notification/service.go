@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,6 +100,13 @@ type Service struct {
 	// it just can't offer clickable email actions (see deliver).
 	respondBaseURL string
 
+	// phones resolves the recipient of phone channels (SMS, WhatsApp), and
+	// linkBaseURL is where notification page links point
+	// ("https://gateway.example.com/_/n/"). Both set by ConfigurePhoneChannels;
+	// without them phone deliveries are skipped and sent without a link.
+	phones      repositories.UserPhoneRepository
+	linkBaseURL string
+
 	// pendingDeliveries tracks the background delivery goroutines. Production code
 	// never waits on it; tests use waitForPendingDeliveries.
 	pendingDeliveries sync.WaitGroup
@@ -125,6 +133,12 @@ func NewService(cfg config.NotificationConfig, repo repositories.NotificationRep
 	}
 	if webhook := NewResponseWebhookProvider(cfg.ResponseWebhook); webhook != nil {
 		providers[webhook.Channel()] = webhook
+	}
+	if sms := NewSMSProvider(cfg.SMS); sms != nil {
+		providers[sms.Channel()] = sms
+	}
+	if whatsapp := NewWhatsAppProvider(cfg.WhatsApp); whatsapp != nil {
+		providers[whatsapp.Channel()] = whatsapp
 	}
 
 	return &Service{
@@ -267,6 +281,16 @@ func (s *Service) GetPreferredChannel(userID string) (string, error) {
 	return s.repo.GetPreferredChannel(userID)
 }
 
+// ConfigurePhoneChannels gives the service the phone numbers phone channels
+// deliver to, and the gateway's public URL for notification page links. Call
+// it once, before any delivery.
+func (s *Service) ConfigurePhoneChannels(phones repositories.UserPhoneRepository, publicURL string) {
+	s.phones = phones
+	if publicURL != "" {
+		s.linkBaseURL = strings.TrimSuffix(publicURL, "/") + NotificationPagePath
+	}
+}
+
 // deliver attempts the first delivery of n on channel and always records the
 // outcome, including skipped. It records a pending row before calling the provider.
 // Failures are picked up later by RetryFailedDeliveries.
@@ -289,7 +313,7 @@ func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Act
 	s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusPending, "", "", firstAttempt)
 	externalRef, err := provider.Send(ctx, req)
 	if err != nil {
-		s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusFailed, err.Error(), "", firstAttempt)
+		s.recordFailure(n.ID, channel, err, firstAttempt)
 		return
 	}
 	s.recordDelivery(n.ID, channel, db.NotificationDeliveryStatusSent, "", externalRef, firstAttempt)
@@ -299,6 +323,25 @@ func (s *Service) deliver(ctx context.Context, n *db.Notification, actions []Act
 // a fresh respond token every attempt, since only its hash is persisted.
 func (s *Service) buildSendRequest(n *db.Notification, actions []Action, channel, recipient string) SendRequest {
 	req := SendRequest{Notification: n, Actions: actions, Recipient: recipient}
+	if p, ok := s.providers[channel].(LinkProvider); ok && s.linkBaseURL != "" && p.WantsLink(n, actions) {
+		// Without a link the provider sends what it can (SMS) or refuses
+		// (a WhatsApp template whose button needs it).
+		token, hash, err := generateOpaqueToken(linkTokenBytes)
+		if err == nil {
+			err = s.repo.CreateLinkToken(&db.NotificationLinkToken{
+				TokenHash:      hash,
+				NotificationID: n.ID,
+				Channel:        channel,
+				ExpiresAt:      time.Now().Add(respondTokenTTL),
+			})
+		}
+		if err == nil {
+			req.LinkToken = token
+			req.LinkURL = s.linkBaseURL + token
+		} else {
+			log.Printf("notification: could not create a page link for %s on %s: %v", n.ID, channel, err)
+		}
+	}
 	if len(actions) > 0 && channel == db.NotificationChannelEmail {
 		// A failure generating/storing the token isn't fatal to delivery —
 		// it just falls back to a plain, unanswerable email rather than
@@ -316,6 +359,22 @@ func (s *Service) buildSendRequest(n *db.Notification, actions []Action, channel
 
 // recordDelivery persists one attempt. A failed attempt with retries left also
 // sets NextRetryAt, the only place it is set.
+// recordFailure records a failed attempt: retried on the usual schedule, or
+// never again when the provider says retrying cannot help (PermanentError).
+func (s *Service) recordFailure(notificationID, channel string, err error, attemptNumber int) {
+	if !IsPermanent(err) {
+		s.recordDelivery(notificationID, channel, db.NotificationDeliveryStatusFailed, err.Error(), "", attemptNumber)
+		return
+	}
+	_ = s.repo.CreateDelivery(&db.NotificationDelivery{
+		NotificationID: notificationID,
+		Channel:        channel,
+		Status:         db.NotificationDeliveryStatusFailed,
+		Error:          err.Error() + " (not retried)",
+		AttemptNumber:  attemptNumber,
+	})
+}
+
 func (s *Service) recordDelivery(notificationID, channel, status, errMsg, externalRef string, attemptNumber int) {
 	delivery := &db.NotificationDelivery{
 		NotificationID: notificationID,
@@ -389,7 +448,7 @@ func (s *Service) retryOne(ctx context.Context, delivery *db.NotificationDeliver
 	s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusPending, "", "", nextAttempt)
 	externalRef, err := provider.Send(ctx, req)
 	if err != nil {
-		s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusFailed, err.Error(), "", nextAttempt)
+		s.recordFailure(n.ID, delivery.Channel, err, nextAttempt)
 		return
 	}
 	s.recordDelivery(n.ID, delivery.Channel, db.NotificationDeliveryStatusSent, "", externalRef, nextAttempt)
@@ -421,6 +480,16 @@ func (s *Service) RunRetryWorker(ctx context.Context) {
 // Adding a channel whose recipient isn't yet one of these two kinds of
 // identity means adding a case here, nowhere else.
 func (s *Service) resolveRecipient(userID, channel string) (string, error) {
+	if p, ok := s.providers[channel].(PhoneAddressedProvider); ok && p.UsesPhoneNumber() {
+		if s.phones == nil {
+			return "", fmt.Errorf("no phone numbers are available to this gateway")
+		}
+		phone, err := s.phones.Get(userID)
+		if err != nil || phone.Phone == "" {
+			return "", fmt.Errorf("no phone number on file for this user")
+		}
+		return phone.Phone, nil
+	}
 	switch channel {
 	case db.NotificationChannelEmail:
 		user, err := s.userRepo.FindUserByIdOrUsername(userID, "", "")
@@ -656,6 +725,49 @@ func (s *Service) RespondViaToken(ctx context.Context, rawToken, actionID string
 	return s.recordValidatedResponse(ctx, n, actionID, db.NotificationChannelEmail)
 }
 
+// NotificationPage returns the notification behind a page link token (from
+// an SMS or WhatsApp message) and its actions, for the page to show.
+func (s *Service) NotificationPage(rawToken string) (*db.Notification, []Action, error) {
+	n, _, err := s.notificationForLink(rawToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	actions, err := DecodeActions(n.Actions)
+	if err != nil {
+		return nil, nil, err
+	}
+	return n, actions, nil
+}
+
+// RespondViaLink records an answer given on a notification page, as coming
+// from the channel the link was sent on. Like the email links, the token is
+// the credential.
+func (s *Service) RespondViaLink(ctx context.Context, rawToken, actionID string) (label string, err error) {
+	n, channel, err := s.notificationForLink(rawToken)
+	if err != nil {
+		return "", err
+	}
+	return s.recordValidatedResponse(ctx, n, actionID, channel)
+}
+
+func (s *Service) notificationForLink(rawToken string) (*db.Notification, string, error) {
+	if rawToken == "" {
+		return nil, "", ErrNotFound
+	}
+	token, err := s.repo.FindLinkToken(hashToken(rawToken))
+	if err != nil {
+		return nil, "", ErrNotFound
+	}
+	if time.Now().UTC().After(token.ExpiresAt) {
+		return nil, "", ErrTokenExpired
+	}
+	n, err := s.repo.GetNotification(token.NotificationID)
+	if err != nil {
+		return nil, "", ErrNotFound
+	}
+	return n, token.Channel, nil
+}
+
 // RespondViaTelegram records a response from a Telegram inline-keyboard
 // tap. chatID is whichever chat the tap came from — proof of identity here
 // is that chatID resolves (via NotificationChannelLink) to the same user
@@ -807,6 +919,19 @@ func (s *Service) ChannelStatuses(userID string) ([]ChannelStatus, error) {
 	statuses := make([]ChannelStatus, 0, len(s.providers))
 	for channel, p := range s.providers {
 		if channel == db.NotificationChannelResponseWebhook {
+			continue
+		}
+		if phoneProvider, ok := p.(PhoneAddressedProvider); ok && phoneProvider.UsesPhoneNumber() {
+			cs := ChannelStatus{Channel: channel, Status: ChannelStatusNotConnected}
+			if s.phones != nil {
+				phone, err := s.phones.Get(userID)
+				if err == nil && phone.Phone != "" {
+					cs.Status = ChannelStatusConnected
+					t := phone.UpdatedAt
+					cs.LinkedAt = &t
+				}
+			}
+			statuses = append(statuses, cs)
 			continue
 		}
 		if connectable, ok := p.(ConnectableProvider); ok && connectable.RequiresConnection() {

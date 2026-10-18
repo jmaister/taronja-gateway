@@ -11,6 +11,7 @@ import (
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/encryption"
+	"github.com/jmaister/taronja-gateway/notification"
 	openapi_types "github.com/oapi-codegen/runtime/types" // Added for openapi_types.Email
 	"gorm.io/gorm"                                        // Added for gorm.ErrRecordNotFound
 )
@@ -69,6 +70,28 @@ func dbUserToAPIUserResponse(dbUser *db.User) api.UserResponse {
 	}
 }
 
+// withPhone adds a stored phone number to resp.
+func withPhone(resp *api.UserResponse, phone *db.UserPhone) {
+	if phone == nil || phone.Phone == "" {
+		return
+	}
+	resp.Phone = &phone.Phone
+	verified := phone.VerifiedAt != nil
+	resp.PhoneVerified = &verified
+}
+
+// userResponse is dbUserToAPIUserResponse plus the user's phone number.
+func (s *StrictApiServer) userResponse(dbUser *db.User) api.UserResponse {
+	resp := dbUserToAPIUserResponse(dbUser)
+	if s.userPhones != nil {
+		phone, err := s.userPhones.Get(dbUser.ID)
+		if err == nil {
+			withPhone(&resp, phone)
+		}
+	}
+	return resp
+}
+
 // CreateUser handles the HTTP request for creating a new user.
 // It implements the createUser operation defined in the OpenAPI specification.
 func (s *StrictApiServer) CreateUser(ctx context.Context, request api.CreateUserRequestObject) (api.CreateUserResponseObject, error) {
@@ -81,12 +104,20 @@ func (s *StrictApiServer) CreateUser(ctx context.Context, request api.CreateUser
 	}
 
 	// Validate input (basic check, OpenAPI spec should enforce most of this)
-	if request.Body.Username == "" || string(request.Body.Email) == "" || request.Body.Password == "" {
+	if request.Body.Username == "" || string(request.Body.Email) == "" {
 		log.Printf("CreateUser: Missing required fields.")
 		return api.CreateUser400JSONResponse{
 			Code:    http.StatusBadRequest,
-			Message: "Username, email, and password are required",
+			Message: "Username and email are required",
 		}, nil
+	}
+	var phone string
+	if request.Body.Phone != nil && *request.Body.Phone != "" {
+		normalized, err := notification.NormalizePhone(*request.Body.Phone)
+		if err != nil {
+			return api.CreateUser400JSONResponse{Code: http.StatusBadRequest, Message: err.Error()}, nil
+		}
+		phone = normalized
 	}
 
 	// Check if user already exists by username or email
@@ -113,14 +144,18 @@ func (s *StrictApiServer) CreateUser(ctx context.Context, request api.CreateUser
 		}, nil
 	}
 
-	// Hash the password
-	hashedPassword, err := encryption.GeneratePasswordHash(request.Body.Password)
-	if err != nil {
-		log.Printf("CreateUser: Error hashing password for user '%s': %v", request.Body.Username, err)
-		return api.CreateUser500JSONResponse{
-			Code:    http.StatusInternalServerError,
-			Message: "Internal Server Error",
-		}, nil
+	// Hash the password. A user without one (a contact who is only
+	// notified) cannot log in with a password.
+	var hashedPassword string
+	if request.Body.Password != nil && *request.Body.Password != "" {
+		hashedPassword, err = encryption.GeneratePasswordHash(*request.Body.Password)
+		if err != nil {
+			log.Printf("CreateUser: Error hashing password for user '%s': %v", request.Body.Username, err)
+			return api.CreateUser500JSONResponse{
+				Code:    http.StatusInternalServerError,
+				Message: "Internal Server Error",
+			}, nil
+		}
 	}
 
 	// Create the user
@@ -140,9 +175,19 @@ func (s *StrictApiServer) CreateUser(ctx context.Context, request api.CreateUser
 		}, nil
 	}
 
+	if phone != "" {
+		if s.userPhones == nil {
+			return api.CreateUser500JSONResponse{Code: http.StatusInternalServerError, Message: "Phone numbers are not available"}, nil
+		}
+		err = s.userPhones.Set(newUser.ID, phone, nil)
+		if err != nil {
+			log.Printf("CreateUser: Error storing phone for user '%s': %v", newUser.ID, err)
+			return api.CreateUser500JSONResponse{Code: http.StatusInternalServerError, Message: "Internal Server Error"}, nil
+		}
+	}
+
 	log.Printf("CreateUser: Successfully created user: %s, email: %s, ID: %s", newUser.Username, newUser.Email, newUser.ID)
-	apiUserResponse := dbUserToAPIUserResponse(newUser)
-	return api.CreateUser201JSONResponse(apiUserResponse), nil
+	return api.CreateUser201JSONResponse(s.userResponse(newUser)), nil
 }
 
 // ListUsers handles the HTTP request for listing all users.
@@ -166,9 +211,25 @@ func (s *StrictApiServer) ListUsers(ctx context.Context, request api.ListUsersRe
 		}, nil
 	}
 
+	phones := map[string]db.UserPhone{}
+	if s.userPhones != nil {
+		ids := make([]string, 0, len(dbUsers))
+		for _, u := range dbUsers {
+			ids = append(ids, u.ID)
+		}
+		phones, err = s.userPhones.GetMany(ids)
+		if err != nil {
+			log.Printf("ListUsers: Error fetching phone numbers: %v", err)
+			return api.ListUsers500JSONResponse{Code: http.StatusInternalServerError, Message: "Internal Server Error while fetching user list"}, nil
+		}
+	}
 	apiUsers := make([]api.UserResponse, 0, len(dbUsers))
 	for _, dbUser := range dbUsers { // Corrected: Iterate directly over the slice of pointers
-		apiUsers = append(apiUsers, dbUserToAPIUserResponse(dbUser))
+		resp := dbUserToAPIUserResponse(dbUser)
+		if phone, ok := phones[dbUser.ID]; ok {
+			withPhone(&resp, &phone)
+		}
+		apiUsers = append(apiUsers, resp)
 	}
 
 	log.Printf("ListUsers: Successfully retrieved %d users", len(apiUsers))
@@ -221,7 +282,59 @@ func (s *StrictApiServer) GetUserById(ctx context.Context, request api.GetUserBy
 		}, nil
 	}
 
-	apiUserResponse := dbUserToAPIUserResponse(dbUser)
+	apiUserResponse := s.userResponse(dbUser)
 	log.Printf("GetUserById: Successfully retrieved user with ID '%s'", request.UserId)
 	return api.GetUserById200JSONResponse(apiUserResponse), nil
+}
+
+// UpdateUser handles PATCH /api/users/{userId}: the name and phone number.
+func (s *StrictApiServer) UpdateUser(ctx context.Context, request api.UpdateUserRequestObject) (api.UpdateUserResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		return api.UpdateUser401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized: Admin access required"}, nil
+	}
+	user, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", "")
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return api.UpdateUser404JSONResponse{Code: http.StatusNotFound, Message: "User not found"}, nil
+		}
+		log.Printf("UpdateUser: Error finding user %s: %v", request.UserId, err)
+		return api.UpdateUser500JSONResponse{Code: http.StatusInternalServerError, Message: "Internal Server Error"}, nil
+	}
+	if request.Body == nil {
+		return api.UpdateUser200JSONResponse(s.userResponse(user)), nil
+	}
+
+	if request.Body.Phone != nil {
+		if s.userPhones == nil {
+			return api.UpdateUser500JSONResponse{Code: http.StatusInternalServerError, Message: "Phone numbers are not available"}, nil
+		}
+		if *request.Body.Phone == "" {
+			err = s.userPhones.Delete(user.ID)
+		} else {
+			phone, normErr := notification.NormalizePhone(*request.Body.Phone)
+			if normErr != nil {
+				return api.UpdateUser400JSONResponse{Code: http.StatusBadRequest, Message: normErr.Error()}, nil
+			}
+			// A changed number is no longer the one the user may have proven.
+			var verifiedAt *time.Time
+			current, getErr := s.userPhones.Get(user.ID)
+			if getErr == nil && current.Phone == phone {
+				verifiedAt = current.VerifiedAt
+			}
+			err = s.userPhones.Set(user.ID, phone, verifiedAt)
+		}
+		if err != nil {
+			log.Printf("UpdateUser: Error storing phone of %s: %v", user.ID, err)
+			return api.UpdateUser500JSONResponse{Code: http.StatusInternalServerError, Message: "Internal Server Error"}, nil
+		}
+	}
+	if request.Body.Name != nil {
+		user.Name = *request.Body.Name
+		err = s.userRepo.UpdateUser(user)
+		if err != nil {
+			log.Printf("UpdateUser: Error updating %s: %v", user.ID, err)
+			return api.UpdateUser500JSONResponse{Code: http.StatusInternalServerError, Message: "Internal Server Error"}, nil
+		}
+	}
+	return api.UpdateUser200JSONResponse(s.userResponse(user)), nil
 }

@@ -1,0 +1,17 @@
+{{define "content"}}
+{{with .Notification}}
+<p style="white-space: pre-line">{{.Body}}</p>
+{{if .URL}}<p><a href="{{.URL}}" rel="noopener noreferrer">{{.URL}}</a></p>{{end}}
+{{if .Answered}}
+<div class="notice" role="status">Answered: <strong>{{.Answered}}</strong></div>
+{{else}}
+{{range .Actions}}
+{{/* POST, not a link: answering needs a press, so link scanners cannot answer. */}}
+<form method="POST" action="{{$.Prefix}}/n/{{$.Token}}">
+    <input type="hidden" name="action" value="{{.ID}}">
+    <button type="submit">{{.Label}}</button>
+</form>
+{{end}}
+{{end}}
+{{end}}
+{{end}}

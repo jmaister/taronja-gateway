@@ -25,6 +25,7 @@ func InitNotifications(ctx context.Context, cfg config.NotificationConfig, serve
 	}
 
 	service := notification.NewService(cfg, d.NotificationRepo, d.UserRepo, respondBaseURL)
+	service.ConfigurePhoneChannels(d.UserPhoneRepo, serverCfg.URL)
 	d.NotificationService = service
 
 	workerCtx, cancel := context.WithCancel(ctx)

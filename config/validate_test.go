@@ -121,3 +121,32 @@ func TestValidate_OIDCProviders(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_PhoneChannels(t *testing.T) {
+	bulkgate := BulkGateConfig{ApplicationID: "app", ApplicationToken: "tok"}
+	template := WhatsAppTemplateConfig{Name: "taronja_notification", Language: "es"}
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"sms ok":                 {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, BulkGate: bulkgate}}}, ""},
+		"sms without token":      {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, BulkGate: BulkGateConfig{ApplicationID: "app"}}}}, "applicationToken"},
+		"sms unknown backend":    {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, Backend: "twilio", BulkGate: bulkgate}}}, "not supported"},
+		"sms too many segments":  {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, BulkGate: bulkgate, MaxSegments: 5}}}, "maxSegments"},
+		"sms disabled is unused": {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Backend: "twilio"}}}, ""},
+		"whatsapp ok":            {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", AccessToken: "t", Template: template}}}, ""},
+		"whatsapp no template":   {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", AccessToken: "t"}}}, "approved templates"},
+		"whatsapp no token":      {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", Template: template}}}, "accessToken"},
+		"whatsapp button no url": {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", AccessToken: "t", Template: WhatsAppTemplateConfig{Name: "n", Language: "es", LinkButton: true}}}}, "requires server.url"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}

@@ -254,7 +254,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  
+    patch:
+      summary: Update a user's name or phone number (admin only)
+      description: >
+        Only the fields present in the body change. The phone number is the
+        address of the phone channels (sms, whatsapp) and must be E.164
+        ("+34600123456"); an empty string removes it. A number set here is
+        used for delivery but not marked verified.
+      operationId: updateUser
+      tags:
+        - User
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: The updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Invalid phone number
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/users/{userId}/notifications/channels/status:
     get:
       summary: Get a user's status on every configured notification channel (admin only)
@@ -325,6 +382,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationPreference'
+        '401':
+          description: Unauthorized (not logged in or not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Set (or clear) a user's preferred notification channel (admin only)
+      description: >
+        The admin counterpart of setNotificationPreference, for users who
+        never log in (e.g. contacts notified only by SMS). The channel must
+        be one of email, telegram, sms or whatsapp, or empty to clear it; a
+        channel this gateway has not configured is recorded as skipped at
+        delivery time.
+      operationId: setUserNotificationPreference
+      tags:
+        - Notification
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID of the user
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreference'
+      responses:
+        '200':
+          description: The updated preference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreference'
+        '400':
+          description: Unknown channel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized (not logged in or not admin)
           content:
@@ -2301,11 +2410,28 @@ components:
         password:
           type: string
           format: password
+          description: >
+            Optional. Without one, the user cannot log in with a password
+            (they still can by email login, a password reset or OAuth),
+            e.g. a contact who is only notified.
           example: "securepassword123"
+        phone:
+          type: string
+          description: Phone number in E.164 format, used by the sms and whatsapp channels. Optional.
+          example: "+34600123456"
       required:
         - username
         - email
-        - password
+    UserUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Ana García"
+        phone:
+          type: string
+          description: Phone number in E.164 format; an empty string removes it.
+          example: "+34600123456"
     UserResponse:
       type: object
       required:
@@ -2334,6 +2460,14 @@ components:
         provider:
           type: string
           nullable: true
+        phone:
+          type: string
+          nullable: true
+          description: Phone number in E.164 format, if any.
+          example: "+34600123456"
+        phoneVerified:
+          type: boolean
+          description: Whether the user proved they own the phone number. False for a number an admin set.
         createdAt:
           type: string
           format: date-time
@@ -3390,7 +3524,7 @@ components:
         preferredChannel:
           type: string
           description: >
-            The channel this user prefers, e.g. "email" or "telegram". Empty
+            The channel this user prefers: "email", "telegram", "sms" or "whatsapp". Empty
             (or omitted, on the PUT request) means no preference — every
             configured channel is used instead.
           example: "telegram"

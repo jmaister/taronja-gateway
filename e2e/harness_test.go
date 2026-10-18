@@ -222,3 +222,7 @@ func mustJSON(t *testing.T, body []byte) map[string]any {
 	require.NoError(t, json.Unmarshal(body, &out))
 	return out
 }
+
+func uniqueEmail(name string) string {
+	return fmt.Sprintf("%s-%d@example.com", name, time.Now().UnixNano())
+}

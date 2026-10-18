@@ -37,6 +37,9 @@ type StrictApiServer struct {
 	// featureFlags backs /flags and /api/feature-flags*. Set with
 	// SetFeatureFlags; nil in tests that don't call those endpoints.
 	featureFlags *featureflag.Service
+	// userPhones stores phone numbers (the sms/whatsapp address). Set with
+	// SetUserPhones; nil in tests that don't use phones.
+	userPhones repositories.UserPhoneRepository
 	// excludeStaticAssets mirrors the traffic_metrics middleware option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
@@ -70,4 +73,9 @@ func (s *StrictApiServer) SetExcludeStaticAssets(exclude bool) {
 // SetFeatureFlags sets the feature flag service for the feature flag endpoints.
 func (s *StrictApiServer) SetFeatureFlags(featureFlags *featureflag.Service) {
 	s.featureFlags = featureFlags
+}
+
+// SetUserPhones sets the phone number store the user endpoints read and write.
+func (s *StrictApiServer) SetUserPhones(userPhones repositories.UserPhoneRepository) {
+	s.userPhones = userPhones
 }
