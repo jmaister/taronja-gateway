@@ -184,7 +184,7 @@ server:
 
 management:
   session:
-    durationSeconds: 86400  # Session duration in seconds (24 hours)
+    durationSeconds: 1296000  # Inactivity before logout, in seconds (15 days, the default); renewed on use
   admin:
     enabled: true
     username: admin
@@ -249,7 +249,7 @@ Defines the gateway server settings.
 
 Controls the admin dashboard and user sessions. The gateway's own endpoints always live under `/_` (login `/_/login`, dashboard `/_/admin/`, API `/_/api/`), so avoid using `/_` in your routes.
 
-- `session.durationSeconds`: Session timeout in seconds (e.g., 86400 = 24 hours)
+- `session.durationSeconds`: How long a session survives without use, in seconds. Default: 1296000 (15 days). Sessions are sliding: each use renews them to now + this (at most once an hour) and the cookie is re-sent, so active users stay logged in
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)

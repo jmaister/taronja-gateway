@@ -59,6 +59,12 @@ import "github.com/jmaister/taronja-gateway/config"
 const CurrentConfigVersion = "1.0"
 ```
 
+<a name="DefaultSessionDurationSeconds"></a>DefaultSessionDurationSeconds is the session lifetime when the config sets none: 15 days.
+
+```go
+const DefaultSessionDurationSeconds = 15 * 24 * 60 * 60
+```
+
 <a name="ManagementPrefix"></a>ManagementPrefix is the fixed URL prefix of the gateway's own endpoints: login, dashboard \(/\_/admin/\), API \(/\_/api/\) and static assets.
 
 ```go
@@ -194,7 +200,7 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L295-L306>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L299-L310>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -214,7 +220,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L309>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L313>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -223,7 +229,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L474>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L478>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -232,7 +238,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GatewayConfig.PasswordResetEnabled"></a>
-### func \(\*GatewayConfig\) [PasswordResetEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L486>)
+### func \(\*GatewayConfig\) [PasswordResetEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L490>)
 
 ```go
 func (c *GatewayConfig) PasswordResetEnabled() bool
@@ -241,7 +247,7 @@ func (c *GatewayConfig) PasswordResetEnabled() bool
 PasswordResetEnabled reports whether users can reset a forgotten password by email: password login is on, there is an SMTP server to send the link, and server.url to build it.
 
 <a name="GatewayConfig.Validate"></a>
-### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L411>)
+### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L415>)
 
 ```go
 func (c *GatewayConfig) Validate() error
@@ -250,7 +256,7 @@ func (c *GatewayConfig) Validate() error
 Validate checks the settings that do not depend on the filesystem or on middleware internals. LoadConfig runs it, and so do \`tg validate\` and gateway startup for configs built in code \(where port 0 means an OS\-assigned port, so the port is only required by LoadConfig\).
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L288-L290>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L292-L294>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -261,7 +267,7 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L281-L284>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L285-L288>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
@@ -326,7 +332,7 @@ type NotificationConfig struct {
 ```
 
 <a name="OIDCLoginButton"></a>
-## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L518-L521>)
+## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L522-L525>)
 
 OIDCLoginButton is one OIDC provider's button on the login page.
 
@@ -415,7 +421,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L563>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L567>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -424,7 +430,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.IsStatic"></a>
-### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L447>)
+### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L451>)
 
 ```go
 func (r RouteConfig) IsStatic() bool
@@ -433,7 +439,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L571>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L575>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -490,12 +496,12 @@ SessionConfig defines session lifetime for authenticated users.
 
 ```go
 type SessionConfig struct {
-    DurationSeconds int `yaml:"durationSeconds"` // Session lifetime in seconds. Default: 86400 (24 hours). After this time, users must log in again.
+    DurationSeconds int `yaml:"durationSeconds"` // How long a session lasts without use, in seconds. Each use renews it to now + this (at most once an hour), so only this much inactivity logs the user out. Default: 1296000 (15 days).
 }
 ```
 
 <a name="SessionConfig.GetDuration"></a>
-### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L275>)
+### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L279>)
 
 ```go
 func (s *SessionConfig) GetDuration() time.Duration

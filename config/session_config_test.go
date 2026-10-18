@@ -1,23 +1,24 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionDurationConfiguration(t *testing.T) {
-	t.Run("default session duration is 24 hours", func(t *testing.T) {
-		config := &GatewayConfig{}
+	t.Run("default session duration is 15 days", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("version: \"1.0\"\nname: t\nserver:\n  port: 8080\n"), 0o600))
+		config, err := LoadConfig(path)
+		require.NoError(t, err)
 
-		// Set defaults (as done in LoadConfig)
-		config.Management.Session.DurationSeconds = 86400 // Default 24 hours
-
-		assert.Equal(t, 86400, config.Management.Session.DurationSeconds)
-
-		// Verify it equals 24 hours
-		assert.Equal(t, 24*time.Hour, config.Management.Session.GetDuration())
+		assert.Equal(t, 1296000, config.Management.Session.DurationSeconds)
+		assert.Equal(t, 15*24*time.Hour, config.Management.Session.GetDuration())
 	})
 
 	t.Run("custom session duration", func(t *testing.T) {

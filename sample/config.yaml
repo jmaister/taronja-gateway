@@ -6,7 +6,7 @@ server:
   url: http://localhost:8080
 management:
   session:
-    durationSeconds: 86400  # Session duration in seconds (24 hours = 86400 seconds)
+    durationSeconds: 1296000  # Inactivity before logout (15 days, the default); renewed on use
   admin:
     # Admin access to the dashboard
     # Only this user can access the /_/admin/ dashboard

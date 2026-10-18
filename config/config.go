@@ -269,8 +269,12 @@ type AdminConfig struct {
 
 // SessionConfig defines session lifetime for authenticated users.
 type SessionConfig struct {
-	DurationSeconds int `yaml:"durationSeconds"` // Session lifetime in seconds. Default: 86400 (24 hours). After this time, users must log in again.
+	DurationSeconds int `yaml:"durationSeconds"` // How long a session lasts without use, in seconds. Each use renews it to now + this (at most once an hour), so only this much inactivity logs the user out. Default: 1296000 (15 days).
 }
+
+// DefaultSessionDurationSeconds is the session lifetime when the config sets
+// none: 15 days.
+const DefaultSessionDurationSeconds = 15 * 24 * 60 * 60
 
 func (s *SessionConfig) GetDuration() time.Duration {
 	return time.Duration(s.DurationSeconds) * time.Second
@@ -329,7 +333,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 
 	// Set defaults *before* unmarshalling
 	config.Server.Host = "127.0.0.1"
-	config.Management.Session.DurationSeconds = 86400
+	config.Management.Session.DurationSeconds = DefaultSessionDurationSeconds
 
 	// The version is checked before the strict decode so an old config gets the
 	// "run tg migrate" message instead of an unknown-field error.

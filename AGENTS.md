@@ -94,7 +94,7 @@ taronja-gateway/
 
 - **Format:** YAML, loaded via `config.LoadConfig(filePath)`
 - **Env-var expansion:** Supports `${VAR_NAME}` interpolation from OS environment (sourced from `.env`)
-- **Defaults** (`server.host: 127.0.0.1`, `management.session.durationSeconds: 86400`) are set before a strict decode; `LoadConfig` then requires `server.port` and calls `GatewayConfig.Validate()`, the single place for config rules (admin credentials, middleware entries, each route has exactly one of `to`/`toFolder`/`toFile`, non-negative cache seconds). `builtin.ValidateConfigOnly` (`tg validate`) and gateway startup call the same `Validate()`, so the rules never diverge.
+- **Defaults** (`server.host: 127.0.0.1`, `management.session.durationSeconds: 1296000`, 15 days) are set before a strict decode; `LoadConfig` then requires `server.port` and calls `GatewayConfig.Validate()`, the single place for config rules (admin credentials, middleware entries, each route has exactly one of `to`/`toFolder`/`toFile`, non-negative cache seconds). `builtin.ValidateConfigOnly` (`tg validate`) and gateway startup call the same `Validate()`, so the rules never diverge.
 - **Main config sections:**
   - `server` — host (default `127.0.0.1`), port, external URL
   - `management` — admin credentials and session lifetime. The management endpoints are always under `config.ManagementPrefix` (`/_`); it is not configurable.
@@ -168,6 +168,8 @@ taronja-gateway/
 - `SessionStore` interface + `SessionStoreDB` implementation (backed by `db.Session` table)
 - Validates `tg_session_token` cookie and Bearer API tokens
 - Session includes `IsAdmin` flag, provider name, expiry, and rich client metadata
+
+**Sliding sessions (`session/renewal.go`):** `SessionStoreDB.RenewFor` (set in `gateway/setup.go` from `management.session.durationSeconds`; 0 = off) makes `ValidateSession` push a used session's `ValidUntil` to now+RenewFor, at most once an hour (`needsRenewal`). `ValidateSession` has no ResponseWriter, so it records the renewal in the request context, and `session.RenewCookies` — wrapped around the whole gateway handler in `setup.go`, independent of the `middleware:` list — re-sends the cookie with the new Max-Age just before the headers go out, unless the handler set its own session cookie (login/logout). Its writer implements Flush/Hijack/Unwrap so streaming and WebSocket upgrades keep working.
 
 **`clientinfo.go`:**
 - Parses User-Agent via `github.com/ua-parser/uap-go` to extract browser, OS, device type

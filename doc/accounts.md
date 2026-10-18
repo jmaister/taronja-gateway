@@ -104,7 +104,9 @@ Users created before this feature keep logging in as before: migration
   signed out.
 - Linked accounts, with Unlink and "Link Google/GitHub" buttons.
 - Open sessions (browser, OS, IP, location, last activity), each with a revoke
-  button, and "Sign out all other sessions".
+  button, and "Sign out all other sessions". Sessions renew while used and
+  end after `management.session.durationSeconds` (15 days by default)
+  without use, or when revoked here, or on a password change or reset.
 - Recent activity: logins (with the method), failed password logins, sign-up,
   email confirmations, password changes and resets, linking, revoked sessions.
 
