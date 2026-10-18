@@ -92,7 +92,11 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 
 	session.SetGeolocationConfig(&cfg.Geolocation)
 
-	g.handler = rt.handler
+	// Sliding sessions: renewed on use, cookie re-sent by RenewCookies.
+	if store, ok := g.Dependencies.SessionStore.(*session.SessionStoreDB); ok {
+		store.RenewFor = cfg.Management.Session.GetDuration()
+	}
+	g.handler = session.RenewCookies(rt.handler)
 
 	return nil
 }
