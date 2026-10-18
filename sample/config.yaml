@@ -141,6 +141,26 @@ notification:
   # telegram:
   #   enabled: true
   #   botToken: ${TELEGRAM_BOT_TOKEN}
+  # SMS to each user's phone number (set with PATCH /api/users/{id}), via BulkGate.
+  # sms:
+  #   enabled: true
+  #   bulkgate:
+  #     applicationId: ${BULKGATE_APPLICATION_ID}
+  #     applicationToken: ${BULKGATE_APPLICATION_TOKEN}
+  #     senderId: gText
+  #     senderIdValue: MyApp
+  #   maxSegments: 2
+  #   maxPerMinute: 60
+  # WhatsApp via Meta's Cloud API. Every notification is sent as this approved
+  # template (see doc/notifications.md for its exact shape).
+  # whatsapp:
+  #   enabled: true
+  #   phoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID}
+  #   accessToken: ${WHATSAPP_ACCESS_TOKEN}
+  #   template:
+  #     name: taronja_notification
+  #     language: en
+  #     linkButton: true
   # Outbound callback fired once when a user responds to a notification,
   # so the app that created it learns about the response without polling.
   # secret is optional but recommended — it HMAC-SHA256-signs each request

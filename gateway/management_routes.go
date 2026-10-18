@@ -40,6 +40,9 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Register dashboard
 	g.registerDashboard(prefix)
 
+	// The page SMS/WhatsApp notification links open
+	g.registerNotificationPage()
+
 }
 
 func (g *Gateway) registerDashboard(prefix string) {
@@ -117,6 +120,7 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	metricsCfg, _ := builtin.GlobalOptions[builtin.TrafficMetricsConfig](g.MiddlewareChain, builtin.NameTrafficMetrics)
 	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
 	strictApiServer.SetFeatureFlags(g.Dependencies.FeatureFlags)
+	strictApiServer.SetUserPhones(g.Dependencies.UserPhoneRepo)
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, config.ManagementPrefix, false)

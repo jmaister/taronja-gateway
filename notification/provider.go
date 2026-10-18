@@ -34,6 +34,35 @@ type SendRequest struct {
 	// db.Notification.RespondTokenHash) — "" under the same conditions as
 	// RespondBaseURL.
 	RespondToken string
+	// LinkURL is a short link to the notification's page, where its URL and
+	// actions are; LinkToken is the token at the end of it. Set only for a
+	// LinkProvider that wants one, when the gateway has a public URL.
+	LinkURL   string
+	LinkToken string
+}
+
+// NotificationPagePath is where notification page links point; the token
+// follows it.
+const NotificationPagePath = "/_/n/"
+
+// linkTokenBytes keeps page links short for SMS: 18 bytes are 24 characters.
+const linkTokenBytes = 18
+
+// PhoneAddressedProvider is an optional Provider interface for channels that
+// deliver to the user's phone number (SMS, WhatsApp): the Service resolves
+// the recipient from the user's phone, and reports the channel connected
+// once a number is on file.
+type PhoneAddressedProvider interface {
+	Provider
+	UsesPhoneNumber() bool
+}
+
+// LinkProvider is an optional Provider interface for channels without room
+// for one link per action: when WantsLink says so, the Service creates a
+// notification page link and passes it in SendRequest.LinkURL/LinkToken.
+type LinkProvider interface {
+	Provider
+	WantsLink(n *db.Notification, actions []Action) bool
 }
 
 // Provider delivers notifications over one external channel. Implementing

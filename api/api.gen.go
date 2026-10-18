@@ -650,7 +650,7 @@ type NotificationListResponse struct {
 
 // NotificationPreference defines model for NotificationPreference.
 type NotificationPreference struct {
-	// PreferredChannel The channel this user prefers, e.g. "email" or "telegram". Empty (or omitted, on the PUT request) means no preference — every configured channel is used instead.
+	// PreferredChannel The channel this user prefers: "email", "telegram", "sms" or "whatsapp". Empty (or omitted, on the PUT request) means no preference — every configured channel is used instead.
 	//
 	//
 	// Example: telegram
@@ -959,8 +959,16 @@ type UserCreateRequest struct {
 	// Email Example: newuser@example.com
 	Email openapi_types.Email `json:"email"`
 
-	// Password Example: securepassword123
-	Password string `json:"password"`
+	// Password Optional. Without one, the user cannot log in with a password (they still can by email login, a password reset or OAuth), e.g. a contact who is only notified.
+	//
+	//
+	// Example: securepassword123
+	Password *string `json:"password,omitempty"`
+
+	// Phone Phone number in E.164 format, used by the sms and whatsapp channels. Optional.
+	//
+	// Example: +34600123456
+	Phone *string `json:"phone,omitempty"`
 
 	// Username Example: newuser
 	Username string `json:"username"`
@@ -980,6 +988,14 @@ type UserResponse struct {
 	// Name Example: Test User
 	Name *string `json:"name,omitempty"`
 
+	// Phone Phone number in E.164 format, if any.
+	//
+	// Example: +34600123456
+	Phone *string `json:"phone,omitempty"`
+
+	// PhoneVerified Whether the user proved they own the phone number. False for a number an admin set.
+	PhoneVerified *bool `json:"phoneVerified,omitempty"`
+
 	// Picture Example: https://example.com/picture.jpg
 	Picture  *string `json:"picture,omitempty"`
 	Provider *string `json:"provider,omitempty"`
@@ -989,6 +1005,17 @@ type UserResponse struct {
 
 	// Username Example: testuser
 	Username string `json:"username"`
+}
+
+// UserUpdateRequest defines model for UserUpdateRequest.
+type UserUpdateRequest struct {
+	// Name Example: Ana García
+	Name *string `json:"name,omitempty"`
+
+	// Phone Phone number in E.164 format; an empty string removes it.
+	//
+	// Example: +34600123456
+	Phone *string `json:"phone,omitempty"`
 }
 
 // TrafficBrowser defines model for TrafficBrowser.
@@ -1220,6 +1247,12 @@ type RespondToNotificationJSONRequestBody RespondToNotificationJSONBody
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
 
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = UserUpdateRequest
+
+// SetUserNotificationPreferenceJSONRequestBody defines body for SetUserNotificationPreference for application/json ContentType.
+type SetUserNotificationPreferenceJSONRequestBody = NotificationPreference
+
 // CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
 type CreateTokenJSONRequestBody = TokenCreateRequest
 
@@ -1345,12 +1378,18 @@ type ServerInterface interface {
 	// GetUserById Get a user by ID (admin only)
 	// (GET /api/users/{userId})
 	GetUserById(w http.ResponseWriter, r *http.Request, userId string)
+	// UpdateUser Update a user's name or phone number (admin only)
+	// (PATCH /api/users/{userId})
+	UpdateUser(w http.ResponseWriter, r *http.Request, userId string)
 	// GetUserChannelStatuses Get a user's status on every configured notification channel (admin only)
 	// (GET /api/users/{userId}/notifications/channels/status)
 	GetUserChannelStatuses(w http.ResponseWriter, r *http.Request, userId string)
 	// GetUserNotificationPreference Get a user's preferred notification channel (admin only)
 	// (GET /api/users/{userId}/notifications/preferences)
 	GetUserNotificationPreference(w http.ResponseWriter, r *http.Request, userId string)
+	// SetUserNotificationPreference Set (or clear) a user's preferred notification channel (admin only)
+	// (PUT /api/users/{userId}/notifications/preferences)
+	SetUserNotificationPreference(w http.ResponseWriter, r *http.Request, userId string)
 	// GetUserTelegramLinkCode Get a Telegram deep link to connect a user's account (admin only)
 	// (GET /api/users/{userId}/notifications/telegram/link)
 	GetUserTelegramLinkCode(w http.ResponseWriter, r *http.Request, userId string)
@@ -2818,6 +2857,32 @@ func (siw *ServerInterfaceWrapper) GetUserById(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateUser operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUser(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetUserChannelStatuses operation middleware
 func (siw *ServerInterfaceWrapper) GetUserChannelStatuses(w http.ResponseWriter, r *http.Request) {
 
@@ -2861,6 +2926,32 @@ func (siw *ServerInterfaceWrapper) GetUserNotificationPreference(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUserNotificationPreference(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetUserNotificationPreference operation middleware
+func (siw *ServerInterfaceWrapper) SetUserNotificationPreference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetUserNotificationPreference(w, r, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3179,8 +3270,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users", wrapper.ListUsers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/users", wrapper.CreateUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}", wrapper.GetUserById)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/users/{userId}", wrapper.UpdateUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/channels/status", wrapper.GetUserChannelStatuses)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/preferences", wrapper.GetUserNotificationPreference)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/users/{userId}/notifications/preferences", wrapper.SetUserNotificationPreference)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/notifications/telegram/link", wrapper.GetUserTelegramLinkCode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.ListTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/users/{userId}/tokens", wrapper.CreateToken)
@@ -5527,6 +5620,85 @@ func (response GetUserById500JSONResponse) VisitGetUserByIdResponse(w http.Respo
 	return err
 }
 
+type UpdateUserRequestObject struct {
+	UserId string `json:"userId"`
+	Body   *UpdateUserJSONRequestBody
+}
+
+type UpdateUserResponseObject interface {
+	VisitUpdateUserResponse(w http.ResponseWriter) error
+}
+
+type UpdateUser200JSONResponse UserResponse
+
+func (response UpdateUser200JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser400JSONResponse Error
+
+func (response UpdateUser400JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser401JSONResponse Error
+
+func (response UpdateUser401JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser404JSONResponse Error
+
+func (response UpdateUser404JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser500JSONResponse Error
+
+func (response UpdateUser500JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetUserChannelStatusesRequestObject struct {
 	UserId string `json:"userId"`
 }
@@ -5616,6 +5788,71 @@ func (response GetUserNotificationPreference401JSONResponse) VisitGetUserNotific
 type GetUserNotificationPreference404JSONResponse Error
 
 func (response GetUserNotificationPreference404JSONResponse) VisitGetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUserNotificationPreferenceRequestObject struct {
+	UserId string `json:"userId"`
+	Body   *SetUserNotificationPreferenceJSONRequestBody
+}
+
+type SetUserNotificationPreferenceResponseObject interface {
+	VisitSetUserNotificationPreferenceResponse(w http.ResponseWriter) error
+}
+
+type SetUserNotificationPreference200JSONResponse NotificationPreference
+
+func (response SetUserNotificationPreference200JSONResponse) VisitSetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUserNotificationPreference400JSONResponse Error
+
+func (response SetUserNotificationPreference400JSONResponse) VisitSetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUserNotificationPreference401JSONResponse Error
+
+func (response SetUserNotificationPreference401JSONResponse) VisitSetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUserNotificationPreference404JSONResponse Error
+
+func (response SetUserNotificationPreference404JSONResponse) VisitSetUserNotificationPreferenceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6164,12 +6401,18 @@ type StrictServerInterface interface {
 	// GetUserById Get a user by ID (admin only)
 	// (GET /api/users/{userId})
 	GetUserById(ctx context.Context, request GetUserByIdRequestObject) (GetUserByIdResponseObject, error)
+	// UpdateUser Update a user's name or phone number (admin only)
+	// (PATCH /api/users/{userId})
+	UpdateUser(ctx context.Context, request UpdateUserRequestObject) (UpdateUserResponseObject, error)
 	// GetUserChannelStatuses Get a user's status on every configured notification channel (admin only)
 	// (GET /api/users/{userId}/notifications/channels/status)
 	GetUserChannelStatuses(ctx context.Context, request GetUserChannelStatusesRequestObject) (GetUserChannelStatusesResponseObject, error)
 	// GetUserNotificationPreference Get a user's preferred notification channel (admin only)
 	// (GET /api/users/{userId}/notifications/preferences)
 	GetUserNotificationPreference(ctx context.Context, request GetUserNotificationPreferenceRequestObject) (GetUserNotificationPreferenceResponseObject, error)
+	// SetUserNotificationPreference Set (or clear) a user's preferred notification channel (admin only)
+	// (PUT /api/users/{userId}/notifications/preferences)
+	SetUserNotificationPreference(ctx context.Context, request SetUserNotificationPreferenceRequestObject) (SetUserNotificationPreferenceResponseObject, error)
 	// GetUserTelegramLinkCode Get a Telegram deep link to connect a user's account (admin only)
 	// (GET /api/users/{userId}/notifications/telegram/link)
 	GetUserTelegramLinkCode(ctx context.Context, request GetUserTelegramLinkCodeRequestObject) (GetUserTelegramLinkCodeResponseObject, error)
@@ -7293,6 +7536,39 @@ func (sh *strictHandler) GetUserById(w http.ResponseWriter, r *http.Request, use
 	}
 }
 
+// UpdateUser operation middleware
+func (sh *strictHandler) UpdateUser(w http.ResponseWriter, r *http.Request, userId string) {
+	var request UpdateUserRequestObject
+
+	request.UserId = userId
+
+	var body UpdateUserJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateUser(ctx, request.(UpdateUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateUserResponseObject); ok {
+		if err := validResponse.VisitUpdateUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetUserChannelStatuses operation middleware
 func (sh *strictHandler) GetUserChannelStatuses(w http.ResponseWriter, r *http.Request, userId string) {
 	var request GetUserChannelStatusesRequestObject
@@ -7338,6 +7614,39 @@ func (sh *strictHandler) GetUserNotificationPreference(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserNotificationPreferenceResponseObject); ok {
 		if err := validResponse.VisitGetUserNotificationPreferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetUserNotificationPreference operation middleware
+func (sh *strictHandler) SetUserNotificationPreference(w http.ResponseWriter, r *http.Request, userId string) {
+	var request SetUserNotificationPreferenceRequestObject
+
+	request.UserId = userId
+
+	var body SetUserNotificationPreferenceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetUserNotificationPreference(ctx, request.(SetUserNotificationPreferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetUserNotificationPreference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetUserNotificationPreferenceResponseObject); ok {
+		if err := validResponse.VisitSetUserNotificationPreferenceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

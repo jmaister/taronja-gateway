@@ -199,6 +199,137 @@ type NotificationConfig struct {
 	Email           EmailNotificationConfig    `yaml:"email"`           // Email delivery via SMTP. Optional; disabled by default.
 	Telegram        TelegramNotificationConfig `yaml:"telegram"`        // Telegram delivery via a bot. Optional; disabled by default.
 	ResponseWebhook ResponseWebhookConfig      `yaml:"responseWebhook"` // Outbound callback fired when a user responds to a notification. Optional; disabled by default.
+	SMS             SMSNotificationConfig      `yaml:"sms"`             // SMS delivery to the user's phone number. Optional; disabled by default.
+	WhatsApp        WhatsAppNotificationConfig `yaml:"whatsapp"`        // WhatsApp delivery to the user's phone number, through Meta's Cloud API. Optional; disabled by default.
+}
+
+// SMSBackendBulkGate is the only SMS backend today.
+const SMSBackendBulkGate = "bulkgate"
+
+// Default and maximum SMS sizes, in segments (160 GSM-7 or 70 Unicode
+// characters each, fewer per segment once a message has several).
+const (
+	DefaultSMSMaxSegments = 2
+	MaxSMSMaxSegments     = 4
+	// DefaultMaxMessagesPerMinute caps paid channels (SMS, WhatsApp) across the
+	// whole gateway; messages over it wait for the retry worker.
+	DefaultMaxMessagesPerMinute = 60
+)
+
+// SMSNotificationConfig sends notifications by SMS to each user's phone number
+// (set through the users API). Messages are "title: body", shortened to fit
+// maxSegments, plus a short link to the notification page when it has actions
+// or a URL. Every SMS costs money: maxSegments and maxPerMinute bound the bill.
+type SMSNotificationConfig struct {
+	Enabled      bool           `yaml:"enabled"`      // Enable SMS delivery. Default: false.
+	Backend      string         `yaml:"backend"`      // SMS provider. Only "bulkgate" today. Default: "bulkgate".
+	BulkGate     BulkGateConfig `yaml:"bulkgate"`     // BulkGate settings. Required with backend bulkgate.
+	MaxSegments  int            `yaml:"maxSegments"`  // Longest message, in SMS segments (1-4). Longer bodies are shortened. Default: 2.
+	MaxPerMinute int            `yaml:"maxPerMinute"` // Most SMS sent per minute by the whole gateway; the rest wait for a retry. Default: 60.
+}
+
+// BulkGateConfig is a BulkGate "Transactional SMS" API application
+// (portal.bulkgate.com → Modules & APIs → API administration).
+type BulkGateConfig struct {
+	ApplicationID    string `yaml:"applicationId"`    // Application ID. Can use environment variables. Required.
+	ApplicationToken string `yaml:"applicationToken"` // Application token. Can use environment variables. Required.
+	// SenderID picks the sender BulkGate shows: gSystem (system number,
+	// default), gShort, gText (alphanumeric, set senderIdValue), gMobile,
+	// gOwn (your number, set senderIdValue), gProfile (set senderIdValue to
+	// the profile ID). See BulkGate's docs for what each country allows.
+	SenderID      string `yaml:"senderId"`
+	SenderIDValue string `yaml:"senderIdValue"`    // Value for senderId gText/gOwn/gProfile, e.g. "Academia".
+	APIURL        string `yaml:"apiUrl,omitempty"` // Default: https://portal.bulkgate.com/api/1.0/simple/transactional. For tests or a proxy.
+}
+
+// IsConfigured reports whether SMS delivery can actually send.
+func (c SMSNotificationConfig) IsConfigured() bool {
+	return c.Enabled && c.BulkGate.ApplicationID != "" && c.BulkGate.ApplicationToken != ""
+}
+
+func (c SMSNotificationConfig) validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.Backend != "" && c.Backend != SMSBackendBulkGate {
+		return fmt.Errorf("notification.sms.backend %q is not supported (only %q)", c.Backend, SMSBackendBulkGate)
+	}
+	if c.BulkGate.ApplicationID == "" || c.BulkGate.ApplicationToken == "" {
+		return fmt.Errorf("notification.sms is enabled but bulkgate.applicationId and/or bulkgate.applicationToken is not set")
+	}
+	if c.MaxSegments < 0 || c.MaxSegments > MaxSMSMaxSegments {
+		return fmt.Errorf("notification.sms.maxSegments must be between 1 and %d", MaxSMSMaxSegments)
+	}
+	if c.MaxPerMinute < 0 {
+		return fmt.Errorf("notification.sms.maxPerMinute cannot be negative")
+	}
+	return nil
+}
+
+// WhatsAppNotificationConfig sends notifications over WhatsApp through Meta's
+// Cloud API. Meta only lets a business message someone first with an
+// approved message template, so every notification is sent as the one
+// template configured here: create it in WhatsApp Manager (see
+// doc/notifications.md for its exact shape) and wait for approval.
+type WhatsAppNotificationConfig struct {
+	Enabled       bool                   `yaml:"enabled"`              // Enable WhatsApp delivery. Default: false.
+	PhoneNumberID string                 `yaml:"phoneNumberId"`        // The sending number's ID in WhatsApp Manager (not the number itself). Required.
+	AccessToken   string                 `yaml:"accessToken"`          // A system user access token with whatsapp_business_messaging. Can use environment variables. Required.
+	Template      WhatsAppTemplateConfig `yaml:"template"`             // The approved template every notification is sent as. Required.
+	APIVersion    string                 `yaml:"apiVersion,omitempty"` // Graph API version. Default: "v23.0".
+	APIURL        string                 `yaml:"apiUrl,omitempty"`     // Default: https://graph.facebook.com. For tests or a proxy.
+	MaxPerMinute  int                    `yaml:"maxPerMinute"`         // Most messages sent per minute by the whole gateway; the rest wait for a retry. Default: 60.
+}
+
+// WhatsAppTemplateConfig names the approved template. By default its body has
+// two variables: {{1}} gets the notification title and {{2}} its body.
+type WhatsAppTemplateConfig struct {
+	Name     string `yaml:"name"`     // Template name, e.g. "taronja_notification". Required.
+	Language string `yaml:"language"` // Template language code as approved, e.g. "es" or "en_US". Required.
+	// BodyVariables is how many variables the template body has: 2 (default:
+	// title, body), 1 ("title: body" in one) or 0 (fixed text, e.g. "You have
+	// a new notice", usually with linkButton).
+	BodyVariables *int `yaml:"bodyVariables,omitempty"`
+	// LinkButton says the template has a URL button whose URL ends in a
+	// variable (https://<server.url>/_/n/{{1}}); the gateway fills it with
+	// the notification page token, where the user sees the notification and
+	// answers its actions. Requires server.url. Default: false.
+	LinkButton bool `yaml:"linkButton"`
+}
+
+// BodyVariableCount returns BodyVariables, or 2 when it is not set.
+func (t WhatsAppTemplateConfig) BodyVariableCount() int {
+	if t.BodyVariables == nil {
+		return 2
+	}
+	return *t.BodyVariables
+}
+
+// IsConfigured reports whether WhatsApp delivery can actually send.
+func (c WhatsAppNotificationConfig) IsConfigured() bool {
+	return c.Enabled && c.PhoneNumberID != "" && c.AccessToken != "" && c.Template.Name != "" && c.Template.Language != ""
+}
+
+func (c WhatsAppNotificationConfig) validate(serverURL string) error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.PhoneNumberID == "" || c.AccessToken == "" {
+		return fmt.Errorf("notification.whatsapp is enabled but phoneNumberId and/or accessToken is not set")
+	}
+	if c.Template.Name == "" || c.Template.Language == "" {
+		return fmt.Errorf("notification.whatsapp is enabled but template.name and/or template.language is not set (WhatsApp only delivers approved templates)")
+	}
+	if v := c.Template.BodyVariables; v != nil && (*v < 0 || *v > 2) {
+		return fmt.Errorf("notification.whatsapp.template.bodyVariables must be 0, 1 or 2")
+	}
+	if c.Template.LinkButton && serverURL == "" {
+		return fmt.Errorf("notification.whatsapp.template.linkButton requires server.url, to build the notification page link")
+	}
+	if c.MaxPerMinute < 0 {
+		return fmt.Errorf("notification.whatsapp.maxPerMinute cannot be negative")
+	}
+	return nil
 }
 
 // EmailNotificationConfig configures the SMTP relay notifications with
@@ -433,6 +564,12 @@ func (c *GatewayConfig) Validate() error {
 		return fmt.Errorf("authenticationProviders.basic.signup and authenticationProviders.emailLogin require server.url, to build the links in their emails")
 	}
 	if err := validateOIDCProviders(c.AuthenticationProviders.OIDC); err != nil {
+		return err
+	}
+	if err := c.Notification.SMS.validate(); err != nil {
+		return err
+	}
+	if err := c.Notification.WhatsApp.validate(c.Server.URL); err != nil {
 		return err
 	}
 	if err := validateMiddleware(c.Middleware); err != nil {
