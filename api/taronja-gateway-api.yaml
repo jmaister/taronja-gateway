@@ -2098,6 +2098,158 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/admin/notifications:
+    get:
+      summary: List every user's notifications with their delivery status (admin only)
+      description: >
+        Newest first, filtered and paginated. Each item carries the recipient
+        and the latest status per channel; GET /api/notifications/{id}/deliveries
+        has the full attempt history with errors.
+      operationId: listAdminNotifications
+      tags:
+        - Notification
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TrafficStartDate'
+        - $ref: '#/components/parameters/TrafficEndDate'
+        - name: type
+          in: query
+          required: false
+          description: Notification type, exactly.
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: false
+          description: Recipient user ID, exactly.
+          schema:
+            type: string
+        - name: user
+          in: query
+          required: false
+          description: Part of the recipient's username or email, case-insensitive.
+          schema:
+            type: string
+        - name: batch_id
+          in: query
+          required: false
+          description: Batch ID returned by POST /api/notifications.
+          schema:
+            type: string
+        - name: channel
+          in: query
+          required: false
+          description: Only notifications attempted on this channel (email, telegram, sms, whatsapp, response_webhook). With status, the status is this channel's.
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Delivery status. Without channel, the overall status - pending if any channel is pending (in flight or retry scheduled), else failed if any failed for good, else sent if any was sent, else skipped (no channel could deliver) or none (in-app only).
+          schema:
+            type: string
+            enum: [sent, pending, failed, skipped, none]
+        - name: responded
+          in: query
+          required: false
+          description: Only answered (true) or unanswered (false) notifications.
+          schema:
+            type: boolean
+        - name: read
+          in: query
+          required: false
+          description: Only read (true) or unread (false) notifications.
+          schema:
+            type: boolean
+        - name: q
+          in: query
+          required: false
+          description: Part of the title or body, case-insensitive.
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: Page number, from 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          description: Items per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: One page of notifications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminNotificationList'
+        '400':
+          description: Invalid filter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/notifications/types:
+    get:
+      summary: Every notification type in use, for filters (admin only)
+      operationId: listNotificationTypes
+      tags:
+        - Notification
+        - Admin
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The distinct notification types, sorted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  types:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - types
+        '401':
+          description: Unauthorized (not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/admin/counters:
     get:
       summary: Get list of available counter types (admin only)
@@ -3295,6 +3447,52 @@ components:
         - id
         - label
 
+    AdminNotification:
+      type: object
+      properties:
+        notification:
+          $ref: '#/components/schemas/Notification'
+        username:
+          type: string
+          description: The recipient's username (empty if the user was deleted).
+        email:
+          type: string
+          description: The recipient's email.
+        status:
+          type: string
+          description: Overall status, as defined by the status filter of listAdminNotifications.
+          enum: [sent, pending, failed, skipped, none]
+        channels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Each channel attempted, mapped to its latest status (sent, pending, failed or skipped).
+          example: {"sms": "sent", "email": "failed"}
+      required:
+        - notification
+        - username
+        - email
+        - status
+        - channels
+    AdminNotificationList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminNotification'
+        total:
+          type: integer
+          description: How many notifications match the filters, over all pages.
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - limit
     Notification:
       type: object
       properties:

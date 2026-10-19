@@ -66,6 +66,7 @@ type phoneGateway struct {
 	t      *testing.T
 	server *httptest.Server
 	admin  *http.Cookie
+	deps   *deps.Dependencies
 }
 
 func newPhoneGateway(t *testing.T, notificationCfg config.NotificationConfig) *phoneGateway {
@@ -90,7 +91,7 @@ func newPhoneGateway(t *testing.T, notificationCfg config.NotificationConfig) *p
 	require.NoError(t, d.UserRepo.CreateUser(admin))
 	sess, err := d.SessionStore.NewSession(nil, admin, "basic", time.Hour)
 	require.NoError(t, err)
-	return &phoneGateway{t: t, server: server, admin: &http.Cookie{Name: session.SessionCookieName, Value: sess.Token}}
+	return &phoneGateway{t: t, server: server, admin: &http.Cookie{Name: session.SessionCookieName, Value: sess.Token}, deps: d}
 }
 
 func (g *phoneGateway) call(method, path string, body any, wantStatus int) map[string]any {
