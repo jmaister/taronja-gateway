@@ -58,6 +58,7 @@ Features table, shows what is implemented and what is planned.
 | Distributed Tracing (OpenTelemetry) | ✅ | v1.0.0 |
 | Notifications (in-app, email, Telegram) | ✅ | v1.0.0 |
 | - SMS (BulkGate) and WhatsApp (Meta Cloud API) to the user's phone | ✅ | unreleased |
+| - Admin history: every notification with its delivery status, filtered and paginated | ✅ | unreleased |
 | - Multi-recipient, per-user delivery channel, automatic retries | ✅ | v1.0.0 |
 | - Sent/failed/pending status, per notification and per batch | ✅ | v1.0.0 |
 | - Outbound webhook on user response                | ✅ | v1.0.0 |

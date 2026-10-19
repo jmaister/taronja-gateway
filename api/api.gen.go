@@ -19,6 +19,33 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AdminNotificationStatus.
+const (
+	AdminNotificationStatusFailed  AdminNotificationStatus = "failed"
+	AdminNotificationStatusNone    AdminNotificationStatus = "none"
+	AdminNotificationStatusPending AdminNotificationStatus = "pending"
+	AdminNotificationStatusSent    AdminNotificationStatus = "sent"
+	AdminNotificationStatusSkipped AdminNotificationStatus = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the AdminNotificationStatus enum.
+func (e AdminNotificationStatus) Valid() bool {
+	switch e {
+	case AdminNotificationStatusFailed:
+		return true
+	case AdminNotificationStatusNone:
+		return true
+	case AdminNotificationStatusPending:
+		return true
+	case AdminNotificationStatusSent:
+		return true
+	case AdminNotificationStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BlockedClientReason.
 const (
 	MaxErrors         BlockedClientReason = "max_errors"
@@ -167,6 +194,64 @@ func (e TimeSeriesGranularity) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Defines values for ListAdminNotificationsParamsStatus.
+const (
+	ListAdminNotificationsParamsStatusFailed  ListAdminNotificationsParamsStatus = "failed"
+	ListAdminNotificationsParamsStatusNone    ListAdminNotificationsParamsStatus = "none"
+	ListAdminNotificationsParamsStatusPending ListAdminNotificationsParamsStatus = "pending"
+	ListAdminNotificationsParamsStatusSent    ListAdminNotificationsParamsStatus = "sent"
+	ListAdminNotificationsParamsStatusSkipped ListAdminNotificationsParamsStatus = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the ListAdminNotificationsParamsStatus enum.
+func (e ListAdminNotificationsParamsStatus) Valid() bool {
+	switch e {
+	case ListAdminNotificationsParamsStatusFailed:
+		return true
+	case ListAdminNotificationsParamsStatusNone:
+		return true
+	case ListAdminNotificationsParamsStatusPending:
+		return true
+	case ListAdminNotificationsParamsStatusSent:
+		return true
+	case ListAdminNotificationsParamsStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// AdminNotification defines model for AdminNotification.
+type AdminNotification struct {
+	// Channels Each channel attempted, mapped to its latest status (sent, pending, failed or skipped).
+	//
+	// Example: {"email":"failed","sms":"sent"}
+	Channels map[string]string `json:"channels"`
+
+	// Email The recipient's email.
+	Email        string       `json:"email"`
+	Notification Notification `json:"notification"`
+
+	// Status Overall status, as defined by the status filter of listAdminNotifications.
+	Status AdminNotificationStatus `json:"status"`
+
+	// Username The recipient's username (empty if the user was deleted).
+	Username string `json:"username"`
+}
+
+// AdminNotificationStatus Overall status, as defined by the status filter of listAdminNotifications.
+type AdminNotificationStatus string
+
+// AdminNotificationList defines model for AdminNotificationList.
+type AdminNotificationList struct {
+	Items []AdminNotification `json:"items"`
+	Limit int                 `json:"limit"`
+	Page  int                 `json:"page"`
+
+	// Total How many notifications match the filters, over all pages.
+	Total int `json:"total"`
 }
 
 // AllUserCountersResponse defines model for AllUserCountersResponse.
@@ -1060,6 +1145,51 @@ type GetAllUserCountersParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAdminNotificationsParams defines parameters for ListAdminNotifications.
+type ListAdminNotificationsParams struct {
+	// StartDate Start of the date range (ISO 8601 format).
+	StartDate *TrafficStartDate `form:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// EndDate End of the date range (ISO 8601 format).
+	EndDate *TrafficEndDate `form:"end_date,omitempty" json:"end_date,omitempty"`
+
+	// Type Notification type, exactly.
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+
+	// UserId Recipient user ID, exactly.
+	UserId *string `form:"user_id,omitempty" json:"user_id,omitempty"`
+
+	// User Part of the recipient's username or email, case-insensitive.
+	User *string `form:"user,omitempty" json:"user,omitempty"`
+
+	// BatchId Batch ID returned by POST /api/notifications.
+	BatchId *string `form:"batch_id,omitempty" json:"batch_id,omitempty"`
+
+	// Channel Only notifications attempted on this channel (email, telegram, sms, whatsapp, response_webhook). With status, the status is this channel's.
+	Channel *string `form:"channel,omitempty" json:"channel,omitempty"`
+
+	// Status Delivery status. Without channel, the overall status - pending if any channel is pending (in flight or retry scheduled), else failed if any failed for good, else sent if any was sent, else skipped (no channel could deliver) or none (in-app only).
+	Status *ListAdminNotificationsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Responded Only answered (true) or unanswered (false) notifications.
+	Responded *bool `form:"responded,omitempty" json:"responded,omitempty"`
+
+	// Read Only read (true) or unread (false) notifications.
+	Read *bool `form:"read,omitempty" json:"read,omitempty"`
+
+	// Q Part of the title or body, case-insensitive.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Page Page number, from 1.
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// Limit Items per page.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAdminNotificationsParamsStatus defines parameters for ListAdminNotifications.
+type ListAdminNotificationsParamsStatus string
+
 // GetUserCounterHistoryParams defines parameters for GetUserCounterHistory.
 type GetUserCounterHistoryParams struct {
 	// Limit Maximum number of transactions to return
@@ -1264,6 +1394,12 @@ type ServerInterface interface {
 	// GetAllUserCounters Get all users' counter balances (admin only)
 	// (GET /api/admin/counters/{counterId})
 	GetAllUserCounters(w http.ResponseWriter, r *http.Request, counterId string, params GetAllUserCountersParams)
+	// ListAdminNotifications List every user's notifications with their delivery status (admin only)
+	// (GET /api/admin/notifications)
+	ListAdminNotifications(w http.ResponseWriter, r *http.Request, params ListAdminNotificationsParams)
+	// ListNotificationTypes Every notification type in use, for filters (admin only)
+	// (GET /api/admin/notifications/types)
+	ListNotificationTypes(w http.ResponseWriter, r *http.Request)
 	// GetRateLimiterConfig Get current rate limiter configuration
 	// (GET /api/config/rate-limiter)
 	GetRateLimiterConfig(w http.ResponseWriter, r *http.Request)
@@ -1485,6 +1621,209 @@ func (siw *ServerInterfaceWrapper) GetAllUserCounters(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAllUserCounters(w, r, counterId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAdminNotifications operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminNotifications(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAdminNotificationsParams
+
+	// ------------- Optional query parameter "start_date" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "start_date", r.URL.Query(), &params.StartDate, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "start_date"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_date", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "end_date" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "end_date", r.URL.Query(), &params.EndDate, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "end_date"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "user_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "user_id", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "user_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "user" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "user", r.URL.Query(), &params.User, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "user"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "batch_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "batch_id", r.URL.Query(), &params.BatchId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "batch_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "batch_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "channel" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "channel", r.URL.Query(), &params.Channel, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "channel"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "channel", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "responded" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "responded", r.URL.Query(), &params.Responded, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "responded"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "responded", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "read" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "read", r.URL.Query(), &params.Read, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "read"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "read", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminNotifications(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotificationTypes operation middleware
+func (siw *ServerInterfaceWrapper) ListNotificationTypes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotificationTypes(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3313,6 +3652,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.DeleteFeatureFlag)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.GetFeatureFlag)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.UpdateFeatureFlag)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/notifications", wrapper.ListAdminNotifications)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/notifications/types", wrapper.ListNotificationTypes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/counters", wrapper.GetAvailableCounters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/counters/{counterId}", wrapper.GetAllUserCounters)
 
@@ -3450,6 +3791,121 @@ func (response GetAllUserCounters404JSONResponse) VisitGetAllUserCountersRespons
 type GetAllUserCounters500JSONResponse Error
 
 func (response GetAllUserCounters500JSONResponse) VisitGetAllUserCountersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminNotificationsRequestObject struct {
+	Params ListAdminNotificationsParams
+}
+
+type ListAdminNotificationsResponseObject interface {
+	VisitListAdminNotificationsResponse(w http.ResponseWriter) error
+}
+
+type ListAdminNotifications200JSONResponse AdminNotificationList
+
+func (response ListAdminNotifications200JSONResponse) VisitListAdminNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminNotifications400JSONResponse Error
+
+func (response ListAdminNotifications400JSONResponse) VisitListAdminNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminNotifications401JSONResponse Error
+
+func (response ListAdminNotifications401JSONResponse) VisitListAdminNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminNotifications500JSONResponse Error
+
+func (response ListAdminNotifications500JSONResponse) VisitListAdminNotificationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationTypesRequestObject struct {
+}
+
+type ListNotificationTypesResponseObject interface {
+	VisitListNotificationTypesResponse(w http.ResponseWriter) error
+}
+
+type ListNotificationTypes200JSONResponse struct {
+	Types []string `json:"types"`
+}
+
+func (response ListNotificationTypes200JSONResponse) VisitListNotificationTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationTypes401JSONResponse Error
+
+func (response ListNotificationTypes401JSONResponse) VisitListNotificationTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotificationTypes500JSONResponse Error
+
+func (response ListNotificationTypes500JSONResponse) VisitListNotificationTypesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6287,6 +6743,12 @@ type StrictServerInterface interface {
 	// GetAllUserCounters Get all users' counter balances (admin only)
 	// (GET /api/admin/counters/{counterId})
 	GetAllUserCounters(ctx context.Context, request GetAllUserCountersRequestObject) (GetAllUserCountersResponseObject, error)
+	// ListAdminNotifications List every user's notifications with their delivery status (admin only)
+	// (GET /api/admin/notifications)
+	ListAdminNotifications(ctx context.Context, request ListAdminNotificationsRequestObject) (ListAdminNotificationsResponseObject, error)
+	// ListNotificationTypes Every notification type in use, for filters (admin only)
+	// (GET /api/admin/notifications/types)
+	ListNotificationTypes(ctx context.Context, request ListNotificationTypesRequestObject) (ListNotificationTypesResponseObject, error)
 	// GetRateLimiterConfig Get current rate limiter configuration
 	// (GET /api/config/rate-limiter)
 	GetRateLimiterConfig(ctx context.Context, request GetRateLimiterConfigRequestObject) (GetRateLimiterConfigResponseObject, error)
@@ -6522,6 +6984,56 @@ func (sh *strictHandler) GetAllUserCounters(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAllUserCountersResponseObject); ok {
 		if err := validResponse.VisitGetAllUserCountersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAdminNotifications operation middleware
+func (sh *strictHandler) ListAdminNotifications(w http.ResponseWriter, r *http.Request, params ListAdminNotificationsParams) {
+	var request ListAdminNotificationsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAdminNotifications(ctx, request.(ListAdminNotificationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAdminNotifications")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAdminNotificationsResponseObject); ok {
+		if err := validResponse.VisitListAdminNotificationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNotificationTypes operation middleware
+func (sh *strictHandler) ListNotificationTypes(w http.ResponseWriter, r *http.Request) {
+	var request ListNotificationTypesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotificationTypes(ctx, request.(ListNotificationTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotificationTypes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNotificationTypesResponseObject); ok {
+		if err := validResponse.VisitListNotificationTypesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -350,6 +350,8 @@ straight off `req.Notification`).
 
 **Phone channels (`sms.go`, `whatsapp.go`, `smstext.go`, `phone.go`):** SMS (BulkGate Simple API) and WhatsApp (Meta Cloud API, always the one configured approved template) deliver to `db.UserPhone` (its own `user_phones` table: a `users` column added by SQL would collide with the legacy bridge's AutoMigrate on new databases). Two optional `Provider` interfaces keep `Service` channel-agnostic: `PhoneAddressedProvider` (recipient = the user's phone; channel status connected when one is on file) and `LinkProvider` (`WantsLink` → `buildSendRequest` creates a `db.NotificationLinkToken` and passes `LinkURL`/`LinkToken` for the `/_/n/<token>` page in `gateway/notification_page.go`, which answers by POST through `Service.RespondViaLink`). Both need `Service.ConfigurePhoneChannels(phones, server.url)`, called in `gateway.InitNotifications` and `deps.NewTestWithName`. A provider returns `permanent(err)` for errors retrying cannot fix; `recordFailure` then records the failure with no `NextRetryAt`, so paid messages are not paid for again. `minuteLimiter` caps each paid channel (`maxPerMinute`); over it the send fails as retryable. Admin API: `PATCH /api/users/{id}` (name, phone), optional password and `phone` on `POST /api/users`, and `PUT /api/users/{id}/notifications/preferences` (validated against `notification.DeliveryChannels`). Tests: `notification/phone_channels_test.go` (fake BulkGate/Meta servers) and `gateway/phone_notifications_test.go` (through the HTTP API).
 
+**Admin history (`notification/admin.go`, `db/repositories/notificationadmin.go`, `handlers/api_admin_notifications.go`):** `GET /api/admin/notifications` filters in SQL (`AdminNotificationFilter.apply`) and paginates with a total. Status filters look at each channel's latest attempt (`MAX(rowid)` per notification and channel, since an attempt writes a pending row and then its outcome) and mirror `channelStatus` (a failed attempt with `next_retry_at` is pending); without a channel, the overall status is the first of pending, failed, sent, skipped that applies, or none, and `adminStatus` computes the same in Go for each returned row. Dashboard: `webapp/src/pages/NotificationsPage.tsx` with the filters in the URL (`lib/notificationFilters.ts`).
+
 **Adding a new delivery channel** (WhatsApp, Slack, SMS, ...) means writing
 a new `Provider` implementation and registering it in
 `notification.NewService` — no change to `db.Notification`, the OpenAPI
@@ -466,6 +468,7 @@ webapp/src/
 │   ├── HomePage, ProfilePage, NotFoundPage
 │   ├── RequestSummaryPage, RequestsDetailsPage, RateLimiterStatsPage
 │   ├── UsersListPage, CreateUserPage, UserInfoPage
+│   ├── NotificationsPage            # admin notification history: filters in the URL, pagination, delivery attempts per row
 │   ├── CountersManagementPage
 │   └── MiddlewarePage             # status/health/metrics for the global middleware chain (doc/refactor01.md Phase 5)
 ├── contexts/

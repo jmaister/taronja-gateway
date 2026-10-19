@@ -58,6 +58,14 @@ type NotificationRepository interface {
 	// answer-link token for one notification, replacing any previous one
 	// (a re-sent email gets a fresh token; the old link stops working).
 	SetRespondToken(id, tokenHash string, expiresAt time.Time) error
+	// ListForAdmin returns the notifications matching filter, newest first,
+	// with their recipient, and how many match in total.
+	ListForAdmin(filter AdminNotificationFilter, limit, offset int) ([]AdminNotificationRow, int64, error)
+	// ListDeliveriesForNotifications returns every delivery attempt of the
+	// given notifications, newest first, keyed by notification ID.
+	ListDeliveriesForNotifications(ids []string) (map[string][]*db.NotificationDelivery, error)
+	// ListNotificationTypes returns every distinct notification type.
+	ListNotificationTypes() ([]string, error)
 	// CreateLinkToken stores the hash of a notification page link token
 	// (see db.NotificationLinkToken).
 	CreateLinkToken(token *db.NotificationLinkToken) error

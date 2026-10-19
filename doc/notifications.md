@@ -413,6 +413,37 @@ Telegram, for free: a failed webhook call shows up in
 and retries on the same schedule as any other channel (see "Retries"
 below) — there's no separate, weaker reliability story for this one.
 
+## Admin history
+
+`GET /api/admin/notifications` (admin only) lists every user's
+notifications, newest first, with the recipient (`username`, `email`), the
+latest status per channel (`channels`) and an overall `status`. It is the
+dashboard's **Notifications** page, where a row opens its delivery attempts
+and errors (`GET /api/notifications/{id}/deliveries`).
+
+| Filter | Matches |
+|---|---|
+| `start_date`, `end_date` | Created in the range (ISO 8601, inclusive) |
+| `type` | The notification type, exactly (`GET /api/admin/notifications/types` lists them) |
+| `user_id` / `user` | The recipient's ID, or part of their username or email |
+| `batch_id` | One `POST /api/notifications` call |
+| `channel` | Attempted on this channel |
+| `status` | `sent`, `pending`, `failed`, `skipped` or `none`; per `channel` if given |
+| `responded`, `read` | Answered / read or not |
+| `q` | Part of the title or body |
+
+`page` (from 1) and `limit` (1-200, default 50) paginate; the response has
+the `total` matching the filters.
+
+Without `channel`, `status` is the overall one: `pending` if any channel
+is in flight or has a retry scheduled, else `failed` if any channel failed
+for good, else `sent` if any was sent, else `skipped` (no channel could
+deliver), and `none` for in-app only notifications. The response webhook
+is not counted. With `channel`, it is that channel's latest attempt (and
+`none` means it was never attempted there). For example
+`?channel=sms&status=failed&start_date=2026-10-01T00:00:00Z` finds the SMS
+that never arrived this month, and opening one shows the provider's error.
+
 ## Status
 
 `GET /api/notifications/{id}/deliveries` (above) gives you every raw
