@@ -617,6 +617,7 @@ type loginPageData struct {
 	Message          string
 	Error            string
 	ManagementPrefix string
+	Version          string // Shown in the footer, e.g. "v1.2.3". Empty shows none.
 }
 
 // OIDCLoginButton is one OIDC provider's button on the login page.
