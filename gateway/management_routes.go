@@ -226,6 +226,7 @@ func (g *Gateway) renderLoginPage(w http.ResponseWriter, r *http.Request, status
 	data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
 	data.Message = message
 	data.Error = errorText
+	data.Version = DisplayVersion(g.Version)
 
 	tmpl, ok := g.templates["login.html"]
 	if !ok || tmpl == nil {

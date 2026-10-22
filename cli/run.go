@@ -74,6 +74,8 @@ func (a *app) runGateway(configFilePath string) {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
 	}
 
+	gw.Version = a.build.Version
+
 	log.Printf("API Gateway '%s' listening on %s", cfg.Name, gw.Server.Addr)
 	log.Printf("Gateway public URL set to: %s", cfg.Server.URL)
 	log.Printf("Management API prefix: %s", config.ManagementPrefix)

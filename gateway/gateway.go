@@ -6,6 +6,7 @@ import (
 	"html/template" // Added for template parsing
 	"log"
 	"net/http" // Still needed for user-defined static routes from OS filesystem
+	"strings"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/accounts"
@@ -38,8 +39,21 @@ type Gateway struct {
 	authTemplates map[string]*template.Template
 	WebappEmbedFS *embed.FS
 	StartTime     time.Time
+	// Version is the build's version, shown in the footer of the login and
+	// account pages. Set by `tg run`; empty shows none.
+	Version string
 
 	handler http.Handler
+}
+
+// DisplayVersion formats a build version for people: "v1.2.3" for a release
+// ("1.2.3" or "v1.2.3"), anything else (e.g. "Dev") as it is.
+func DisplayVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version != "" && version[0] >= '0' && version[0] <= '9' {
+		return "v" + version
+	}
+	return version
 }
 
 // --- NewGatewayWithDependencies Function ---
