@@ -34,6 +34,7 @@ type authPage struct {
 	Message string
 	Error   string
 	Wide    bool
+	Version string // footer
 
 	Token     string
 	Body      string
@@ -44,7 +45,7 @@ type authPage struct {
 }
 
 func (g *Gateway) newAuthPage(title string) authPage {
-	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl}
+	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl, Version: DisplayVersion(g.Version)}
 }
 
 func (g *Gateway) renderAuthPage(w http.ResponseWriter, status int, name string, page authPage) {

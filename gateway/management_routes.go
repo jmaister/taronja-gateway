@@ -223,6 +223,7 @@ func (g *Gateway) renderLoginPage(w http.ResponseWriter, r *http.Request, status
 	// safe same-origin path wherever the template embeds it.
 	data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
 	data.Error = errorText
+	data.Version = DisplayVersion(g.Version)
 
 	tmpl, ok := g.templates["login.html"]
 	if !ok || tmpl == nil {
