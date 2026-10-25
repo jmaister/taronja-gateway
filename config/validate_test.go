@@ -150,3 +150,32 @@ func TestValidate_PhoneChannels(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_Billing(t *testing.T) {
+	stripe := StripeBillingConfig{SecretKey: "sk_test_x", WebhookSecret: "whsec_x"}
+	odoo := OdooBillingConfig{URL: "https://odoo.example.com", Database: "prod", APIKey: "k", CompanyID: 1, SalesJournalID: 2, PaymentJournalID: 3, TaxID: 4}
+	server := ServerConfig{URL: "https://example.com"}
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"disabled":         {GatewayConfig{Billing: BillingConfig{Stripe: StripeBillingConfig{}}}, ""},
+		"stripe only":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe}}, ""},
+		"with odoo":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo}}, ""},
+		"no server url":    {GatewayConfig{Billing: BillingConfig{Enabled: true, Stripe: stripe}}, "requires server.url"},
+		"no stripe keys":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true}}, "secretKey and billing.stripe.webhookSecret"},
+		"odoo incomplete":  {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://odoo.example.com", Database: "d", APIKey: "k"}}}, "companyId"},
+		"odoo bad url":     {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "odoo", Database: "d", APIKey: "k"}}}, "not a URL"},
+		"odoo no database": {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://o.example"}}}, "database"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
