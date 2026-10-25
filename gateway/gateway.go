@@ -34,6 +34,7 @@ type Gateway struct {
 	// Accounts maps external logins (Google, GitHub, OpenID Connect) to users.
 	Accounts      *accounts.Service
 	templates     map[string]*template.Template
+	authTemplates map[string]*template.Template
 	WebappEmbedFS *embed.FS
 	StartTime     time.Time
 
@@ -50,9 +51,15 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
+	authTemplates, err := parseAuthTemplates(static.StaticAssetsFS)
+	if err != nil {
+		return nil, err
+	}
+
 	gateway := &Gateway{
 		Dependencies:  deps,
 		templates:     templates,
+		authTemplates: authTemplates,
 		WebappEmbedFS: webappEmbedFS,
 		StartTime:     time.Now(),
 	}

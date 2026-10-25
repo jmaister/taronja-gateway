@@ -26,6 +26,9 @@ const StateCookieName = "OAuthState"
 // PKCEVerifierCookieName holds the PKCE code verifier between Login and Callback.
 const PKCEVerifierCookieName = "tg_pkce_verifier"
 
+// AccountPath is the signed-in user's account page (billing only).
+const AccountPath = config.ManagementPrefix + "/account"
+
 // UserInfo is a struct that holds the user information that is returned by the OAuth2 provider.
 type UserInfo struct {
 	ID            string `json:"id"`

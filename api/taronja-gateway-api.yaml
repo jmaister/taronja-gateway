@@ -111,6 +111,12 @@ paths:
                   isAdmin:
                     type: boolean
                     example: false
+                  organizations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MyOrganization'
+                  entitlements:
+                    $ref: '#/components/schemas/EntitlementHeader'
         '401':
           description: Unauthorized
           content:
@@ -1989,6 +1995,1453 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/organizations:
+    get:
+      summary: List organizations (admin only)
+      operationId: listOrganizations
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Every organization, by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Organization'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create an organization (admin only)
+      operationId: createOrganization
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/organizations/{orgId}:
+    get:
+      summary: Get an organization with its members (admin only)
+      operationId: getOrganization
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      summary: Rename an organization (admin only)
+      operationId: updateOrganization
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationUpdateRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete an organization and its memberships (admin only)
+      operationId: deleteOrganization
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/organizations/{orgId}/members/{userId}:
+    put:
+      summary: Add a user to an organization or change their role (admin only)
+      operationId: setOrganizationMember
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationMemberRequest'
+      responses:
+        '200':
+          description: The membership
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMember'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Remove a user from an organization (admin only)
+      operationId: removeOrganizationMember
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Removed
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/me/organizations:
+    get:
+      summary: The current user's organizations
+      operationId: listMyOrganizations
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Organizations with the role
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyOrganization'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/entitlements:
+    get:
+      summary: A user's or an organization's active features
+      operationId: getEntitlements
+      tags:
+        - Entitlements
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          description: User ID (admin, or the user themselves)
+          schema:
+            type: string
+        - name: org_id
+          in: query
+          required: false
+          description: Organization ID (admin, or a member)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Active features and until when
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntitlementSet'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/plans:
+    get:
+      summary: List plans (admin only)
+      operationId: listBillingPlans
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: include_archived
+          in: query
+          required: false
+          description: Include archived plans
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Plans by key
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingPlan'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a plan and its Stripe and Odoo products (admin only)
+      operationId: createBillingPlan
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingPlanInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPlan'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/plans/{key}:
+    get:
+      summary: Get a plan (admin only)
+      operationId: getBillingPlan
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Plan key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPlan'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      summary: Change or archive a plan (admin only); a new amount creates a new Stripe price
+      operationId: updateBillingPlan
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Plan key
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingPlanUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPlan'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/subscriptions:
+    get:
+      summary: List subscriptions (admin only)
+      operationId: listBillingSubscriptions
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: subject
+          in: query
+          required: false
+          description: user:<id> or org:<id>
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Status
+          schema:
+            type: string
+        - name: plan
+          in: query
+          required: false
+          description: Plan key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingSubscription'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/subscriptions/{id}/activate:
+    post:
+      summary: Start a subscription that waits for activation (admin only)
+      operationId: activateBillingSubscription
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSubscription'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/subscriptions/{id}/cancel:
+    post:
+      summary: Cancel a subscription now or at period end (admin only)
+      operationId: cancelBillingSubscription
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingCancelRequest'
+      responses:
+        '200':
+          description: The subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSubscription'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/purchases:
+    get:
+      summary: List paid checkouts with shipping addresses (admin only)
+      operationId: listBillingPurchases
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: subject
+          in: query
+          required: false
+          description: user:<id> or org:<id>
+          schema:
+            type: string
+        - name: plan
+          in: query
+          required: false
+          description: Plan key
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: paid or refunded
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: false
+          description: Paid at or after
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingPurchase'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/purchases/{id}/refund:
+    post:
+      summary: Refund a payment (admin only); the credit note follows
+      operationId: refundBillingPurchase
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingRefundRequest'
+      responses:
+        '200':
+          description: The purchase
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPurchase'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/grants:
+    get:
+      summary: List grants (admin only)
+      operationId: listBillingGrants
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: subject
+          in: query
+          required: false
+          description: user:<id> or org:<id>
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingGrant'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Give features to a subject until a date (admin only)
+      operationId: createBillingGrant
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingGrantRequest'
+      responses:
+        '201':
+          description: One grant per feature
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingGrant'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/grants/{id}:
+    delete:
+      summary: Remove a grant (admin only)
+      operationId: deleteBillingGrant
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/documents:
+    get:
+      summary: List invoices and credit notes with their Odoo state (admin only)
+      operationId: listBillingDocuments
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: subject
+          in: query
+          required: false
+          description: user:<id> or org:<id>
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: pending, done or failed
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: invoice or credit_note
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingDocument'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/documents/{id}/retry:
+    post:
+      summary: Queue a failed document again (admin only)
+      operationId: retryBillingDocument
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingDocument'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/documents/{id}/pdf:
+    get:
+      summary: The PDF Odoo issued (admin, the payer, owners of the organization)
+      operationId: getBillingDocumentPdf
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/me/billing:
+    get:
+      summary: The current user's subscriptions and invoices, and those of organizations they own
+      operationId: getMyBilling
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Subscriptions and documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyBilling'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/me/billing/portal:
+    post:
+      summary: A Stripe Customer Portal URL for a subject the user pays or owns
+      operationId: createMyBillingPortal
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingPortalRequest'
+      responses:
+        '200':
+          description: The portal URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPortalResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/setup:
+    get:
+      summary: Billing configuration checks (admin only)
+      operationId: getBillingSetup
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Checks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSetup'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing/setup/actions:
+    post:
+      summary: Apply a fix from the setup page (admin only)
+      operationId: runBillingSetupAction
+      tags:
+        - Billing
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingSetupActionRequest'
+      responses:
+        '200':
+          description: Checks after the fix
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSetup'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (logged in but not admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Billing or Odoo not configured, or unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/admin/counters:
     get:
       summary: Get list of available counter types (admin only)
@@ -2276,6 +3729,293 @@ components:
             dark-mode: false
       required:
         - flags
+    Organization:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        memberCount: {type: integer}
+        createdAt: {type: string, format: date-time}
+      required: [id, name, memberCount, createdAt]
+    OrganizationMember:
+      type: object
+      properties:
+        userId: {type: string}
+        username: {type: string}
+        email: {type: string}
+        role: {type: string, enum: [owner, member]}
+      required: [userId, username, email, role]
+    OrganizationDetail:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        createdAt: {type: string, format: date-time}
+        members:
+          type: array
+          items: {$ref: '#/components/schemas/OrganizationMember'}
+      required: [id, name, createdAt, members]
+    OrganizationCreateRequest:
+      type: object
+      properties:
+        name: {type: string}
+        ownerUserId: {type: string, description: Optional first member, as owner}
+      required: [name]
+    OrganizationUpdateRequest:
+      type: object
+      properties:
+        name: {type: string}
+      required: [name]
+    OrganizationMemberRequest:
+      type: object
+      properties:
+        role: {type: string, enum: [owner, member]}
+      required: [role]
+    MyOrganization:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        role: {type: string, enum: [owner, member]}
+      required: [id, name, role]
+    Entitlement:
+      type: object
+      properties:
+        until: {type: string, format: date-time, nullable: true, description: When the feature stops; null = no expiry}
+        status: {type: string, enum: [trial, active, canceling, past_due, awaiting_activation, granted]}
+        source: {type: string, description: '"subscription:<id>", "purchase:<id>" or "grant:<id>"'}
+      required: [status, source]
+    EntitlementSet:
+      type: object
+      properties:
+        subject: {type: string}
+        features:
+          type: object
+          additionalProperties: {$ref: '#/components/schemas/Entitlement'}
+      required: [subject, features]
+    EntitlementHeader:
+      type: object
+      description: Active features as in the X-Entitlements header (until, or null for no expiry)
+      properties:
+        user:
+          type: object
+          additionalProperties: {type: string, format: date-time, nullable: true}
+        orgs:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {type: string, format: date-time, nullable: true}
+      required: [user, orgs]
+    BillingPlanInput:
+      type: object
+      properties:
+        key: {type: string, description: 'URL slug: lowercase letters, digits and -'}
+        name: {type: string}
+        description: {type: string}
+        kind: {type: string, enum: [subscription, one_time]}
+        interval: {type: string, description: 'month or year (subscription plans)'}
+        amountCents: {type: integer, format: int64, description: VAT included}
+        features: {type: array, items: {type: string}}
+        subject: {type: string, enum: [user, org, either]}
+        trialDays: {type: integer}
+        graceDays: {type: integer}
+        setupFeeCents: {type: integer, format: int64}
+        setupFeeName: {type: string}
+        starts: {type: string, enum: [on_payment, on_activation]}
+        accessDays: {type: integer}
+        collectShipping: {type: boolean}
+        group: {type: string}
+      required: [key, name, kind, amountCents, features]
+    BillingPlanUpdate:
+      type: object
+      properties:
+        name: {type: string}
+        description: {type: string}
+        amountCents: {type: integer, format: int64}
+        features: {type: array, items: {type: string}}
+        trialDays: {type: integer}
+        graceDays: {type: integer}
+        setupFeeCents: {type: integer, format: int64}
+        setupFeeName: {type: string}
+        accessDays: {type: integer}
+        collectShipping: {type: boolean}
+        group: {type: string}
+        active: {type: boolean}
+    BillingPlan:
+      type: object
+      properties:
+        key: {type: string}
+        name: {type: string}
+        description: {type: string}
+        kind: {type: string, enum: [subscription, one_time]}
+        interval: {type: string}
+        amountCents: {type: integer, format: int64}
+        currency: {type: string}
+        features: {type: array, items: {type: string}}
+        subject: {type: string, enum: [user, org, either]}
+        trialDays: {type: integer}
+        graceDays: {type: integer}
+        setupFeeCents: {type: integer, format: int64}
+        setupFeeName: {type: string}
+        starts: {type: string, enum: [on_payment, on_activation]}
+        accessDays: {type: integer}
+        collectShipping: {type: boolean}
+        group: {type: string}
+        active: {type: boolean}
+        payLink: {type: string, description: '<server.url>/_/pay/<key>'}
+        stripeProductId: {type: string}
+        stripePriceId: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+      required: [key, name, description, kind, amountCents, currency, features, subject, trialDays, graceDays, setupFeeCents, starts, accessDays, collectShipping, active, payLink, createdAt, updatedAt]
+    BillingSubscription:
+      type: object
+      properties:
+        id: {type: string}
+        subject: {type: string}
+        planKey: {type: string}
+        payerUserId: {type: string}
+        status: {type: string, enum: [awaiting_activation, trialing, active, past_due, canceled]}
+        stripeSubscriptionId: {type: string, nullable: true}
+        currentPeriodEnd: {type: string, format: date-time, nullable: true}
+        trialEnd: {type: string, format: date-time, nullable: true}
+        cancelAtPeriodEnd: {type: boolean}
+        graceUntil: {type: string, format: date-time, nullable: true}
+        activatedAt: {type: string, format: date-time, nullable: true}
+        canceledAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+      required: [id, subject, planKey, payerUserId, status, cancelAtPeriodEnd, createdAt]
+    ShippingAddress:
+      type: object
+      properties:
+        name: {type: string}
+        phone: {type: string}
+        line1: {type: string}
+        line2: {type: string}
+        postalCode: {type: string}
+        city: {type: string}
+        state: {type: string}
+        country: {type: string}
+    BillingPurchase:
+      type: object
+      properties:
+        id: {type: string}
+        subject: {type: string}
+        planKey: {type: string}
+        payerUserId: {type: string}
+        subscriptionId: {type: string, nullable: true}
+        status: {type: string, enum: [paid, refunded]}
+        amountCents: {type: integer, format: int64}
+        refundedCents: {type: integer, format: int64}
+        currency: {type: string}
+        paidAt: {type: string, format: date-time}
+        shipping: {$ref: '#/components/schemas/ShippingAddress'}
+      required: [id, subject, planKey, payerUserId, status, amountCents, refundedCents, currency, paidAt]
+    BillingCancelRequest:
+      type: object
+      properties:
+        atPeriodEnd: {type: boolean, description: 'true: features last until the period end; false: cancel now'}
+      required: [atPeriodEnd]
+    BillingRefundRequest:
+      type: object
+      properties:
+        amountCents: {type: integer, format: int64, description: Omit to refund everything left}
+        cancelSubscription: {type: boolean, description: Also cancel the subscription this payment started, at once}
+    BillingGrantRequest:
+      type: object
+      properties:
+        subject: {type: string}
+        features: {type: array, items: {type: string}}
+        until: {type: string, format: date-time, nullable: true, description: Omit for no expiry}
+        note: {type: string}
+      required: [subject, features]
+    BillingGrant:
+      type: object
+      properties:
+        id: {type: string}
+        subject: {type: string}
+        feature: {type: string}
+        until: {type: string, format: date-time, nullable: true}
+        note: {type: string}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+      required: [id, subject, feature, note, createdBy, createdAt]
+    BillingDocument:
+      type: object
+      properties:
+        id: {type: string}
+        subject: {type: string}
+        kind: {type: string, enum: [invoice, credit_note]}
+        stripeRef: {type: string}
+        invoiceDocumentId: {type: string, nullable: true}
+        amountCents: {type: integer, format: int64}
+        currency: {type: string}
+        paidAt: {type: string, format: date-time}
+        odooState: {type: string, enum: [pending, done, failed]}
+        odooError: {type: string}
+        attempts: {type: integer}
+        number: {type: string}
+        issuedAt: {type: string, format: date-time, nullable: true}
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              description: {type: string}
+              amountCents: {type: integer, format: int64}
+            required: [description, amountCents]
+      required: [id, subject, kind, stripeRef, amountCents, currency, paidAt, odooState, odooError, attempts, number, lines]
+    MyBillingSubscription:
+      type: object
+      properties:
+        subscription: {$ref: '#/components/schemas/BillingSubscription'}
+        planName: {type: string}
+        subjectName: {type: string, description: Your name or the organization's}
+      required: [subscription, planName, subjectName]
+    MyBilling:
+      type: object
+      properties:
+        subscriptions:
+          type: array
+          items: {$ref: '#/components/schemas/MyBillingSubscription'}
+        documents:
+          type: array
+          items: {$ref: '#/components/schemas/BillingDocument'}
+      required: [subscriptions, documents]
+    BillingPortalRequest:
+      type: object
+      properties:
+        subject: {type: string}
+      required: [subject]
+    BillingPortalResponse:
+      type: object
+      properties:
+        url: {type: string}
+      required: [url]
+    SetupCheck:
+      type: object
+      properties:
+        id: {type: string}
+        section: {type: string, enum: [stripe, odoo]}
+        title: {type: string}
+        status: {type: string, enum: [ok, check, missing, manual]}
+        detail: {type: string}
+        action: {type: string}
+        link: {type: string}
+      required: [id, section, title, status, detail]
+    BillingSetup:
+      type: object
+      properties:
+        checks:
+          type: array
+          items: {$ref: '#/components/schemas/SetupCheck'}
+        message: {type: string}
+      required: [checks]
+    BillingSetupActionRequest:
+      type: object
+      properties:
+        action: {type: string}
+      required: [action]
     Error:
       type: object
       properties:
