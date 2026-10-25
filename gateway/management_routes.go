@@ -192,6 +192,9 @@ func (g *Gateway) registerLoginRoutes() {
 	loginPath := config.ManagementPrefix + "/login"
 	g.Mux.HandleFunc(loginPath, g.handleLoginPage)
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
+
+	g.registerAccountRoutes()
+	g.registerBillingRoutes()
 }
 
 // handleLoginPage serves /_/login. A user who is already logged in goes

@@ -1,0 +1,4 @@
+{{define "content"}}
+{{if .Body}}<p>{{.Body}}</p>{{end}}
+{{if .LinkURL}}<a class="button" href="{{.LinkURL}}">{{.LinkLabel}}</a>{{end}}
+{{end}}

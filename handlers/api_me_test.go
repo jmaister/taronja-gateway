@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"context"
+	"crypto/rand"
 	"math/big"
 	"net/http"
 	"testing"
@@ -9,13 +10,13 @@ import (
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/handlers"
 	"github.com/jmaister/taronja-gateway/session"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
-
-	"crypto/rand"
+	"github.com/stretchr/testify/require"
 )
 
 func RndStr(n int) string {
@@ -252,5 +253,81 @@ func TestGetCurrentUser(t *testing.T) {
 		assert.True(t, ok, "Response should be GetCurrentUser401JSONResponse")
 		assert.Equal(t, http.StatusUnauthorized, errResp.Code)
 		assert.Equal(t, "Unauthorized", errResp.Message)
+	})
+
+	t.Run("GetCurrentUser includes organizations", func(t *testing.T) {
+		// Setup: Create another test database for organizations
+		orgDependencies := deps.NewTestWithName("TestGetCurrentUserOrganizations")
+		orgRepo := repositories.NewOrganizationRepositoryDB(db.GetConnection())
+		userRepo := repositories.NewDBUserRepository(db.GetConnection())
+
+		sWithOrgs := handlers.NewStrictApiServer(
+			orgDependencies.SessionStore,
+			userRepo,
+			orgDependencies.TrafficMetricRepo,
+			orgDependencies.TokenRepo,
+			orgDependencies.CountersRepo,
+			orgDependencies.BlockedClientRepo,
+			orgDependencies.TokenService,
+			orgDependencies.StartTime,
+			nil,
+			nil,
+			orgDependencies.NotificationService,
+		)
+		sWithOrgs.SetOrganizations(orgRepo)
+
+		// Create test user
+		testUser := &db.User{
+			Username: "org-test-user",
+			Email:    "org-test@example.com",
+			Name:     "Org Test User",
+		}
+		err := userRepo.CreateUser(testUser)
+		require.NoError(t, err)
+
+		// Create organization and add user
+		testOrg := &db.Organization{
+			Name: "Test User Org",
+		}
+		err = orgRepo.Create(testOrg)
+		require.NoError(t, err)
+
+		err = orgRepo.SetMember(testOrg.ID, testUser.ID, "owner")
+		require.NoError(t, err)
+
+		// Setup session
+		sessionObj := &db.Session{
+			Token:           "test-session",
+			UserID:          testUser.ID,
+			Username:        testUser.Username,
+			Email:           testUser.Email,
+			Provider:        "testprovider",
+			IsAuthenticated: true,
+			IsAdmin:         false,
+			ValidUntil:      time.Now().Add(1 * time.Hour),
+		}
+		ctxWithOrg := context.WithValue(context.Background(), session.SessionKey, sessionObj)
+
+		// Execute
+		resp, err := sWithOrgs.GetCurrentUser(ctxWithOrg, api.GetCurrentUserRequestObject{})
+
+		// Assert
+		require.NoError(t, err)
+		userResp, ok := resp.(api.GetCurrentUser200JSONResponse)
+		require.True(t, ok, "Response should be GetCurrentUser200JSONResponse")
+		assert.NotNil(t, userResp.Organizations)
+		assert.Greater(t, len(*userResp.Organizations), 0)
+
+		// Verify organization details
+		found := false
+		for _, org := range *userResp.Organizations {
+			if org.Id == testOrg.ID {
+				assert.Equal(t, "Test User Org", org.Name)
+				assert.Equal(t, api.MyOrganizationRole("owner"), org.Role)
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "created organization not found in user response")
 	})
 }

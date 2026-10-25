@@ -1,0 +1,44 @@
+{{define "content"}}
+{{with .Pay}}
+<h2>{{.Name}}</h2>
+{{if .Description}}<p>{{.Description}}</p>{{end}}
+<p><strong>{{.Price}}</strong> <span class="muted">VAT included</span></p>
+{{if .SetupFee}}<p class="muted">Plus, once: {{.SetupFee}}</p>{{end}}
+{{if .Features}}
+<ul>{{range .Features}}<li>{{.}}</li>{{end}}</ul>
+{{end}}
+{{if .NeedsOrg}}
+<p>This plan is bought for an organization, and you don't belong to any yet. Ask the application to add you to yours.</p>
+{{else}}
+{{range .Options}}
+<div class="row">
+    <div>
+        <strong>{{.Label}}</strong>
+        {{if .Subscribed}}<span class="badge ok">subscribed</span>{{else if .Trial}}<span class="badge warn">{{.Trial}} days free</span>{{end}}
+    </div>
+    <div>
+        {{if .Subscribed}}
+        {{if .OrgID}}
+        <form method="POST" action="{{$.Prefix}}/account/billing/portal">
+            <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
+            <input type="hidden" name="subject" value="org:{{.OrgID}}">
+            <button type="submit" class="secondary">Manage subscription</button>
+        </form>
+        {{else}}
+        <a class="button secondary" href="{{$.Prefix}}/account">Manage subscription</a>
+        {{end}}
+        {{else}}
+        <form method="POST" action="{{$.Prefix}}/pay/{{$.Pay.Plan}}">
+            <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
+            <input type="hidden" name="org" value="{{.OrgID}}">
+            <input type="hidden" name="redirect" value="{{$.Pay.Redirect}}">
+            <button type="submit"{{if .Selected}} autofocus{{end}}>Pay</button>
+        </form>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+<p class="muted">Payments are processed by Stripe. Invoices are emailed to you and listed in your account.</p>
+{{end}}
+{{end}}

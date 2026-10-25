@@ -69,6 +69,9 @@ func (a *app) runGateway(configFilePath string) {
 		log.Fatalf("FATAL: failed to initialize notifications: %v", err)
 	}
 
+	// Must run before NewGatewayWithDependencies, which registers the billing routes.
+	shutdownBilling := gateway.InitBilling(context.Background(), cfg.Billing, cfg.Server, gatewayDeps)
+
 	gw, err := gateway.NewGatewayWithDependencies(cfg, a.webappFS, gatewayDeps)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to create gateway instance: %v", err)
@@ -112,6 +115,13 @@ func (a *app) runGateway(configFilePath string) {
 	defer tracingCancel()
 	if err := shutdownTracing(tracingCtx); err != nil {
 		log.Printf("Warning: failed to flush tracing exporter cleanly: %v", err)
+	}
+
+	billingCtx, billingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer billingCancel()
+	err = shutdownBilling(billingCtx)
+	if err != nil {
+		log.Printf("Warning: failed to stop the billing workers cleanly: %v", err)
 	}
 
 	notificationsCtx, notificationsCancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -1,0 +1,115 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 40px 16px 80px;
+            display: flex;
+            justify-content: center;
+        }
+        .card {
+            background: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 420px;
+        }
+        .card.wide { max-width: 760px; }
+        h1 { margin: 0 0 20px; font-size: 26px; text-align: center; }
+        h2 { font-size: 18px; margin: 28px 0 12px; padding-top: 20px; border-top: 1px solid #eee; }
+        p { line-height: 1.5; }
+        .logo { display: block; max-width: 200px; max-height: 80px; margin: 0 auto 20px; object-fit: contain; }
+        form { margin: 0; }
+        label { display: block; font-size: 14px; color: #555; margin-top: 12px; }
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            margin: 6px 0 4px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        input.code { font-size: 28px; letter-spacing: 8px; text-align: center; font-family: monospace; }
+        button, .button {
+            display: inline-block;
+            width: 100%;
+            margin-top: 16px;
+            padding: 12px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            text-decoration: none;
+        }
+        button:hover, .button:hover { background-color: #0056b3; }
+        button.small {
+            width: auto;
+            margin: 0;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: normal;
+            background: #fff;
+            color: #b02a37;
+            border: 1px solid #e3a5ab;
+        }
+        button.small:hover { background: #fbeaec; }
+        button.secondary { background: #6c757d; }
+        .notice, .error {
+            border-radius: 6px;
+            padding: 12px;
+            margin: 0 0 16px;
+            font-size: 14px;
+        }
+        .notice { background: #e7f3ff; color: #084298; border: 1px solid #b6d4fe; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .links { margin-top: 20px; text-align: center; font-size: 14px; }
+        .links a { color: #007bff; text-decoration: none; margin: 0 8px; }
+        .muted { color: #777; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        th { color: #777; font-weight: normal; font-size: 13px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e9ecef; }
+        .badge.ok { background: #d1e7dd; color: #0f5132; }
+        .badge.warn { background: #fff3cd; color: #664d03; }
+        .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #f3f3f3;
+            background: rgba(71, 71, 71, 0.8);
+            width: 100%;
+            text-align: right;
+        }
+        .footer a { color: inherit; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card{{if .Wide}} wide{{end}}">
+        {{if .LogoURL}}<img src="{{.LogoURL}}" alt="Logo" class="logo">{{end}}
+        <h1>{{.Title}}</h1>
+        {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
+        {{if .Error}}<div class="error" role="alert">{{.Error}}</div>{{end}}
+        {{template "content" .}}
+    </div>
+    <footer class="footer">
+        Powered by <a href="https://github.com/jmaister/taronja-gateway" target="_blank" rel="noopener noreferrer">Taronja Gateway</a>
+    </footer>
+</body>
+</html>{{end}}
