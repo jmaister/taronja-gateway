@@ -17,7 +17,9 @@ import (
 
 // authPageNames are the account page templates, each rendered inside
 // auth_layout.html.
-var authPageNames = []string{"message.html", "account.html", "notification.html"}
+var authPageNames = []string{
+	"message.html", "account.html", "notification.html", "pay.html", "pay_done.html",
+}
 
 func parseAuthTemplates(fs embed.FS) (map[string]*template.Template, error) {
 	templates := make(map[string]*template.Template, len(authPageNames))
@@ -48,6 +50,8 @@ type authPage struct {
 	Account   *accountView
 	// Notification is the page an SMS/WhatsApp link opens.
 	Notification *notificationView
+	Pay          *payView
+	PayDone      *payDoneView
 }
 
 type accountView struct {
@@ -60,6 +64,7 @@ type accountView struct {
 	Linkable       []linkableProvider
 	Sessions       []sessionView
 	Events         []eventView
+	Billing        *billingView
 }
 
 type identityView struct {
@@ -286,6 +291,8 @@ func (g *Gateway) renderAccountPage(w http.ResponseWriter, status int, acct *acc
 		}
 		view.Events = append(view.Events, eventView{Label: label, When: e.CreatedAt.Local().Format("2006-01-02 15:04"), IP: e.IPAddress})
 	}
+
+	view.Billing = g.accountBilling(acct)
 
 	page := g.newAuthPage("Your account")
 	page.Wide = true
