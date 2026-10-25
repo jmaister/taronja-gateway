@@ -46,6 +46,204 @@ func (e AdminNotificationStatus) Valid() bool {
 	}
 }
 
+// Defines values for BillingDocumentKind.
+const (
+	CreditNote BillingDocumentKind = "credit_note"
+	Invoice    BillingDocumentKind = "invoice"
+)
+
+// Valid indicates whether the value is a known member of the BillingDocumentKind enum.
+func (e BillingDocumentKind) Valid() bool {
+	switch e {
+	case CreditNote:
+		return true
+	case Invoice:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingDocumentOdooState.
+const (
+	BillingDocumentOdooStateDone    BillingDocumentOdooState = "done"
+	BillingDocumentOdooStateFailed  BillingDocumentOdooState = "failed"
+	BillingDocumentOdooStatePending BillingDocumentOdooState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the BillingDocumentOdooState enum.
+func (e BillingDocumentOdooState) Valid() bool {
+	switch e {
+	case BillingDocumentOdooStateDone:
+		return true
+	case BillingDocumentOdooStateFailed:
+		return true
+	case BillingDocumentOdooStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPlanKind.
+const (
+	BillingPlanKindOneTime      BillingPlanKind = "one_time"
+	BillingPlanKindSubscription BillingPlanKind = "subscription"
+)
+
+// Valid indicates whether the value is a known member of the BillingPlanKind enum.
+func (e BillingPlanKind) Valid() bool {
+	switch e {
+	case BillingPlanKindOneTime:
+		return true
+	case BillingPlanKindSubscription:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPlanStarts.
+const (
+	BillingPlanStartsOnActivation BillingPlanStarts = "on_activation"
+	BillingPlanStartsOnPayment    BillingPlanStarts = "on_payment"
+)
+
+// Valid indicates whether the value is a known member of the BillingPlanStarts enum.
+func (e BillingPlanStarts) Valid() bool {
+	switch e {
+	case BillingPlanStartsOnActivation:
+		return true
+	case BillingPlanStartsOnPayment:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPlanSubject.
+const (
+	BillingPlanSubjectEither BillingPlanSubject = "either"
+	BillingPlanSubjectOrg    BillingPlanSubject = "org"
+	BillingPlanSubjectUser   BillingPlanSubject = "user"
+)
+
+// Valid indicates whether the value is a known member of the BillingPlanSubject enum.
+func (e BillingPlanSubject) Valid() bool {
+	switch e {
+	case BillingPlanSubjectEither:
+		return true
+	case BillingPlanSubjectOrg:
+		return true
+	case BillingPlanSubjectUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPlanInputKind.
+const (
+	BillingPlanInputKindOneTime      BillingPlanInputKind = "one_time"
+	BillingPlanInputKindSubscription BillingPlanInputKind = "subscription"
+)
+
+// Valid indicates whether the value is a known member of the BillingPlanInputKind enum.
+func (e BillingPlanInputKind) Valid() bool {
+	switch e {
+	case BillingPlanInputKindOneTime:
+		return true
+	case BillingPlanInputKindSubscription:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPlanInputStarts.
+const (
+	BillingPlanInputStartsOnActivation BillingPlanInputStarts = "on_activation"
+	BillingPlanInputStartsOnPayment    BillingPlanInputStarts = "on_payment"
+)
+
+// Valid indicates whether the value is a known member of the BillingPlanInputStarts enum.
+func (e BillingPlanInputStarts) Valid() bool {
+	switch e {
+	case BillingPlanInputStartsOnActivation:
+		return true
+	case BillingPlanInputStartsOnPayment:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPlanInputSubject.
+const (
+	BillingPlanInputSubjectEither BillingPlanInputSubject = "either"
+	BillingPlanInputSubjectOrg    BillingPlanInputSubject = "org"
+	BillingPlanInputSubjectUser   BillingPlanInputSubject = "user"
+)
+
+// Valid indicates whether the value is a known member of the BillingPlanInputSubject enum.
+func (e BillingPlanInputSubject) Valid() bool {
+	switch e {
+	case BillingPlanInputSubjectEither:
+		return true
+	case BillingPlanInputSubjectOrg:
+		return true
+	case BillingPlanInputSubjectUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingPurchaseStatus.
+const (
+	Paid     BillingPurchaseStatus = "paid"
+	Refunded BillingPurchaseStatus = "refunded"
+)
+
+// Valid indicates whether the value is a known member of the BillingPurchaseStatus enum.
+func (e BillingPurchaseStatus) Valid() bool {
+	switch e {
+	case Paid:
+		return true
+	case Refunded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingSubscriptionStatus.
+const (
+	BillingSubscriptionStatusActive             BillingSubscriptionStatus = "active"
+	BillingSubscriptionStatusAwaitingActivation BillingSubscriptionStatus = "awaiting_activation"
+	BillingSubscriptionStatusCanceled           BillingSubscriptionStatus = "canceled"
+	BillingSubscriptionStatusPastDue            BillingSubscriptionStatus = "past_due"
+	BillingSubscriptionStatusTrialing           BillingSubscriptionStatus = "trialing"
+)
+
+// Valid indicates whether the value is a known member of the BillingSubscriptionStatus enum.
+func (e BillingSubscriptionStatus) Valid() bool {
+	switch e {
+	case BillingSubscriptionStatusActive:
+		return true
+	case BillingSubscriptionStatusAwaitingActivation:
+		return true
+	case BillingSubscriptionStatusCanceled:
+		return true
+	case BillingSubscriptionStatusPastDue:
+		return true
+	case BillingSubscriptionStatusTrialing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BlockedClientReason.
 const (
 	MaxErrors         BlockedClientReason = "max_errors"
@@ -82,6 +280,36 @@ func (e ChannelStatusStatus) Valid() bool {
 	case ChannelStatusStatusConnected:
 		return true
 	case ChannelStatusStatusNotConnected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntitlementStatus.
+const (
+	EntitlementStatusActive             EntitlementStatus = "active"
+	EntitlementStatusAwaitingActivation EntitlementStatus = "awaiting_activation"
+	EntitlementStatusCanceling          EntitlementStatus = "canceling"
+	EntitlementStatusGranted            EntitlementStatus = "granted"
+	EntitlementStatusPastDue            EntitlementStatus = "past_due"
+	EntitlementStatusTrial              EntitlementStatus = "trial"
+)
+
+// Valid indicates whether the value is a known member of the EntitlementStatus enum.
+func (e EntitlementStatus) Valid() bool {
+	switch e {
+	case EntitlementStatusActive:
+		return true
+	case EntitlementStatusAwaitingActivation:
+		return true
+	case EntitlementStatusCanceling:
+		return true
+	case EntitlementStatusGranted:
+		return true
+	case EntitlementStatusPastDue:
+		return true
+	case EntitlementStatusTrial:
 		return true
 	default:
 		return false
@@ -145,6 +373,60 @@ func (e MiddlewareStatusItemStatus) Valid() bool {
 	}
 }
 
+// Defines values for MyOrganizationRole.
+const (
+	MyOrganizationRoleMember MyOrganizationRole = "member"
+	MyOrganizationRoleOwner  MyOrganizationRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the MyOrganizationRole enum.
+func (e MyOrganizationRole) Valid() bool {
+	switch e {
+	case MyOrganizationRoleMember:
+		return true
+	case MyOrganizationRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrganizationMemberRole.
+const (
+	OrganizationMemberRoleMember OrganizationMemberRole = "member"
+	OrganizationMemberRoleOwner  OrganizationMemberRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationMemberRole enum.
+func (e OrganizationMemberRole) Valid() bool {
+	switch e {
+	case OrganizationMemberRoleMember:
+		return true
+	case OrganizationMemberRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrganizationMemberRequestRole.
+const (
+	OrganizationMemberRequestRoleMember OrganizationMemberRequestRole = "member"
+	OrganizationMemberRequestRoleOwner  OrganizationMemberRequestRole = "owner"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationMemberRequestRole enum.
+func (e OrganizationMemberRequestRole) Valid() bool {
+	switch e {
+	case OrganizationMemberRequestRoleMember:
+		return true
+	case OrganizationMemberRequestRoleOwner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RequestDetailFingerprintType.
 const (
 	Empty  RequestDetailFingerprintType = ""
@@ -163,6 +445,48 @@ func (e RequestDetailFingerprintType) Valid() bool {
 	case Ja4h:
 		return true
 	case Stable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SetupCheckSection.
+const (
+	Odoo   SetupCheckSection = "odoo"
+	Stripe SetupCheckSection = "stripe"
+)
+
+// Valid indicates whether the value is a known member of the SetupCheckSection enum.
+func (e SetupCheckSection) Valid() bool {
+	switch e {
+	case Odoo:
+		return true
+	case Stripe:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SetupCheckStatus.
+const (
+	Check   SetupCheckStatus = "check"
+	Manual  SetupCheckStatus = "manual"
+	Missing SetupCheckStatus = "missing"
+	Ok      SetupCheckStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the SetupCheckStatus enum.
+func (e SetupCheckStatus) Valid() bool {
+	switch e {
+	case Check:
+		return true
+	case Manual:
+		return true
+	case Missing:
+		return true
+	case Ok:
 		return true
 	default:
 		return false
@@ -287,6 +611,217 @@ type AvailableCountersResponse struct {
 	// Example: ["credits","coins","points","tokens"]
 	Counters []string `json:"counters"`
 }
+
+// BillingCancelRequest defines model for BillingCancelRequest.
+type BillingCancelRequest struct {
+	// AtPeriodEnd true: features last until the period end; false: cancel now
+	AtPeriodEnd bool `json:"atPeriodEnd"`
+}
+
+// BillingDocument defines model for BillingDocument.
+type BillingDocument struct {
+	AmountCents       int64               `json:"amountCents"`
+	Attempts          int                 `json:"attempts"`
+	Currency          string              `json:"currency"`
+	Id                string              `json:"id"`
+	InvoiceDocumentId *string             `json:"invoiceDocumentId,omitempty"`
+	IssuedAt          *time.Time          `json:"issuedAt,omitempty"`
+	Kind              BillingDocumentKind `json:"kind"`
+	Lines             []struct {
+		AmountCents int64  `json:"amountCents"`
+		Description string `json:"description"`
+	} `json:"lines"`
+	Number    string                   `json:"number"`
+	OdooError string                   `json:"odooError"`
+	OdooState BillingDocumentOdooState `json:"odooState"`
+	PaidAt    time.Time                `json:"paidAt"`
+	StripeRef string                   `json:"stripeRef"`
+	Subject   string                   `json:"subject"`
+}
+
+// BillingDocumentKind defines model for BillingDocument.Kind.
+type BillingDocumentKind string
+
+// BillingDocumentOdooState defines model for BillingDocument.OdooState.
+type BillingDocumentOdooState string
+
+// BillingGrant defines model for BillingGrant.
+type BillingGrant struct {
+	CreatedAt time.Time  `json:"createdAt"`
+	CreatedBy string     `json:"createdBy"`
+	Feature   string     `json:"feature"`
+	Id        string     `json:"id"`
+	Note      string     `json:"note"`
+	Subject   string     `json:"subject"`
+	Until     *time.Time `json:"until,omitempty"`
+}
+
+// BillingGrantRequest defines model for BillingGrantRequest.
+type BillingGrantRequest struct {
+	Features []string `json:"features"`
+	Note     *string  `json:"note,omitempty"`
+	Subject  string   `json:"subject"`
+
+	// Until Omit for no expiry
+	Until *time.Time `json:"until,omitempty"`
+}
+
+// BillingPlan defines model for BillingPlan.
+type BillingPlan struct {
+	AccessDays      int             `json:"accessDays"`
+	Active          bool            `json:"active"`
+	AmountCents     int64           `json:"amountCents"`
+	CollectShipping bool            `json:"collectShipping"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	Currency        string          `json:"currency"`
+	Description     string          `json:"description"`
+	Features        []string        `json:"features"`
+	GraceDays       int             `json:"graceDays"`
+	Group           *string         `json:"group,omitempty"`
+	Interval        *string         `json:"interval,omitempty"`
+	Key             string          `json:"key"`
+	Kind            BillingPlanKind `json:"kind"`
+	Name            string          `json:"name"`
+
+	// PayLink <server.url>/_/pay/<key>
+	PayLink         string             `json:"payLink"`
+	SetupFeeCents   int64              `json:"setupFeeCents"`
+	SetupFeeName    *string            `json:"setupFeeName,omitempty"`
+	Starts          BillingPlanStarts  `json:"starts"`
+	StripePriceId   *string            `json:"stripePriceId,omitempty"`
+	StripeProductId *string            `json:"stripeProductId,omitempty"`
+	Subject         BillingPlanSubject `json:"subject"`
+	TrialDays       int                `json:"trialDays"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
+}
+
+// BillingPlanKind defines model for BillingPlan.Kind.
+type BillingPlanKind string
+
+// BillingPlanStarts defines model for BillingPlan.Starts.
+type BillingPlanStarts string
+
+// BillingPlanSubject defines model for BillingPlan.Subject.
+type BillingPlanSubject string
+
+// BillingPlanInput defines model for BillingPlanInput.
+type BillingPlanInput struct {
+	AccessDays *int `json:"accessDays,omitempty"`
+
+	// AmountCents VAT included
+	AmountCents     int64    `json:"amountCents"`
+	CollectShipping *bool    `json:"collectShipping,omitempty"`
+	Description     *string  `json:"description,omitempty"`
+	Features        []string `json:"features"`
+	GraceDays       *int     `json:"graceDays,omitempty"`
+	Group           *string  `json:"group,omitempty"`
+
+	// Interval month or year (subscription plans)
+	Interval *string `json:"interval,omitempty"`
+
+	// Key URL slug: lowercase letters, digits and -
+	Key           string                   `json:"key"`
+	Kind          BillingPlanInputKind     `json:"kind"`
+	Name          string                   `json:"name"`
+	SetupFeeCents *int64                   `json:"setupFeeCents,omitempty"`
+	SetupFeeName  *string                  `json:"setupFeeName,omitempty"`
+	Starts        *BillingPlanInputStarts  `json:"starts,omitempty"`
+	Subject       *BillingPlanInputSubject `json:"subject,omitempty"`
+	TrialDays     *int                     `json:"trialDays,omitempty"`
+}
+
+// BillingPlanInputKind defines model for BillingPlanInput.Kind.
+type BillingPlanInputKind string
+
+// BillingPlanInputStarts defines model for BillingPlanInput.Starts.
+type BillingPlanInputStarts string
+
+// BillingPlanInputSubject defines model for BillingPlanInput.Subject.
+type BillingPlanInputSubject string
+
+// BillingPlanUpdate defines model for BillingPlanUpdate.
+type BillingPlanUpdate struct {
+	AccessDays      *int      `json:"accessDays,omitempty"`
+	Active          *bool     `json:"active,omitempty"`
+	AmountCents     *int64    `json:"amountCents,omitempty"`
+	CollectShipping *bool     `json:"collectShipping,omitempty"`
+	Description     *string   `json:"description,omitempty"`
+	Features        *[]string `json:"features,omitempty"`
+	GraceDays       *int      `json:"graceDays,omitempty"`
+	Group           *string   `json:"group,omitempty"`
+	Name            *string   `json:"name,omitempty"`
+	SetupFeeCents   *int64    `json:"setupFeeCents,omitempty"`
+	SetupFeeName    *string   `json:"setupFeeName,omitempty"`
+	TrialDays       *int      `json:"trialDays,omitempty"`
+}
+
+// BillingPortalRequest defines model for BillingPortalRequest.
+type BillingPortalRequest struct {
+	Subject string `json:"subject"`
+}
+
+// BillingPortalResponse defines model for BillingPortalResponse.
+type BillingPortalResponse struct {
+	Url string `json:"url"`
+}
+
+// BillingPurchase defines model for BillingPurchase.
+type BillingPurchase struct {
+	AmountCents    int64                 `json:"amountCents"`
+	Currency       string                `json:"currency"`
+	Id             string                `json:"id"`
+	PaidAt         time.Time             `json:"paidAt"`
+	PayerUserId    string                `json:"payerUserId"`
+	PlanKey        string                `json:"planKey"`
+	RefundedCents  int64                 `json:"refundedCents"`
+	Shipping       *ShippingAddress      `json:"shipping,omitempty"`
+	Status         BillingPurchaseStatus `json:"status"`
+	Subject        string                `json:"subject"`
+	SubscriptionId *string               `json:"subscriptionId,omitempty"`
+}
+
+// BillingPurchaseStatus defines model for BillingPurchase.Status.
+type BillingPurchaseStatus string
+
+// BillingRefundRequest defines model for BillingRefundRequest.
+type BillingRefundRequest struct {
+	// AmountCents Omit to refund everything left
+	AmountCents *int64 `json:"amountCents,omitempty"`
+
+	// CancelSubscription Also cancel the subscription this payment started
+	CancelSubscription *bool `json:"cancelSubscription,omitempty"`
+}
+
+// BillingSetup defines model for BillingSetup.
+type BillingSetup struct {
+	Checks  []SetupCheck `json:"checks"`
+	Message *string      `json:"message,omitempty"`
+}
+
+// BillingSetupActionRequest defines model for BillingSetupActionRequest.
+type BillingSetupActionRequest struct {
+	Action string `json:"action"`
+}
+
+// BillingSubscription defines model for BillingSubscription.
+type BillingSubscription struct {
+	ActivatedAt          *time.Time                `json:"activatedAt,omitempty"`
+	CancelAtPeriodEnd    bool                      `json:"cancelAtPeriodEnd"`
+	CanceledAt           *time.Time                `json:"canceledAt,omitempty"`
+	CreatedAt            time.Time                 `json:"createdAt"`
+	CurrentPeriodEnd     *time.Time                `json:"currentPeriodEnd,omitempty"`
+	GraceUntil           *time.Time                `json:"graceUntil,omitempty"`
+	Id                   string                    `json:"id"`
+	PayerUserId          string                    `json:"payerUserId"`
+	PlanKey              string                    `json:"planKey"`
+	Status               BillingSubscriptionStatus `json:"status"`
+	StripeSubscriptionId *string                   `json:"stripeSubscriptionId,omitempty"`
+	Subject              string                    `json:"subject"`
+	TrialEnd             *time.Time                `json:"trialEnd,omitempty"`
+}
+
+// BillingSubscriptionStatus defines model for BillingSubscription.Status.
+type BillingSubscriptionStatus string
 
 // BlockedClient defines model for BlockedClient.
 type BlockedClient struct {
@@ -508,6 +1043,31 @@ type CreateNotificationResponse struct {
 	Notifications []Notification `json:"notifications"`
 }
 
+// Entitlement defines model for Entitlement.
+type Entitlement struct {
+	// Source "subscription:<id>", "purchase:<id>" or "grant:<id>"
+	Source string            `json:"source"`
+	Status EntitlementStatus `json:"status"`
+
+	// Until When the feature stops; null = no expiry
+	Until *time.Time `json:"until,omitempty"`
+}
+
+// EntitlementStatus defines model for Entitlement.Status.
+type EntitlementStatus string
+
+// EntitlementHeader Active features as in the X-Entitlements header (until, or null for no expiry)
+type EntitlementHeader struct {
+	Orgs map[string]map[string]*time.Time `json:"orgs"`
+	User map[string]*time.Time            `json:"user"`
+}
+
+// EntitlementSet defines model for EntitlementSet.
+type EntitlementSet struct {
+	Features map[string]Entitlement `json:"features"`
+	Subject  string                 `json:"subject"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	// Code Example: 401
@@ -650,6 +1210,31 @@ type MiddlewareStatusItemStatus string
 // MiddlewareStatusList defines model for MiddlewareStatusList.
 type MiddlewareStatusList = []MiddlewareStatusItem
 
+// MyBilling defines model for MyBilling.
+type MyBilling struct {
+	Documents     []BillingDocument       `json:"documents"`
+	Subscriptions []MyBillingSubscription `json:"subscriptions"`
+}
+
+// MyBillingSubscription defines model for MyBillingSubscription.
+type MyBillingSubscription struct {
+	PlanName string `json:"planName"`
+
+	// SubjectName Your name or the organization's
+	SubjectName  string              `json:"subjectName"`
+	Subscription BillingSubscription `json:"subscription"`
+}
+
+// MyOrganization defines model for MyOrganization.
+type MyOrganization struct {
+	Id   string             `json:"id"`
+	Name string             `json:"name"`
+	Role MyOrganizationRole `json:"role"`
+}
+
+// MyOrganizationRole defines model for MyOrganization.Role.
+type MyOrganizationRole string
+
 // Notification defines model for Notification.
 type Notification struct {
 	Actions *[]NotificationAction `json:"actions,omitempty"`
@@ -754,6 +1339,54 @@ type NotificationStatus struct {
 	//
 	// Example: pending
 	Overall string `json:"overall"`
+}
+
+// Organization defines model for Organization.
+type Organization struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	Id          string    `json:"id"`
+	MemberCount int       `json:"memberCount"`
+	Name        string    `json:"name"`
+}
+
+// OrganizationCreateRequest defines model for OrganizationCreateRequest.
+type OrganizationCreateRequest struct {
+	Name string `json:"name"`
+
+	// OwnerUserId Optional first member
+	OwnerUserId *string `json:"ownerUserId,omitempty"`
+}
+
+// OrganizationDetail defines model for OrganizationDetail.
+type OrganizationDetail struct {
+	CreatedAt time.Time            `json:"createdAt"`
+	Id        string               `json:"id"`
+	Members   []OrganizationMember `json:"members"`
+	Name      string               `json:"name"`
+}
+
+// OrganizationMember defines model for OrganizationMember.
+type OrganizationMember struct {
+	Email    string                 `json:"email"`
+	Role     OrganizationMemberRole `json:"role"`
+	UserId   string                 `json:"userId"`
+	Username string                 `json:"username"`
+}
+
+// OrganizationMemberRole defines model for OrganizationMember.Role.
+type OrganizationMemberRole string
+
+// OrganizationMemberRequest defines model for OrganizationMemberRequest.
+type OrganizationMemberRequest struct {
+	Role OrganizationMemberRequestRole `json:"role"`
+}
+
+// OrganizationMemberRequestRole defines model for OrganizationMemberRequest.Role.
+type OrganizationMemberRequestRole string
+
+// OrganizationUpdateRequest defines model for OrganizationUpdateRequest.
+type OrganizationUpdateRequest struct {
+	Name string `json:"name"`
 }
 
 // RateLimiterConfigResponse defines model for RateLimiterConfigResponse.
@@ -905,6 +1538,35 @@ type RequestStatistics struct {
 	//
 	// Example: 12345
 	TotalRequests int `json:"totalRequests"`
+}
+
+// SetupCheck defines model for SetupCheck.
+type SetupCheck struct {
+	Action  *string           `json:"action,omitempty"`
+	Detail  string            `json:"detail"`
+	Id      string            `json:"id"`
+	Link    *string           `json:"link,omitempty"`
+	Section SetupCheckSection `json:"section"`
+	Status  SetupCheckStatus  `json:"status"`
+	Title   string            `json:"title"`
+}
+
+// SetupCheckSection defines model for SetupCheck.Section.
+type SetupCheckSection string
+
+// SetupCheckStatus defines model for SetupCheck.Status.
+type SetupCheckStatus string
+
+// ShippingAddress defines model for ShippingAddress.
+type ShippingAddress struct {
+	City       *string `json:"city,omitempty"`
+	Country    *string `json:"country,omitempty"`
+	Line1      *string `json:"line1,omitempty"`
+	Line2      *string `json:"line2,omitempty"`
+	Name       *string `json:"name,omitempty"`
+	Phone      *string `json:"phone,omitempty"`
+	PostalCode *string `json:"postalCode,omitempty"`
+	State      *string `json:"state,omitempty"`
 }
 
 // TelegramLinkCode defines model for TelegramLinkCode.
@@ -1190,6 +1852,57 @@ type ListAdminNotificationsParams struct {
 // ListAdminNotificationsParamsStatus defines parameters for ListAdminNotifications.
 type ListAdminNotificationsParamsStatus string
 
+// ListBillingDocumentsParams defines parameters for ListBillingDocuments.
+type ListBillingDocumentsParams struct {
+	// Subject user:<id> or org:<id>
+	Subject *string `form:"subject,omitempty" json:"subject,omitempty"`
+
+	// State pending, done or failed
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Kind invoice or credit_note
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// ListBillingGrantsParams defines parameters for ListBillingGrants.
+type ListBillingGrantsParams struct {
+	// Subject user:<id> or org:<id>
+	Subject *string `form:"subject,omitempty" json:"subject,omitempty"`
+}
+
+// ListBillingPlansParams defines parameters for ListBillingPlans.
+type ListBillingPlansParams struct {
+	// IncludeArchived Include archived plans
+	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
+// ListBillingPurchasesParams defines parameters for ListBillingPurchases.
+type ListBillingPurchasesParams struct {
+	// Subject user:<id> or org:<id>
+	Subject *string `form:"subject,omitempty" json:"subject,omitempty"`
+
+	// Plan Plan key
+	Plan *string `form:"plan,omitempty" json:"plan,omitempty"`
+
+	// Status paid or refunded
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Since Paid at or after
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+}
+
+// ListBillingSubscriptionsParams defines parameters for ListBillingSubscriptions.
+type ListBillingSubscriptionsParams struct {
+	// Subject user:<id> or org:<id>
+	Subject *string `form:"subject,omitempty" json:"subject,omitempty"`
+
+	// Status Status
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Plan Plan key
+	Plan *string `form:"plan,omitempty" json:"plan,omitempty"`
+}
+
 // GetUserCounterHistoryParams defines parameters for GetUserCounterHistory.
 type GetUserCounterHistoryParams struct {
 	// Limit Maximum number of transactions to return
@@ -1197,6 +1910,15 @@ type GetUserCounterHistoryParams struct {
 
 	// Offset Number of transactions to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetEntitlementsParams defines parameters for GetEntitlements.
+type GetEntitlementsParams struct {
+	// UserId User ID (admin, or the user themselves)
+	UserId *string `form:"user_id,omitempty" json:"user_id,omitempty"`
+
+	// OrgId Organization ID (admin, or a member)
+	OrgId *string `form:"org_id,omitempty" json:"org_id,omitempty"`
 }
 
 // ListNotificationsParams defines parameters for ListNotifications.
@@ -1356,6 +2078,24 @@ type LogoutUserParams struct {
 	TgSessionToken *string `form:"tg_session_token,omitempty" json:"tg_session_token,omitempty"`
 }
 
+// CreateBillingGrantJSONRequestBody defines body for CreateBillingGrant for application/json ContentType.
+type CreateBillingGrantJSONRequestBody = BillingGrantRequest
+
+// CreateBillingPlanJSONRequestBody defines body for CreateBillingPlan for application/json ContentType.
+type CreateBillingPlanJSONRequestBody = BillingPlanInput
+
+// UpdateBillingPlanJSONRequestBody defines body for UpdateBillingPlan for application/json ContentType.
+type UpdateBillingPlanJSONRequestBody = BillingPlanUpdate
+
+// RefundBillingPurchaseJSONRequestBody defines body for RefundBillingPurchase for application/json ContentType.
+type RefundBillingPurchaseJSONRequestBody = BillingRefundRequest
+
+// RunBillingSetupActionJSONRequestBody defines body for RunBillingSetupAction for application/json ContentType.
+type RunBillingSetupActionJSONRequestBody = BillingSetupActionRequest
+
+// CancelBillingSubscriptionJSONRequestBody defines body for CancelBillingSubscription for application/json ContentType.
+type CancelBillingSubscriptionJSONRequestBody = BillingCancelRequest
+
 // AdjustUserCountersJSONRequestBody defines body for AdjustUserCounters for application/json ContentType.
 type AdjustUserCountersJSONRequestBody = CounterAdjustmentRequest
 
@@ -1365,6 +2105,9 @@ type CreateFeatureFlagJSONRequestBody = FeatureFlagCreateRequest
 // UpdateFeatureFlagJSONRequestBody defines body for UpdateFeatureFlag for application/json ContentType.
 type UpdateFeatureFlagJSONRequestBody = FeatureFlagUpdateRequest
 
+// CreateMyBillingPortalJSONRequestBody defines body for CreateMyBillingPortal for application/json ContentType.
+type CreateMyBillingPortalJSONRequestBody = BillingPortalRequest
+
 // CreateNotificationJSONRequestBody defines body for CreateNotification for application/json ContentType.
 type CreateNotificationJSONRequestBody = CreateNotificationRequest
 
@@ -1373,6 +2116,15 @@ type SetNotificationPreferenceJSONRequestBody = NotificationPreference
 
 // RespondToNotificationJSONRequestBody defines body for RespondToNotification for application/json ContentType.
 type RespondToNotificationJSONRequestBody RespondToNotificationJSONBody
+
+// CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
+type CreateOrganizationJSONRequestBody = OrganizationCreateRequest
+
+// UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
+type UpdateOrganizationJSONRequestBody = OrganizationUpdateRequest
+
+// SetOrganizationMemberJSONRequestBody defines body for SetOrganizationMember for application/json ContentType.
+type SetOrganizationMemberJSONRequestBody = OrganizationMemberRequest
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = UserCreateRequest
@@ -1400,6 +2152,57 @@ type ServerInterface interface {
 	// ListNotificationTypes Every notification type in use, for filters (admin only)
 	// (GET /api/admin/notifications/types)
 	ListNotificationTypes(w http.ResponseWriter, r *http.Request)
+	// ListBillingDocuments List invoices and credit notes with their Odoo state (admin only)
+	// (GET /api/billing/documents)
+	ListBillingDocuments(w http.ResponseWriter, r *http.Request, params ListBillingDocumentsParams)
+	// GetBillingDocumentPdf The PDF Odoo issued (admin, the payer, owners of the organization)
+	// (GET /api/billing/documents/{id}/pdf)
+	GetBillingDocumentPdf(w http.ResponseWriter, r *http.Request, id string)
+	// RetryBillingDocument Queue a failed document again (admin only)
+	// (POST /api/billing/documents/{id}/retry)
+	RetryBillingDocument(w http.ResponseWriter, r *http.Request, id string)
+	// ListBillingGrants List grants (admin only)
+	// (GET /api/billing/grants)
+	ListBillingGrants(w http.ResponseWriter, r *http.Request, params ListBillingGrantsParams)
+	// CreateBillingGrant Give features to a subject until a date (admin only)
+	// (POST /api/billing/grants)
+	CreateBillingGrant(w http.ResponseWriter, r *http.Request)
+	// DeleteBillingGrant Remove a grant (admin only)
+	// (DELETE /api/billing/grants/{id})
+	DeleteBillingGrant(w http.ResponseWriter, r *http.Request, id string)
+	// ListBillingPlans List plans (admin only)
+	// (GET /api/billing/plans)
+	ListBillingPlans(w http.ResponseWriter, r *http.Request, params ListBillingPlansParams)
+	// CreateBillingPlan Create a plan and its Stripe and Odoo products (admin only)
+	// (POST /api/billing/plans)
+	CreateBillingPlan(w http.ResponseWriter, r *http.Request)
+	// GetBillingPlan Get a plan (admin only)
+	// (GET /api/billing/plans/{key})
+	GetBillingPlan(w http.ResponseWriter, r *http.Request, key string)
+	// UpdateBillingPlan Change or archive a plan (admin only); a new amount creates a new Stripe price
+	// (PATCH /api/billing/plans/{key})
+	UpdateBillingPlan(w http.ResponseWriter, r *http.Request, key string)
+	// ListBillingPurchases List paid checkouts with shipping addresses (admin only)
+	// (GET /api/billing/purchases)
+	ListBillingPurchases(w http.ResponseWriter, r *http.Request, params ListBillingPurchasesParams)
+	// RefundBillingPurchase Refund a payment (admin only); the credit note follows
+	// (POST /api/billing/purchases/{id}/refund)
+	RefundBillingPurchase(w http.ResponseWriter, r *http.Request, id string)
+	// GetBillingSetup Billing configuration checks (admin only)
+	// (GET /api/billing/setup)
+	GetBillingSetup(w http.ResponseWriter, r *http.Request)
+	// RunBillingSetupAction Apply a fix from the setup page (admin only)
+	// (POST /api/billing/setup/actions)
+	RunBillingSetupAction(w http.ResponseWriter, r *http.Request)
+	// ListBillingSubscriptions List subscriptions (admin only)
+	// (GET /api/billing/subscriptions)
+	ListBillingSubscriptions(w http.ResponseWriter, r *http.Request, params ListBillingSubscriptionsParams)
+	// ActivateBillingSubscription Start a subscription that waits for activation (admin only)
+	// (POST /api/billing/subscriptions/{id}/activate)
+	ActivateBillingSubscription(w http.ResponseWriter, r *http.Request, id string)
+	// CancelBillingSubscription Cancel a subscription now or at period end (admin only)
+	// (POST /api/billing/subscriptions/{id}/cancel)
+	CancelBillingSubscription(w http.ResponseWriter, r *http.Request, id string)
 	// GetRateLimiterConfig Get current rate limiter configuration
 	// (GET /api/config/rate-limiter)
 	GetRateLimiterConfig(w http.ResponseWriter, r *http.Request)
@@ -1412,6 +2215,9 @@ type ServerInterface interface {
 	// GetUserCounterHistory Get user's counter transaction history
 	// (GET /api/counters/{counterId}/{userId}/history)
 	GetUserCounterHistory(w http.ResponseWriter, r *http.Request, counterId string, userId string, params GetUserCounterHistoryParams)
+	// GetEntitlements A user's or an organization's active features
+	// (GET /api/entitlements)
+	GetEntitlements(w http.ResponseWriter, r *http.Request, params GetEntitlementsParams)
 	// ListFeatureFlags List feature flags (admin only)
 	// (GET /api/feature-flags)
 	ListFeatureFlags(w http.ResponseWriter, r *http.Request)
@@ -1427,6 +2233,15 @@ type ServerInterface interface {
 	// UpdateFeatureFlag Update a feature flag (admin only)
 	// (PATCH /api/feature-flags/{key})
 	UpdateFeatureFlag(w http.ResponseWriter, r *http.Request, key string)
+	// GetMyBilling The current user's subscriptions and invoices, and those of organizations they own
+	// (GET /api/me/billing)
+	GetMyBilling(w http.ResponseWriter, r *http.Request)
+	// CreateMyBillingPortal A Stripe Customer Portal URL for a subject the user pays or owns
+	// (POST /api/me/billing/portal)
+	CreateMyBillingPortal(w http.ResponseWriter, r *http.Request)
+	// ListMyOrganizations The current user's organizations
+	// (GET /api/me/organizations)
+	ListMyOrganizations(w http.ResponseWriter, r *http.Request)
 	// GetMiddlewareStatus Get status (and health, where available) of every global middleware
 	// (GET /api/middleware)
 	GetMiddlewareStatus(w http.ResponseWriter, r *http.Request)
@@ -1484,6 +2299,27 @@ type ServerInterface interface {
 	// GetNotificationStatus Get one notification's rolled-up status
 	// (GET /api/notifications/{notificationId}/status)
 	GetNotificationStatus(w http.ResponseWriter, r *http.Request, notificationId string)
+	// ListOrganizations List organizations (admin only)
+	// (GET /api/organizations)
+	ListOrganizations(w http.ResponseWriter, r *http.Request)
+	// CreateOrganization Create an organization (admin only)
+	// (POST /api/organizations)
+	CreateOrganization(w http.ResponseWriter, r *http.Request)
+	// DeleteOrganization Delete an organization and its memberships (admin only)
+	// (DELETE /api/organizations/{orgId})
+	DeleteOrganization(w http.ResponseWriter, r *http.Request, orgId string)
+	// GetOrganization Get an organization with its members (admin only)
+	// (GET /api/organizations/{orgId})
+	GetOrganization(w http.ResponseWriter, r *http.Request, orgId string)
+	// UpdateOrganization Rename an organization (admin only)
+	// (PATCH /api/organizations/{orgId})
+	UpdateOrganization(w http.ResponseWriter, r *http.Request, orgId string)
+	// RemoveOrganizationMember Remove a user from an organization (admin only)
+	// (DELETE /api/organizations/{orgId}/members/{userId})
+	RemoveOrganizationMember(w http.ResponseWriter, r *http.Request, orgId string, userId string)
+	// SetOrganizationMember Add a user to an organization or change their role (admin only)
+	// (PUT /api/organizations/{orgId}/members/{userId})
+	SetOrganizationMember(w http.ResponseWriter, r *http.Request, orgId string, userId string)
 	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
 	// (GET /api/rate-limiter/blocked)
 	GetBlockedClients(w http.ResponseWriter, r *http.Request, params GetBlockedClientsParams)
@@ -1833,6 +2669,526 @@ func (siw *ServerInterfaceWrapper) ListNotificationTypes(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListBillingDocuments operation middleware
+func (siw *ServerInterfaceWrapper) ListBillingDocuments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBillingDocumentsParams
+
+	// ------------- Optional query parameter "subject" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subject", r.URL.Query(), &params.Subject, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subject"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subject", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBillingDocuments(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBillingDocumentPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetBillingDocumentPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBillingDocumentPdf(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryBillingDocument operation middleware
+func (siw *ServerInterfaceWrapper) RetryBillingDocument(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryBillingDocument(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBillingGrants operation middleware
+func (siw *ServerInterfaceWrapper) ListBillingGrants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBillingGrantsParams
+
+	// ------------- Optional query parameter "subject" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subject", r.URL.Query(), &params.Subject, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subject"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subject", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBillingGrants(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBillingGrant operation middleware
+func (siw *ServerInterfaceWrapper) CreateBillingGrant(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBillingGrant(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteBillingGrant operation middleware
+func (siw *ServerInterfaceWrapper) DeleteBillingGrant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteBillingGrant(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBillingPlans operation middleware
+func (siw *ServerInterfaceWrapper) ListBillingPlans(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBillingPlansParams
+
+	// ------------- Optional query parameter "include_archived" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_archived", r.URL.Query(), &params.IncludeArchived, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_archived"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_archived", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBillingPlans(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBillingPlan operation middleware
+func (siw *ServerInterfaceWrapper) CreateBillingPlan(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBillingPlan(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBillingPlan operation middleware
+func (siw *ServerInterfaceWrapper) GetBillingPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBillingPlan(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateBillingPlan operation middleware
+func (siw *ServerInterfaceWrapper) UpdateBillingPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateBillingPlan(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBillingPurchases operation middleware
+func (siw *ServerInterfaceWrapper) ListBillingPurchases(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBillingPurchasesParams
+
+	// ------------- Optional query parameter "subject" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subject", r.URL.Query(), &params.Subject, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subject"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subject", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "plan" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "plan", r.URL.Query(), &params.Plan, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "plan"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBillingPurchases(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RefundBillingPurchase operation middleware
+func (siw *ServerInterfaceWrapper) RefundBillingPurchase(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefundBillingPurchase(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBillingSetup operation middleware
+func (siw *ServerInterfaceWrapper) GetBillingSetup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBillingSetup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunBillingSetupAction operation middleware
+func (siw *ServerInterfaceWrapper) RunBillingSetupAction(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunBillingSetupAction(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBillingSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) ListBillingSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBillingSubscriptionsParams
+
+	// ------------- Optional query parameter "subject" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subject", r.URL.Query(), &params.Subject, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subject"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subject", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "plan" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "plan", r.URL.Query(), &params.Plan, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "plan"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "plan", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBillingSubscriptions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ActivateBillingSubscription operation middleware
+func (siw *ServerInterfaceWrapper) ActivateBillingSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ActivateBillingSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelBillingSubscription operation middleware
+func (siw *ServerInterfaceWrapper) CancelBillingSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelBillingSubscription(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRateLimiterConfig operation middleware
 func (siw *ServerInterfaceWrapper) GetRateLimiterConfig(w http.ResponseWriter, r *http.Request) {
 
@@ -1981,6 +3337,52 @@ func (siw *ServerInterfaceWrapper) GetUserCounterHistory(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetEntitlements operation middleware
+func (siw *ServerInterfaceWrapper) GetEntitlements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEntitlementsParams
+
+	// ------------- Optional query parameter "user_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "user_id", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "user_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "org_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "org_id", r.URL.Query(), &params.OrgId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "org_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEntitlements(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListFeatureFlags operation middleware
 func (siw *ServerInterfaceWrapper) ListFeatureFlags(w http.ResponseWriter, r *http.Request) {
 
@@ -2078,6 +3480,48 @@ func (siw *ServerInterfaceWrapper) UpdateFeatureFlag(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateFeatureFlag(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyBilling operation middleware
+func (siw *ServerInterfaceWrapper) GetMyBilling(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyBilling(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateMyBillingPortal operation middleware
+func (siw *ServerInterfaceWrapper) CreateMyBillingPortal(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMyBillingPortal(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) ListMyOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyOrganizations(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2493,6 +3937,182 @@ func (siw *ServerInterfaceWrapper) GetNotificationStatus(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetNotificationStatus(w, r, notificationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateOrganization operation middleware
+func (siw *ServerInterfaceWrapper) CreateOrganization(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOrganization(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteOrganization operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrganization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrganization(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganization operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganization(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrganization operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrganization(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveOrganizationMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveOrganizationMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveOrganizationMember(w, r, orgId, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOrganizationMember operation middleware
+func (siw *ServerInterfaceWrapper) SetOrganizationMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOrganizationMember(w, r, orgId, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3654,6 +5274,34 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.UpdateFeatureFlag)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/notifications", wrapper.ListAdminNotifications)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/notifications/types", wrapper.ListNotificationTypes)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{orgId}", wrapper.DeleteOrganization)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{orgId}", wrapper.GetOrganization)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/organizations/{orgId}", wrapper.UpdateOrganization)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{orgId}/members/{userId}", wrapper.RemoveOrganizationMember)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/organizations/{orgId}/members/{userId}", wrapper.SetOrganizationMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/me/organizations", wrapper.ListMyOrganizations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/entitlements", wrapper.GetEntitlements)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/plans", wrapper.ListBillingPlans)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/plans", wrapper.CreateBillingPlan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/plans/{key}", wrapper.GetBillingPlan)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/billing/plans/{key}", wrapper.UpdateBillingPlan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/subscriptions", wrapper.ListBillingSubscriptions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/subscriptions/{id}/activate", wrapper.ActivateBillingSubscription)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/subscriptions/{id}/cancel", wrapper.CancelBillingSubscription)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/purchases", wrapper.ListBillingPurchases)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/purchases/{id}/refund", wrapper.RefundBillingPurchase)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/grants", wrapper.ListBillingGrants)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/grants", wrapper.CreateBillingGrant)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/billing/grants/{id}", wrapper.DeleteBillingGrant)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/documents", wrapper.ListBillingDocuments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/documents/{id}/retry", wrapper.RetryBillingDocument)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/documents/{id}/pdf", wrapper.GetBillingDocumentPdf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/me/billing", wrapper.GetMyBilling)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/me/billing/portal", wrapper.CreateMyBillingPortal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/setup", wrapper.GetBillingSetup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/setup/actions", wrapper.RunBillingSetupAction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/counters", wrapper.GetAvailableCounters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/counters/{counterId}", wrapper.GetAllUserCounters)
 
@@ -3913,6 +5561,1460 @@ func (response ListNotificationTypes500JSONResponse) VisitListNotificationTypesR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingDocumentsRequestObject struct {
+	Params ListBillingDocumentsParams
+}
+
+type ListBillingDocumentsResponseObject interface {
+	VisitListBillingDocumentsResponse(w http.ResponseWriter) error
+}
+
+type ListBillingDocuments200JSONResponse []BillingDocument
+
+func (response ListBillingDocuments200JSONResponse) VisitListBillingDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingDocuments401JSONResponse Error
+
+func (response ListBillingDocuments401JSONResponse) VisitListBillingDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingDocuments403JSONResponse Error
+
+func (response ListBillingDocuments403JSONResponse) VisitListBillingDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingDocuments500JSONResponse Error
+
+func (response ListBillingDocuments500JSONResponse) VisitListBillingDocumentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingDocumentPdfRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetBillingDocumentPdfResponseObject interface {
+	VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error
+}
+
+type GetBillingDocumentPdf200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetBillingDocumentPdf200ApplicationpdfResponse) VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetBillingDocumentPdf401JSONResponse Error
+
+func (response GetBillingDocumentPdf401JSONResponse) VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingDocumentPdf403JSONResponse Error
+
+func (response GetBillingDocumentPdf403JSONResponse) VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingDocumentPdf404JSONResponse Error
+
+func (response GetBillingDocumentPdf404JSONResponse) VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingDocumentPdf500JSONResponse Error
+
+func (response GetBillingDocumentPdf500JSONResponse) VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingDocumentPdf503JSONResponse Error
+
+func (response GetBillingDocumentPdf503JSONResponse) VisitGetBillingDocumentPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryBillingDocumentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type RetryBillingDocumentResponseObject interface {
+	VisitRetryBillingDocumentResponse(w http.ResponseWriter) error
+}
+
+type RetryBillingDocument200JSONResponse BillingDocument
+
+func (response RetryBillingDocument200JSONResponse) VisitRetryBillingDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryBillingDocument401JSONResponse Error
+
+func (response RetryBillingDocument401JSONResponse) VisitRetryBillingDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryBillingDocument403JSONResponse Error
+
+func (response RetryBillingDocument403JSONResponse) VisitRetryBillingDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryBillingDocument404JSONResponse Error
+
+func (response RetryBillingDocument404JSONResponse) VisitRetryBillingDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryBillingDocument500JSONResponse Error
+
+func (response RetryBillingDocument500JSONResponse) VisitRetryBillingDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingGrantsRequestObject struct {
+	Params ListBillingGrantsParams
+}
+
+type ListBillingGrantsResponseObject interface {
+	VisitListBillingGrantsResponse(w http.ResponseWriter) error
+}
+
+type ListBillingGrants200JSONResponse []BillingGrant
+
+func (response ListBillingGrants200JSONResponse) VisitListBillingGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingGrants401JSONResponse Error
+
+func (response ListBillingGrants401JSONResponse) VisitListBillingGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingGrants403JSONResponse Error
+
+func (response ListBillingGrants403JSONResponse) VisitListBillingGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingGrants500JSONResponse Error
+
+func (response ListBillingGrants500JSONResponse) VisitListBillingGrantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingGrantRequestObject struct {
+	Body *CreateBillingGrantJSONRequestBody
+}
+
+type CreateBillingGrantResponseObject interface {
+	VisitCreateBillingGrantResponse(w http.ResponseWriter) error
+}
+
+type CreateBillingGrant201JSONResponse []BillingGrant
+
+func (response CreateBillingGrant201JSONResponse) VisitCreateBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingGrant400JSONResponse Error
+
+func (response CreateBillingGrant400JSONResponse) VisitCreateBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingGrant401JSONResponse Error
+
+func (response CreateBillingGrant401JSONResponse) VisitCreateBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingGrant403JSONResponse Error
+
+func (response CreateBillingGrant403JSONResponse) VisitCreateBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingGrant500JSONResponse Error
+
+func (response CreateBillingGrant500JSONResponse) VisitCreateBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBillingGrantRequestObject struct {
+	Id string `json:"id"`
+}
+
+type DeleteBillingGrantResponseObject interface {
+	VisitDeleteBillingGrantResponse(w http.ResponseWriter) error
+}
+
+type DeleteBillingGrant204Response struct {
+}
+
+func (response DeleteBillingGrant204Response) VisitDeleteBillingGrantResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteBillingGrant401JSONResponse Error
+
+func (response DeleteBillingGrant401JSONResponse) VisitDeleteBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBillingGrant403JSONResponse Error
+
+func (response DeleteBillingGrant403JSONResponse) VisitDeleteBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBillingGrant404JSONResponse Error
+
+func (response DeleteBillingGrant404JSONResponse) VisitDeleteBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBillingGrant500JSONResponse Error
+
+func (response DeleteBillingGrant500JSONResponse) VisitDeleteBillingGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPlansRequestObject struct {
+	Params ListBillingPlansParams
+}
+
+type ListBillingPlansResponseObject interface {
+	VisitListBillingPlansResponse(w http.ResponseWriter) error
+}
+
+type ListBillingPlans200JSONResponse []BillingPlan
+
+func (response ListBillingPlans200JSONResponse) VisitListBillingPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPlans401JSONResponse Error
+
+func (response ListBillingPlans401JSONResponse) VisitListBillingPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPlans403JSONResponse Error
+
+func (response ListBillingPlans403JSONResponse) VisitListBillingPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPlans500JSONResponse Error
+
+func (response ListBillingPlans500JSONResponse) VisitListBillingPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlanRequestObject struct {
+	Body *CreateBillingPlanJSONRequestBody
+}
+
+type CreateBillingPlanResponseObject interface {
+	VisitCreateBillingPlanResponse(w http.ResponseWriter) error
+}
+
+type CreateBillingPlan201JSONResponse BillingPlan
+
+func (response CreateBillingPlan201JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlan400JSONResponse Error
+
+func (response CreateBillingPlan400JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlan401JSONResponse Error
+
+func (response CreateBillingPlan401JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlan403JSONResponse Error
+
+func (response CreateBillingPlan403JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlan409JSONResponse Error
+
+func (response CreateBillingPlan409JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlan500JSONResponse Error
+
+func (response CreateBillingPlan500JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBillingPlan503JSONResponse Error
+
+func (response CreateBillingPlan503JSONResponse) VisitCreateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingPlanRequestObject struct {
+	Key string `json:"key"`
+}
+
+type GetBillingPlanResponseObject interface {
+	VisitGetBillingPlanResponse(w http.ResponseWriter) error
+}
+
+type GetBillingPlan200JSONResponse BillingPlan
+
+func (response GetBillingPlan200JSONResponse) VisitGetBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingPlan401JSONResponse Error
+
+func (response GetBillingPlan401JSONResponse) VisitGetBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingPlan403JSONResponse Error
+
+func (response GetBillingPlan403JSONResponse) VisitGetBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingPlan404JSONResponse Error
+
+func (response GetBillingPlan404JSONResponse) VisitGetBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingPlan500JSONResponse Error
+
+func (response GetBillingPlan500JSONResponse) VisitGetBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlanRequestObject struct {
+	Key  string `json:"key"`
+	Body *UpdateBillingPlanJSONRequestBody
+}
+
+type UpdateBillingPlanResponseObject interface {
+	VisitUpdateBillingPlanResponse(w http.ResponseWriter) error
+}
+
+type UpdateBillingPlan200JSONResponse BillingPlan
+
+func (response UpdateBillingPlan200JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlan400JSONResponse Error
+
+func (response UpdateBillingPlan400JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlan401JSONResponse Error
+
+func (response UpdateBillingPlan401JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlan403JSONResponse Error
+
+func (response UpdateBillingPlan403JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlan404JSONResponse Error
+
+func (response UpdateBillingPlan404JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlan500JSONResponse Error
+
+func (response UpdateBillingPlan500JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBillingPlan503JSONResponse Error
+
+func (response UpdateBillingPlan503JSONResponse) VisitUpdateBillingPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPurchasesRequestObject struct {
+	Params ListBillingPurchasesParams
+}
+
+type ListBillingPurchasesResponseObject interface {
+	VisitListBillingPurchasesResponse(w http.ResponseWriter) error
+}
+
+type ListBillingPurchases200JSONResponse []BillingPurchase
+
+func (response ListBillingPurchases200JSONResponse) VisitListBillingPurchasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPurchases400JSONResponse Error
+
+func (response ListBillingPurchases400JSONResponse) VisitListBillingPurchasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPurchases401JSONResponse Error
+
+func (response ListBillingPurchases401JSONResponse) VisitListBillingPurchasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPurchases403JSONResponse Error
+
+func (response ListBillingPurchases403JSONResponse) VisitListBillingPurchasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingPurchases500JSONResponse Error
+
+func (response ListBillingPurchases500JSONResponse) VisitListBillingPurchasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchaseRequestObject struct {
+	Id   string `json:"id"`
+	Body *RefundBillingPurchaseJSONRequestBody
+}
+
+type RefundBillingPurchaseResponseObject interface {
+	VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error
+}
+
+type RefundBillingPurchase200JSONResponse BillingPurchase
+
+func (response RefundBillingPurchase200JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase400JSONResponse Error
+
+func (response RefundBillingPurchase400JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase401JSONResponse Error
+
+func (response RefundBillingPurchase401JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase403JSONResponse Error
+
+func (response RefundBillingPurchase403JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase404JSONResponse Error
+
+func (response RefundBillingPurchase404JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase409JSONResponse Error
+
+func (response RefundBillingPurchase409JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase500JSONResponse Error
+
+func (response RefundBillingPurchase500JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefundBillingPurchase503JSONResponse Error
+
+func (response RefundBillingPurchase503JSONResponse) VisitRefundBillingPurchaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingSetupRequestObject struct {
+}
+
+type GetBillingSetupResponseObject interface {
+	VisitGetBillingSetupResponse(w http.ResponseWriter) error
+}
+
+type GetBillingSetup200JSONResponse BillingSetup
+
+func (response GetBillingSetup200JSONResponse) VisitGetBillingSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingSetup401JSONResponse Error
+
+func (response GetBillingSetup401JSONResponse) VisitGetBillingSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingSetup403JSONResponse Error
+
+func (response GetBillingSetup403JSONResponse) VisitGetBillingSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBillingSetup500JSONResponse Error
+
+func (response GetBillingSetup500JSONResponse) VisitGetBillingSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunBillingSetupActionRequestObject struct {
+	Body *RunBillingSetupActionJSONRequestBody
+}
+
+type RunBillingSetupActionResponseObject interface {
+	VisitRunBillingSetupActionResponse(w http.ResponseWriter) error
+}
+
+type RunBillingSetupAction200JSONResponse BillingSetup
+
+func (response RunBillingSetupAction200JSONResponse) VisitRunBillingSetupActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunBillingSetupAction400JSONResponse Error
+
+func (response RunBillingSetupAction400JSONResponse) VisitRunBillingSetupActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunBillingSetupAction401JSONResponse Error
+
+func (response RunBillingSetupAction401JSONResponse) VisitRunBillingSetupActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunBillingSetupAction403JSONResponse Error
+
+func (response RunBillingSetupAction403JSONResponse) VisitRunBillingSetupActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunBillingSetupAction500JSONResponse Error
+
+func (response RunBillingSetupAction500JSONResponse) VisitRunBillingSetupActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunBillingSetupAction503JSONResponse Error
+
+func (response RunBillingSetupAction503JSONResponse) VisitRunBillingSetupActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingSubscriptionsRequestObject struct {
+	Params ListBillingSubscriptionsParams
+}
+
+type ListBillingSubscriptionsResponseObject interface {
+	VisitListBillingSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type ListBillingSubscriptions200JSONResponse []BillingSubscription
+
+func (response ListBillingSubscriptions200JSONResponse) VisitListBillingSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingSubscriptions400JSONResponse Error
+
+func (response ListBillingSubscriptions400JSONResponse) VisitListBillingSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingSubscriptions401JSONResponse Error
+
+func (response ListBillingSubscriptions401JSONResponse) VisitListBillingSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingSubscriptions403JSONResponse Error
+
+func (response ListBillingSubscriptions403JSONResponse) VisitListBillingSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBillingSubscriptions500JSONResponse Error
+
+func (response ListBillingSubscriptions500JSONResponse) VisitListBillingSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscriptionRequestObject struct {
+	Id string `json:"id"`
+}
+
+type ActivateBillingSubscriptionResponseObject interface {
+	VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type ActivateBillingSubscription200JSONResponse BillingSubscription
+
+func (response ActivateBillingSubscription200JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscription401JSONResponse Error
+
+func (response ActivateBillingSubscription401JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscription403JSONResponse Error
+
+func (response ActivateBillingSubscription403JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscription404JSONResponse Error
+
+func (response ActivateBillingSubscription404JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscription409JSONResponse Error
+
+func (response ActivateBillingSubscription409JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscription500JSONResponse Error
+
+func (response ActivateBillingSubscription500JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ActivateBillingSubscription503JSONResponse Error
+
+func (response ActivateBillingSubscription503JSONResponse) VisitActivateBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscriptionRequestObject struct {
+	Id   string `json:"id"`
+	Body *CancelBillingSubscriptionJSONRequestBody
+}
+
+type CancelBillingSubscriptionResponseObject interface {
+	VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type CancelBillingSubscription200JSONResponse BillingSubscription
+
+func (response CancelBillingSubscription200JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscription401JSONResponse Error
+
+func (response CancelBillingSubscription401JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscription403JSONResponse Error
+
+func (response CancelBillingSubscription403JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscription404JSONResponse Error
+
+func (response CancelBillingSubscription404JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscription409JSONResponse Error
+
+func (response CancelBillingSubscription409JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscription500JSONResponse Error
+
+func (response CancelBillingSubscription500JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBillingSubscription503JSONResponse Error
+
+func (response CancelBillingSubscription503JSONResponse) VisitCancelBillingSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4208,6 +7310,84 @@ func (response GetUserCounterHistory404JSONResponse) VisitGetUserCounterHistoryR
 type GetUserCounterHistory500JSONResponse Error
 
 func (response GetUserCounterHistory500JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntitlementsRequestObject struct {
+	Params GetEntitlementsParams
+}
+
+type GetEntitlementsResponseObject interface {
+	VisitGetEntitlementsResponse(w http.ResponseWriter) error
+}
+
+type GetEntitlements200JSONResponse EntitlementSet
+
+func (response GetEntitlements200JSONResponse) VisitGetEntitlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntitlements400JSONResponse Error
+
+func (response GetEntitlements400JSONResponse) VisitGetEntitlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntitlements401JSONResponse Error
+
+func (response GetEntitlements401JSONResponse) VisitGetEntitlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntitlements403JSONResponse Error
+
+func (response GetEntitlements403JSONResponse) VisitGetEntitlementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEntitlements500JSONResponse Error
+
+func (response GetEntitlements500JSONResponse) VisitGetEntitlementsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4592,6 +7772,210 @@ func (response UpdateFeatureFlag404JSONResponse) VisitUpdateFeatureFlagResponse(
 type UpdateFeatureFlag500JSONResponse Error
 
 func (response UpdateFeatureFlag500JSONResponse) VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingRequestObject struct {
+}
+
+type GetMyBillingResponseObject interface {
+	VisitGetMyBillingResponse(w http.ResponseWriter) error
+}
+
+type GetMyBilling200JSONResponse MyBilling
+
+func (response GetMyBilling200JSONResponse) VisitGetMyBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBilling401JSONResponse Error
+
+func (response GetMyBilling401JSONResponse) VisitGetMyBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBilling500JSONResponse Error
+
+func (response GetMyBilling500JSONResponse) VisitGetMyBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortalRequestObject struct {
+	Body *CreateMyBillingPortalJSONRequestBody
+}
+
+type CreateMyBillingPortalResponseObject interface {
+	VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error
+}
+
+type CreateMyBillingPortal200JSONResponse BillingPortalResponse
+
+func (response CreateMyBillingPortal200JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortal400JSONResponse Error
+
+func (response CreateMyBillingPortal400JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortal401JSONResponse Error
+
+func (response CreateMyBillingPortal401JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortal403JSONResponse Error
+
+func (response CreateMyBillingPortal403JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortal404JSONResponse Error
+
+func (response CreateMyBillingPortal404JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortal500JSONResponse Error
+
+func (response CreateMyBillingPortal500JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMyBillingPortal503JSONResponse Error
+
+func (response CreateMyBillingPortal503JSONResponse) VisitCreateMyBillingPortalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyOrganizationsRequestObject struct {
+}
+
+type ListMyOrganizationsResponseObject interface {
+	VisitListMyOrganizationsResponse(w http.ResponseWriter) error
+}
+
+type ListMyOrganizations200JSONResponse []MyOrganization
+
+func (response ListMyOrganizations200JSONResponse) VisitListMyOrganizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyOrganizations401JSONResponse Error
+
+func (response ListMyOrganizations401JSONResponse) VisitListMyOrganizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyOrganizations500JSONResponse Error
+
+func (response ListMyOrganizations500JSONResponse) VisitListMyOrganizationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5468,6 +8852,571 @@ func (response GetNotificationStatus404JSONResponse) VisitGetNotificationStatusR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationsRequestObject struct {
+}
+
+type ListOrganizationsResponseObject interface {
+	VisitListOrganizationsResponse(w http.ResponseWriter) error
+}
+
+type ListOrganizations200JSONResponse []Organization
+
+func (response ListOrganizations200JSONResponse) VisitListOrganizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizations401JSONResponse Error
+
+func (response ListOrganizations401JSONResponse) VisitListOrganizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizations403JSONResponse Error
+
+func (response ListOrganizations403JSONResponse) VisitListOrganizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizations500JSONResponse Error
+
+func (response ListOrganizations500JSONResponse) VisitListOrganizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateOrganizationRequestObject struct {
+	Body *CreateOrganizationJSONRequestBody
+}
+
+type CreateOrganizationResponseObject interface {
+	VisitCreateOrganizationResponse(w http.ResponseWriter) error
+}
+
+type CreateOrganization201JSONResponse OrganizationDetail
+
+func (response CreateOrganization201JSONResponse) VisitCreateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateOrganization400JSONResponse Error
+
+func (response CreateOrganization400JSONResponse) VisitCreateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateOrganization401JSONResponse Error
+
+func (response CreateOrganization401JSONResponse) VisitCreateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateOrganization403JSONResponse Error
+
+func (response CreateOrganization403JSONResponse) VisitCreateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateOrganization500JSONResponse Error
+
+func (response CreateOrganization500JSONResponse) VisitCreateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganizationRequestObject struct {
+	OrgId string `json:"orgId"`
+}
+
+type DeleteOrganizationResponseObject interface {
+	VisitDeleteOrganizationResponse(w http.ResponseWriter) error
+}
+
+type DeleteOrganization204Response struct {
+}
+
+func (response DeleteOrganization204Response) VisitDeleteOrganizationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteOrganization401JSONResponse Error
+
+func (response DeleteOrganization401JSONResponse) VisitDeleteOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganization403JSONResponse Error
+
+func (response DeleteOrganization403JSONResponse) VisitDeleteOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganization404JSONResponse Error
+
+func (response DeleteOrganization404JSONResponse) VisitDeleteOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganization409JSONResponse Error
+
+func (response DeleteOrganization409JSONResponse) VisitDeleteOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganization500JSONResponse Error
+
+func (response DeleteOrganization500JSONResponse) VisitDeleteOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationRequestObject struct {
+	OrgId string `json:"orgId"`
+}
+
+type GetOrganizationResponseObject interface {
+	VisitGetOrganizationResponse(w http.ResponseWriter) error
+}
+
+type GetOrganization200JSONResponse OrganizationDetail
+
+func (response GetOrganization200JSONResponse) VisitGetOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganization401JSONResponse Error
+
+func (response GetOrganization401JSONResponse) VisitGetOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganization403JSONResponse Error
+
+func (response GetOrganization403JSONResponse) VisitGetOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganization404JSONResponse Error
+
+func (response GetOrganization404JSONResponse) VisitGetOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganization500JSONResponse Error
+
+func (response GetOrganization500JSONResponse) VisitGetOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrganizationRequestObject struct {
+	OrgId string `json:"orgId"`
+	Body  *UpdateOrganizationJSONRequestBody
+}
+
+type UpdateOrganizationResponseObject interface {
+	VisitUpdateOrganizationResponse(w http.ResponseWriter) error
+}
+
+type UpdateOrganization200JSONResponse OrganizationDetail
+
+func (response UpdateOrganization200JSONResponse) VisitUpdateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrganization400JSONResponse Error
+
+func (response UpdateOrganization400JSONResponse) VisitUpdateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrganization401JSONResponse Error
+
+func (response UpdateOrganization401JSONResponse) VisitUpdateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrganization403JSONResponse Error
+
+func (response UpdateOrganization403JSONResponse) VisitUpdateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrganization404JSONResponse Error
+
+func (response UpdateOrganization404JSONResponse) VisitUpdateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrganization500JSONResponse Error
+
+func (response UpdateOrganization500JSONResponse) VisitUpdateOrganizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveOrganizationMemberRequestObject struct {
+	OrgId  string `json:"orgId"`
+	UserId string `json:"userId"`
+}
+
+type RemoveOrganizationMemberResponseObject interface {
+	VisitRemoveOrganizationMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveOrganizationMember204Response struct {
+}
+
+func (response RemoveOrganizationMember204Response) VisitRemoveOrganizationMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveOrganizationMember401JSONResponse Error
+
+func (response RemoveOrganizationMember401JSONResponse) VisitRemoveOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveOrganizationMember403JSONResponse Error
+
+func (response RemoveOrganizationMember403JSONResponse) VisitRemoveOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveOrganizationMember404JSONResponse Error
+
+func (response RemoveOrganizationMember404JSONResponse) VisitRemoveOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveOrganizationMember500JSONResponse Error
+
+func (response RemoveOrganizationMember500JSONResponse) VisitRemoveOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationMemberRequestObject struct {
+	OrgId  string `json:"orgId"`
+	UserId string `json:"userId"`
+	Body   *SetOrganizationMemberJSONRequestBody
+}
+
+type SetOrganizationMemberResponseObject interface {
+	VisitSetOrganizationMemberResponse(w http.ResponseWriter) error
+}
+
+type SetOrganizationMember200JSONResponse OrganizationMember
+
+func (response SetOrganizationMember200JSONResponse) VisitSetOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationMember400JSONResponse Error
+
+func (response SetOrganizationMember400JSONResponse) VisitSetOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationMember401JSONResponse Error
+
+func (response SetOrganizationMember401JSONResponse) VisitSetOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationMember403JSONResponse Error
+
+func (response SetOrganizationMember403JSONResponse) VisitSetOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationMember404JSONResponse Error
+
+func (response SetOrganizationMember404JSONResponse) VisitSetOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationMember500JSONResponse Error
+
+func (response SetOrganizationMember500JSONResponse) VisitSetOrganizationMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6657,6 +10606,9 @@ type GetCurrentUser200JSONResponse struct {
 	// Email Example: user@example.com
 	Email *openapi_types.Email `json:"email,omitempty"`
 
+	// Entitlements Active features as in the X-Entitlements header (until, or null for no expiry)
+	Entitlements *EntitlementHeader `json:"entitlements,omitempty"`
+
 	// FamilyName Example: User
 	FamilyName *string `json:"familyName,omitempty"`
 
@@ -6667,7 +10619,8 @@ type GetCurrentUser200JSONResponse struct {
 	IsAdmin *bool `json:"isAdmin,omitempty"`
 
 	// Name Example: Test User
-	Name *string `json:"name,omitempty"`
+	Name          *string           `json:"name,omitempty"`
+	Organizations *[]MyOrganization `json:"organizations,omitempty"`
 
 	// Picture Example: https://example.com/picture.jpg
 	Picture *string `json:"picture,omitempty"`
@@ -6749,6 +10702,57 @@ type StrictServerInterface interface {
 	// ListNotificationTypes Every notification type in use, for filters (admin only)
 	// (GET /api/admin/notifications/types)
 	ListNotificationTypes(ctx context.Context, request ListNotificationTypesRequestObject) (ListNotificationTypesResponseObject, error)
+	// ListBillingDocuments List invoices and credit notes with their Odoo state (admin only)
+	// (GET /api/billing/documents)
+	ListBillingDocuments(ctx context.Context, request ListBillingDocumentsRequestObject) (ListBillingDocumentsResponseObject, error)
+	// GetBillingDocumentPdf The PDF Odoo issued (admin, the payer, owners of the organization)
+	// (GET /api/billing/documents/{id}/pdf)
+	GetBillingDocumentPdf(ctx context.Context, request GetBillingDocumentPdfRequestObject) (GetBillingDocumentPdfResponseObject, error)
+	// RetryBillingDocument Queue a failed document again (admin only)
+	// (POST /api/billing/documents/{id}/retry)
+	RetryBillingDocument(ctx context.Context, request RetryBillingDocumentRequestObject) (RetryBillingDocumentResponseObject, error)
+	// ListBillingGrants List grants (admin only)
+	// (GET /api/billing/grants)
+	ListBillingGrants(ctx context.Context, request ListBillingGrantsRequestObject) (ListBillingGrantsResponseObject, error)
+	// CreateBillingGrant Give features to a subject until a date (admin only)
+	// (POST /api/billing/grants)
+	CreateBillingGrant(ctx context.Context, request CreateBillingGrantRequestObject) (CreateBillingGrantResponseObject, error)
+	// DeleteBillingGrant Remove a grant (admin only)
+	// (DELETE /api/billing/grants/{id})
+	DeleteBillingGrant(ctx context.Context, request DeleteBillingGrantRequestObject) (DeleteBillingGrantResponseObject, error)
+	// ListBillingPlans List plans (admin only)
+	// (GET /api/billing/plans)
+	ListBillingPlans(ctx context.Context, request ListBillingPlansRequestObject) (ListBillingPlansResponseObject, error)
+	// CreateBillingPlan Create a plan and its Stripe and Odoo products (admin only)
+	// (POST /api/billing/plans)
+	CreateBillingPlan(ctx context.Context, request CreateBillingPlanRequestObject) (CreateBillingPlanResponseObject, error)
+	// GetBillingPlan Get a plan (admin only)
+	// (GET /api/billing/plans/{key})
+	GetBillingPlan(ctx context.Context, request GetBillingPlanRequestObject) (GetBillingPlanResponseObject, error)
+	// UpdateBillingPlan Change or archive a plan (admin only); a new amount creates a new Stripe price
+	// (PATCH /api/billing/plans/{key})
+	UpdateBillingPlan(ctx context.Context, request UpdateBillingPlanRequestObject) (UpdateBillingPlanResponseObject, error)
+	// ListBillingPurchases List paid checkouts with shipping addresses (admin only)
+	// (GET /api/billing/purchases)
+	ListBillingPurchases(ctx context.Context, request ListBillingPurchasesRequestObject) (ListBillingPurchasesResponseObject, error)
+	// RefundBillingPurchase Refund a payment (admin only); the credit note follows
+	// (POST /api/billing/purchases/{id}/refund)
+	RefundBillingPurchase(ctx context.Context, request RefundBillingPurchaseRequestObject) (RefundBillingPurchaseResponseObject, error)
+	// GetBillingSetup Billing configuration checks (admin only)
+	// (GET /api/billing/setup)
+	GetBillingSetup(ctx context.Context, request GetBillingSetupRequestObject) (GetBillingSetupResponseObject, error)
+	// RunBillingSetupAction Apply a fix from the setup page (admin only)
+	// (POST /api/billing/setup/actions)
+	RunBillingSetupAction(ctx context.Context, request RunBillingSetupActionRequestObject) (RunBillingSetupActionResponseObject, error)
+	// ListBillingSubscriptions List subscriptions (admin only)
+	// (GET /api/billing/subscriptions)
+	ListBillingSubscriptions(ctx context.Context, request ListBillingSubscriptionsRequestObject) (ListBillingSubscriptionsResponseObject, error)
+	// ActivateBillingSubscription Start a subscription that waits for activation (admin only)
+	// (POST /api/billing/subscriptions/{id}/activate)
+	ActivateBillingSubscription(ctx context.Context, request ActivateBillingSubscriptionRequestObject) (ActivateBillingSubscriptionResponseObject, error)
+	// CancelBillingSubscription Cancel a subscription now or at period end (admin only)
+	// (POST /api/billing/subscriptions/{id}/cancel)
+	CancelBillingSubscription(ctx context.Context, request CancelBillingSubscriptionRequestObject) (CancelBillingSubscriptionResponseObject, error)
 	// GetRateLimiterConfig Get current rate limiter configuration
 	// (GET /api/config/rate-limiter)
 	GetRateLimiterConfig(ctx context.Context, request GetRateLimiterConfigRequestObject) (GetRateLimiterConfigResponseObject, error)
@@ -6761,6 +10765,9 @@ type StrictServerInterface interface {
 	// GetUserCounterHistory Get user's counter transaction history
 	// (GET /api/counters/{counterId}/{userId}/history)
 	GetUserCounterHistory(ctx context.Context, request GetUserCounterHistoryRequestObject) (GetUserCounterHistoryResponseObject, error)
+	// GetEntitlements A user's or an organization's active features
+	// (GET /api/entitlements)
+	GetEntitlements(ctx context.Context, request GetEntitlementsRequestObject) (GetEntitlementsResponseObject, error)
 	// ListFeatureFlags List feature flags (admin only)
 	// (GET /api/feature-flags)
 	ListFeatureFlags(ctx context.Context, request ListFeatureFlagsRequestObject) (ListFeatureFlagsResponseObject, error)
@@ -6776,6 +10783,15 @@ type StrictServerInterface interface {
 	// UpdateFeatureFlag Update a feature flag (admin only)
 	// (PATCH /api/feature-flags/{key})
 	UpdateFeatureFlag(ctx context.Context, request UpdateFeatureFlagRequestObject) (UpdateFeatureFlagResponseObject, error)
+	// GetMyBilling The current user's subscriptions and invoices, and those of organizations they own
+	// (GET /api/me/billing)
+	GetMyBilling(ctx context.Context, request GetMyBillingRequestObject) (GetMyBillingResponseObject, error)
+	// CreateMyBillingPortal A Stripe Customer Portal URL for a subject the user pays or owns
+	// (POST /api/me/billing/portal)
+	CreateMyBillingPortal(ctx context.Context, request CreateMyBillingPortalRequestObject) (CreateMyBillingPortalResponseObject, error)
+	// ListMyOrganizations The current user's organizations
+	// (GET /api/me/organizations)
+	ListMyOrganizations(ctx context.Context, request ListMyOrganizationsRequestObject) (ListMyOrganizationsResponseObject, error)
 	// GetMiddlewareStatus Get status (and health, where available) of every global middleware
 	// (GET /api/middleware)
 	GetMiddlewareStatus(ctx context.Context, request GetMiddlewareStatusRequestObject) (GetMiddlewareStatusResponseObject, error)
@@ -6833,6 +10849,27 @@ type StrictServerInterface interface {
 	// GetNotificationStatus Get one notification's rolled-up status
 	// (GET /api/notifications/{notificationId}/status)
 	GetNotificationStatus(ctx context.Context, request GetNotificationStatusRequestObject) (GetNotificationStatusResponseObject, error)
+	// ListOrganizations List organizations (admin only)
+	// (GET /api/organizations)
+	ListOrganizations(ctx context.Context, request ListOrganizationsRequestObject) (ListOrganizationsResponseObject, error)
+	// CreateOrganization Create an organization (admin only)
+	// (POST /api/organizations)
+	CreateOrganization(ctx context.Context, request CreateOrganizationRequestObject) (CreateOrganizationResponseObject, error)
+	// DeleteOrganization Delete an organization and its memberships (admin only)
+	// (DELETE /api/organizations/{orgId})
+	DeleteOrganization(ctx context.Context, request DeleteOrganizationRequestObject) (DeleteOrganizationResponseObject, error)
+	// GetOrganization Get an organization with its members (admin only)
+	// (GET /api/organizations/{orgId})
+	GetOrganization(ctx context.Context, request GetOrganizationRequestObject) (GetOrganizationResponseObject, error)
+	// UpdateOrganization Rename an organization (admin only)
+	// (PATCH /api/organizations/{orgId})
+	UpdateOrganization(ctx context.Context, request UpdateOrganizationRequestObject) (UpdateOrganizationResponseObject, error)
+	// RemoveOrganizationMember Remove a user from an organization (admin only)
+	// (DELETE /api/organizations/{orgId}/members/{userId})
+	RemoveOrganizationMember(ctx context.Context, request RemoveOrganizationMemberRequestObject) (RemoveOrganizationMemberResponseObject, error)
+	// SetOrganizationMember Add a user to an organization or change their role (admin only)
+	// (PUT /api/organizations/{orgId}/members/{userId})
+	SetOrganizationMember(ctx context.Context, request SetOrganizationMemberRequestObject) (SetOrganizationMemberResponseObject, error)
 	// GetBlockedClients Get the history of rate-limiter block events — a persistent registry that survives past the in-memory rate limiter's own cleanup, which discards an IP's live state (including its block) once the block expires and the IP goes quiet again.
 	// (GET /api/rate-limiter/blocked)
 	GetBlockedClients(ctx context.Context, request GetBlockedClientsRequestObject) (GetBlockedClientsResponseObject, error)
@@ -7041,6 +11078,482 @@ func (sh *strictHandler) ListNotificationTypes(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// ListBillingDocuments operation middleware
+func (sh *strictHandler) ListBillingDocuments(w http.ResponseWriter, r *http.Request, params ListBillingDocumentsParams) {
+	var request ListBillingDocumentsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBillingDocuments(ctx, request.(ListBillingDocumentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBillingDocuments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBillingDocumentsResponseObject); ok {
+		if err := validResponse.VisitListBillingDocumentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBillingDocumentPdf operation middleware
+func (sh *strictHandler) GetBillingDocumentPdf(w http.ResponseWriter, r *http.Request, id string) {
+	var request GetBillingDocumentPdfRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBillingDocumentPdf(ctx, request.(GetBillingDocumentPdfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBillingDocumentPdf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBillingDocumentPdfResponseObject); ok {
+		if err := validResponse.VisitGetBillingDocumentPdfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetryBillingDocument operation middleware
+func (sh *strictHandler) RetryBillingDocument(w http.ResponseWriter, r *http.Request, id string) {
+	var request RetryBillingDocumentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetryBillingDocument(ctx, request.(RetryBillingDocumentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetryBillingDocument")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetryBillingDocumentResponseObject); ok {
+		if err := validResponse.VisitRetryBillingDocumentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListBillingGrants operation middleware
+func (sh *strictHandler) ListBillingGrants(w http.ResponseWriter, r *http.Request, params ListBillingGrantsParams) {
+	var request ListBillingGrantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBillingGrants(ctx, request.(ListBillingGrantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBillingGrants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBillingGrantsResponseObject); ok {
+		if err := validResponse.VisitListBillingGrantsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBillingGrant operation middleware
+func (sh *strictHandler) CreateBillingGrant(w http.ResponseWriter, r *http.Request) {
+	var request CreateBillingGrantRequestObject
+
+	var body CreateBillingGrantJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBillingGrant(ctx, request.(CreateBillingGrantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBillingGrant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBillingGrantResponseObject); ok {
+		if err := validResponse.VisitCreateBillingGrantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteBillingGrant operation middleware
+func (sh *strictHandler) DeleteBillingGrant(w http.ResponseWriter, r *http.Request, id string) {
+	var request DeleteBillingGrantRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteBillingGrant(ctx, request.(DeleteBillingGrantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteBillingGrant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteBillingGrantResponseObject); ok {
+		if err := validResponse.VisitDeleteBillingGrantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListBillingPlans operation middleware
+func (sh *strictHandler) ListBillingPlans(w http.ResponseWriter, r *http.Request, params ListBillingPlansParams) {
+	var request ListBillingPlansRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBillingPlans(ctx, request.(ListBillingPlansRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBillingPlans")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBillingPlansResponseObject); ok {
+		if err := validResponse.VisitListBillingPlansResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBillingPlan operation middleware
+func (sh *strictHandler) CreateBillingPlan(w http.ResponseWriter, r *http.Request) {
+	var request CreateBillingPlanRequestObject
+
+	var body CreateBillingPlanJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBillingPlan(ctx, request.(CreateBillingPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBillingPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBillingPlanResponseObject); ok {
+		if err := validResponse.VisitCreateBillingPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBillingPlan operation middleware
+func (sh *strictHandler) GetBillingPlan(w http.ResponseWriter, r *http.Request, key string) {
+	var request GetBillingPlanRequestObject
+
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBillingPlan(ctx, request.(GetBillingPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBillingPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBillingPlanResponseObject); ok {
+		if err := validResponse.VisitGetBillingPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateBillingPlan operation middleware
+func (sh *strictHandler) UpdateBillingPlan(w http.ResponseWriter, r *http.Request, key string) {
+	var request UpdateBillingPlanRequestObject
+
+	request.Key = key
+
+	var body UpdateBillingPlanJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateBillingPlan(ctx, request.(UpdateBillingPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateBillingPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateBillingPlanResponseObject); ok {
+		if err := validResponse.VisitUpdateBillingPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListBillingPurchases operation middleware
+func (sh *strictHandler) ListBillingPurchases(w http.ResponseWriter, r *http.Request, params ListBillingPurchasesParams) {
+	var request ListBillingPurchasesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBillingPurchases(ctx, request.(ListBillingPurchasesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBillingPurchases")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBillingPurchasesResponseObject); ok {
+		if err := validResponse.VisitListBillingPurchasesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RefundBillingPurchase operation middleware
+func (sh *strictHandler) RefundBillingPurchase(w http.ResponseWriter, r *http.Request, id string) {
+	var request RefundBillingPurchaseRequestObject
+
+	request.Id = id
+
+	var body RefundBillingPurchaseJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RefundBillingPurchase(ctx, request.(RefundBillingPurchaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RefundBillingPurchase")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RefundBillingPurchaseResponseObject); ok {
+		if err := validResponse.VisitRefundBillingPurchaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBillingSetup operation middleware
+func (sh *strictHandler) GetBillingSetup(w http.ResponseWriter, r *http.Request) {
+	var request GetBillingSetupRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBillingSetup(ctx, request.(GetBillingSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBillingSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBillingSetupResponseObject); ok {
+		if err := validResponse.VisitGetBillingSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunBillingSetupAction operation middleware
+func (sh *strictHandler) RunBillingSetupAction(w http.ResponseWriter, r *http.Request) {
+	var request RunBillingSetupActionRequestObject
+
+	var body RunBillingSetupActionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunBillingSetupAction(ctx, request.(RunBillingSetupActionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunBillingSetupAction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunBillingSetupActionResponseObject); ok {
+		if err := validResponse.VisitRunBillingSetupActionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListBillingSubscriptions operation middleware
+func (sh *strictHandler) ListBillingSubscriptions(w http.ResponseWriter, r *http.Request, params ListBillingSubscriptionsParams) {
+	var request ListBillingSubscriptionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBillingSubscriptions(ctx, request.(ListBillingSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBillingSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBillingSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitListBillingSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ActivateBillingSubscription operation middleware
+func (sh *strictHandler) ActivateBillingSubscription(w http.ResponseWriter, r *http.Request, id string) {
+	var request ActivateBillingSubscriptionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ActivateBillingSubscription(ctx, request.(ActivateBillingSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ActivateBillingSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ActivateBillingSubscriptionResponseObject); ok {
+		if err := validResponse.VisitActivateBillingSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelBillingSubscription operation middleware
+func (sh *strictHandler) CancelBillingSubscription(w http.ResponseWriter, r *http.Request, id string) {
+	var request CancelBillingSubscriptionRequestObject
+
+	request.Id = id
+
+	var body CancelBillingSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelBillingSubscription(ctx, request.(CancelBillingSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelBillingSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelBillingSubscriptionResponseObject); ok {
+		if err := validResponse.VisitCancelBillingSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetRateLimiterConfig operation middleware
 func (sh *strictHandler) GetRateLimiterConfig(w http.ResponseWriter, r *http.Request) {
 	var request GetRateLimiterConfigRequestObject
@@ -7147,6 +11660,32 @@ func (sh *strictHandler) GetUserCounterHistory(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserCounterHistoryResponseObject); ok {
 		if err := validResponse.VisitGetUserCounterHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEntitlements operation middleware
+func (sh *strictHandler) GetEntitlements(w http.ResponseWriter, r *http.Request, params GetEntitlementsParams) {
+	var request GetEntitlementsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEntitlements(ctx, request.(GetEntitlementsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEntitlements")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEntitlementsResponseObject); ok {
+		if err := validResponse.VisitGetEntitlementsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7287,6 +11826,85 @@ func (sh *strictHandler) UpdateFeatureFlag(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateFeatureFlagResponseObject); ok {
 		if err := validResponse.VisitUpdateFeatureFlagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyBilling operation middleware
+func (sh *strictHandler) GetMyBilling(w http.ResponseWriter, r *http.Request) {
+	var request GetMyBillingRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyBilling(ctx, request.(GetMyBillingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyBilling")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyBillingResponseObject); ok {
+		if err := validResponse.VisitGetMyBillingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateMyBillingPortal operation middleware
+func (sh *strictHandler) CreateMyBillingPortal(w http.ResponseWriter, r *http.Request) {
+	var request CreateMyBillingPortalRequestObject
+
+	var body CreateMyBillingPortalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMyBillingPortal(ctx, request.(CreateMyBillingPortalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMyBillingPortal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateMyBillingPortalResponseObject); ok {
+		if err := validResponse.VisitCreateMyBillingPortalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyOrganizations operation middleware
+func (sh *strictHandler) ListMyOrganizations(w http.ResponseWriter, r *http.Request) {
+	var request ListMyOrganizationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyOrganizations(ctx, request.(ListMyOrganizationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyOrganizations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyOrganizationsResponseObject); ok {
+		if err := validResponse.VisitListMyOrganizationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7780,6 +12398,207 @@ func (sh *strictHandler) GetNotificationStatus(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetNotificationStatusResponseObject); ok {
 		if err := validResponse.VisitGetNotificationStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrganizations operation middleware
+func (sh *strictHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+	var request ListOrganizationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrganizations(ctx, request.(ListOrganizationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrganizations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrganizationsResponseObject); ok {
+		if err := validResponse.VisitListOrganizationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateOrganization operation middleware
+func (sh *strictHandler) CreateOrganization(w http.ResponseWriter, r *http.Request) {
+	var request CreateOrganizationRequestObject
+
+	var body CreateOrganizationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateOrganization(ctx, request.(CreateOrganizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateOrganization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateOrganizationResponseObject); ok {
+		if err := validResponse.VisitCreateOrganizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteOrganization operation middleware
+func (sh *strictHandler) DeleteOrganization(w http.ResponseWriter, r *http.Request, orgId string) {
+	var request DeleteOrganizationRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOrganization(ctx, request.(DeleteOrganizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOrganization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOrganizationResponseObject); ok {
+		if err := validResponse.VisitDeleteOrganizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrganization operation middleware
+func (sh *strictHandler) GetOrganization(w http.ResponseWriter, r *http.Request, orgId string) {
+	var request GetOrganizationRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrganization(ctx, request.(GetOrganizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrganization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrganizationResponseObject); ok {
+		if err := validResponse.VisitGetOrganizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateOrganization operation middleware
+func (sh *strictHandler) UpdateOrganization(w http.ResponseWriter, r *http.Request, orgId string) {
+	var request UpdateOrganizationRequestObject
+
+	request.OrgId = orgId
+
+	var body UpdateOrganizationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateOrganization(ctx, request.(UpdateOrganizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateOrganization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateOrganizationResponseObject); ok {
+		if err := validResponse.VisitUpdateOrganizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveOrganizationMember operation middleware
+func (sh *strictHandler) RemoveOrganizationMember(w http.ResponseWriter, r *http.Request, orgId string, userId string) {
+	var request RemoveOrganizationMemberRequestObject
+
+	request.OrgId = orgId
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveOrganizationMember(ctx, request.(RemoveOrganizationMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveOrganizationMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveOrganizationMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveOrganizationMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOrganizationMember operation middleware
+func (sh *strictHandler) SetOrganizationMember(w http.ResponseWriter, r *http.Request, orgId string, userId string) {
+	var request SetOrganizationMemberRequestObject
+
+	request.OrgId = orgId
+	request.UserId = userId
+
+	var body SetOrganizationMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOrganizationMember(ctx, request.(SetOrganizationMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOrganizationMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOrganizationMemberResponseObject); ok {
+		if err := validResponse.VisitSetOrganizationMemberResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -33,6 +33,47 @@
     <button type="submit">{{if .HasPassword}}Change password{{else}}Set password{{end}}</button>
 </form>
 
+{{with .Billing}}
+<h2>Billing</h2>
+{{if .Subscriptions}}
+<table>
+    <tr><th>Plan</th><th>For</th><th>Status</th><th></th></tr>
+    {{range .Subscriptions}}
+    <tr>
+        <td>{{.Plan}}</td>
+        <td>{{.Owner}}</td>
+        <td>{{.Status}}{{if .Next}}<div class="muted">{{.Next}}</div>{{end}}</td>
+        <td style="text-align:right">
+            {{if .Manage}}
+            <form method="POST" action="{{$.Prefix}}/account/billing/portal">
+                <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
+                <input type="hidden" name="subject" value="{{.Subject}}">
+                <button type="submit" class="small">Manage</button>
+            </form>
+            {{end}}
+        </td>
+    </tr>
+    {{end}}
+</table>
+{{else}}
+<p class="muted">No subscriptions.</p>
+{{end}}
+{{if .Documents}}
+<table>
+    <tr><th>Document</th><th>For</th><th>Date</th><th>Amount</th><th></th></tr>
+    {{range .Documents}}
+    <tr>
+        <td>{{.Kind}} {{.Number}}</td>
+        <td>{{.Owner}}</td>
+        <td class="muted">{{.Date}}</td>
+        <td>{{.Amount}}</td>
+        <td style="text-align:right">{{if .PDF}}<a href="{{.PDF}}" target="_blank" rel="noopener">PDF</a>{{end}}</td>
+    </tr>
+    {{end}}
+</table>
+{{end}}
+{{end}}
+
 <h2>Linked accounts</h2>
 {{if .Identities}}
 <table>

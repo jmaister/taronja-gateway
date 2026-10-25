@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/jmaister/taronja-gateway/billing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -40,6 +41,12 @@ type StrictApiServer struct {
 	// userPhones stores phone numbers (the sms/whatsapp address). Set with
 	// SetUserPhones; nil in tests that don't use phones.
 	userPhones repositories.UserPhoneRepository
+	// organizations backs /api/organizations* and the organizations in
+	// /me; nil when not set (those endpoints answer 503).
+	organizations repositories.OrganizationRepository
+	// billing backs every billing and entitlement endpoint; nil when billing
+	// is disabled (they answer 503).
+	billing *billing.Service
 	// excludeStaticAssets mirrors the traffic_metrics middleware option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
@@ -73,6 +80,16 @@ func (s *StrictApiServer) SetExcludeStaticAssets(exclude bool) {
 // SetFeatureFlags sets the feature flag service for the feature flag endpoints.
 func (s *StrictApiServer) SetFeatureFlags(featureFlags *featureflag.Service) {
 	s.featureFlags = featureFlags
+}
+
+// SetOrganizations sets the organization store.
+func (s *StrictApiServer) SetOrganizations(orgs repositories.OrganizationRepository) {
+	s.organizations = orgs
+}
+
+// SetBilling sets the billing service.
+func (s *StrictApiServer) SetBilling(svc *billing.Service) {
+	s.billing = svc
 }
 
 // SetUserPhones sets the phone number store the user endpoints read and write.

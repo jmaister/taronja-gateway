@@ -26,7 +26,7 @@ const emailLoginCookieName = "tg_email_login"
 var authPageNames = []string{
 	"signup.html", "forgot_password.html", "reset_password.html",
 	"email_code.html", "confirm_link.html", "message.html", "account.html",
-	"notification.html",
+	"notification.html", "pay.html", "pay_done.html",
 }
 
 func parseAuthTemplates(fs embed.FS) (map[string]*template.Template, error) {
@@ -62,6 +62,8 @@ type authPage struct {
 	Account     *accountView
 	// Notification is the page an SMS/WhatsApp link opens.
 	Notification *notificationView
+	Pay          *payView
+	PayDone      *payDoneView
 }
 
 type accountView struct {
@@ -75,6 +77,7 @@ type accountView struct {
 	Linkable        []linkableProvider
 	Sessions        []sessionView
 	Events          []eventView
+	Billing         *billingView
 }
 
 type identityView struct {
@@ -544,6 +547,8 @@ func (g *Gateway) renderAccountPage(w http.ResponseWriter, status int, acct *acc
 		}
 		view.Events = append(view.Events, eventView{Label: label, When: e.CreatedAt.Local().Format("2006-01-02 15:04"), IP: e.IPAddress})
 	}
+
+	view.Billing = g.accountBilling(acct)
 
 	page := g.newAuthPage("Your account")
 	page.Wide = true

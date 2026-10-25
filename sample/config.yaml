@@ -170,3 +170,19 @@ notification:
   #   enabled: true
   #   url: https://your-app.example.com/webhooks/taronja-notifications
   #   secret: ${NOTIFICATION_WEBHOOK_SECRET}
+
+# Billing: plans sold through Stripe, invoices in Odoo, entitlements for the
+# apps (X-Entitlements). See doc/billing.md. Needs server.url.
+# billing:
+#   enabled: true
+#   stripe:
+#     secretKey: ${STRIPE_SECRET_KEY}
+#     webhookSecret: ${STRIPE_WEBHOOK_SECRET}
+#   odoo:
+#     url: https://odoo.example.com
+#     database: ${ODOO_DB}
+#     apiKey: ${ODOO_API_KEY}
+#     companyId: 1
+#     salesJournalId: 1
+#     paymentJournalId: 7
+#     taxId: 12
