@@ -5,6 +5,8 @@
 
 import datetime
 
+# init.sh prepends VERIFACTU = True/False (E2E_ODOO_VERIFACTU).
+
 from odoo import fields
 
 company = env.ref("base.main_company")
@@ -23,6 +25,33 @@ company.write({
 })
 if company.chart_template != "es_pymes":
     env["account.chart.template"].try_loading("es_pymes", company, install_demo=False)
+if VERIFACTU:
+    # Subject to Veri*Factu, registering in the AEAT's pre-production
+    # environment with the test certificate Odoo ships (its NIF is A39200019).
+    import base64
+    from odoo.tools import misc
+
+    cert_path = "l10n_es_edi_verifactu/demo/certificates/Certificado_RPJ_A39200019_CERTIFICADO_ENTIDAD_PRUEBAS_5_Pre.p12"
+    certificate = env["certificate.certificate"].search([("scope", "=", "verifactu")], limit=1)
+    if not certificate:
+        raw = misc.file_open(cert_path, "rb").read()
+        try:
+            from odoo.tools.binary import BinaryBytes  # Odoo 20: binary fields take BinaryValue
+            content = BinaryBytes(raw)
+        except ImportError:  # Odoo 19: base64
+            content = base64.encodebytes(raw)
+        certificate = env["certificate.certificate"].create({
+            "content": content,
+            "pkcs12_password": "1234",
+            "scope": "verifactu",
+        })
+    company.write({
+        "vat": "ESA39200019",
+        "state_id": env.ref("base.state_es_v").id,
+        "l10n_es_edi_verifactu_required": True,
+        "l10n_es_edi_verifactu_test_environment": True,
+        "l10n_es_edi_verifactu_certificate_ids": [(6, 0, certificate.ids)],
+    })
 env.cr.commit()
 
 journals = env["account.journal"].with_company(company)

@@ -162,3 +162,56 @@ func TestE2E_Checks(t *testing.T) {
 		assert.Equal(t, billing.CheckOK, ch.Status, "%s: %s", ch.ID, ch.Detail)
 	}
 }
+
+// verifactuCompany skips unless the e2e Odoo was prepared with
+// E2E_ODOO_VERIFACTU=1 (the company is subject to Veri*Factu).
+func verifactuCompany(t *testing.T, c *Client) {
+	t.Helper()
+	ctx := context.Background()
+	installed, err := c.hasField(ctx, "res.company", "l10n_es_edi_verifactu_required")
+	require.NoError(t, err)
+	if !installed {
+		t.Skip("l10n_es_edi_verifactu is not installed: run E2E_ODOO_VERIFACTU=1 ./e2e/odoo/init.sh")
+	}
+	var companies []M
+	err = c.call(ctx, "res.company", "read", M{"ids": []int64{c.cfg.CompanyID}, "fields": []string{"l10n_es_edi_verifactu_required"}}, nil, &companies)
+	require.NoError(t, err)
+	if required, _ := companies[0]["l10n_es_edi_verifactu_required"].(bool); !required {
+		t.Skip("the e2e company is not subject to Veri*Factu: run E2E_ODOO_VERIFACTU=1 ./e2e/odoo/init.sh")
+	}
+}
+
+func TestE2E_VerifactuRegistersInvoicesAndCreditNotes(t *testing.T) {
+	c := e2eClient(t)
+	verifactuCompany(t, c)
+	ctx := context.Background()
+	partnerID, productID, invoice := issue(t, c, company(), 2900)
+	credit, err := c.IssueMove(ctx, billing.OdooMove{
+		Ref: unique("re"), PartnerID: partnerID, CreditNote: true, ReversedMoveID: invoice.MoveID, PaidAt: time.Now(),
+		Lines: []billing.OdooLine{{ProductID: productID, Description: "Refund", AmountCents: 1000}},
+	})
+	require.NoError(t, err)
+
+	fields := []string{"state", "l10n_es_edi_verifactu_state", "l10n_es_edi_verifactu_document_ids"}
+	// Odoo 19 sets the correction reason (R1); Odoo 20 dropped the field.
+	hasReason, err := c.hasField(ctx, "account.move", "l10n_es_edi_verifactu_refund_reason")
+	require.NoError(t, err)
+	if hasReason {
+		fields = append(fields, "l10n_es_edi_verifactu_refund_reason")
+	}
+	for _, issued := range []billing.OdooIssued{invoice, credit} {
+		move, err := c.readOne(ctx, "account.move", issued.MoveID, fields)
+		require.NoError(t, err)
+		assert.Equal(t, "posted", move["state"], issued.Number)
+		documents, _ := move["l10n_es_edi_verifactu_document_ids"].([]any)
+		assert.Len(t, documents, 1, "%s is queued for the tax agency", issued.Number)
+		_, data, err := c.PDF(ctx, issued.MoveID)
+		require.NoError(t, err, issued.Number)
+		assert.True(t, strings.HasPrefix(string(data), "%PDF"))
+	}
+	if hasReason {
+		move, err := c.readOne(ctx, "account.move", credit.MoveID, fields)
+		require.NoError(t, err)
+		assert.Equal(t, "R1", move["l10n_es_edi_verifactu_refund_reason"])
+	}
+}
