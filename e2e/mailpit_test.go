@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"net/url"
 	"regexp"
 	"testing"
@@ -67,7 +68,23 @@ func requireMailpit(t *testing.T) {
 	resp.Body.Close()
 }
 
+// mailpitAdvertisesAuth reports whether the SMTP server offers AUTH: the
+// compose Mailpit does, a Mailpit shared with other projects may not.
+func mailpitAdvertisesAuth() bool {
+	client, err := smtp.Dial("localhost:" + mailpitSMTPPort)
+	if err != nil {
+		return false
+	}
+	defer client.Close()
+	ok, _ := client.Extension("AUTH")
+	return ok
+}
+
 func emailConfig() string {
+	credentials := ""
+	if mailpitAdvertisesAuth() {
+		credentials = "    username: e2e\n    password: e2e-smtp-password\n"
+	}
 	return baseConfig(`authenticationProviders:
   basic:
     enabled: true
@@ -76,9 +93,7 @@ notification:
     enabled: true
     host: localhost
     port: ` + mailpitSMTPPort + `
-    username: e2e
-    password: e2e-smtp-password
-    from: noreply@taronja.test
+` + credentials + `    from: noreply@taronja.test
     fromName: Taronja E2E
 `)
 }
