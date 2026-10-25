@@ -17,6 +17,12 @@ import { RateLimiterStatsPage } from './pages/RateLimiterStatsPage';
 import { MiddlewarePage } from './pages/MiddlewarePage';
 import { ConnectionStatusPage } from './pages/ConnectionStatusPage';
 import { FeatureFlagsPage } from './pages/FeatureFlagsPage';
+import { OrganizationsPage } from './pages/OrganizationsPage';
+import { PlansPage } from './pages/PlansPage';
+import { SubscriptionsPage } from './pages/SubscriptionsPage';
+import { PurchasesPage } from './pages/PurchasesPage';
+import { InvoicesPage } from './pages/InvoicesPage';
+import { BillingSetupPage } from './pages/BillingSetupPage';
 
 // Authentication components
 import { useTaronjaAuth } from 'taronja-gateway-react-sdk';
@@ -120,6 +126,12 @@ function App() {
                     <Route path="/counters" element={<CountersManagementPage />} />
                     <Route path="/feature-flags" element={<FeatureFlagsPage />} />
                     <Route path="/notifications/channels" element={<ConnectionStatusPage />} />
+                    <Route path="/organizations" element={<OrganizationsPage />} />
+                    <Route path="/billing/plans" element={<PlansPage />} />
+                    <Route path="/billing/subscriptions" element={<SubscriptionsPage />} />
+                    <Route path="/billing/purchases" element={<PurchasesPage />} />
+                    <Route path="/billing/invoices" element={<InvoicesPage />} />
+                    <Route path="/billing/setup" element={<BillingSetupPage />} />
                     {/* Add other admin routes that should use MainLayout here */}
                 </Route>
 
