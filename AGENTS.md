@@ -26,6 +26,7 @@ taronja-gateway/
 ├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2, generic OIDC)
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
+├── billing/                    # Plans, Stripe Checkout, webhook state machine, entitlements, Odoo outbox; stripeapi/, odooapi/
 ├── accounts/                   # Account linking, password change, sessions, activity log
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
@@ -377,6 +378,14 @@ Zero-config on/off switches (`db.FeatureFlag`, migration `0003_feature_flags`; `
 - Public read: `GET /flags` (`GetFeatureFlagValues`, listed in `OperationWithNoSecurity`) — at the management root next to `/me`, not under `/api/feature-flags/`, so it cannot collide with a flag key.
 - Backends: `gateway/proxy.go` drops any client-sent `X-Feature-Flags` and sets it to the enabled keys, sorted, on every proxied request.
 - Dashboard `webapp/src/pages/FeatureFlagsPage.tsx` (+ `services/featureFlags.ts`); SDK `client.getFeatureFlags()` and `useFeatureFlags`/`useFeatureFlag` (`sdk/src/flags.tsx`).
+
+### `billing/` — Billing and Entitlements
+
+Spec: [doc/billing.md](./doc/billing.md). `billing.Service` (built by `gateway.InitBilling` when `billing.enabled`, stored as `Dependencies.Billing`, handed to `StrictApiServer` with `SetBilling`) holds the repositories (`repositories.BillingRepository`, `OrganizationRepository`), the `billing.Stripe` and `billing.Odoo` interfaces (`billing/contracts.go`) and the notification service. One file per area: `plans.go` (validation, Stripe product/prices with lookup keys, Odoo products, portal switch groups), `checkout.go` (subject choice, Checkout params per plan kind, trial once per plan group, portal URL), `webhook.go` (each event id recorded with its effect in one `Transaction`; `ErrRetryLater` makes Stripe resend events that arrive before what they refer to), `activation.go` (activate, cancel, refund), `entitlements.go` (pure `Compute` + per-subject cache, memberships cached per user; `InvalidateUser` on member changes), `odoosync.go` (outbox: due documents, backoff 1m/5m/30m/2h/6h, failed after 10, credit notes wait for their invoice), `notify.go` (`billing.*` notifications; `NotifyDue` hourly windows), `setup.go` (setup page checks/actions).
+- `billing/stripeapi`: stripe-go v87 `stripe.NewClient` V1 services; tests with an httptest Stripe and `-tags e2e` against stripe-mock.
+- `billing/odooapi`: JSON-2 client; every `IssueMove` step checks state first, so a retry finishes a half-done move. Odoo 20: API keys need scope `rpc`, attachments have `raw` not `datas` (read by id), no `l10n_es_is_simplified` without Veri*Factu. Tests against a fake JSON-2 server and `-tags e2e` against the Odoo of `e2e/docker-compose.yml` (`e2e/odoo/init.sh` + `setup.py`, `E2E_ODOO_VERSION=20.0` for Odoo 20).
+- Tests use `billing.FakeStripe`/`FakeOdoo` (`fakes.go`) with real SQLite; `e2e/billing_test.go` runs the whole flow with signed webhook events.
+- Gateway: `gateway/billing_routes.go` (`/_/pay/{plan}`, `/_/pay/done`, `POST /_/billing/stripe/webhook`, the account page's Billing section and portal button), `X-Entitlements` set in `gateway/proxy.go`; organizations API in `handlers/api_organizations.go`.
 
 ### `handlers/` and `api/` — OpenAPI API Implementation
 
