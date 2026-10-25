@@ -42,7 +42,14 @@ E2E_COMPOSE := docker compose -f e2e/docker-compose.yml
 # user, so the tests can read them.
 e2e-up:
 	mkdir -p e2e/.zitadel
-	E2E_UID=$$(id -u) E2E_GID=$$(id -g) $(E2E_COMPOSE) up -d --wait
+	@# A Mailpit already answering on the e2e port (another project's) is
+	@# reused: the tests only need SMTP 11025 and the API on 18025.
+	services=$$($(E2E_COMPOSE) config --services); \
+	if curl -fsS -m 2 $${E2E_MAILPIT_URL:-http://localhost:18025}/api/v1/info >/dev/null 2>&1; then \
+		echo "e2e: using the Mailpit already running on $${E2E_MAILPIT_URL:-http://localhost:18025}"; \
+		services=$$(echo "$$services" | grep -v '^mailpit$$'); \
+	fi; \
+	E2E_UID=$$(id -u) E2E_GID=$$(id -g) $(E2E_COMPOSE) up -d --wait $$services
 	./e2e/odoo/init.sh
 
 e2e-down:

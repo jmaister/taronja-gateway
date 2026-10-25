@@ -417,11 +417,15 @@ func (c *Client) send(ctx context.Context, moveID, partnerID int64) error {
 	if partner != nil && str(partner["email"]) != "" {
 		method = "email"
 	}
+	extraEdis, err := c.requiredEdis(ctx, moveID)
+	if err != nil {
+		return err
+	}
 	wizardCtx := M{"active_model": "account.move", "active_ids": []int64{moveID}}
 	wizardID, err := c.create(ctx, "account.move.send.wizard", M{
 		"move_id":         moveID,
 		"sending_methods": []string{method},
-		"extra_edis":      []string{},
+		"extra_edis":      extraEdis,
 	}, wizardCtx)
 	if err != nil {
 		return err
@@ -432,6 +436,27 @@ func (c *Client) send(ctx context.Context, moveID, partnerID int64) error {
 	}
 	// "manual" doesn't mark the move as sent; mark it so retries skip it.
 	return c.write(ctx, "account.move", moveID, M{"is_move_sent": true})
+}
+
+// requiredEdis are the electronic invoicing systems the move must be
+// registered with when it is sent: Veri*Factu when the company is subject to
+// it (module l10n_es_edi_verifactu). Odoo queues the registration; its cron
+// sends it to the tax agency.
+func (c *Client) requiredEdis(ctx context.Context, moveID int64) ([]string, error) {
+	edis := []string{}
+	installed, err := c.hasField(ctx, "account.move", "l10n_es_edi_verifactu_required")
+	if err != nil || !installed {
+		return edis, err
+	}
+	move, err := c.readOne(ctx, "account.move", moveID, []string{"l10n_es_edi_verifactu_required"})
+	if err != nil {
+		return nil, err
+	}
+	required, _ := move["l10n_es_edi_verifactu_required"].(bool)
+	if required {
+		edis = append(edis, "es_verifactu")
+	}
+	return edis, nil
 }
 
 func (c *Client) PDF(ctx context.Context, moveID int64) (string, []byte, error) {
