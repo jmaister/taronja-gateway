@@ -86,3 +86,43 @@ services:
     depends_on:
       zitadel-db:
         condition: service_healthy
+
+  # Stripe's own API mock: validates every request against Stripe's OpenAPI
+  # and answers with fixture objects (it keeps no state).
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - "${E2E_STRIPE_MOCK_PORT:-12111}:12111"
+
+  # Odoo for invoices (JSON-2 API). e2e/odoo/init.sh creates the database,
+  # the Spanish company, journals, tax and the API user, and writes their ids
+  # to e2e/.odoo/env. E2E_ODOO_VERSION=20.0 runs the same tests on Odoo 20.
+  odoo-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  odoo:
+    image: odoo:${E2E_ODOO_VERSION:-19.0}
+    environment:
+      HOST: odoo-db
+      USER: odoo
+      PASSWORD: odoo
+    ports:
+      - "${E2E_ODOO_PORT:-18169}:8069"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+    depends_on:
+      odoo-db:
+        condition: service_healthy
