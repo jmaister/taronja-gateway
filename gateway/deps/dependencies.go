@@ -1,6 +1,7 @@
 package deps
 
 import (
+	"github.com/jmaister/taronja-gateway/billing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/auth"
@@ -29,6 +30,8 @@ type Dependencies struct {
 	UserIdentityRepo  repositories.UserIdentityRepository
 	AuthEventRepo     repositories.AuthEventRepository
 	UserPhoneRepo     repositories.UserPhoneRepository
+	OrganizationRepo  repositories.OrganizationRepository
+	BillingRepo       repositories.BillingRepository
 
 	// Services
 	SessionStore session.SessionStore
@@ -39,6 +42,8 @@ type Dependencies struct {
 	// (SMTP/Telegram credentials), which isn't available yet inside
 	// NewProduction/NewTest. See gateway/notifications.go.
 	NotificationService *notification.Service
+	// Billing is nil unless billing.enabled; gateway.InitBilling sets it.
+	Billing *billing.Service
 
 	// Application state
 	StartTime time.Time
@@ -114,6 +119,8 @@ func NewProduction() *Dependencies {
 		UserIdentityRepo:  userIdentityRepo,
 		AuthEventRepo:     authEventRepo,
 		UserPhoneRepo:     userPhoneRepo,
+		OrganizationRepo:  repositories.NewOrganizationRepositoryDB(gormDB),
+		BillingRepo:       repositories.NewBillingRepositoryDB(gormDB),
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		FeatureFlags:      featureFlags,
@@ -174,6 +181,8 @@ func NewTestWithName(testName string) *Dependencies {
 		UserIdentityRepo:    userIdentityRepo,
 		AuthEventRepo:       authEventRepo,
 		UserPhoneRepo:       userPhoneRepo,
+		OrganizationRepo:    repositories.NewOrganizationRepositoryDB(gormDB),
+		BillingRepo:         repositories.NewBillingRepositoryDB(gormDB),
 		SessionStore:        sessionStore,
 		TokenService:        tokenService,
 		FeatureFlags:        featureFlags,

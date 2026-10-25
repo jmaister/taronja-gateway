@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"github.com/jmaister/taronja-gateway/billing"
 	"io"
 	"log"
 	"net/http"
@@ -146,6 +147,7 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		r.Header.Del(session.UserIdHeader)
 		r.Header.Del(session.UserDataHeader)
 		r.Header.Del(featureflag.HeaderName)
+		r.Header.Del(billing.HeaderName)
 
 		if g.Dependencies.FeatureFlags != nil {
 			flags, err := g.Dependencies.FeatureFlags.HeaderValue()
@@ -205,6 +207,14 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 				sessionJson, err := json.Marshal(sessionObject)
 				if err == nil {
 					r.Header.Set(session.UserDataHeader, string(sessionJson))
+				}
+				if g.Dependencies.Billing != nil {
+					ent, err := g.Dependencies.Billing.ForUser(sessionObject.UserID)
+					if err != nil {
+						log.Printf("Proxy Route [%s]: could not read entitlements of %s: %v", routeConfig.Name, sessionObject.UserID, err)
+					} else {
+						r.Header.Set(billing.HeaderName, ent.HeaderValue(time.Now()))
+					}
 				}
 
 				// Serve the request with the modified headers
