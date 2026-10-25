@@ -78,6 +78,7 @@ func startGatewayOn(t *testing.T, listener net.Listener, configYAML string) *tes
 	d := deps.NewTestWithName(t.Name())
 	shutdownNotifications, err := gateway.InitNotifications(context.Background(), cfg.Notification, cfg.Server, d)
 	require.NoError(t, err)
+	shutdownBilling := gateway.InitBilling(context.Background(), cfg.Billing, cfg.Server, d)
 
 	gw, err := gateway.NewGatewayWithDependencies(cfg, nil, d)
 	require.NoError(t, err)
@@ -87,6 +88,7 @@ func startGatewayOn(t *testing.T, listener net.Listener, configYAML string) *tes
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = gw.Server.Shutdown(ctx)
+		_ = shutdownBilling(ctx)
 		_ = shutdownNotifications(ctx)
 	})
 	return &testGateway{URL: baseURL, Deps: d}

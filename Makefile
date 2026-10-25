@@ -43,13 +43,14 @@ E2E_COMPOSE := docker compose -f e2e/docker-compose.yml
 e2e-up:
 	mkdir -p e2e/.zitadel
 	E2E_UID=$$(id -u) E2E_GID=$$(id -g) $(E2E_COMPOSE) up -d --wait
+	./e2e/odoo/init.sh
 
 e2e-down:
 	$(E2E_COMPOSE) down -v
 	rm -rf e2e/.zitadel
 
 e2e: e2e-up
-	go test -tags e2e -count=1 ./e2e/... ; status=$$?; $(MAKE) e2e-down; exit $$status
+	go test -tags e2e -count=1 ./e2e/... ./billing/... ; status=$$?; $(MAKE) e2e-down; exit $$status
 
 bench:
 	@echo "Running benchmarks..."
