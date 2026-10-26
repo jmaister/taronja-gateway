@@ -31,6 +31,8 @@ type Config struct {
 	ServerURL string
 	// StripeMode is "test" or "live" (from the secret key), for the setup page.
 	StripeMode string
+	// OdooKeyExpiresAt is when the Odoo API key expires; zero when unknown.
+	OdooKeyExpiresAt time.Time
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -44,6 +46,7 @@ type Service struct {
 	odoo       Odoo
 	serverURL  string
 	stripeMode string
+	odooKeyExp time.Time
 	now        func() time.Time
 
 	notifications *notification.Service
@@ -74,7 +77,7 @@ func NewService(cfg Config) *Service {
 	}
 	return &Service{
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
-		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, now: now,
+		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, odooKeyExp: cfg.OdooKeyExpiresAt, now: now,
 		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
 }

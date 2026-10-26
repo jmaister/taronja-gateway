@@ -458,6 +458,7 @@ type OdooBillingConfig struct {
 	SalesJournalID   int64  `yaml:"salesJournalId"`   // Sales journal; must have Dedicated Credit Note Sequence on. Required with url.
 	PaymentJournalID int64  `yaml:"paymentJournalId"` // Bank journal where Stripe payments are registered (e.g. "Stripe"). Required with url.
 	TaxID            int64  `yaml:"taxId"`            // Sales tax, 21 % VAT included in price. Required with url.
+	APIKeyExpiresAt  string `yaml:"apiKeyExpiresAt"`  // Date (YYYY-MM-DD) the Odoo API key expires; the billing setup page warns 30 days before. Optional: unset, the page only reminds you to renew it.
 }
 
 // IsConfigured reports whether Odoo invoicing is set up.
@@ -485,6 +486,11 @@ func (b BillingConfig) validate(serverURL string) error {
 		}
 		if o.CompanyID <= 0 || o.SalesJournalID <= 0 || o.PaymentJournalID <= 0 || o.TaxID <= 0 {
 			return fmt.Errorf("billing.odoo.companyId, salesJournalId, paymentJournalId and taxId are required with billing.odoo.url")
+		}
+		if o.APIKeyExpiresAt != "" {
+			if _, err := time.Parse(time.DateOnly, o.APIKeyExpiresAt); err != nil {
+				return fmt.Errorf("billing.odoo.apiKeyExpiresAt must be a date like 2026-12-31: %q", o.APIKeyExpiresAt)
+			}
 		}
 	}
 	return nil
