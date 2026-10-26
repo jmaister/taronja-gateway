@@ -360,7 +360,7 @@ gateway user's WhatsApp number" otherwise), mirror
 
 ### `accounts/` — External Logins and Activity
 
-Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) resolves OAuth/OIDC logins to users and records the activity log, with no HTTP handlers.
+Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) resolves OAuth/OIDC logins to users and records the activity log, with no HTTP handlers. The only account page (`/_/account`, in `gateway/account_routes.go`) exists for billing.
 - **Tables** (migration `0004_accounts`): `user_identities` (provider + subject per external login; backfilled from `users.provider/provider_id` for Google/GitHub), `auth_events` (activity log).
 - **OAuth login** goes through `ResolveExternalLogin` (in `providers.AuthenticationProvider.Callback`): identity by (provider, subject) first, then same-email auto-link only when `canAutoLink` (provider-verified email, account email confirmed or no password, not the config admin), else `ErrLinkRequired` → `/_/login?error=link_required` (messages in `gateway/login_errors.go`). An unverified provider email never creates a user (`?error=email_not_verified`).
 - Model IDs for `UserIdentity` are set in `BeforeCreate`, not `BeforeSave`: GORM runs `BeforeSave` on `Model(&X{}).Update(...)` too, and an ID set there ends up in the `WHERE`, so the update silently matches nothing.

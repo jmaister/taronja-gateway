@@ -367,7 +367,7 @@ POST pay), `/_/pay/done`. Raw: `POST /_/billing/stripe/webhook`.
 
 ## Account page and dashboard
 
-- **Account page** (`/_/account`), new section *Billing*: the user's and
+- **Account page** (`/_/account`), which only holds the *Billing* section (and the user's email): the user's and
   their owned organizations' subscriptions (plan, status, next charge or
   end), **Manage** (portal), and issued invoices and credit notes with PDF.
 - **Dashboard** pages: *Organizations* (create, rename, members),
