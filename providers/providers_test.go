@@ -39,10 +39,9 @@ func testAccountsFor(userRepo repositories.UserRepository) *accounts.Service {
 	return accounts.NewService(accounts.Repositories{
 		Users:      userRepo,
 		Sessions:   repositories.NewSessionRepositoryDB(conn),
-		Tokens:     repositories.NewAuthTokenRepositoryDB(conn),
 		Identities: repositories.NewUserIdentityRepositoryDB(conn),
 		Events:     repositories.NewAuthEventRepositoryDB(conn),
-	}, nil, accounts.Options{})
+	})
 }
 
 func createTestAuthProvider() *AuthenticationProvider {

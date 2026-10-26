@@ -14,7 +14,7 @@ import (
 func TestAccountsMigration_BackfillsOAuthIdentities(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	gdb := db.GetConnection()
-	for _, table := range []string{"auth_tokens", "user_identities", "auth_events"} {
+	for _, table := range []string{"user_identities", "auth_events"} {
 		require.NoError(t, gdb.Exec("DROP TABLE "+table).Error)
 	}
 	users := []*db.User{
@@ -40,6 +40,5 @@ func TestAccountsMigration_BackfillsOAuthIdentities(t *testing.T) {
 	assert.Equal(t, "google", identities[1].Provider)
 	assert.Equal(t, users[0].ID, identities[1].UserID)
 
-	require.NoError(t, gdb.Create(&db.AuthToken{Purpose: db.AuthTokenEmailLogin, Email: "x@example.com", TokenHash: "h"}).Error)
 	require.NoError(t, gdb.Create(&db.AuthEvent{UserID: users[0].ID, Type: db.AuthEventLogin}).Error)
 }

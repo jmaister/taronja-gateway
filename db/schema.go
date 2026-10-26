@@ -536,65 +536,6 @@ type NotificationPreference struct {
 	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
 }
 
-// SignupProvider is User.Provider for accounts created through self-service
-// sign-up or a first email login.
-const SignupProvider = "signup"
-
-// AuthToken purposes.
-const (
-	AuthTokenEmailVerification = "email_verification"
-	AuthTokenPasswordReset     = "password_reset"
-	AuthTokenEmailLogin        = "email_login"
-)
-
-// AuthToken is a one-time secret sent by email: a link token, plus for email
-// login a short code typed into the browser that requested it. Only hashes
-// are stored.
-type AuthToken struct {
-	ID      string `gorm:"primaryKey;column:id;type:varchar(255);not null"`
-	Purpose string `gorm:"type:varchar(30);not null;index:idx_auth_tokens_purpose_email"`
-	// UserID is empty for an email login to an address with no account yet
-	// (passwordless sign-up).
-	UserID    string `gorm:"type:varchar(255);index"`
-	Email     string `gorm:"type:varchar(255);not null;index:idx_auth_tokens_purpose_email"`
-	TokenHash string `gorm:"type:varchar(64);not null;uniqueIndex"`
-	// CodeHash and BindingHash are only set for email login: the code is
-	// accepted only from the browser holding the binding cookie.
-	CodeHash    string `gorm:"type:varchar(64)"`
-	BindingHash string `gorm:"type:varchar(64);index"`
-	// PasswordHash holds a pending sign-up's password: the user row is only
-	// created when the verification link is used, so an unconfirmed sign-up
-	// never becomes an account someone else could squat.
-	PasswordHash string `gorm:"type:varchar(255)"`
-	// Redirect is the same-origin path to land on after the token is used.
-	Redirect  string `gorm:"type:varchar(500)"`
-	Attempts  int    `gorm:"not null;default:0"`
-	ExpiresAt time.Time
-	UsedAt    *time.Time
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-}
-
-// BeforeCreate sets a CUID ID. (Not in BeforeSave: GORM also runs that on
-// Model(&AuthToken{}).Update, and an ID set there would end up in the WHERE.)
-func (a *AuthToken) BeforeCreate(tx *gorm.DB) error {
-	newId, err := cuid.NewCrypto(rand.Reader)
-	if err != nil {
-		return err
-	}
-	a.ID = newId
-	return nil
-}
-
-// BeforeSave normalizes the time fields to UTC.
-func (a *AuthToken) BeforeSave(tx *gorm.DB) error {
-	a.ExpiresAt = a.ExpiresAt.UTC()
-	if a.UsedAt != nil {
-		usedAt := a.UsedAt.UTC()
-		a.UsedAt = &usedAt
-	}
-	return nil
-}
-
 // UserIdentity links a user to one external login (provider + the provider's
 // stable user ID). A user can have several, so one account can sign in with
 // Google and GitHub.
@@ -608,7 +549,7 @@ type UserIdentity struct {
 	LastLoginAt *time.Time
 }
 
-// BeforeCreate sets a CUID ID (see AuthToken.BeforeCreate for why not BeforeSave).
+// BeforeCreate sets a CUID ID.
 func (u *UserIdentity) BeforeCreate(tx *gorm.DB) error {
 	newId, err := cuid.NewCrypto(rand.Reader)
 	if err != nil {
@@ -629,17 +570,13 @@ func (u *UserIdentity) BeforeSave(tx *gorm.DB) error {
 
 // AuthEvent types: the security activity shown on a user's account page.
 const (
-	AuthEventLogin                  = "login"
-	AuthEventLoginFailed            = "login_failed"
-	AuthEventSignup                 = "signup"
-	AuthEventEmailVerified          = "email_verified"
-	AuthEventPasswordResetRequested = "password_reset_requested"
-	AuthEventPasswordReset          = "password_reset"
-	AuthEventPasswordChanged        = "password_changed"
-	AuthEventEmailLoginRequested    = "email_login_requested"
-	AuthEventIdentityLinked         = "identity_linked"
-	AuthEventIdentityUnlinked       = "identity_unlinked"
-	AuthEventSessionRevoked         = "session_revoked"
+	AuthEventLogin            = "login"
+	AuthEventLoginFailed      = "login_failed"
+	AuthEventSignup           = "signup"
+	AuthEventPasswordChanged  = "password_changed"
+	AuthEventIdentityLinked   = "identity_linked"
+	AuthEventIdentityUnlinked = "identity_unlinked"
+	AuthEventSessionRevoked   = "session_revoked"
 )
 
 // AuthEvent is one entry in a user's security activity log.
@@ -725,7 +662,6 @@ var Models = []interface{}{
 	&NotificationLinkCode{},
 	&NotificationPreference{},
 	&FeatureFlag{},
-	&AuthToken{},
 	&UserIdentity{},
 	&AuthEvent{},
 	&UserPhone{},

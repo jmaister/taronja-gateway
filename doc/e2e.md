@@ -49,13 +49,7 @@ seconds. First start takes about 40 seconds.
   links; opening an action link without a session records the answer once;
   a multi-recipient notification sends one email per user and the batch
   status reports them sent.
-- `accounts_test.go`: sign-up only creates the account once the emailed link
-  is used, then the chosen password works; signing up with a registered email
-  sends a notice instead; password reset by email (same answer for unknown
-  emails, old sessions signed out, link single-use); email login by code (only
-  in the requesting browser) and by link (any browser); the account page's
-  password change, email confirmation, session revocation, CSRF check and
-  activity list.
+- `accounts_test.go`: the account page's password change, session revocation, CSRF check and activity list.
 - `zitadel_test.go`: login through Zitadel creates the user, and logging in
   again reuses it; an unverified Zitadel email is refused; a Zitadel login
   is not linked by itself to an existing account that never confirmed its

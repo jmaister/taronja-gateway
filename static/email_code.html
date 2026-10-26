@@ -1,9 +1,0 @@
-{{define "content"}}
-<p>We sent a 6-digit code to <strong>{{.Email}}</strong>. Type it here, or open the link in the email.</p>
-<form method="POST" action="{{.Prefix}}/auth/email/code">
-    <label for="code">Code</label>
-    <input type="text" id="code" name="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
-    <button type="submit">Log in</button>
-</form>
-<div class="links"><a href="{{.Prefix}}/login">Use another email</a></div>
-{{end}}

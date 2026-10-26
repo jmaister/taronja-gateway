@@ -1,9 +1,0 @@
-{{define "content"}}
-{{/* Opening the emailed link only shows this page; the token is used by the
-     POST below, so mail scanners that prefetch links cannot burn it. */}}
-<p>{{.Body}}</p>
-<form method="POST" action="{{.Action}}">
-    <input type="hidden" name="token" value="{{.Token}}">
-    <button type="submit">{{.ButtonLabel}}</button>
-</form>
-{{end}}

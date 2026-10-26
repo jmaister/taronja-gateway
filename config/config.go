@@ -92,25 +92,16 @@ type AuthProviderCredentials struct {
 
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false. With notification.email configured, users can also reset a forgotten password by email.
-	Signup  bool `yaml:"signup"`  // Let visitors create an account with email and password at /_/signup. They must confirm their email before logging in. Default: false. Requires enabled and notification.email.
-}
-
-// EmailLoginConfig controls passwordless login: the user enters an email and
-// gets a one-time link and code. With basic.signup on, an unknown email gets
-// an account too.
-type EmailLoginConfig struct {
-	Enabled bool `yaml:"enabled"` // Enable login by email link/code. Default: false. Requires notification.email.
+	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false.
 }
 
 // AuthenticationProviders defines the available authentication methods.
 // At least one should be enabled if any route requires authentication.
 type AuthenticationProviders struct {
-	Basic      BasicAuthenticationConfig `yaml:"basic"`          // Basic username/password authentication
-	EmailLogin EmailLoginConfig          `yaml:"emailLogin"`     // Passwordless login by email link or code. Optional.
-	Google     AuthProviderCredentials   `yaml:"google"`         // Google OAuth2 authentication. Optional.
-	Github     AuthProviderCredentials   `yaml:"github"`         // GitHub OAuth2 authentication. Optional.
-	OIDC       []OIDCProviderConfig      `yaml:"oidc,omitempty"` // Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...). Optional; one entry per provider.
+	Basic  BasicAuthenticationConfig `yaml:"basic"`          // Basic username/password authentication
+	Google AuthProviderCredentials   `yaml:"google"`         // Google OAuth2 authentication. Optional.
+	Github AuthProviderCredentials   `yaml:"github"`         // GitHub OAuth2 authentication. Optional.
+	OIDC   []OIDCProviderConfig      `yaml:"oidc,omitempty"` // Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...). Optional; one entry per provider.
 }
 
 // OIDCProviderConfig is one OpenID Connect identity provider. Its endpoints
@@ -142,7 +133,7 @@ func (o OIDCProviderConfig) DisplayLabel() string {
 var oidcNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}$`)
 
 // reservedProviderNames are taken by the built-in login methods.
-var reservedProviderNames = map[string]bool{"basic": true, "google": true, "github": true, "email": true}
+var reservedProviderNames = map[string]bool{"basic": true, "google": true, "github": true}
 
 func validateOIDCProviders(providers []OIDCProviderConfig) error {
 	seen := map[string]bool{}
@@ -609,19 +600,6 @@ func (c *GatewayConfig) Validate() error {
 	if c.Management.Session.DurationSeconds < 0 {
 		return fmt.Errorf("management.session.durationSeconds cannot be negative")
 	}
-	emailConfigured := c.Notification.Email.IsConfigured()
-	if c.AuthenticationProviders.Basic.Signup && !c.AuthenticationProviders.Basic.Enabled {
-		return fmt.Errorf("authenticationProviders.basic.signup requires authenticationProviders.basic.enabled")
-	}
-	if c.AuthenticationProviders.Basic.Signup && !emailConfigured {
-		return fmt.Errorf("authenticationProviders.basic.signup requires notification.email, to send the confirmation emails")
-	}
-	if c.AuthenticationProviders.EmailLogin.Enabled && !emailConfigured {
-		return fmt.Errorf("authenticationProviders.emailLogin requires notification.email, to send the login emails")
-	}
-	if (c.AuthenticationProviders.Basic.Signup || c.AuthenticationProviders.EmailLogin.Enabled) && c.Server.URL == "" {
-		return fmt.Errorf("authenticationProviders.basic.signup and authenticationProviders.emailLogin require server.url, to build the links in their emails")
-	}
 	if err := validateOIDCProviders(c.AuthenticationProviders.OIDC); err != nil {
 		return err
 	}
@@ -676,28 +654,16 @@ func (r RouteConfig) validate() error {
 // HasAuthentication checks if any authentication is enabled in the config.
 func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
-		c.AuthenticationProviders.EmailLogin.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
 		len(c.AuthenticationProviders.OIDC) > 0 ||
 		c.Management.Admin.Enabled
 }
 
-// PasswordResetEnabled reports whether users can reset a forgotten password by
-// email: password login is on, there is an SMTP server to send the link, and
-// server.url to build it.
-func (c *GatewayConfig) PasswordResetEnabled() bool {
-	return (c.AuthenticationProviders.Basic.Enabled || c.Management.Admin.Enabled) &&
-		c.Notification.Email.IsConfigured() && c.Server.URL != ""
-}
-
 // loginPageData is the data structure for the login.html template
 type loginPageData struct {
 	AuthenticationProviders struct {
 		Basic struct {
-			Enabled bool
-		}
-		EmailLogin struct {
 			Enabled bool
 		}
 		Google struct {
@@ -710,8 +676,6 @@ type loginPageData struct {
 	}
 	Branding         BrandingConfig
 	RedirectURL      string
-	SignupEnabled    bool // Show the "Create an account" link.
-	PasswordReset    bool // Show the "Forgot your password?" link.
 	Message          string
 	Error            string
 	ManagementPrefix string
@@ -736,9 +700,6 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	for _, p := range gatewayConfig.AuthenticationProviders.OIDC {
 		data.AuthenticationProviders.OIDC = append(data.AuthenticationProviders.OIDC, OIDCLoginButton{Name: p.Name, Label: p.DisplayLabel()})
 	}
-	data.AuthenticationProviders.EmailLogin.Enabled = gatewayConfig.AuthenticationProviders.EmailLogin.Enabled
-	data.SignupEnabled = gatewayConfig.AuthenticationProviders.Basic.Signup
-	data.PasswordReset = gatewayConfig.PasswordResetEnabled()
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }

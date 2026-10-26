@@ -16,7 +16,6 @@ Health check configuration for the routes configured in the gateway:
     * Minimum length
     * Special characters
     * Uppercase letters
-* Implement password reset functionality
 * Maximum password attempts before lockout
     * Unlock account button
 * Implement password expiration policy

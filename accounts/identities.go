@@ -204,9 +204,6 @@ func (s *Service) UnlinkIdentity(user *db.User, identityID string, client Client
 	if user.Password != "" {
 		otherWays++
 	}
-	if s.opts.EmailLoginEnabled && user.EmailConfirmed {
-		otherWays++
-	}
 	if otherWays == 0 {
 		return ErrLastLoginMethod
 	}

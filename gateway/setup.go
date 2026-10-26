@@ -8,7 +8,6 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
-	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 )
 
@@ -83,7 +82,7 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	g.RateLimiter = rt.rateLimiter
 	g.MiddlewareChain = rt.middlewareChain
 	g.AuthMiddleware = rt.authMiddleware
-	g.Accounts = newAccountsService(cfg, g.Dependencies)
+	g.Accounts = newAccountsService(g.Dependencies)
 
 	// Registers every route/management handler onto the mux just built
 	// above.
@@ -102,24 +101,12 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	return nil
 }
 
-// newAccountsService builds the accounts service, sending its emails through
-// the notification SMTP settings when they are configured.
-func newAccountsService(cfg *config.GatewayConfig, d *deps.Dependencies) *accounts.Service {
-	var mailer accounts.Mailer
-	if provider := notification.NewEmailProvider(cfg.Notification.Email); provider != nil {
-		mailer = provider
-	}
+// newAccountsService builds the accounts service.
+func newAccountsService(d *deps.Dependencies) *accounts.Service {
 	return accounts.NewService(accounts.Repositories{
 		Users:      d.UserRepo,
 		Sessions:   d.SessionRepo,
-		Tokens:     d.AuthTokenRepo,
 		Identities: d.UserIdentityRepo,
 		Events:     d.AuthEventRepo,
-	}, mailer, accounts.Options{
-		AppName:              cfg.Name,
-		BaseURL:              cfg.Server.URL,
-		SignupEnabled:        cfg.AuthenticationProviders.Basic.Signup,
-		EmailLoginEnabled:    cfg.AuthenticationProviders.EmailLogin.Enabled,
-		PasswordResetEnabled: cfg.PasswordResetEnabled(),
 	})
 }

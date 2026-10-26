@@ -27,7 +27,7 @@ taronja-gateway/
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
 ├── billing/                    # Plans, Stripe Checkout, webhook state machine, entitlements, Odoo outbox; stripeapi/, odooapi/
-├── accounts/                   # Sign-up, password reset, email login, account linking, sessions, activity log
+├── accounts/                   # Account linking, password change, sessions, activity log
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -362,16 +362,14 @@ gateway user's WhatsApp number" otherwise), mirror
 `NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
 `telegram.go`.
 
-### `accounts/` — Self-service Accounts
+### `accounts/` — Account Linking, Sessions, Activity
 
-Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) holds the flows, with no HTTP handlers; the pages are in `gateway/account_routes.go` (templates `static/*.html` inside `static/auth_layout.html`, parsed by `parseAuthTemplates`). Emails go through `notification.EmailProvider.SendMessage` (the `accounts.Mailer` interface), not the notification store.
-- **Tables** (migration `0004_accounts`): `auth_tokens` (one-time email tokens; only SHA-256 hashes of the link token, the 6-digit code — salted with the token ID — and the browser binding are stored), `user_identities` (provider + subject per external login; backfilled from `users.provider/provider_id` for Google/GitHub), `auth_events` (activity log).
-- **Sign-up never creates an unverified user**: the pending password hash lives in the verification token and the `users` row is created by `VerifyEmail`. So basic login needs no "unconfirmed" check, and nobody can squat an address.
+Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) holds the flows (OAuth/OIDC login resolution, identity linking, password change, sessions, activity log), with no HTTP handlers; the pages are in `gateway/account_routes.go` (templates `static/*.html` inside `static/auth_layout.html`, parsed by `parseAuthTemplates`).
+- **Tables** (migration `0004_accounts`): `user_identities` (provider + subject per external login; backfilled from `users.provider/provider_id` for Google/GitHub), `auth_events` (activity log).
 - **OAuth login** goes through `ResolveExternalLogin` (in `providers.AuthenticationProvider.Callback`): identity by (provider, subject) first, then same-email auto-link only when `canAutoLink` (provider-verified email, account email confirmed or no password, not the config admin, not previously unlinked — checked via an `identity_unlinked` event), else `ErrLinkRequired` → `/_/login?error=link_required`. This replaced the old 409 "account already exists with a different login method". An unverified provider email no longer creates a user (`?error=email_not_verified`).
 - **Linking** from the account page: POST `/_/auth/{provider}/link` (session + CSRF) sets the `tg_link_intent` cookie to the session's CSRF token; `Callback` sees it and calls `LinkIdentity` for the signed-in user instead of logging in.
 - **CSRF** for account forms: `accounts.CSRFToken(sessionToken)` (a hash of the session token), checked by `gateway.withAccount`.
-- **Emailed links** open a confirm page (`confirm_link.html`) and use the token on POST, so link-prefetching mail scanners cannot burn it.
-- Model IDs for `AuthToken`/`UserIdentity` are set in `BeforeCreate`, not `BeforeSave`: GORM runs `BeforeSave` on `Model(&X{}).Update(...)` too, and an ID set there ends up in the `WHERE`, so the update silently matches nothing.
+- Model IDs for `UserIdentity` are set in `BeforeCreate`, not `BeforeSave`: GORM runs `BeforeSave` on `Model(&X{}).Update(...)` too, and an ID set there ends up in the `WHERE`, so the update silently matches nothing.
 
 ### `featureflag/` — Feature Flags
 

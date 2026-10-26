@@ -27,7 +27,6 @@ type Dependencies struct {
 	CountersRepo      repositories.CountersRepository
 	BlockedClientRepo repositories.BlockedClientRepository
 	NotificationRepo  repositories.NotificationRepository
-	AuthTokenRepo     repositories.AuthTokenRepository
 	UserIdentityRepo  repositories.UserIdentityRepository
 	AuthEventRepo     repositories.AuthEventRepository
 	UserPhoneRepo     repositories.UserPhoneRepository
@@ -97,7 +96,6 @@ func NewProduction() *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
-	authTokenRepo := repositories.NewAuthTokenRepositoryDB(gormDB)
 	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
 	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
 	userPhoneRepo := repositories.NewUserPhoneRepositoryDB(gormDB)
@@ -118,7 +116,6 @@ func NewProduction() *Dependencies {
 		CountersRepo:      countersRepo,
 		BlockedClientRepo: blockedClientRepo,
 		NotificationRepo:  notificationRepo,
-		AuthTokenRepo:     authTokenRepo,
 		UserIdentityRepo:  userIdentityRepo,
 		AuthEventRepo:     authEventRepo,
 		UserPhoneRepo:     userPhoneRepo,
@@ -153,7 +150,6 @@ func NewTestWithName(testName string) *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
-	authTokenRepo := repositories.NewAuthTokenRepositoryDB(gormDB)
 	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
 	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
 	userPhoneRepo := repositories.NewUserPhoneRepositoryDB(gormDB)
@@ -182,7 +178,6 @@ func NewTestWithName(testName string) *Dependencies {
 		CountersRepo:        countersRepo,
 		BlockedClientRepo:   blockedClientRepo,
 		NotificationRepo:    notificationRepo,
-		AuthTokenRepo:       authTokenRepo,
 		UserIdentityRepo:    userIdentityRepo,
 		AuthEventRepo:       authEventRepo,
 		UserPhoneRepo:       userPhoneRepo,

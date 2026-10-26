@@ -11,12 +11,6 @@
         <a href="{{$.Prefix}}/logout">Log out</a>
     </div>
 </div>
-{{if and (not .EmailConfirmed) .CanConfirmEmail}}
-<form method="POST" action="{{$.Prefix}}/account/verify-email">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <button type="submit" class="secondary">Send me a confirmation email</button>
-</form>
-{{end}}
 
 <h2>Password</h2>
 <form method="POST" action="{{$.Prefix}}/account/password">

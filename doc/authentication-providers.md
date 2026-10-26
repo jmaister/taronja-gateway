@@ -89,7 +89,7 @@ How it works:
   described in [accounts.md](accounts.md#linking-several-logins-to-one-account);
   users can also link the provider from `/_/account`.
 - `name` must be lowercase letters, digits or `-`, and not `basic`, `google`,
-  `github` or `email`.
+  or `github`.
 
 The end-to-end tests run this against a real Zitadel (`e2e/zitadel_test.go`).
 

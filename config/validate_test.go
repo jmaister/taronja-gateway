@@ -91,43 +91,6 @@ func TestValidate_AdminNeedsCredentials(t *testing.T) {
 	assert.NoError(t, cfg.Validate())
 }
 
-func TestValidate_AccountEmailFeaturesNeedEmailAndURL(t *testing.T) {
-	email := NotificationConfig{Email: EmailNotificationConfig{Enabled: true, Host: "smtp", Port: 25, From: "a@b.c"}}
-	server := ServerConfig{URL: "https://example.com"}
-
-	cases := []struct {
-		name    string
-		cfg     GatewayConfig
-		wantErr string
-	}{
-		{"signup without basic", GatewayConfig{Server: server, Notification: email, AuthenticationProviders: AuthenticationProviders{Basic: BasicAuthenticationConfig{Signup: true}}}, "requires authenticationProviders.basic.enabled"},
-		{"signup without email", GatewayConfig{Server: server, AuthenticationProviders: AuthenticationProviders{Basic: BasicAuthenticationConfig{Enabled: true, Signup: true}}}, "requires notification.email"},
-		{"email login without email", GatewayConfig{Server: server, AuthenticationProviders: AuthenticationProviders{EmailLogin: EmailLoginConfig{Enabled: true}}}, "requires notification.email"},
-		{"email login without url", GatewayConfig{Notification: email, AuthenticationProviders: AuthenticationProviders{EmailLogin: EmailLoginConfig{Enabled: true}}}, "require server.url"},
-		{"all set", GatewayConfig{Server: server, Notification: email, AuthenticationProviders: AuthenticationProviders{Basic: BasicAuthenticationConfig{Enabled: true, Signup: true}, EmailLogin: EmailLoginConfig{Enabled: true}}}, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.cfg.Validate()
-			if tc.wantErr == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.ErrorContains(t, err, tc.wantErr)
-		})
-	}
-}
-
-func TestPasswordResetEnabled(t *testing.T) {
-	cfg := GatewayConfig{
-		Server:                  ServerConfig{URL: "https://example.com"},
-		AuthenticationProviders: AuthenticationProviders{Basic: BasicAuthenticationConfig{Enabled: true}},
-	}
-	assert.False(t, cfg.PasswordResetEnabled(), "no SMTP server: reset must be off")
-	cfg.Notification.Email = EmailNotificationConfig{Enabled: true, Host: "smtp", Port: 25, From: "a@b.c"}
-	assert.True(t, cfg.PasswordResetEnabled(), "basic login + SMTP + url: reset must be on")
-}
-
 func TestValidate_OIDCProviders(t *testing.T) {
 	valid := OIDCProviderConfig{Name: "zitadel", Issuer: "https://auth.example.com", ClientId: "id"}
 	with := func(edit func(*OIDCProviderConfig)) GatewayConfig {

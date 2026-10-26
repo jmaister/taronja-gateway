@@ -196,14 +196,6 @@
             margin: 12px 0;
             font-size: 14px;
         }
-        .small-links {
-            margin: -10px 0 20px;
-            font-size: 14px;
-        }
-        .small-links a {
-            color: #007bff;
-            text-decoration: none;
-        }
         .loading {
             background-color: #6c757d !important;
             cursor: not-allowed !important;
@@ -267,7 +259,7 @@
         </div>
 
         {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and (or .AuthenticationProviders.Basic.Enabled .AuthenticationProviders.EmailLogin.Enabled) (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.OIDC)}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.OIDC)}}
         <div class="separator">
             <span>or</span>
         </div>
@@ -282,24 +274,6 @@
             <input type="hidden" id="redirectInput" name="redirect" value="{{.RedirectURL}}">
             <button type="submit" id="loginButton">Login</button>
         </form>
-        {{if .PasswordReset}}
-        <div class="small-links"><a href="{{.ManagementPrefix}}/forgot-password">Forgot your password?</a></div>
-        {{end}}
-        {{end}}
-
-        {{if .AuthenticationProviders.EmailLogin.Enabled}}
-        {{if .AuthenticationProviders.Basic.Enabled}}
-        <div class="separator"><span>or get a login link</span></div>
-        {{end}}
-        <form id="emailLoginForm" action="{{.ManagementPrefix}}/auth/email/start" method="POST">
-            <input type="email" name="email" placeholder="Email" autocomplete="email" required>
-            <input type="hidden" name="redirect" value="{{.RedirectURL}}">
-            <button type="submit">Email me a login link</button>
-        </form>
-        {{end}}
-
-        {{if .SignupEnabled}}
-        <div class="small-links">No account yet? <a href="{{.ManagementPrefix}}/signup{{if .RedirectURL}}?redirect={{urlquery .RedirectURL}}{{end}}">Create one</a></div>
         {{end}}
 
     </div>

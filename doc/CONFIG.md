@@ -19,13 +19,11 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type BillingConfig](<#BillingConfig>)
 - [type BrandingConfig](<#BrandingConfig>)
 - [type BulkGateConfig](<#BulkGateConfig>)
-- [type EmailLoginConfig](<#EmailLoginConfig>)
 - [type EmailNotificationConfig](<#EmailNotificationConfig>)
   - [func \(e EmailNotificationConfig\) IsConfigured\(\) bool](<#EmailNotificationConfig.IsConfigured>)
 - [type GatewayConfig](<#GatewayConfig>)
   - [func LoadConfig\(filename string\) \(\*GatewayConfig, error\)](<#LoadConfig>)
   - [func \(c \*GatewayConfig\) HasAnyAuthentication\(\) bool](<#GatewayConfig.HasAnyAuthentication>)
-  - [func \(c \*GatewayConfig\) PasswordResetEnabled\(\) bool](<#GatewayConfig.PasswordResetEnabled>)
   - [func \(c \*GatewayConfig\) Validate\(\) error](<#GatewayConfig.Validate>)
 - [type GeolocationConfig](<#GeolocationConfig>)
 - [type ManagementConfig](<#ManagementConfig>)
@@ -119,7 +117,7 @@ func MigrateConfigContent(path string) (content []byte, fromVersion *string, err
 MigrateConfigContent returns the file at path migrated to CurrentConfigVersion \(unchanged if already current or newer\) and never writes anything. fromVersion is the declared version, nil if the file has none.
 
 <a name="AdminConfig"></a>
-## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L394-L399>)
+## type [AdminConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L385-L390>)
 
 AdminConfig configures administrative access to the management dashboard. When enabled, allows a single admin user to access the dashboard at \<management.prefix\>/admin/
 
@@ -145,22 +143,21 @@ type AuthProviderCredentials struct {
 ```
 
 <a name="AuthenticationProviders"></a>
-## type [AuthenticationProviders](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L108-L114>)
+## type [AuthenticationProviders](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L100-L105>)
 
 AuthenticationProviders defines the available authentication methods. At least one should be enabled if any route requires authentication.
 
 ```go
 type AuthenticationProviders struct {
-    Basic      BasicAuthenticationConfig `yaml:"basic"`          // Basic username/password authentication
-    EmailLogin EmailLoginConfig          `yaml:"emailLogin"`     // Passwordless login by email link or code. Optional.
-    Google     AuthProviderCredentials   `yaml:"google"`         // Google OAuth2 authentication. Optional.
-    Github     AuthProviderCredentials   `yaml:"github"`         // GitHub OAuth2 authentication. Optional.
-    OIDC       []OIDCProviderConfig      `yaml:"oidc,omitempty"` // Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...). Optional; one entry per provider.
+    Basic  BasicAuthenticationConfig `yaml:"basic"`          // Basic username/password authentication
+    Google AuthProviderCredentials   `yaml:"google"`         // Google OAuth2 authentication. Optional.
+    Github AuthProviderCredentials   `yaml:"github"`         // GitHub OAuth2 authentication. Optional.
+    OIDC   []OIDCProviderConfig      `yaml:"oidc,omitempty"` // Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...). Optional; one entry per provider.
 }
 ```
 
 <a name="AuthenticationProviders.PrintOAuthCallbackURLs"></a>
-### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L173>)
+### func \(\*AuthenticationProviders\) [PrintOAuthCallbackURLs](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L164>)
 
 ```go
 func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPrefix string)
@@ -169,19 +166,18 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
 
 <a name="BasicAuthenticationConfig"></a>
-## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L94-L97>)
+## type [BasicAuthenticationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L94-L96>)
 
 BasicAuthenticationConfig controls basic authentication provider.
 
 ```go
 type BasicAuthenticationConfig struct {
-    Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false. With notification.email configured, users can also reset a forgotten password by email.
-    Signup  bool `yaml:"signup"`  // Let visitors create an account with email and password at /_/signup. They must confirm their email before logging in. Default: false. Requires enabled and notification.email.
+    Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false.
 }
 ```
 
 <a name="BillingConfig"></a>
-## type [BillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L447-L451>)
+## type [BillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L438-L442>)
 
 BillingConfig turns on payments \(Stripe\), invoices \(Odoo\) and entitlements: plans sold at /\_/pay/\<plan\> grant features that apps read from the X\-Entitlements header or GET /\_/api/entitlements. See doc/billing.md.
 
@@ -194,7 +190,7 @@ type BillingConfig struct {
 ```
 
 <a name="BrandingConfig"></a>
-## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L191-L193>)
+## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L182-L184>)
 
 BrandingConfig contains visual customization options for the gateway UI.
 
@@ -205,7 +201,7 @@ type BrandingConfig struct {
 ```
 
 <a name="BulkGateConfig"></a>
-## type [BulkGateConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L233-L243>)
+## type [BulkGateConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L224-L234>)
 
 BulkGateConfig is a BulkGate "Transactional SMS" API application \(portal.bulkgate.com → Modules & APIs → API administration\).
 
@@ -223,19 +219,8 @@ type BulkGateConfig struct {
 }
 ```
 
-<a name="EmailLoginConfig"></a>
-## type [EmailLoginConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L102-L104>)
-
-EmailLoginConfig controls passwordless login: the user enters an email and gets a one\-time link and code. With basic.signup on, an unknown email gets an account too.
-
-```go
-type EmailLoginConfig struct {
-    Enabled bool `yaml:"enabled"` // Enable login by email link/code. Default: false. Requires notification.email.
-}
-```
-
 <a name="EmailNotificationConfig"></a>
-## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L341-L349>)
+## type [EmailNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L332-L340>)
 
 EmailNotificationConfig configures the SMTP relay notifications with sendEmail: true are delivered through. This is a plain synchronous SMTP send per notification \(net/smtp\) — no queue, no retry — appropriate for the low volume a per\-user notification system produces; a high\-volume deployment should put a relay with its own queuing in front of this instead of expecting the gateway to grow one.
 
@@ -252,7 +237,7 @@ type EmailNotificationConfig struct {
 ```
 
 <a name="EmailNotificationConfig.IsConfigured"></a>
-### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L353>)
+### func \(EmailNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L344>)
 
 ```go
 func (e EmailNotificationConfig) IsConfigured() bool
@@ -261,7 +246,7 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L430-L442>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L421-L433>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -282,7 +267,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L503>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L494>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -291,7 +276,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L677>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L655>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -299,17 +284,8 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 
 HasAuthentication checks if any authentication is enabled in the config.
 
-<a name="GatewayConfig.PasswordResetEnabled"></a>
-### func \(\*GatewayConfig\) [PasswordResetEnabled](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L689>)
-
-```go
-func (c *GatewayConfig) PasswordResetEnabled() bool
-```
-
-PasswordResetEnabled reports whether users can reset a forgotten password by email: password login is on, there is an SMTP server to send the link, and server.url to build it.
-
 <a name="GatewayConfig.Validate"></a>
-### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L605>)
+### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L596>)
 
 ```go
 func (c *GatewayConfig) Validate() error
@@ -318,7 +294,7 @@ func (c *GatewayConfig) Validate() error
 Validate checks the settings that do not depend on the filesystem or on middleware internals. LoadConfig runs it, and so do \`tg validate\` and gateway startup for configs built in code \(where port 0 means an OS\-assigned port, so the port is only required by LoadConfig\).
 
 <a name="GeolocationConfig"></a>
-## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L423-L425>)
+## type [GeolocationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L414-L416>)
 
 GeolocationConfig defines IP geolocation service settings. Used to enrich analytics with geographic information about request origins.
 
@@ -329,7 +305,7 @@ type GeolocationConfig struct {
 ```
 
 <a name="ManagementConfig"></a>
-## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L416-L419>)
+## type [ManagementConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L407-L410>)
 
 ManagementConfig defines the management API and dashboard settings. The management API provides endpoints for metrics, user management, and admin dashboard.
 
@@ -381,7 +357,7 @@ func (f *MiddlewareConfig) UnmarshalYAML(value *yaml.Node) error
 UnmarshalYAML keeps \`config\` as a raw node for the middleware to decode. A strict decoder would otherwise try to match its keys against yaml.Node's own fields.
 
 <a name="NotificationConfig"></a>
-## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L198-L204>)
+## type [NotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L189-L195>)
 
 NotificationConfig defines notification settings. Notifications are always stored; delivery over each independent, optional channel block \(email, Telegram\) is added on top. See notification.Provider for adding a channel.
 
@@ -396,7 +372,7 @@ type NotificationConfig struct {
 ```
 
 <a name="OIDCLoginButton"></a>
-## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L722-L725>)
+## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L686-L689>)
 
 OIDCLoginButton is one OIDC provider's button on the login page.
 
@@ -408,7 +384,7 @@ type OIDCLoginButton struct {
 ```
 
 <a name="OIDCProviderConfig"></a>
-## type [OIDCProviderConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L119-L131>)
+## type [OIDCProviderConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L110-L122>)
 
 OIDCProviderConfig is one OpenID Connect identity provider. Its endpoints are read from \<issuer\>/.well\-known/openid\-configuration, so only the issuer and the client credentials are needed. PKCE is always used.
 
@@ -429,7 +405,7 @@ type OIDCProviderConfig struct {
 ```
 
 <a name="OIDCProviderConfig.DisplayLabel"></a>
-### func \(OIDCProviderConfig\) [DisplayLabel](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L134>)
+### func \(OIDCProviderConfig\) [DisplayLabel](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L125>)
 
 ```go
 func (o OIDCProviderConfig) DisplayLabel() string
@@ -438,7 +414,7 @@ func (o OIDCProviderConfig) DisplayLabel() string
 DisplayLabel returns the login button label.
 
 <a name="OdooBillingConfig"></a>
-## type [OdooBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L462-L470>)
+## type [OdooBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L453-L461>)
 
 OdooBillingConfig is where invoices and credit notes are issued, through Odoo's JSON\-2 API \(Odoo 19\).
 
@@ -455,7 +431,7 @@ type OdooBillingConfig struct {
 ```
 
 <a name="OdooBillingConfig.IsConfigured"></a>
-### func \(OdooBillingConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L473>)
+### func \(OdooBillingConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L464>)
 
 ```go
 func (o OdooBillingConfig) IsConfigured() bool
@@ -464,7 +440,7 @@ func (o OdooBillingConfig) IsConfigured() bool
 IsConfigured reports whether Odoo invoicing is set up.
 
 <a name="ResponseWebhookConfig"></a>
-## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L374-L384>)
+## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L365-L375>)
 
 ResponseWebhookConfig configures the HTTP callback POSTed to a single URL when a user responds to a notification, so the creating app need not poll. It is not a delivery channel.
 
@@ -483,7 +459,7 @@ type ResponseWebhookConfig struct {
 ```
 
 <a name="ResponseWebhookConfig.IsConfigured"></a>
-### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L388>)
+### func \(ResponseWebhookConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L379>)
 
 ```go
 func (w ResponseWebhookConfig) IsConfigured() bool
@@ -511,7 +487,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L767>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L728>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -520,7 +496,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.IsStatic"></a>
-### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L650>)
+### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L628>)
 
 ```go
 func (r RouteConfig) IsStatic() bool
@@ -529,7 +505,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L775>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L736>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -567,7 +543,7 @@ func (t *RouteTargets) UnmarshalYAML(value *yaml.Node) error
 UnmarshalYAML implements custom decoding so \`to:\` accepts a bare string or a list interchangeably. yaml.v3 calls this with the value node for the \`to:\` key itself \(not the whole route mapping\), so Kind is always either ScalarNode \(a string\) or SequenceNode \(a list\) for valid input.
 
 <a name="SMSNotificationConfig"></a>
-## type [SMSNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L223-L229>)
+## type [SMSNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L214-L220>)
 
 SMSNotificationConfig sends notifications by SMS to each user's phone number \(set through the users API\). Messages are "title: body", shortened to fit maxSegments, plus a short link to the notification page when it has actions or a URL. Every SMS costs money: maxSegments and maxPerMinute bound the bill.
 
@@ -582,7 +558,7 @@ type SMSNotificationConfig struct {
 ```
 
 <a name="SMSNotificationConfig.IsConfigured"></a>
-### func \(SMSNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L246>)
+### func \(SMSNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L237>)
 
 ```go
 func (c SMSNotificationConfig) IsConfigured() bool
@@ -604,7 +580,7 @@ type ServerConfig struct {
 ```
 
 <a name="SessionConfig"></a>
-## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L402-L404>)
+## type [SessionConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L393-L395>)
 
 SessionConfig defines session lifetime for authenticated users.
 
@@ -615,7 +591,7 @@ type SessionConfig struct {
 ```
 
 <a name="SessionConfig.GetDuration"></a>
-### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L410>)
+### func \(\*SessionConfig\) [GetDuration](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L401>)
 
 ```go
 func (s *SessionConfig) GetDuration() time.Duration
@@ -624,7 +600,7 @@ func (s *SessionConfig) GetDuration() time.Duration
 
 
 <a name="StripeBillingConfig"></a>
-## type [StripeBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L454-L458>)
+## type [StripeBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L445-L449>)
 
 StripeBillingConfig is the Stripe account payments go to.
 
@@ -637,7 +613,7 @@ type StripeBillingConfig struct {
 ```
 
 <a name="TelegramNotificationConfig"></a>
-## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L360-L363>)
+## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L351-L354>)
 
 TelegramNotificationConfig configures delivery via a Telegram bot. Users link their account once through the deep link \(see doc/notifications.md\); only linked users receive messages. The bot long\-polls, so no inbound exposure is needed.
 
@@ -649,7 +625,7 @@ type TelegramNotificationConfig struct {
 ```
 
 <a name="TelegramNotificationConfig.IsConfigured"></a>
-### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L367>)
+### func \(TelegramNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L358>)
 
 ```go
 func (t TelegramNotificationConfig) IsConfigured() bool
@@ -658,7 +634,7 @@ func (t TelegramNotificationConfig) IsConfigured() bool
 IsConfigured reports whether Telegram delivery has a bot token to actually poll for updates and send messages with.
 
 <a name="WhatsAppNotificationConfig"></a>
-## type [WhatsAppNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L274-L282>)
+## type [WhatsAppNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L265-L273>)
 
 WhatsAppNotificationConfig sends notifications over WhatsApp through Meta's Cloud API. Meta only lets a business message someone first with an approved message template, so every notification is sent as the one template configured here: create it in WhatsApp Manager \(see doc/notifications.md for its exact shape\) and wait for approval.
 
@@ -675,7 +651,7 @@ type WhatsAppNotificationConfig struct {
 ```
 
 <a name="WhatsAppNotificationConfig.IsConfigured"></a>
-### func \(WhatsAppNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L309>)
+### func \(WhatsAppNotificationConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L300>)
 
 ```go
 func (c WhatsAppNotificationConfig) IsConfigured() bool
@@ -684,7 +660,7 @@ func (c WhatsAppNotificationConfig) IsConfigured() bool
 IsConfigured reports whether WhatsApp delivery can actually send.
 
 <a name="WhatsAppTemplateConfig"></a>
-## type [WhatsAppTemplateConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L286-L298>)
+## type [WhatsAppTemplateConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L277-L289>)
 
 WhatsAppTemplateConfig names the approved template. By default its body has two variables: \{\{1\}\} gets the notification title and \{\{2\}\} its body.
 
@@ -705,7 +681,7 @@ type WhatsAppTemplateConfig struct {
 ```
 
 <a name="WhatsAppTemplateConfig.BodyVariableCount"></a>
-### func \(WhatsAppTemplateConfig\) [BodyVariableCount](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L301>)
+### func \(WhatsAppTemplateConfig\) [BodyVariableCount](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L292>)
 
 ```go
 func (t WhatsAppTemplateConfig) BodyVariableCount() int
