@@ -268,6 +268,7 @@ type BillingGrant struct {
 	Subject   string `gorm:"type:varchar(300);not null;index"`
 	Feature   string `gorm:"type:varchar(100);not null"`
 	Until     *time.Time
+	GraceDays *int      `gorm:"column:grace_days"`
 	Note      string    `gorm:"type:text"`
 	CreatedBy string    `gorm:"type:varchar(255)"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
