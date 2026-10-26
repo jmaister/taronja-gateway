@@ -2231,6 +2231,185 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/organizations/{orgId}/logo:
+    get:
+      summary: The organization's logo image (admin, or a member)
+      operationId: getOrganizationLogo
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          description: The ETag of the copy the client already has
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The logo
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: The client's copy is current
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (not an admin or a member)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The organization has no logo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Set the organization's logo (admin, or an owner; PNG, JPEG or WebP up to 512 KiB)
+      operationId: setOrganizationLogo
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        description: The image bytes. The type is read from the bytes, not from Content-Type.
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: The organization with its new logo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+        '400':
+          description: Not a PNG, JPEG or WebP image, or empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (not an admin or an owner)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: The image is larger than 512 KiB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Remove the organization's logo (admin, or an owner)
+      operationId: deleteOrganizationLogo
+      tags:
+        - Organizations
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Removed (also when there was none)
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (not an admin or an owner)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/organizations/{orgId}/members/{userId}:
     put:
       summary: Add a user to an organization or change their role (admin only)
@@ -3736,7 +3915,8 @@ components:
         name: {type: string}
         memberCount: {type: integer}
         createdAt: {type: string, format: date-time}
-      required: [id, name, memberCount, createdAt]
+        logoUrl: {type: string, description: Where the logo image is served; empty when there is none}
+      required: [id, name, memberCount, createdAt, logoUrl]
     OrganizationMember:
       type: object
       properties:
@@ -3751,10 +3931,11 @@ components:
         id: {type: string}
         name: {type: string}
         createdAt: {type: string, format: date-time}
+        logoUrl: {type: string, description: Where the logo image is served; empty when there is none}
         members:
           type: array
           items: {$ref: '#/components/schemas/OrganizationMember'}
-      required: [id, name, createdAt, members]
+      required: [id, name, createdAt, logoUrl, members]
     OrganizationCreateRequest:
       type: object
       properties:
@@ -3777,7 +3958,8 @@ components:
         id: {type: string}
         name: {type: string}
         role: {type: string, enum: [owner, member]}
-      required: [id, name, role]
+        logoUrl: {type: string, description: Where the logo image is served; empty when there is none}
+      required: [id, name, role, logoUrl]
     Entitlement:
       type: object
       properties:

@@ -22,5 +22,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS `idx_billing_subscriptions_stripe_subscription
 CREATE INDEX IF NOT EXISTS `idx_billing_subscriptions_subject` ON `billing_subscriptions`(`subject`);
 CREATE TABLE IF NOT EXISTS `organization_members` (`organization_id` varchar(255) NOT NULL,`user_id` varchar(255) NOT NULL,`role` varchar(20) NOT NULL,`created_at` datetime,PRIMARY KEY (`organization_id`,`user_id`));
 CREATE INDEX IF NOT EXISTS `idx_organization_members_user_id` ON `organization_members`(`user_id`);
-CREATE TABLE IF NOT EXISTS `organizations` (`id` varchar(255) NOT NULL,`name` varchar(255) NOT NULL,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`));
+CREATE TABLE IF NOT EXISTS `organizations` (`id` varchar(255) NOT NULL,`name` varchar(255) NOT NULL,`logo` blob,`logo_content_type` varchar(50),`logo_updated_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`));
 CREATE TABLE IF NOT EXISTS `stripe_events` (`event_id` varchar(255) NOT NULL,`type` varchar(100) NOT NULL,`received_at` datetime,PRIMARY KEY (`event_id`));

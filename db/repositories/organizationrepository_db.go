@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"errors"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
 	"gorm.io/gorm"
@@ -30,23 +31,58 @@ func (r *OrganizationRepositoryDB) Create(org *db.Organization) error {
 // Get retrieves an organization by id, returning gorm.ErrRecordNotFound if not found.
 func (r *OrganizationRepositoryDB) Get(id string) (*db.Organization, error) {
 	var org db.Organization
-	err := r.db.Where("id = ?", id).First(&org).Error
+	err := r.db.Omit("logo").Where("id = ?", id).First(&org).Error
 	if err != nil {
 		return nil, err
 	}
 	return &org, nil
 }
 
-// List returns all organizations.
+// List returns all organizations, without their logo images.
 func (r *OrganizationRepositoryDB) List() ([]db.Organization, error) {
 	var orgs []db.Organization
-	err := r.db.Find(&orgs).Error
+	err := r.db.Omit("logo").Find(&orgs).Error
 	return orgs, err
 }
 
-// Update updates an existing organization.
+// Update updates an existing organization; the logo is only changed by
+// SetLogo and ClearLogo.
 func (r *OrganizationRepositoryDB) Update(org *db.Organization) error {
-	return r.db.Save(org).Error
+	return r.db.Omit("logo", "logo_content_type", "logo_updated_at").Save(org).Error
+}
+
+// Logo returns the organization's logo, or gorm.ErrRecordNotFound.
+func (r *OrganizationRepositoryDB) Logo(orgID string) (*OrganizationLogo, error) {
+	var org db.Organization
+	err := r.db.Select("logo", "logo_content_type", "logo_updated_at").Where("id = ?", orgID).First(&org).Error
+	if err != nil {
+		return nil, err
+	}
+	if !org.HasLogo() {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &OrganizationLogo{ContentType: org.LogoContentType, Data: org.Logo, UpdatedAt: *org.LogoUpdatedAt}, nil
+}
+
+// SetLogo stores the organization's logo.
+func (r *OrganizationRepositoryDB) SetLogo(orgID, contentType string, data []byte) error {
+	return r.updateLogo(orgID, map[string]any{"logo": data, "logo_content_type": contentType, "logo_updated_at": time.Now()})
+}
+
+// ClearLogo removes the organization's logo.
+func (r *OrganizationRepositoryDB) ClearLogo(orgID string) error {
+	return r.updateLogo(orgID, map[string]any{"logo": nil, "logo_content_type": "", "logo_updated_at": nil})
+}
+
+func (r *OrganizationRepositoryDB) updateLogo(orgID string, values map[string]any) error {
+	result := r.db.Model(&db.Organization{}).Where("id = ?", orgID).UpdateColumns(values)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // Delete removes the organization and all its memberships in a transaction.
@@ -75,7 +111,7 @@ func (r *OrganizationRepositoryDB) Delete(id string) error {
 func (r *OrganizationRepositoryDB) SetMember(orgID, userID, role string) error {
 	// Verify organization exists
 	var org db.Organization
-	err := r.db.Where("id = ?", orgID).First(&org).Error
+	err := r.db.Omit("logo").Where("id = ?", orgID).First(&org).Error
 	if err != nil {
 		return err
 	}
@@ -138,7 +174,7 @@ func (r *OrganizationRepositoryDB) OfUser(userID string) ([]OrganizationMembersh
 	var memberships []OrganizationMembership
 	for _, member := range members {
 		var org db.Organization
-		err := r.db.Where("id = ?", member.OrganizationID).First(&org).Error
+		err := r.db.Omit("logo").Where("id = ?", member.OrganizationID).First(&org).Error
 		if err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, err

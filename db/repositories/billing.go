@@ -21,6 +21,13 @@ type OrganizationMembership struct {
 	Role         string
 }
 
+// OrganizationLogo is a stored logo image.
+type OrganizationLogo struct {
+	ContentType string
+	Data        []byte
+	UpdatedAt   time.Time
+}
+
 // OrganizationRepository stores organizations and their members.
 type OrganizationRepository interface {
 	Create(org *db.Organization) error
@@ -29,6 +36,16 @@ type OrganizationRepository interface {
 	Update(org *db.Organization) error
 	// Delete removes the organization and its memberships.
 	Delete(id string) error
+
+	// Logo returns the organization's logo image (the other methods leave
+	// it out), or gorm.ErrRecordNotFound when there is none.
+	Logo(orgID string) (*OrganizationLogo, error)
+	// SetLogo stores the logo; gorm.ErrRecordNotFound if the organization
+	// doesn't exist.
+	SetLogo(orgID, contentType string, data []byte) error
+	// ClearLogo removes the logo; gorm.ErrRecordNotFound if the
+	// organization doesn't exist.
+	ClearLogo(orgID string) error
 
 	// SetMember adds userID to the organization or changes their role.
 	SetMember(orgID, userID, role string) error
