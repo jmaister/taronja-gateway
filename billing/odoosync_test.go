@@ -216,3 +216,23 @@ func TestCanViewDocument(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, own)
 }
+
+func TestBlockedReason(t *testing.T) {
+	e := newEnv(t)
+	e.customer(t, "org:o1", "")
+	inv := e.invoice(t, "org:o1", "in_9")
+	credit := &db.BillingDocument{Subject: "org:o1", Kind: db.DocumentCreditNote, StripeRef: "re_9", InvoiceDocumentID: &inv.ID, AmountCents: 1000, PaidAt: e.clock}
+	require.NoError(t, EnqueueDocument(e.repo, credit, []DocumentLine{{Description: "Refund", PlanKey: "academia-monthly", AmountCents: 1000}}, e.clock))
+
+	assert.Empty(t, e.svc.BlockedReason(inv), "invoices are never blocked")
+	assert.Contains(t, e.svc.BlockedReason(credit), "Waiting for its invoice")
+
+	inv.OdooState, inv.OdooError = db.OdooStateFailed, "boom"
+	require.NoError(t, e.repo.UpdateDocument(inv))
+	assert.Contains(t, e.svc.BlockedReason(credit), "invoice failed in Odoo (boom)")
+
+	move := int64(7)
+	inv.OdooMoveID, inv.OdooState = &move, db.OdooStateDone
+	require.NoError(t, e.repo.UpdateDocument(inv))
+	assert.Empty(t, e.svc.BlockedReason(credit), "its invoice is issued")
+}

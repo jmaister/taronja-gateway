@@ -4155,6 +4155,7 @@ components:
         paidAt: {type: string, format: date-time}
         odooState: {type: string, enum: [pending, done, failed]}
         odooError: {type: string}
+        blockedReason: {type: string, description: "Admin lists only: why a credit note cannot be issued yet (its invoice is not issued or failed)"}
         attempts: {type: integer}
         number: {type: string}
         issuedAt: {type: string, format: date-time, nullable: true}

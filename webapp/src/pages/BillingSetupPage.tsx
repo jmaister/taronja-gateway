@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { QueryState } from '../components/QueryState';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -28,8 +29,8 @@ export function BillingSetupPage() {
     const setup = useBillingSetup();
     const runAction = useRunBillingSetupAction();
 
-    const handleRunAction = (checkId: string) => {
-        runAction.mutate({ action: checkId });
+    const handleRunAction = (action: string) => {
+        runAction.mutate({ action });
     };
 
     return (
@@ -55,7 +56,12 @@ export function BillingSetupPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3">
-                                        {check.link && (
+                                        {check.link && check.link.startsWith('/') && (
+                                            <Link to={check.link} className="text-sm text-primary hover:underline">
+                                                Open the documents →
+                                            </Link>
+                                        )}
+                                        {check.link && !check.link.startsWith('/') && (
                                             <a
                                                 href={check.link}
                                                 target="_blank"
@@ -68,7 +74,7 @@ export function BillingSetupPage() {
                                         {check.action && (
                                             <Button
                                                 size="sm"
-                                                onClick={() => handleRunAction(check.id)}
+                                                onClick={() => handleRunAction(check.action!)}
                                                 disabled={runAction.isPending}
                                             >
                                                 {runAction.isPending ? 'Running…' : check.action}

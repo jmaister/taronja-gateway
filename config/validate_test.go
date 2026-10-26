@@ -126,10 +126,16 @@ func TestValidate_Billing(t *testing.T) {
 	stripe := StripeBillingConfig{SecretKey: "sk_test_x", WebhookSecret: "whsec_x"}
 	odoo := OdooBillingConfig{URL: "https://odoo.example.com", Database: "prod", APIKey: "k", CompanyID: 1, SalesJournalID: 2, PaymentJournalID: 3, TaxID: 4}
 	server := ServerConfig{URL: "https://example.com"}
+	expiring := odoo
+	expiring.APIKeyExpiresAt = "2026-12-31"
+	badExpiry := odoo
+	badExpiry.APIKeyExpiresAt = "31/12/2026"
 	cases := map[string]struct {
 		cfg     GatewayConfig
 		wantErr string
 	}{
+		"key expiry":       {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: expiring}}, ""},
+		"bad key expiry":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: badExpiry}}, "apiKeyExpiresAt"},
 		"disabled":         {GatewayConfig{Billing: BillingConfig{Stripe: StripeBillingConfig{}}}, ""},
 		"stripe only":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe}}, ""},
 		"with odoo":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo}}, ""},

@@ -37,6 +37,15 @@ vi.mock('../services/billing', () => ({
                     action: 'Test Connection',
                 },
                 {
+                    id: 'odoo-outbox',
+                    title: 'Odoo invoice queue',
+                    section: 'odoo',
+                    detail: '0 pending, 0 retrying, 2 failed',
+                    status: 'missing',
+                    link: '/billing/invoices?state=failed',
+                    action: null,
+                },
+                {
                     id: 'check-4',
                     title: 'Sample Data',
                     section: 'stripe',
@@ -124,10 +133,10 @@ describe('BillingSetupPage', () => {
         expect(html).toContain('Test Connection');
     });
 
-    it('calls the action with correct check name', () => {
-        // The action button would call runAction.mutate({ checkName: 'Odoo Connection' })
-        // This test verifies the structure is there
+    it('links in-app paths through the router and not as external links', () => {
         const html = render();
-        expect(html).toContain('Test Connection');
+        expect(html).toContain('href="/billing/invoices?state=failed"');
+        expect(html).not.toContain('href="/billing/invoices?state=failed" target');
+        expect(html).toContain('0 pending, 0 retrying, 2 failed');
     });
 });
