@@ -57,3 +57,25 @@ func TestLoginPage_RedirectsALoggedInUserOnTheServer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code, "no session: the page is shown")
 	assert.Contains(t, w.Body.String(), `name="password"`)
 }
+
+func TestDisplayVersion(t *testing.T) {
+	assert.Equal(t, "v1.2.3", DisplayVersion("1.2.3"))
+	assert.Equal(t, "v1.0.0-rc.1", DisplayVersion("1.0.0-rc.1"))
+	assert.Equal(t, "v2.0.0", DisplayVersion("v2.0.0"), "already prefixed")
+	assert.Equal(t, "Dev", DisplayVersion("Dev"), "a local build")
+	assert.Equal(t, "", DisplayVersion(" "))
+}
+
+// The login page and the account pages show the build version in their
+// "Powered by" footer, and nothing when there is none.
+func TestFooterShowsTheVersion(t *testing.T) {
+	gw, _ := newLoginTestGateway(t, config.AuthenticationProviders{Basic: config.BasicAuthenticationConfig{Enabled: true}})
+
+	assert.Contains(t, get(gw, "/_/login").Body.String(), "Taronja Gateway</a>\n    </footer>", "no version, nothing after the name")
+
+	gw.Version = "1.4.0"
+	login := get(gw, "/_/login").Body.String()
+	assert.Contains(t, login, "Taronja Gateway</a> v1.4.0")
+	account := get(gw, "/_/n/unknown-token").Body.String() // any page in the account layout
+	assert.Contains(t, account, "Taronja Gateway</a> v1.4.0")
+}
