@@ -1,5 +1,5 @@
 // Package odooapi implements billing.Odoo over Odoo's JSON-2 API
-// (POST /json/2/<model>/<method>, Odoo 19 and later).
+// (POST /json/2/<model>/<method>, Odoo 19).
 package odooapi
 
 import (
@@ -257,7 +257,7 @@ func (c *Client) UpsertProduct(ctx context.Context, code, name string) (int64, e
 	}, nil)
 }
 
-var moveFields = []string{"id", "name", "state", "payment_state", "is_move_sent", "invoice_date", "partner_id"}
+var moveFields = []string{"id", "name", "state", "payment_state", "is_move_sent", "invoice_date", "partner_id", "l10n_es_is_simplified"}
 
 // IssueMove runs each step only if the move still needs it, so a retry
 // after a failure halfway (posted but not paid, say) finishes the job.
@@ -265,14 +265,6 @@ func (c *Client) IssueMove(ctx context.Context, m billing.OdooMove) (billing.Odo
 	moveType := "out_invoice"
 	if m.CreditNote {
 		moveType = "out_refund"
-	}
-	fields := moveFields
-	simplifiedField, err := c.hasField(ctx, "account.move", "l10n_es_is_simplified")
-	if err != nil {
-		return billing.OdooIssued{}, err
-	}
-	if simplifiedField {
-		fields = append(fields[:len(fields):len(fields)], "l10n_es_is_simplified")
 	}
 	find := []any{[]any{"ref", "=", m.Ref}, []any{"move_type", "=", moveType}, []any{"company_id", "=", c.cfg.CompanyID}}
 	records, err := c.searchRead(ctx, "account.move", find, []string{"id"}, 1)
@@ -289,7 +281,7 @@ func (c *Client) IssueMove(ctx context.Context, m billing.OdooMove) (billing.Odo
 		}
 	}
 
-	move, err := c.readOne(ctx, "account.move", moveID, fields)
+	move, err := c.readOne(ctx, "account.move", moveID, moveFields)
 	if err != nil {
 		return billing.OdooIssued{}, err
 	}
@@ -314,7 +306,7 @@ func (c *Client) IssueMove(ctx context.Context, m billing.OdooMove) (billing.Odo
 		}
 	}
 
-	move, err = c.readOne(ctx, "account.move", moveID, fields)
+	move, err = c.readOne(ctx, "account.move", moveID, moveFields)
 	if err != nil {
 		return billing.OdooIssued{}, err
 	}
@@ -457,17 +449,8 @@ func (c *Client) PDF(ctx context.Context, moveID int64) (string, []byte, error) 
 		return "", nil, billing.ErrPDFNotFound
 	}
 	// Read by id: search_read hides attachments that belong to a field.
-	// Odoo 20 dropped the base64 "datas" for "raw" ({filename, content}).
-	content := "datas"
-	hasDatas, err := c.hasField(ctx, "ir.attachment", "datas")
-	if err != nil {
-		return "", nil, err
-	}
-	if !hasDatas {
-		content = "raw"
-	}
 	var attachments []M
-	err = c.call(ctx, "ir.attachment", "read", M{"ids": []int64{attachmentID}, "fields": []string{"name", content}}, nil, &attachments)
+	err = c.call(ctx, "ir.attachment", "read", M{"ids": []int64{attachmentID}, "fields": []string{"name", "datas"}}, nil, &attachments)
 	if err != nil {
 		return "", nil, err
 	}
@@ -475,10 +458,7 @@ func (c *Client) PDF(ctx context.Context, moveID int64) (string, []byte, error) 
 		return "", nil, billing.ErrPDFNotFound
 	}
 	attachment := attachments[0]
-	encoded := str(attachment[content])
-	if raw, ok := attachment[content].(map[string]any); ok {
-		encoded = str(raw["content"])
-	}
+	encoded := str(attachment["datas"])
 	if encoded == "" {
 		return "", nil, billing.ErrPDFNotFound
 	}
