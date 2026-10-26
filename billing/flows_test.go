@@ -236,6 +236,15 @@ func TestWebhook_OutOfOrderAndSwitch(t *testing.T) {
 	early := Event{ID: "evt_a", Type: EventInvoicePaid, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_9", SubscriptionID: "sub_9", AmountCents: 2900}}
 	err = e.svc.HandleEvent(ctx, early)
 	assert.ErrorIs(t, err, ErrRetryLater)
+	stuck, err := e.repo.StuckEvents()
+	require.NoError(t, err)
+	require.Len(t, stuck, 1)
+	assert.Equal(t, "evt_a", stuck[0].EventID)
+	assert.Equal(t, "sub_9", stuck[0].SubscriptionID)
+	assert.Equal(t, 1, stuck[0].Attempts)
+	assert.ErrorIs(t, e.svc.HandleEvent(ctx, early), ErrRetryLater)
+	stuck, _ = e.repo.StuckEvents()
+	assert.Equal(t, 2, stuck[0].Attempts)
 
 	e.event(t, Event{ID: "evt_b", Type: EventSubscriptionCreated, Subscription: &StripeSubscription{
 		ID: "sub_9", Status: "active", CurrentPeriodEnd: e.clock.AddDate(0, 1, 0), PriceID: monthly.StripePriceID,
@@ -244,6 +253,9 @@ func TestWebhook_OutOfOrderAndSwitch(t *testing.T) {
 	e.event(t, early) // Stripe's retry now works
 	_, err = e.repo.GetDocumentByStripeRef("in_9")
 	require.NoError(t, err)
+	stuck, err = e.repo.StuckEvents()
+	require.NoError(t, err)
+	assert.Empty(t, stuck, "applied: no longer waiting")
 
 	// Switched to yearly in the portal.
 	e.event(t, Event{ID: "evt_c", Type: EventSubscriptionUpdated, Subscription: &StripeSubscription{ID: "sub_9", Status: "active", CurrentPeriodEnd: e.clock.AddDate(1, 0, 0), PriceID: yearly.StripePriceID}})
@@ -255,6 +267,60 @@ func TestWebhook_OutOfOrderAndSwitch(t *testing.T) {
 	e.event(t, Event{ID: "evt_d", Type: EventSubscriptionUpdated, Subscription: &StripeSubscription{ID: "sub_other", Status: "active"}})
 	_, err = e.repo.GetSubscriptionByStripeID("sub_other")
 	assert.Error(t, err)
+}
+
+// An invoice event that arrives before its subscription's own event reads
+// the subscription from Stripe and is applied at once.
+func TestWebhook_InvoiceBeforeSubscriptionFetchesIt(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	monthly, err := e.svc.CreatePlan(ctx, monthlyInput())
+	require.NoError(t, err)
+	periodEnd := e.clock.AddDate(0, 1, 0)
+	e.stripe.Subscriptions["sub_f"] = &StripeSubscription{
+		ID: "sub_f", Status: "active", CurrentPeriodEnd: periodEnd, PriceID: monthly.StripePriceID,
+		Metadata: map[string]string{"tg_subject": "org:of", "tg_plan": monthly.Key},
+	}
+
+	e.event(t, Event{ID: "evt_p", Type: EventInvoicePaid, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_f", SubscriptionID: "sub_f", AmountCents: 2900}})
+	sub, err := e.repo.GetSubscriptionByStripeID("sub_f")
+	require.NoError(t, err)
+	assert.Equal(t, "org:of", sub.Subject)
+	assert.Equal(t, db.SubscriptionActive, sub.Status)
+	require.NotNil(t, sub.CurrentPeriodEnd)
+	assert.True(t, sub.CurrentPeriodEnd.Equal(periodEnd))
+	_, err = e.repo.GetDocumentByStripeRef("in_f")
+	require.NoError(t, err)
+	stuck, err := e.repo.StuckEvents()
+	require.NoError(t, err)
+	assert.Empty(t, stuck)
+
+	// A failed renewal of a subscription the gateway has not seen starts the grace period.
+	e.stripe.Subscriptions["sub_g"] = &StripeSubscription{
+		ID: "sub_g", Status: "past_due", CurrentPeriodEnd: periodEnd, PriceID: monthly.StripePriceID,
+		Metadata: map[string]string{"tg_subject": "org:og", "tg_plan": monthly.Key},
+	}
+	e.event(t, Event{ID: "evt_q", Type: EventInvoicePaymentFailed, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_g", SubscriptionID: "sub_g", AmountCents: 2900}})
+	sub, err = e.repo.GetSubscriptionByStripeID("sub_g")
+	require.NoError(t, err)
+	assert.Equal(t, db.SubscriptionPastDue, sub.Status)
+	require.NotNil(t, sub.GraceUntil)
+
+	// Not the gateway's subscription (no metadata): ignored, not retried.
+	e.stripe.Subscriptions["sub_x"] = &StripeSubscription{ID: "sub_x", Status: "active"}
+	e.event(t, Event{ID: "evt_r", Type: EventInvoicePaid, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_x", SubscriptionID: "sub_x", AmountCents: 2900}})
+	_, err = e.repo.GetSubscriptionByStripeID("sub_x")
+	assert.Error(t, err)
+	stuck, _ = e.repo.StuckEvents()
+	assert.Empty(t, stuck)
+
+	// Stripe unreachable: retried later and listed.
+	e.stripe.Err = errors.New("stripe down")
+	err = e.svc.HandleEvent(ctx, Event{ID: "evt_s", Type: EventInvoicePaid, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_s", SubscriptionID: "sub_s", AmountCents: 2900}})
+	assert.ErrorIs(t, err, ErrRetryLater)
+	stuck, _ = e.repo.StuckEvents()
+	require.Len(t, stuck, 1)
+	assert.Contains(t, stuck[0].Reason, "stripe down")
 }
 
 func TestWebhook_SignedRequest(t *testing.T) {

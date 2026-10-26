@@ -179,8 +179,14 @@ Authenticated with a session or the admin API token, like every gateway API.
 
 `POST /_/billing/stripe/webhook`, raw body, verified with the signing
 secret; each event id is stored in `stripe_events` and the state change is
-made in the same transaction, so a repeated or out-of-order event changes
-nothing. Odoo work is never done inside the webhook: documents go to the
+made in the same transaction, so a repeated event changes nothing.
+`invoice.paid` and `invoice.payment_failed` can arrive before their
+subscription's own event: the gateway then reads the subscription from Stripe
+and applies it first (a subscription without `tg_` metadata is not ours and
+the event is ignored). If Stripe doesn't answer, the webhook answers 500 and
+Stripe retries for up to 3 days; until it succeeds the event is listed in
+`stuck_stripe_events` and on **Billing → Setup** (yellow, red after 2 hours).
+Odoo work is never done inside the webhook: documents go to the
 outbox.
 
 | Event | Effect |
@@ -332,6 +338,7 @@ Migration `0006_billing` (and the same models in `db.Models`):
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |
 | `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at` |
 | `stripe_events` | `event_id` (PK), `type`, `received_at` |
+| `stuck_stripe_events` | `event_id` (PK), `type`, `subscription_id`, `reason`, `attempts`, `first_seen_at`, `last_seen_at` (removed when the event is applied) |
 
 ## Gateway API
 
@@ -412,7 +419,8 @@ expire.
 
 **Billing → Setup** shows, besides the connections, the *Odoo invoice queue*
 (documents pending, retrying and failed, and how long the oldest has waited,
-linking to the filtered **Invoices** list) and the API key expiry. In
+linking to the filtered **Invoices** list), the Stripe events waiting for
+their subscription, and the API key expiry. In
 **Invoices**, a failed document shows Odoo's last error and its attempt
 count with a *Retry* button; a credit note whose invoice is not issued yet
 (or failed) says so and offers *Retry its invoice*.
