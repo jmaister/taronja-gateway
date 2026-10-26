@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Setup actions the setup page can run.
@@ -76,10 +77,53 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			Detail: "billing.odoo is not configured: invoices wait until it is"})
 	}
 	checks = append(checks, s.odoo.Checks(ctx)...)
-	return append(checks, SetupCheck{
-		ID: "odoo-api-key", Title: "Odoo API key expiry", Status: CheckManual,
-		Detail: "Odoo 19 API keys of non-admin users expire: renew it (scope rpc) before it does",
-	})
+	return append(checks, s.outboxCheck(), s.apiKeyCheck())
+}
+
+// OutboxLink is an in-app path: the documents page filtered to the ones Odoo gave up on.
+const OutboxLink = "/billing/invoices?state=failed"
+
+func (s *Service) outboxCheck() SetupCheck {
+	c := SetupCheck{ID: "odoo-outbox", Title: "Odoo invoice queue", Status: CheckOK, Link: OutboxLink}
+	st, err := s.repo.OutboxStats()
+	if err != nil {
+		c.Status, c.Detail = CheckMissing, err.Error()
+		return c
+	}
+	c.Detail = fmt.Sprintf("%d pending, %d retrying, %d failed", st.Pending, st.Retrying, st.Failed)
+	if st.OldestPending != nil {
+		c.Detail += ", oldest waiting " + s.now().Sub(*st.OldestPending).Round(time.Minute).String()
+	}
+	switch {
+	case st.Failed > 0:
+		c.Status = CheckMissing
+	case st.Retrying > 0 || (st.OldestPending != nil && s.now().Sub(*st.OldestPending) > time.Hour):
+		c.Status, c.Link = CheckWarn, "/billing/invoices?state=pending"
+	}
+	return c
+}
+
+// apiKeyWarnDays is how long before billing.odoo.apiKeyExpiresAt the setup
+// page starts warning.
+const apiKeyWarnDays = 30
+
+func (s *Service) apiKeyCheck() SetupCheck {
+	c := SetupCheck{ID: "odoo-api-key", Title: "Odoo API key expiry", Status: CheckManual}
+	if s.odooKeyExp.IsZero() {
+		c.Detail = "Odoo 19 API keys of non-admin users expire: renew it (scope rpc) before it does, and set billing.odoo.apiKeyExpiresAt (YYYY-MM-DD) to be warned"
+		return c
+	}
+	days := int(s.odooKeyExp.Sub(s.now()).Hours() / 24)
+	date := s.odooKeyExp.Format(time.DateOnly)
+	switch {
+	case !s.now().Before(s.odooKeyExp.AddDate(0, 0, 1)):
+		c.Status, c.Detail = CheckMissing, "the Odoo API key expired on "+date+": create a new one and update billing.odoo.apiKey"
+	case days < apiKeyWarnDays:
+		c.Status, c.Detail = CheckWarn, fmt.Sprintf("the Odoo API key expires on %s (%d days): renew it", date, days)
+	default:
+		c.Status, c.Detail = CheckOK, fmt.Sprintf("the Odoo API key expires on %s (%d days)", date, days)
+	}
+	return c
 }
 
 // RunSetupAction applies a fix from the setup page.

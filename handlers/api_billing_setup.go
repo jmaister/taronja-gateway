@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/billing"
@@ -33,7 +34,7 @@ func (s *StrictApiServer) GetBillingSetup(ctx context.Context, request api.GetBi
 			Title:   check.Title,
 			Detail:  check.Detail,
 			Status:  api.SetupCheckStatus(check.Status),
-			Section: "billing",
+			Section: setupSection(check.ID),
 			Action:  stringPtr(check.Action),
 			Link:    stringPtr(check.Link),
 		})
@@ -80,11 +81,19 @@ func (s *StrictApiServer) RunBillingSetupAction(ctx context.Context, request api
 			Title:   check.Title,
 			Detail:  check.Detail,
 			Status:  api.SetupCheckStatus(check.Status),
-			Section: "billing",
+			Section: setupSection(check.ID),
 			Action:  stringPtr(check.Action),
 			Link:    stringPtr(check.Link),
 		})
 	}
 
 	return api.RunBillingSetupAction200JSONResponse(resp), nil
+}
+
+// setupSection groups a check under Stripe or Odoo on the setup page.
+func setupSection(id string) api.SetupCheckSection {
+	if strings.HasPrefix(id, "odoo") {
+		return api.Odoo
+	}
+	return api.Stripe
 }

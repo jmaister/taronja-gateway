@@ -14,9 +14,9 @@ vi.mock('../services/billing', () => ({
                 number: 'INV-001',
                 subject: 'user:123',
                 amountCents: 9999,
-                state: 'sent',
-                sentAt: '2026-10-15T10:00:00Z',
-                error: null,
+                odooState: 'done',
+                paidAt: '2026-10-15T10:00:00Z',
+                odooError: '',
                 attempts: 1,
             },
             {
@@ -25,9 +25,11 @@ vi.mock('../services/billing', () => ({
                 number: 'CN-001',
                 subject: 'org:456',
                 amountCents: -2500,
-                state: 'failed',
-                sentAt: null,
-                error: 'SMTP connection timeout',
+                odooState: 'pending',
+                paidAt: '2026-10-16T10:00:00Z',
+                odooError: 'waiting for its invoice to be issued in Odoo',
+                invoiceDocumentId: 'doc-1',
+                blockedReason: 'Its invoice failed in Odoo (boom): retry the invoice first',
                 attempts: 3,
             },
         ],
@@ -90,5 +92,17 @@ describe('InvoicesPage', () => {
     it('shows PDF button', () => {
         const html = render();
         expect(html).toContain('📄');
+    });
+
+    it('explains why a credit note is blocked and offers to retry its invoice', () => {
+        const html = render();
+        expect(html).toContain('Its invoice failed in Odoo (boom)');
+        expect(html).toContain('Retry its invoice');
+        expect(html).toContain('waiting for its invoice');
+    });
+
+    it('starts with the filters of the query string', () => {
+        const html = render('/?state=failed');
+        expect(html).toContain('<option value="failed" selected="">Failed</option>');
     });
 });
