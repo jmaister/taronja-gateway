@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { QueryState } from '../components/QueryState';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -20,10 +21,11 @@ function formatPrice(cents: number) {
 }
 
 export function InvoicesPage() {
+    const [params] = useSearchParams();
     const [filters, setFilters] = useState({
-        subject: '',
-        state: '',
-        kind: '',
+        subject: params.get('subject') ?? '',
+        state: params.get('state') ?? '',
+        kind: params.get('kind') ?? '',
     });
 
     const documents = useBillingDocuments(
@@ -67,7 +69,7 @@ export function InvoicesPage() {
                             >
                                 <option value="">All states</option>
                                 <option value="pending">Pending</option>
-                                <option value="sent">Sent</option>
+                                <option value="done">Done</option>
                                 <option value="failed">Failed</option>
                             </select>
                         </FormField>
@@ -133,11 +135,14 @@ export function InvoicesPage() {
                                                 {doc.paidAt ? new Date(doc.paidAt).toLocaleDateString() : '—'}
                                             </td>
                                             <td className="px-4 py-3 text-muted-fg text-xs">
+                                                {doc.blockedReason && (
+                                                    <div className="max-w-xs text-warning">{doc.blockedReason}</div>
+                                                )}
                                                 {doc.odooError ? (
                                                     <div className="max-w-xs truncate" title={doc.odooError}>
                                                         {doc.odooError}
                                                     </div>
-                                                ) : '—'}
+                                                ) : !doc.blockedReason && '—'}
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 {doc.attempts}
@@ -151,6 +156,16 @@ export function InvoicesPage() {
                                                 >
                                                     📄
                                                 </Button>
+                                                {doc.invoiceDocumentId && doc.blockedReason && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => retry.mutate(doc.invoiceDocumentId!)}
+                                                        disabled={retry.isPending}
+                                                    >
+                                                        Retry its invoice
+                                                    </Button>
+                                                )}
                                                 {(doc.odooState === 'failed' || doc.odooState === 'pending') && (
                                                     <Button
                                                         variant="ghost"

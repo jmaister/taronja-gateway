@@ -620,8 +620,11 @@ type BillingCancelRequest struct {
 
 // BillingDocument defines model for BillingDocument.
 type BillingDocument struct {
-	AmountCents       int64               `json:"amountCents"`
-	Attempts          int                 `json:"attempts"`
+	AmountCents int64 `json:"amountCents"`
+	Attempts    int   `json:"attempts"`
+
+	// BlockedReason Admin lists only: why a credit note cannot be issued yet (its invoice is not issued or failed)
+	BlockedReason     *string             `json:"blockedReason,omitempty"`
 	Currency          string              `json:"currency"`
 	Id                string              `json:"id"`
 	InvoiceDocumentId *string             `json:"invoiceDocumentId,omitempty"`

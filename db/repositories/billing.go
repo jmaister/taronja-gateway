@@ -86,6 +86,14 @@ type DocumentFilter struct {
 	Kind      string
 }
 
+// OutboxStats counts the Odoo outbox: documents not yet tried (Pending),
+// tried and waiting for another attempt (Retrying) and given up on
+// (Failed), and when the oldest unissued document was queued.
+type OutboxStats struct {
+	Pending, Retrying, Failed int64
+	OldestPending             *time.Time
+}
+
 // BillingRepository stores everything billing.Service keeps. Transaction runs
 // fn with a repository bound to one database transaction: the webhook records
 // the event id and its state change atomically.
@@ -146,6 +154,8 @@ type BillingRepository interface {
 	// DueDocuments returns pending documents whose NextAttemptAt is not
 	// after now, oldest first, at most limit.
 	DueDocuments(now time.Time, limit int) ([]db.BillingDocument, error)
+	// OutboxStats counts documents waiting for Odoo.
+	OutboxStats() (OutboxStats, error)
 	// ListDocuments returns the newest first.
 	ListDocuments(filter DocumentFilter) ([]db.BillingDocument, error)
 	// CreditedCents sums the credit notes of an invoice document.

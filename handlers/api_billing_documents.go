@@ -46,7 +46,7 @@ func (s *StrictApiServer) ListBillingDocuments(ctx context.Context, request api.
 
 	resp := make(api.ListBillingDocuments200JSONResponse, 0, len(documents))
 	for i := range documents {
-		resp = append(resp, documentToAPI(&documents[i]))
+		resp = append(resp, s.adminDocumentToAPI(&documents[i]))
 	}
 	return resp, nil
 }
@@ -72,7 +72,7 @@ func (s *StrictApiServer) RetryBillingDocument(ctx context.Context, request api.
 		return api.RetryBillingDocument500JSONResponse{Code: http.StatusInternalServerError, Message: "Failed to retry document"}, nil
 	}
 
-	return api.RetryBillingDocument200JSONResponse(documentToAPI(doc)), nil
+	return api.RetryBillingDocument200JSONResponse(s.adminDocumentToAPI(doc)), nil
 }
 
 // pdfResponse is the PDF with its filename for the browser.
@@ -128,6 +128,15 @@ func (s *StrictApiServer) GetBillingDocumentPdf(ctx context.Context, request api
 		return api.GetBillingDocumentPdf503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Odoo is not available"}, nil
 	}
 	return pdfResponse{filename: filename, data: data}, nil
+}
+
+// adminDocumentToAPI adds what only admins see: why a credit note is stuck.
+func (s *StrictApiServer) adminDocumentToAPI(doc *db.BillingDocument) api.BillingDocument {
+	resp := documentToAPI(doc)
+	if reason := s.billing.BlockedReason(doc); reason != "" {
+		resp.BlockedReason = &reason
+	}
+	return resp
 }
 
 // Helper to convert BillingDocument to API response

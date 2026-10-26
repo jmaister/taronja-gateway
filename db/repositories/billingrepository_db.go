@@ -408,6 +408,40 @@ func (r *BillingRepositoryDB) ListDocuments(filter DocumentFilter) ([]db.Billing
 	return documents, err
 }
 
+// OutboxStats counts the documents Odoo has not issued yet.
+func (r *BillingRepositoryDB) OutboxStats() (OutboxStats, error) {
+	var st OutboxStats
+	count := func(where string, args ...any) (int64, error) {
+		var n int64
+		err := r.db.Model(&db.BillingDocument{}).Where(where, args...).Count(&n).Error
+		return n, err
+	}
+	var err error
+	st.Pending, err = count("odoo_state = ? AND attempts = 0", db.OdooStatePending)
+	if err != nil {
+		return st, err
+	}
+	st.Retrying, err = count("odoo_state = ? AND attempts > 0", db.OdooStatePending)
+	if err != nil {
+		return st, err
+	}
+	st.Failed, err = count("odoo_state = ?", db.OdooStateFailed)
+	if err != nil {
+		return st, err
+	}
+	var oldest db.BillingDocument
+	err = r.db.Where("odoo_state = ?", db.OdooStatePending).Order("created_at ASC").Limit(1).Take(&oldest).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return st, nil
+	}
+	if err != nil {
+		return st, err
+	}
+	created := oldest.CreatedAt
+	st.OldestPending = &created
+	return st, nil
+}
+
 // CreditedCents returns the sum of credit notes for an invoice document.
 func (r *BillingRepositoryDB) CreditedCents(invoiceDocumentID string) (int64, error) {
 	var sum int64
