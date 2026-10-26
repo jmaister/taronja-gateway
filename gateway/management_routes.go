@@ -121,6 +121,10 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
 	strictApiServer.SetFeatureFlags(g.Dependencies.FeatureFlags)
 	strictApiServer.SetUserPhones(g.Dependencies.UserPhoneRepo)
+	strictApiServer.SetOrganizations(g.Dependencies.OrganizationRepo)
+	if g.Dependencies.Billing != nil {
+		strictApiServer.SetBilling(g.Dependencies.Billing)
+	}
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, config.ManagementPrefix, false)
