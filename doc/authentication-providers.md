@@ -46,6 +46,52 @@ authenticationProviders:
     clientSecret: ${GITHUB_CLIENT_SECRET}
 ```
 
+## Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...)
+
+List one entry per provider under `oidc`. Only the issuer and the client
+credentials are needed: the endpoints come from
+`<issuer>/.well-known/openid-configuration`.
+
+```yaml
+authenticationProviders:
+  oidc:
+    - name: zitadel                  # URL id: /_/auth/zitadel/login and /callback
+      label: Zitadel                 # button: "Login with Zitadel" (default: name)
+      issuer: https://auth.example.com
+      clientId: ${ZITADEL_CLIENT_ID}
+      clientSecret: ${ZITADEL_CLIENT_SECRET}   # empty for a public (PKCE) client
+      # scopes: [openid, email, profile]       # the default
+      # trustEmail: false                      # see below
+```
+
+At the provider, create a web application with the authorization code flow
+and register the redirect URI `<server.url>/_/auth/<name>/callback`, e.g.
+`http://localhost:8080/_/auth/zitadel/callback`. In Zitadel: a project, then
+an app of type **Web** with authentication method **Basic** (with a secret)
+or **PKCE** (without one); enable **Development Mode** to allow an `http://`
+redirect URI while testing locally.
+
+How it works:
+
+- **PKCE (S256) is always used**, with or without a client secret.
+- **Discovery happens on the first login**, not at startup, and is retried
+  until it succeeds: the gateway starts and serves everything else while the
+  provider is down, and its login answers 503 meanwhile. The discovery
+  document must name the configured issuer.
+- **The user comes from the userinfo endpoint**: `sub` (the stable ID),
+  `email`, `email_verified`, `preferred_username`, `name`, `given_name`,
+  `family_name`, `picture`, `locale`.
+- **The email must be verified** (`email_verified: true`, or the string
+  `"true"`). For a provider that never sends the claim, `trustEmail: true`
+  treats its emails as verified — only for a provider you control, since its
+  users could then claim any address.
+- The gateway user is found by email, as for Google and GitHub. An email that
+  already belongs to a user created with another login method is refused.
+- `name` must be lowercase letters, digits or `-`, and not `basic`, `google`,
+  or `github`.
+
+The end-to-end tests run this against a real Zitadel (`e2e/zitadel_test.go`).
+
 Microsoft (Entra ID / Azure AD), Facebook, and Apple ("Sign in with
 Apple") setup instructions moved to the `wip/microsoft-apple-facebook-auth`
 branch along with their implementation — untested, coming back to this
