@@ -375,7 +375,7 @@ notification:
 
 ### Billing
 
-The gateway can sell plans and tell the apps behind it what each user or organization has paid for: Stripe Checkout and Customer Portal for payments, Odoo (JSON-2 API, Odoo 19/20) for the legal invoices and credit notes, and **entitlements** (features active until a date) that apps read from the `X-Entitlements` header, `GET /_/api/entitlements` or `/_/me`. Apps never handle money or webhooks. Optional organizations let one member pay for everyone. See [doc/billing.md](doc/billing.md).
+The gateway can sell plans and tell the apps behind it what each user or organization has paid for: Stripe Checkout and Customer Portal for payments, Odoo (JSON-2 API, Odoo 19) for the legal invoices and credit notes, and **entitlements** (features active until a date) that apps read from the `X-Entitlements` header, `GET /_/api/entitlements` or `/_/me`. Apps never handle money or webhooks. Optional organizations let one member pay for everyone. See [doc/billing.md](doc/billing.md).
 
 ```yaml
 billing:
