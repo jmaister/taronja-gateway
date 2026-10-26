@@ -50,7 +50,8 @@ seconds. First start takes about 40 seconds.
   a multi-recipient notification sends one email per user and the batch
   status reports them sent.
 - `zitadel_test.go`: login through Zitadel creates the user, and logging in
-  again reuses it; an unverified Zitadel email is refused.
+  again reuses it; an unverified Zitadel email is refused; a Zitadel login
+  does not take over an existing account that never confirmed its email.
 - `featureflags_test.go`: flags created and toggled by an admin show up on the
   public `/_/flags` endpoint and in the `X-Feature-Flags` header a proxied
   backend receives, and a client cannot forge that header.

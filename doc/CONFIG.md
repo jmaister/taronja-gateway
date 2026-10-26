@@ -137,7 +137,7 @@ BasicAuthenticationConfig controls basic authentication provider.
 
 ```go
 type BasicAuthenticationConfig struct {
-    Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
+    Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false.
 }
 ```
 
@@ -302,7 +302,7 @@ type NotificationConfig struct {
 ```
 
 <a name="OIDCLoginButton"></a>
-## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L480-L483>)
+## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L481-L484>)
 
 OIDCLoginButton is one OIDC provider's button on the login page.
 
@@ -391,7 +391,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L522>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L523>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -409,7 +409,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L530>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L531>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
@@ -154,7 +155,7 @@ func fetchGitHubEmail(accessToken string) (string, error) {
 }
 
 // RegisterGithubAuth configures and registers GitHub OAuth2 authentication
-func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) {
+func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository, accountsService *accounts.Service) {
 	if gatewayConfig.AuthenticationProviders.Github.ClientId == "" ||
 		gatewayConfig.AuthenticationProviders.Github.ClientSecret == "" {
 		return // Skip if not configured
@@ -181,6 +182,7 @@ func RegisterGithubAuth(mux *http.ServeMux, sessionStore session.SessionStore, g
 		userRepo,
 		sessionStore,
 		gatewayConfig,
+		accountsService,
 	)
 
 	// Set the fetcher

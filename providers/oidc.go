@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
@@ -168,7 +169,7 @@ func (f *OIDCUserDataFetcher) FetchUserData(r *http.Request, token *oauth2.Token
 
 // NewOIDCAuthenticationProvider builds the login flow for one configured OIDC
 // provider. Its endpoints are filled in by discovery on first use.
-func NewOIDCAuthenticationProvider(cfg config.OIDCProviderConfig, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) *AuthenticationProvider {
+func NewOIDCAuthenticationProvider(cfg config.OIDCProviderConfig, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository, accountsService *accounts.Service) *AuthenticationProvider {
 	scopes := cfg.Scopes
 	if len(scopes) == 0 {
 		scopes = []string{"openid", "email", "profile"}
@@ -194,7 +195,7 @@ func NewOIDCAuthenticationProvider(cfg config.OIDCProviderConfig, sessionStore s
 		},
 	}
 
-	ap := NewAuthenticationProvider(oauthConfig, OIDCProvider{name: cfg.Name}, cfg.DisplayLabel(), userRepo, sessionStore, gatewayConfig)
+	ap := NewAuthenticationProvider(oauthConfig, OIDCProvider{name: cfg.Name}, cfg.DisplayLabel(), userRepo, sessionStore, gatewayConfig, accountsService)
 	ap.Fetcher = &OIDCUserDataFetcher{discovery: discovery, trustEmail: cfg.TrustEmail, provider: cfg.Name}
 	ap.UsePKCE = true
 	ap.Prepare = func(ctx context.Context) error {
@@ -206,8 +207,8 @@ func NewOIDCAuthenticationProvider(cfg config.OIDCProviderConfig, sessionStore s
 
 // RegisterOIDCAuth registers the login, callback and link endpoints of every
 // configured OIDC provider.
-func RegisterOIDCAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository) {
+func RegisterOIDCAuth(mux *http.ServeMux, sessionStore session.SessionStore, gatewayConfig *config.GatewayConfig, userRepo repositories.UserRepository, accountsService *accounts.Service) {
 	for _, cfg := range gatewayConfig.AuthenticationProviders.OIDC {
-		NewOIDCAuthenticationProvider(cfg, sessionStore, gatewayConfig, userRepo).RegisterEndpoints(mux)
+		NewOIDCAuthenticationProvider(cfg, sessionStore, gatewayConfig, userRepo, accountsService).RegisterEndpoints(mux)
 	}
 }

@@ -203,13 +203,35 @@ func TestZitadel_UnverifiedEmailIsRefused(t *testing.T) {
 
 	browser := newClient(t, gw.URL)
 	resp := browser.zitadelLoginFromLoginPage(newZitadelUser(t, "dave", false))
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, "/_/login", resp.Request.URL.Path)
+	assert.Equal(t, "email_not_verified", resp.Request.URL.Query().Get("error"))
 	assert.Nil(t, browser.me())
+}
+
+func TestZitadel_DoesNotTakeOverUnconfirmedAccount(t *testing.T) {
+	requireZitadel(t)
+	listener, gatewayURL := listenGateway(t)
+	clientID, secret := zitadelApp(t, gatewayURL)
+	gw := startGatewayOn(t, listener, zitadelConfig(clientID, secret))
+
+	// An admin-created gateway account whose email was never confirmed: a
+	// Zitadel login with the same email must not take it over.
+	zuser := newZitadelUser(t, "erin", true)
+	admin := newClient(t, gw.URL)
+	admin.login(adminUsername, adminPassword)
+	admin.sendJSON(http.MethodPost, "/_/api/users", map[string]any{"username": zuser.username, "email": zuser.email, "password": "gateway-password"}, http.StatusCreated)
+	accountID := mustUserID(t, gw, zuser.email)
+
+	stranger := newClient(t, gw.URL)
+	resp := stranger.zitadelLoginFromLoginPage(zuser)
+	assert.Equal(t, "link_required", resp.Request.URL.Query().Get("error"))
+	assert.Nil(t, stranger.me())
+	assert.Equal(t, accountID, mustUserID(t, gw, zuser.email), "no second user was created")
 }
 
 func mustUserID(t *testing.T, gw *testGateway, email string) string {
 	t.Helper()
-	user, err := gw.Deps.UserRepo.FindUserByIdOrUsername("", "", email)
+	user, err := gw.Deps.UserRepo.FindUserByEmail(email)
 	require.NoError(t, err)
 	return user.ID
 }

@@ -11,9 +11,12 @@ import (
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/config"
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // fakeOIDCServer is a minimal OpenID Connect provider: discovery, a token
@@ -107,7 +110,7 @@ func newOIDCHarness(t *testing.T, edit func(*config.OIDCProviderConfig)) *oidcHa
 		Management: config.ManagementConfig{Session: config.SessionConfig{DurationSeconds: 3600}},
 	}
 	mux := http.NewServeMux()
-	NewOIDCAuthenticationProvider(cfg, testSessionStore, gatewayConfig, testUserRepo).RegisterEndpoints(mux)
+	NewOIDCAuthenticationProvider(cfg, testSessionStore, gatewayConfig, testUserRepo, testAccountsFor(testUserRepo)).RegisterEndpoints(mux)
 	return &oidcHarness{t: t, mux: mux, server: server}
 }
 
@@ -157,12 +160,14 @@ func TestOIDCLogin_CreatesUserWithPKCE(t *testing.T) {
 	assert.Equal(t, "/app", w.Header().Get("Location"))
 	require.NotNil(t, sessionCookie(w))
 
-	user, err := testUserRepo.FindUserByIdOrUsername("", "", "oidc-new@example.com")
+	user, err := testUserRepo.FindUserByEmail("oidc-new@example.com")
 	require.NoError(t, err)
 	assert.Equal(t, "zid", user.Provider)
 	assert.Equal(t, "oidc-new", user.Username)
 	assert.Equal(t, "Oidc New", user.Name)
-	assert.Equal(t, "zid-user-1", user.ProviderId)
+	identity, err := repositories.NewUserIdentityRepositoryDB(testDBConn()).FindByProviderSubject("zid", "zid-user-1")
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, identity.UserID)
 
 	assert.Equal(t, "client-1", h.server.lastBasicUser, "a confidential client authenticates with its secret")
 	assert.NotEmpty(t, h.server.lastTokenForm.Get("code_verifier"))
@@ -180,8 +185,7 @@ func TestOIDCLogin_PublicClientSendsClientIDInBody(t *testing.T) {
 func TestOIDCLogin_UnverifiedEmail(t *testing.T) {
 	h := newOIDCHarness(t, nil)
 	w := h.login(map[string]any{"sub": "zid-unverified", "email": "oidc-unverified@example.com"})
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.Contains(t, w.Body.String(), "email is not confirmed")
+	assert.Equal(t, "/_/login?error=email_not_verified", w.Header().Get("Location"))
 	assert.Nil(t, sessionCookie(w))
 
 	trusting := newOIDCHarness(t, func(c *config.OIDCProviderConfig) { c.TrustEmail = true })
@@ -241,3 +245,5 @@ func TestOIDCDiscovery_RejectsIssuerMismatch(t *testing.T) {
 	h.mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/_/auth/zid/login", nil))
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
+
+func testDBConn() *gorm.DB { return db.GetConnection() }

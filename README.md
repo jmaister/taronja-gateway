@@ -47,6 +47,7 @@ Features table, shows what is implemented and what is planned.
 | - OAuth2: Facebook¹           | 🚧       |        |
 | - OAuth2: Apple (Sign in with Apple)¹ | 🚧 |        |
 | Authentication: Token         | ✅       | v0.0.9 |
+| One user per person across Google, GitHub and OIDC logins | ✅ | unreleased |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
@@ -313,6 +314,8 @@ authenticationProviders:
 ```
 
 See [doc/authentication-providers.md](doc/authentication-providers.md) for the OAuth2 setup and callback URLs.
+
+Google, GitHub and OIDC logins resolve to one user per person (same verified email, same user). See [doc/accounts.md](doc/accounts.md).
 
 ### Branding
 

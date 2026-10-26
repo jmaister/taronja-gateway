@@ -63,9 +63,7 @@ func (p *EmailProvider) Send(ctx context.Context, req SendRequest) (string, erro
 	return "", nil
 }
 
-// SendMessage sends one plain-text email. It is also used directly for
-// account emails (verification, password reset, login links), which are not
-// notifications.
+// SendMessage sends one plain-text email.
 func (p *EmailProvider) SendMessage(ctx context.Context, to, subject, textBody string) error {
 	// Header values are RFC 2047-encoded so non-ASCII names and titles
 	// survive strict mail servers; ASCII passes through unchanged.

@@ -85,8 +85,8 @@ How it works:
   `"true"`). For a provider that never sends the claim, `trustEmail: true`
   treats its emails as verified — only for a provider you control, since its
   users could then claim any address.
-- The gateway user is found by email, as for Google and GitHub. An email that
-  already belongs to a user created with another login method is refused.
+- Logins are matched by `sub`, and same-email accounts are linked as
+  described in [accounts.md](accounts.md#how-an-external-login-is-resolved).
 - `name` must be lowercase letters, digits or `-`, and not `basic`, `google`,
   or `github`.
 
