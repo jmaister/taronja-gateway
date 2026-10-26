@@ -35,11 +35,7 @@ if VERIFACTU:
     certificate = env["certificate.certificate"].search([("scope", "=", "verifactu")], limit=1)
     if not certificate:
         raw = misc.file_open(cert_path, "rb").read()
-        try:
-            from odoo.tools.binary import BinaryBytes  # Odoo 20: binary fields take BinaryValue
-            content = BinaryBytes(raw)
-        except ImportError:  # Odoo 19: base64
-            content = base64.encodebytes(raw)
+        content = base64.encodebytes(raw)
         certificate = env["certificate.certificate"].create({
             "content": content,
             "pkcs12_password": "1234",
@@ -93,9 +89,7 @@ if not user:
 user.write({"group_ids": [(4, g.id) for g in groups], "company_id": company.id, "company_ids": [(4, company.id)]})
 
 env["res.users.apikeys"].search([("user_id", "=", user.id)]).sudo().unlink()
-# Odoo 19 requires an expiry on the keys of non-admin users; Odoo 20 only
-# accepts a key whose scope is the one JSON-2 checks ("rpc"), where 19 also
-# took keys without a scope.
+# Odoo 19 requires an expiry on the keys of non-admin users.
 expires = fields.Datetime.now() + datetime.timedelta(days=90)
 key = env["res.users.apikeys"].with_user(user)._generate("rpc", "taronja-gateway e2e", expires)
 env.cr.commit()

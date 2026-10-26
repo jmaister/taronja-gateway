@@ -31,7 +31,7 @@ any application.
 | Apps | Read entitlements: `X-Entitlements` on proxied requests, `GET /_/api/entitlements`, or `/_/me`. Megabox also calls one endpoint, *activate*, when its box first goes online. |
 | Money | EUR, prices **VAT included**, IVA 21 %, customers in Spain. |
 | Stripe | `stripe-go/v87` (API version `2026-09-30.endive`), hosted Checkout and Customer Portal; card data never reaches the gateway. Stripe sends no invoices or receipts. |
-| Odoo | One instance, one company, for every app. **JSON-2 API** (`/json/2/<model>/<method>`, Odoo 19 and 20); `/jsonrpc` and `/xmlrpc` are deprecated in Odoo 19 and removed in Odoo 22. No custom Odoo module. |
+| Odoo | One instance, one company, for every app. **JSON-2 API** (`/json/2/<model>/<method>`, Odoo 19); `/jsonrpc` and `/xmlrpc` are deprecated in Odoo 19 and removed in Odoo 22. Odoo 20 is not supported yet (it has no OIDC login). No custom Odoo module. |
 | Invoice series | One sales journal for every app: one invoice series plus its own credit note series (*Dedicated Credit Note Sequence*). Products tell apps apart. See [Invoice series](#invoice-series). |
 | Customer NIF | Optional, collected by Stripe Checkout. With NIF: full invoice (Veri\*Factu F1). Without: simplified invoice (F2). |
 | Grace | 7 days after a failed renewal by default, per plan. Features stay active during grace. |
@@ -215,8 +215,8 @@ keyword arguments); the result is the method's return value; errors are
 HTTP 4xx/5xx with `{"name", "message", "arguments", "context", "debug"}`.
 The user is a dedicated one (`taronja-billing`, groups *Billing*,
 *Contact creation* and *Products / Create*) with an API key of scope `rpc`
-(Odoo 20 accepts nothing else; Odoo 19 requires an expiry date on the keys
-of non-admin users, so the key must be renewed before it expires). Every call carries
+(Odoo 19 requires an expiry date on the keys of non-admin users, so the
+key must be renewed before it expires). Every call carries
 `context.allowed_company_ids = [company_id]`.
 
 Each document goes through these steps; every step first checks whether it
@@ -259,11 +259,10 @@ when Odoo is down or not configured.
 (`default_code = TG-<plan key>`, the VAT-included tax) and one per setup
 fee, and updates their names when the plan changes.
 
-**Simplified invoices** — without a NIF the invoice must be F2. Odoo 19's
+**Simplified invoices** — without a NIF the invoice must be F2. Odoo's
 `l10n_es` computes `l10n_es_is_simplified` itself: no VAT on the partner,
 an amount within the company's simplified-invoice limit (400 € by
-default) and a European country. The gateway only reads it. Odoo 20 has
-no such field without Veri\*Factu, which decides the invoice type itself.
+default) and a European country. The gateway only reads it.
 
 ### Invoice series
 
@@ -400,7 +399,7 @@ keys; without Odoo, documents stay pending. Validated by `tg validate`.
 |---|---|
 | Unit | Each package against `httptest` fakes: Stripe adapter, Odoo JSON-2 client, entitlement rules (table tests over every status), webhook state machine (same event twice, out of order), outbox retries. |
 | Stripe API shape | `stripe/stripe-mock` (Stripe's own mock, validates every request against Stripe's OpenAPI) in `e2e/docker-compose.yml`: every adapter call is made against it. |
-| Odoo, real | `odoo:20.0` (default; `E2E_ODOO_VERSION=19.0` also passes) with Postgres in `e2e/docker-compose.yml`, initialised by `e2e/odoo/init.sh` (Spanish company, `l10n_es`, journal with credit note sequence, Stripe journal, VAT-included tax, API user and key): partner, invoice, payment, credit note, PDF, simplified invoice. Veri\*Factu registration is tested with `E2E_ODOO_VERIFACTU=1` against AEAT pre-production. |
+| Odoo, real | `odoo:19.0` with Postgres in `e2e/docker-compose.yml`, initialised by `e2e/odoo/init.sh` (Spanish company, `l10n_es`, journal with credit note sequence, Stripe journal, VAT-included tax, API user and key): partner, invoice, payment, credit note, PDF, simplified invoice. Veri\*Factu registration is tested with `E2E_ODOO_VERIFACTU=1` against AEAT pre-production. |
 | Whole flow | e2e test with a scripted Stripe (`httptest` server speaking the Stripe API for the calls the flow makes, signed webhooks from `webhook.GenerateTestSignedPayload`) and the real Odoo: pay link → checkout → webhook → entitlement in the header → Odoo invoice with PDF → refund → credit note; failed renewal → grace → expired; activation. |
 | Live, opt-in | With `E2E_STRIPE_SECRET_KEY` (test mode) and `stripe listen`: a real Checkout with card 4242… |
 

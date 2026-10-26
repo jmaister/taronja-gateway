@@ -286,18 +286,6 @@ func TestPDF(t *testing.T) {
 	f.on("account.move/search_read", func(M) any { return []M{{"id": 100, "invoice_pdf_report_id": false}} })
 	_, _, err = c.PDF(context.Background(), 100)
 	assert.ErrorIs(t, err, billing.ErrPDFNotFound)
-
-	// Odoo 20: no "datas"; "raw" is {filename, content}.
-	f.on("account.move/search_read", func(M) any { return []M{{"id": 100, "invoice_pdf_report_id": []any{77, "x"}}} })
-	c2 := New(c.cfg)
-	f.on("ir.attachment/fields_get", func(M) any { return M{"name": M{}, "raw": M{}} })
-	f.on("ir.attachment/read", func(body M) any {
-		assert.Equal(t, []any{"name", "raw"}, body["fields"])
-		return []M{{"id": 77, "name": "INV.pdf", "raw": M{"filename": "INV.pdf", "content": base64.StdEncoding.EncodeToString([]byte("%PDF-2"))}}}
-	})
-	_, data, err = c2.PDF(context.Background(), 100)
-	require.NoError(t, err)
-	assert.Equal(t, "%PDF-2", string(data))
 }
 
 func TestChecks(t *testing.T) {

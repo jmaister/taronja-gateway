@@ -96,7 +96,7 @@ services:
 
   # Odoo for invoices (JSON-2 API). e2e/odoo/init.sh creates the database,
   # the Spanish company, journals, tax and the API user, and writes their ids
-  # to e2e/.odoo/env. E2E_ODOO_VERSION=20.0 runs the same tests on Odoo 20.
+  # to e2e/.odoo/env.
   odoo-db:
     image: postgres:17-alpine
     environment:
@@ -110,7 +110,7 @@ services:
       retries: 30
 
   odoo:
-    image: odoo:${E2E_ODOO_VERSION:-20.0}
+    image: odoo:19.0
     environment:
       HOST: odoo-db
       USER: odoo

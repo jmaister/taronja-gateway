@@ -144,11 +144,7 @@ func TestE2E_SimplifiedInvoiceWithoutTaxID(t *testing.T) {
 	_, _, issued := issue(t, c, billing.OdooPartner{
 		Ref: unique("tg:user"), Name: "Ana García", Email: "", Address: billing.Address{City: "Valencia", Country: "ES"},
 	}, 2900)
-	// Odoo 19's l10n_es marks it simplified (F2); Odoo 20 has no such field
-	// without Veri*Factu, so the flag stays false there.
-	hasField, err := c.hasField(context.Background(), "account.move", "l10n_es_is_simplified")
-	require.NoError(t, err)
-	assert.Equal(t, hasField, issued.Simplified)
+	assert.True(t, issued.Simplified, "l10n_es marks it F2")
 	_, data, err := c.PDF(context.Background(), issued.MoveID)
 	require.NoError(t, err, "a partner without email still gets a PDF")
 	assert.True(t, strings.HasPrefix(string(data), "%PDF"))
@@ -192,13 +188,7 @@ func TestE2E_VerifactuRegistersInvoicesAndCreditNotes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	fields := []string{"state", "l10n_es_edi_verifactu_state", "l10n_es_edi_verifactu_document_ids"}
-	// Odoo 19 sets the correction reason (R1); Odoo 20 dropped the field.
-	hasReason, err := c.hasField(ctx, "account.move", "l10n_es_edi_verifactu_refund_reason")
-	require.NoError(t, err)
-	if hasReason {
-		fields = append(fields, "l10n_es_edi_verifactu_refund_reason")
-	}
+	fields := []string{"state", "l10n_es_edi_verifactu_state", "l10n_es_edi_verifactu_document_ids", "l10n_es_edi_verifactu_refund_reason"}
 	for _, issued := range []billing.OdooIssued{invoice, credit} {
 		move, err := c.readOne(ctx, "account.move", issued.MoveID, fields)
 		require.NoError(t, err)
@@ -209,9 +199,7 @@ func TestE2E_VerifactuRegistersInvoicesAndCreditNotes(t *testing.T) {
 		require.NoError(t, err, issued.Number)
 		assert.True(t, strings.HasPrefix(string(data), "%PDF"))
 	}
-	if hasReason {
-		move, err := c.readOne(ctx, "account.move", credit.MoveID, fields)
-		require.NoError(t, err)
-		assert.Equal(t, "R1", move["l10n_es_edi_verifactu_refund_reason"])
-	}
+	move, err := c.readOne(ctx, "account.move", credit.MoveID, fields)
+	require.NoError(t, err)
+	assert.Equal(t, "R1", move["l10n_es_edi_verifactu_refund_reason"])
 }
