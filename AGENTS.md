@@ -23,8 +23,11 @@ taronja-gateway/
 ├── gateway/                    # HTTP server assembly, routing, reverse proxy
 ├── handlers/                   # OpenAPI handler implementations (one per resource)
 ├── middleware/                 # Plumbing: Middleware/Chain, health, metrics; builtin/ holds the implementations
-├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
+├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2, generic OIDC)
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
+├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
+├── billing/                    # Plans, Stripe Checkout, webhook state machine, entitlements, Odoo outbox; stripeapi/, odooapi/
+├── accounts/                   # Account linking, password change, sessions, activity log
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -40,6 +43,7 @@ taronja-gateway/
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
 ├── test/                       # Load-test plan (JMeter)
+├── e2e/                        # End-to-end tests (build tag e2e) + docker-compose.yml with Mailpit and Zitadel
 └── .github/
     ├── copilot-instructions.md # GitHub Copilot conventions (Go style, test patterns)
     └── workflows/              # CI/CD pipelines
@@ -91,7 +95,7 @@ taronja-gateway/
 
 - **Format:** YAML, loaded via `config.LoadConfig(filePath)`
 - **Env-var expansion:** Supports `${VAR_NAME}` interpolation from OS environment (sourced from `.env`)
-- **Defaults** (`server.host: 127.0.0.1`, `management.session.durationSeconds: 86400`) are set before a strict decode; `LoadConfig` then requires `server.port` and calls `GatewayConfig.Validate()`, the single place for config rules (admin credentials, middleware entries, each route has exactly one of `to`/`toFolder`/`toFile`, non-negative cache seconds). `builtin.ValidateConfigOnly` (`tg validate`) and gateway startup call the same `Validate()`, so the rules never diverge.
+- **Defaults** (`server.host: 127.0.0.1`, `management.session.durationSeconds: 1296000`, 15 days) are set before a strict decode; `LoadConfig` then requires `server.port` and calls `GatewayConfig.Validate()`, the single place for config rules (admin credentials, middleware entries, each route has exactly one of `to`/`toFolder`/`toFile`, non-negative cache seconds). `builtin.ValidateConfigOnly` (`tg validate`) and gateway startup call the same `Validate()`, so the rules never diverge.
 - **Main config sections:**
   - `server` — host (default `127.0.0.1`), port, external URL
   - `management` — admin credentials and session lifetime. The management endpoints are always under `config.ManagementPrefix` (`/_`); it is not configurable.
@@ -166,6 +170,8 @@ taronja-gateway/
 - Validates `tg_session_token` cookie and Bearer API tokens
 - Session includes `IsAdmin` flag, provider name, expiry, and rich client metadata
 
+**Sliding sessions (`session/renewal.go`):** `SessionStoreDB.RenewFor` (set in `gateway/setup.go` from `management.session.durationSeconds`; 0 = off) makes `ValidateSession` push a used session's `ValidUntil` to now+RenewFor, at most once an hour (`needsRenewal`). `ValidateSession` has no ResponseWriter, so it records the renewal in the request context, and `session.RenewCookies` — wrapped around the whole gateway handler in `setup.go`, independent of the `middleware:` list — re-sends the cookie with the new Max-Age just before the headers go out, unless the handler set its own session cookie (login/logout). Its writer implements Flush/Hijack/Unwrap so streaming and WebSocket upgrades keep working.
+
 **`clientinfo.go`:**
 - Parses User-Agent via `github.com/ua-parser/uap-go` to extract browser, OS, device type
 - JA4H fingerprinting support (via `middleware/builtin/ja4.go`)
@@ -225,6 +231,10 @@ of-REST shape above (its client secret is a JWT the gateway signs itself,
 `FetchUserData` decodes the ID token from the exchange response instead,
 verified against Apple's published public keys); `microsoft.go`/
 `facebook.go` are the "normal-shaped" examples alongside `google.go`.
+
+**Generic OIDC (`oidc.go`):** `authenticationProviders.oidc` is a list; each entry becomes an `AuthenticationProvider` named by its `name` (validated in `config.validateOIDCProviders`). Two optional `AuthenticationProvider` fields exist for it: `Prepare` (runs discovery before the endpoints are used; an error answers 503) and `UsePKCE` (S256 challenge in `startAuth`, verifier kept in the `tg_pkce_verifier` cookie for `Callback`). Discovery (`oidcDiscovery.load`) is lazy, cached once it succeeds, retried until then, and checks the document's `issuer`; it fills `oauthConfig.Endpoint` once under its mutex (and `AuthStyleInParams` for a public client with no secret). `OIDCUserDataFetcher` maps the userinfo response; `email_verified` may be a bool or the string "true"; `trustEmail` overrides it. Tests: `oidc_test.go` (fake provider that checks the PKCE verifier) and `e2e/zitadel_test.go` (real Zitadel).
+
+**Login page (`gateway/management_routes.go`'s `handleLoginPage`):** a request with a valid session is redirected on the server to the sanitized `?redirect=` (never back to `/_/login`, which would loop); otherwise the page is rendered. It never hands over to an external provider by itself (an auto-login option was tried and dropped: it needed loop and re-login-after-logout workarounds). Logout never signs the user out at the provider.
 
 **Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`github.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape, the wip branch's `apple.go`):
 1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
@@ -339,6 +349,10 @@ straight off `req.Notification`).
   no admin check) — a user manages only their own preference, never
   someone else's.
 
+**Phone channels (`sms.go`, `whatsapp.go`, `smstext.go`, `phone.go`):** SMS (BulkGate Simple API) and WhatsApp (Meta Cloud API, always the one configured approved template) deliver to `db.UserPhone` (its own `user_phones` table: a `users` column added by SQL would collide with the legacy bridge's AutoMigrate on new databases). Two optional `Provider` interfaces keep `Service` channel-agnostic: `PhoneAddressedProvider` (recipient = the user's phone; channel status connected when one is on file) and `LinkProvider` (`WantsLink` → `buildSendRequest` creates a `db.NotificationLinkToken` and passes `LinkURL`/`LinkToken` for the `/_/n/<token>` page in `gateway/notification_page.go`, which answers by POST through `Service.RespondViaLink`). Both need `Service.ConfigurePhoneChannels(phones, server.url)`, called in `gateway.InitNotifications` and `deps.NewTestWithName`. A provider returns `permanent(err)` for errors retrying cannot fix; `recordFailure` then records the failure with no `NextRetryAt`, so paid messages are not paid for again. `minuteLimiter` caps each paid channel (`maxPerMinute`); over it the send fails as retryable. Admin API: `PATCH /api/users/{id}` (name, phone), optional password and `phone` on `POST /api/users`, and `PUT /api/users/{id}/notifications/preferences` (validated against `notification.DeliveryChannels`). Tests: `notification/phone_channels_test.go` (fake BulkGate/Meta servers) and `gateway/phone_notifications_test.go` (through the HTTP API).
+
+**Admin history (`notification/admin.go`, `db/repositories/notificationadmin.go`, `handlers/api_admin_notifications.go`):** `GET /api/admin/notifications` filters in SQL (`AdminNotificationFilter.apply`) and paginates with a total. Status filters look at each channel's latest attempt (`MAX(rowid)` per notification and channel, since an attempt writes a pending row and then its outcome) and mirror `channelStatus` (a failed attempt with `next_retry_at` is pending); without a channel, the overall status is the first of pending, failed, sent, skipped that applies, or none, and `adminStatus` computes the same in Go for each returned row. Dashboard: `webapp/src/pages/NotificationsPage.tsx` with the filters in the URL (`lib/notificationFilters.ts`).
+
 **Adding a new delivery channel** (WhatsApp, Slack, SMS, ...) means writing
 a new `Provider` implementation and registering it in
 `notification.NewService` — no change to `db.Notification`, the OpenAPI
@@ -347,6 +361,31 @@ step (most will, the way Telegram does — there's no notion of "this
 gateway user's WhatsApp number" otherwise), mirror
 `NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
 `telegram.go`.
+
+### `accounts/` — Account Linking, Sessions, Activity
+
+Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) holds the flows (OAuth/OIDC login resolution, identity linking, password change, sessions, activity log), with no HTTP handlers; the pages are in `gateway/account_routes.go` (templates `static/*.html` inside `static/auth_layout.html`, parsed by `parseAuthTemplates`).
+- **Tables** (migration `0004_accounts`): `user_identities` (provider + subject per external login; backfilled from `users.provider/provider_id` for Google/GitHub), `auth_events` (activity log).
+- **OAuth login** goes through `ResolveExternalLogin` (in `providers.AuthenticationProvider.Callback`): identity by (provider, subject) first, then same-email auto-link only when `canAutoLink` (provider-verified email, account email confirmed or no password, not the config admin, not previously unlinked — checked via an `identity_unlinked` event), else `ErrLinkRequired` → `/_/login?error=link_required`. This replaced the old 409 "account already exists with a different login method". An unverified provider email no longer creates a user (`?error=email_not_verified`).
+- **Linking** from the account page: POST `/_/auth/{provider}/link` (session + CSRF) sets the `tg_link_intent` cookie to the session's CSRF token; `Callback` sees it and calls `LinkIdentity` for the signed-in user instead of logging in.
+- **CSRF** for account forms: `accounts.CSRFToken(sessionToken)` (a hash of the session token), checked by `gateway.withAccount`.
+- Model IDs for `UserIdentity` are set in `BeforeCreate`, not `BeforeSave`: GORM runs `BeforeSave` on `Model(&X{}).Update(...)` too, and an ID set there ends up in the `WHERE`, so the update silently matches nothing.
+
+### `featureflag/` — Feature Flags
+
+Zero-config on/off switches (`db.FeatureFlag`, migration `0003_feature_flags`; `Type` is always `boolean` today, kept so typed values can be added as new types plus a value column). `featureflag.Service` wraps `repositories.FeatureFlagRepository`, validates keys (`^[a-z0-9][a-z0-9._-]{0,99}$`, safe for a comma-separated header and a URL segment) and caches the key→value map in memory; every write through the service drops the cache (a generation counter stops a load that overlapped a write from re-caching stale values). Built in `deps.NewProduction`/`NewTestWithName` as `Dependencies.FeatureFlags`, handed to `StrictApiServer` with `SetFeatureFlags`.
+- Admin API: `/api/feature-flags` (list/create) and `/api/feature-flags/{key}` (get/PATCH/delete), `handlers/api_featureflags.go`, 401/403 via `requireAdminAccess`.
+- Public read: `GET /flags` (`GetFeatureFlagValues`, listed in `OperationWithNoSecurity`) — at the management root next to `/me`, not under `/api/feature-flags/`, so it cannot collide with a flag key.
+- Backends: `gateway/proxy.go` drops any client-sent `X-Feature-Flags` and sets it to the enabled keys, sorted, on every proxied request.
+- Dashboard `webapp/src/pages/FeatureFlagsPage.tsx` (+ `services/featureFlags.ts`); SDK `client.getFeatureFlags()` and `useFeatureFlags`/`useFeatureFlag` (`sdk/src/flags.tsx`).
+
+### `billing/` — Billing and Entitlements
+
+Spec: [doc/billing.md](./doc/billing.md). `billing.Service` (built by `gateway.InitBilling` when `billing.enabled`, stored as `Dependencies.Billing`, handed to `StrictApiServer` with `SetBilling`) holds the repositories (`repositories.BillingRepository`, `OrganizationRepository`), the `billing.Stripe` and `billing.Odoo` interfaces (`billing/contracts.go`) and the notification service. One file per area: `plans.go` (validation, Stripe product/prices with lookup keys, Odoo products, portal switch groups), `checkout.go` (subject choice, Checkout params per plan kind, trial once per plan group, portal URL), `webhook.go` (each event id recorded with its effect in one `Transaction`; `ErrRetryLater` makes Stripe resend events that arrive before what they refer to), `activation.go` (activate, cancel, refund), `entitlements.go` (pure `Compute` + per-subject cache, memberships cached per user, both with a 24 h TTL, per process (single gateway instance) and cleared by `InvalidateUser`/`InvalidateAll` on any billing change; each `Feature` carries `grace`/`graceUntil`, and the header an optional `grace` map; plans are EUR only), `odoosync.go` (outbox: due documents, backoff 1m/5m/30m/2h/6h, failed after 10, credit notes wait for their invoice), `notify.go` (`billing.*` notifications; `NotifyDue` hourly windows), `setup.go` (setup page checks/actions, including the Odoo outbox queue and `billing.odoo.apiKeyExpiresAt`; credit notes stuck behind their invoice get a `blockedReason` in the admin documents list).
+- `billing/stripeapi`: stripe-go v87 `stripe.NewClient` V1 services; tests with an httptest Stripe and `-tags e2e` against stripe-mock.
+- `billing/odooapi`: JSON-2 client; every `IssueMove` step checks state first, so a retry finishes a half-done move. Odoo 19 only (Odoo 20 lacks OIDC for now). Tests against a fake JSON-2 server and `-tags e2e` against the Odoo of `e2e/docker-compose.yml` (`e2e/odoo/init.sh` + `setup.py`).
+- Live Stripe test: `STRIPE_TEST_SECRET_KEY=sk_test_… go test -tags e2e -run TestLive ./billing/stripeapi/` (no `stripe listen` needed). Tests use `billing.FakeStripe`/`FakeOdoo` (`fakes.go`) with real SQLite; `e2e/billing_test.go` runs the whole flow with signed webhook events.
+- Gateway: `gateway/billing_routes.go` (`/_/pay/{plan}`, `/_/pay/done`, `POST /_/billing/stripe/webhook`, the account page's Billing section and portal button), `X-Entitlements` set in `gateway/proxy.go`; organizations API in `handlers/api_organizations.go`; the organization logo (blob in `organizations.logo`, PNG/JPEG/WebP up to 512 KiB, sniffed from the bytes, served with ETag by `handlers/api_organization_logo.go`).
 
 ### `handlers/` and `api/` — OpenAPI API Implementation
 
@@ -436,6 +475,7 @@ webapp/src/
 │   ├── HomePage, ProfilePage, NotFoundPage
 │   ├── RequestSummaryPage, RequestsDetailsPage, RateLimiterStatsPage
 │   ├── UsersListPage, CreateUserPage, UserInfoPage
+│   ├── NotificationsPage            # admin notification history: filters in the URL, pagination, delivery attempts per row
 │   ├── CountersManagementPage
 │   └── MiddlewarePage             # status/health/metrics for the global middleware chain (doc/refactor01.md Phase 5)
 ├── contexts/
@@ -499,6 +539,7 @@ webapp/src/
 | `make build` | Regenerate API client (`make gen`), build webapp (`npm run build`), build Go binary with embedded assets; produces `tg` executable |
 | `make run` | Run gateway with sample config (`tg run --config sample/config.yaml`) |
 | `make test` | `go test -cover ./...` — runs all Go unit tests with coverage; uses testify + in-memory DBs |
+| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit, Zitadel), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, accounts, OIDC login, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
 | `make gen` | Regenerate Go OpenAPI server (`oapi-codegen`) + TS API client (`@hey-api/openapi-ts`) |
 | `make config-docs` | Generate [`doc/CONFIG.md`](./doc/CONFIG.md) from `config/` package comments via `gomarkdoc` |
 | `make cover` | Run tests + open coverage HTML report |

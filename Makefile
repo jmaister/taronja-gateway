@@ -34,6 +34,31 @@ test:
 	@echo "Running tests..."
 	go test -cover ./...
 
+# End-to-end tests: start the services in e2e/docker-compose.yml, run the
+# e2e-tagged tests against them, and stop the services again (also on failure).
+E2E_COMPOSE := docker compose -f e2e/docker-compose.yml
+
+# Zitadel writes its service account tokens to e2e/.zitadel as the host
+# user, so the tests can read them.
+e2e-up:
+	mkdir -p e2e/.zitadel
+	@# A Mailpit already answering on the e2e port (another project's) is
+	@# reused: the tests only need SMTP 11025 and the API on 18025.
+	services=$$($(E2E_COMPOSE) config --services); \
+	if curl -fsS -m 2 $${E2E_MAILPIT_URL:-http://localhost:18025}/api/v1/info >/dev/null 2>&1; then \
+		echo "e2e: using the Mailpit already running on $${E2E_MAILPIT_URL:-http://localhost:18025}"; \
+		services=$$(echo "$$services" | grep -v '^mailpit$$'); \
+	fi; \
+	E2E_UID=$$(id -u) E2E_GID=$$(id -g) $(E2E_COMPOSE) up -d --wait $$services
+	./e2e/odoo/init.sh
+
+e2e-down:
+	$(E2E_COMPOSE) down -v
+	rm -rf e2e/.zitadel
+
+e2e: e2e-up
+	go test -tags e2e -count=1 ./e2e/... ./billing/... ; status=$$?; $(MAKE) e2e-down; exit $$status
+
 bench:
 	@echo "Running benchmarks..."
 	go test -v ./gateway -bench=. -benchtime=2s
@@ -171,5 +196,5 @@ else
 endif
 
 # Default target
-.PHONY: all build build-windows run dev test bench fullbuild cover clean fmt tidy
+.PHONY: all build build-windows run dev test e2e e2e-up e2e-down bench fullbuild cover clean fmt tidy
 all: build

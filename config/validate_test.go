@@ -90,3 +90,98 @@ func TestValidate_AdminNeedsCredentials(t *testing.T) {
 	cfg.Management.Admin.Username, cfg.Management.Admin.Password = "admin", "secret"
 	assert.NoError(t, cfg.Validate())
 }
+
+func TestValidate_OIDCProviders(t *testing.T) {
+	valid := OIDCProviderConfig{Name: "zitadel", Issuer: "https://auth.example.com", ClientId: "id"}
+	with := func(edit func(*OIDCProviderConfig)) GatewayConfig {
+		p := valid
+		edit(&p)
+		return GatewayConfig{AuthenticationProviders: AuthenticationProviders{OIDC: []OIDCProviderConfig{p}}}
+	}
+
+	ok := with(func(*OIDCProviderConfig) {})
+	require.NoError(t, ok.Validate())
+	assert.True(t, ok.HasAnyAuthentication())
+	assert.Equal(t, "zitadel", valid.DisplayLabel())
+
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"bad name":      {with(func(p *OIDCProviderConfig) { p.Name = "Zitadel IdP" }), "lowercase letters"},
+		"reserved name": {with(func(p *OIDCProviderConfig) { p.Name = "github" }), "reserved"},
+		"no issuer":     {with(func(p *OIDCProviderConfig) { p.Issuer = "" }), "issuer must be"},
+		"bad issuer":    {with(func(p *OIDCProviderConfig) { p.Issuer = "auth.example.com" }), "issuer must be"},
+		"no client id":  {with(func(p *OIDCProviderConfig) { p.ClientId = "" }), "clientId is required"},
+		"duplicate":     {GatewayConfig{AuthenticationProviders: AuthenticationProviders{OIDC: []OIDCProviderConfig{valid, valid}}}, "used twice"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, tc.cfg.Validate(), tc.wantErr)
+		})
+	}
+}
+
+func TestValidate_PhoneChannels(t *testing.T) {
+	bulkgate := BulkGateConfig{ApplicationID: "app", ApplicationToken: "tok"}
+	template := WhatsAppTemplateConfig{Name: "taronja_notification", Language: "es"}
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"sms ok":                 {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, BulkGate: bulkgate}}}, ""},
+		"sms without token":      {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, BulkGate: BulkGateConfig{ApplicationID: "app"}}}}, "applicationToken"},
+		"sms unknown backend":    {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, Backend: "twilio", BulkGate: bulkgate}}}, "not supported"},
+		"sms too many segments":  {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Enabled: true, BulkGate: bulkgate, MaxSegments: 5}}}, "maxSegments"},
+		"sms disabled is unused": {GatewayConfig{Notification: NotificationConfig{SMS: SMSNotificationConfig{Backend: "twilio"}}}, ""},
+		"whatsapp ok":            {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", AccessToken: "t", Template: template}}}, ""},
+		"whatsapp no template":   {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", AccessToken: "t"}}}, "approved templates"},
+		"whatsapp no token":      {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", Template: template}}}, "accessToken"},
+		"whatsapp button no url": {GatewayConfig{Notification: NotificationConfig{WhatsApp: WhatsAppNotificationConfig{Enabled: true, PhoneNumberID: "pn", AccessToken: "t", Template: WhatsAppTemplateConfig{Name: "n", Language: "es", LinkButton: true}}}}, "requires server.url"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestValidate_Billing(t *testing.T) {
+	stripe := StripeBillingConfig{SecretKey: "sk_test_x", WebhookSecret: "whsec_x"}
+	odoo := OdooBillingConfig{URL: "https://odoo.example.com", Database: "prod", APIKey: "k", CompanyID: 1, SalesJournalID: 2, PaymentJournalID: 3, TaxID: 4}
+	server := ServerConfig{URL: "https://example.com"}
+	expiring := odoo
+	expiring.APIKeyExpiresAt = "2026-12-31"
+	badExpiry := odoo
+	badExpiry.APIKeyExpiresAt = "31/12/2026"
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"key expiry":       {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: expiring}}, ""},
+		"bad key expiry":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: badExpiry}}, "apiKeyExpiresAt"},
+		"disabled":         {GatewayConfig{Billing: BillingConfig{Stripe: StripeBillingConfig{}}}, ""},
+		"stripe only":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe}}, ""},
+		"with odoo":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo}}, ""},
+		"no server url":    {GatewayConfig{Billing: BillingConfig{Enabled: true, Stripe: stripe}}, "requires server.url"},
+		"no stripe keys":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true}}, "secretKey and billing.stripe.webhookSecret"},
+		"odoo incomplete":  {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://odoo.example.com", Database: "d", APIKey: "k"}}}, "companyId"},
+		"odoo bad url":     {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "odoo", Database: "d", APIKey: "k"}}}, "not a URL"},
+		"odoo no database": {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://o.example"}}}, "database"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}

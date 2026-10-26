@@ -58,6 +58,20 @@ type NotificationRepository interface {
 	// answer-link token for one notification, replacing any previous one
 	// (a re-sent email gets a fresh token; the old link stops working).
 	SetRespondToken(id, tokenHash string, expiresAt time.Time) error
+	// ListForAdmin returns the notifications matching filter, newest first,
+	// with their recipient, and how many match in total.
+	ListForAdmin(filter AdminNotificationFilter, limit, offset int) ([]AdminNotificationRow, int64, error)
+	// ListDeliveriesForNotifications returns every delivery attempt of the
+	// given notifications, newest first, keyed by notification ID.
+	ListDeliveriesForNotifications(ids []string) (map[string][]*db.NotificationDelivery, error)
+	// ListNotificationTypes returns every distinct notification type.
+	ListNotificationTypes() ([]string, error)
+	// CreateLinkToken stores the hash of a notification page link token
+	// (see db.NotificationLinkToken).
+	CreateLinkToken(token *db.NotificationLinkToken) error
+	// FindLinkToken returns the link token with tokenHash, or
+	// gorm.ErrRecordNotFound.
+	FindLinkToken(tokenHash string) (*db.NotificationLinkToken, error)
 
 	CreateDelivery(d *db.NotificationDelivery) error
 	// FindLatestDelivery returns the most recent delivery attempt for one
@@ -382,4 +396,17 @@ func (r *NotificationRepositoryDB) SetPreferredChannel(userID, channel string) e
 		return err
 	}
 	return r.db.Create(&db.NotificationPreference{UserID: userID, PreferredChannel: channel}).Error
+}
+
+func (r *NotificationRepositoryDB) CreateLinkToken(token *db.NotificationLinkToken) error {
+	return r.db.Create(token).Error
+}
+
+func (r *NotificationRepositoryDB) FindLinkToken(tokenHash string) (*db.NotificationLinkToken, error) {
+	var token db.NotificationLinkToken
+	err := r.db.Where("token_hash = ?", tokenHash).First(&token).Error
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
 }

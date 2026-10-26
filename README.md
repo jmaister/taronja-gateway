@@ -19,6 +19,7 @@ It serves as an entry point for your API server and your frontend application, h
 - [Authentication on the APIs](#authentication-on-the-apis)
 - [Getting the Current User from the Frontend](#getting-the-current-user-from-the-frontend)
 - [Login and Logout Links from a Web Page](#login-and-logout-links-from-a-web-page)
+- [Feature Flags](#feature-flags)
 
 # Features
 
@@ -41,16 +42,21 @@ Features table, shows what is implemented and what is planned.
 | Authentication: OAuth2        | ✅       | v0.0.1 |
 | - OAuth2: GitHub              | ✅       | v0.0.1 |
 | - OAuth2: Google              | ✅       | v0.0.1 |
+| - OpenID Connect: any provider (Zitadel, Keycloak, Authentik, ...) | ✅ | unreleased |
 | - OAuth2: Microsoft (Entra ID / Azure AD)¹ | 🚧 |        |
 | - OAuth2: Facebook¹           | 🚧       |        |
 | - OAuth2: Apple (Sign in with Apple)¹ | 🚧 |        |
 | Authentication: Token         | ✅       | v0.0.9 |
+| Several logins per account (account linking) | ✅ | unreleased |
+| Account page: password, sessions, recent activity | ✅ | unreleased |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
 | Response Compression (brotli/zstd/gzip/deflate) | ✅ | v1.0.0 |
 | Distributed Tracing (OpenTelemetry) | ✅ | v1.0.0 |
 | Notifications (in-app, email, Telegram) | ✅ | v1.0.0 |
+| - SMS (BulkGate) and WhatsApp (Meta Cloud API) to the user's phone | ✅ | unreleased |
+| - Admin history: every notification with its delivery status, filtered and paginated | ✅ | unreleased |
 | - Multi-recipient, per-user delivery channel, automatic retries | ✅ | v1.0.0 |
 | - Sent/failed/pending status, per notification and per batch | ✅ | v1.0.0 |
 | - Outbound webhook on user response                | ✅ | v1.0.0 |
@@ -59,7 +65,7 @@ Features table, shows what is implemented and what is planned.
 | - Avoid scanners with number of 404 limit | ✅       | v0.0.22 |
 | - Severe path with wildcard limit (e.g. /admin/*.php) | ✅       | v0.0.22 |
 | - Persistent block-event history, with a per-country attacker map | ✅ | v1.0.0 |
-| Feature Flags                 | 🚧       |        |
+| Feature Flags (on/off, no config needed) | ✅ | unreleased |
 | Circuit breaker               | 🚧       |        |
 | Caching                       | 🚧       |        |
 | Load Balancing                | ✅       | v1.0.0 |
@@ -178,7 +184,7 @@ server:
 
 management:
   session:
-    durationSeconds: 86400  # Session duration in seconds (24 hours)
+    durationSeconds: 1296000  # Inactivity before logout, in seconds (15 days, the default); renewed on use
   admin:
     enabled: true
     username: admin
@@ -243,7 +249,7 @@ Defines the gateway server settings.
 
 Controls the admin dashboard and user sessions. The gateway's own endpoints always live under `/_` (login `/_/login`, dashboard `/_/admin/`, API `/_/api/`), so avoid using `/_` in your routes.
 
-- `session.durationSeconds`: Session timeout in seconds (e.g., 86400 = 24 hours)
+- `session.durationSeconds`: How long a session survives without use, in seconds. Default: 1296000 (15 days). Sessions are sliding: each use renews them to now + this (at most once an hour) and the cookie is re-sent, so active users stay logged in
 - `admin.enabled`: Enable the admin dashboard
 - `admin.username`: Username for dashboard access
 - `admin.password`: Password for dashboard access (automatically hashed)
@@ -302,7 +308,7 @@ See [doc/routes.md](doc/routes.md) for examples and load balancing, and [doc/CAC
 
 ### Authentication Providers
 
-Basic (username/password) authentication and the Google and GitHub OAuth2 providers are configured under `authenticationProviders`. Each is independent and optional, and the login page shows a button for every enabled one.
+Basic (username/password) authentication, the Google and GitHub OAuth2 providers, and any number of OpenID Connect providers (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...) are configured under `authenticationProviders`. Each is independent and optional, and the login page shows a button for every enabled one.
 
 ```yaml
 authenticationProviders:
@@ -311,6 +317,8 @@ authenticationProviders:
 ```
 
 See [doc/authentication-providers.md](doc/authentication-providers.md) for the OAuth2 setup and callback URLs.
+
+The gateway also manages accounts for OAuth/OIDC logins: linking Google, GitHub and OIDC logins to one account, and an account page at `/_/account` where users change their password, see and sign out their sessions, and review recent activity. See [doc/accounts.md](doc/accounts.md).
 
 ### Branding
 
@@ -351,7 +359,42 @@ notification:
   telegram:
     enabled: true
     botToken: ${TELEGRAM_BOT_TOKEN}   # from @BotFather
+
+  sms:                                # to the user's phone number, via BulkGate
+    enabled: true
+    bulkgate:
+      applicationId: ${BULKGATE_APPLICATION_ID}
+      applicationToken: ${BULKGATE_APPLICATION_TOKEN}
+
+  whatsapp:                           # via Meta's Cloud API, as one approved template
+    enabled: true
+    phoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID}
+    accessToken: ${WHATSAPP_ACCESS_TOKEN}
+    template: { name: taronja_notification, language: es, linkButton: true }
 ```
+
+### Billing
+
+The gateway can sell plans and tell the apps behind it what each user or organization has paid for: Stripe Checkout and Customer Portal for payments, Odoo (JSON-2 API, Odoo 19) for the legal invoices and credit notes, and **entitlements** (features active until a date) that apps read from the `X-Entitlements` header, `GET /_/api/entitlements` or `/_/me`. Apps never handle money or webhooks. Plans are EUR only (Spain). Access lasts `grace_days` after an unpaid period and the entitlements say when a feature is in that grace (`grace`, `graceUntil`). Entitlements are cached per process for 24 hours and cleared on any billing change, so run a single gateway instance. Optional organizations let one member pay for everyone. See [doc/billing.md](doc/billing.md).
+
+```yaml
+billing:
+  enabled: true
+  stripe:
+    secretKey: ${STRIPE_SECRET_KEY}
+    webhookSecret: ${STRIPE_WEBHOOK_SECRET}   # endpoint: <server.url>/_/billing/stripe/webhook
+  odoo:                                       # optional: invoices wait until it is set
+    url: https://odoo.example.com
+    database: ${ODOO_DB}
+    apiKey: ${ODOO_API_KEY}                   # user with Billing, Contact creation, Products/Create; scope rpc
+    companyId: 1
+    salesJournalId: 1                         # with "Dedicated Credit Note Sequence"
+    paymentJournalId: 7                       # bank journal "Stripe"
+    taxId: 12                                 # IVA 21 %, included in price
+    apiKeyExpiresAt: 2026-12-31               # optional: Billing → Setup warns 30 days before
+```
+
+Plans are created in the dashboard (**Billing → Plans**); each has a pay link `/_/pay/<plan>`. **Billing → Setup** checks the Stripe and Odoo configuration.
 
 ## Environment Variables
 
@@ -397,7 +440,7 @@ chain, checking names, options and dependencies. See
 
 # Building and Releasing
 
-`make build`, `make test`, `make cover` and `make dev` cover day-to-day development. Releases are built and published with [GoReleaser](https://goreleaser.com/). See [doc/building-and-releasing.md](doc/building-and-releasing.md).
+`make build`, `make test`, `make cover` and `make dev` cover day-to-day development. `make e2e` runs the end-to-end tests against real services in Docker (see [doc/e2e.md](doc/e2e.md)). Releases are built and published with [GoReleaser](https://goreleaser.com/). See [doc/building-and-releasing.md](doc/building-and-releasing.md).
 
 
 # Authentication on the APIs
@@ -411,3 +454,13 @@ A frontend served through the gateway can fetch the current user from the gatewa
 # Login and Logout Links from a Web Page
 
 Plain links to the gateway's login and logout endpoints are enough. See [doc/backend-integration.md](doc/backend-integration.md#login-and-logout-links-from-a-web-page).
+
+# Feature Flags
+
+Feature flags need no configuration: create them in the dashboard (**Feature Flags** page) or the admin API, and flip them at runtime without redeploying. Today a flag is on or off.
+
+- **Frontends** read `GET /_/flags`, which is public (no login): `{"flags": {"new-checkout": true, "dark-mode": false}}`. With the React SDK: `const enabled = useFeatureFlag('new-checkout')`.
+- **Backends** behind proxy routes get the enabled keys in the `X-Feature-Flags` request header, sorted and comma-separated (`dark-mode,new-checkout`). The gateway drops any copy of this header the client sent.
+- **Admins** manage flags with `GET/POST /_/api/feature-flags` and `GET/PATCH/DELETE /_/api/feature-flags/{key}`.
+
+Keys are 1-100 lowercase letters, digits, `-`, `_` or `.`. Since `/_/flags` is public, do not put secrets in flag keys.

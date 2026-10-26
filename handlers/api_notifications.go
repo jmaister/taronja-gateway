@@ -460,6 +460,32 @@ func (s *StrictApiServer) GetUserNotificationPreference(ctx context.Context, req
 	return api.GetUserNotificationPreference200JSONResponse{PreferredChannel: emptyToNil(channel)}, nil
 }
 
+// SetUserNotificationPreference handles the admin PUT
+// /api/users/{userId}/notifications/preferences, for users who never log in
+// to set it themselves.
+func (s *StrictApiServer) SetUserNotificationPreference(ctx context.Context, request api.SetUserNotificationPreferenceRequestObject) (api.SetUserNotificationPreferenceResponseObject, error) {
+	if _, ok := requireAdminSession(ctx); !ok {
+		return api.SetUserNotificationPreference401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized: Admin access required"}, nil
+	}
+	if _, err := s.userRepo.FindUserByIdOrUsername(request.UserId, "", ""); err != nil {
+		return api.SetUserNotificationPreference404JSONResponse{Code: http.StatusNotFound, Message: "User not found"}, nil
+	}
+	var channel string
+	if request.Body != nil && request.Body.PreferredChannel != nil {
+		channel = *request.Body.PreferredChannel
+	}
+	if channel != "" && !notification.IsDeliveryChannel(channel) {
+		return api.SetUserNotificationPreference400JSONResponse{Code: http.StatusBadRequest, Message: fmt.Sprintf("unknown channel %q: use one of %v", channel, notification.DeliveryChannels)}, nil
+	}
+	if s.notificationService == nil {
+		return nil, fmt.Errorf("notification service not configured")
+	}
+	if err := s.notificationService.SetPreferredChannel(request.UserId, channel); err != nil {
+		return nil, err
+	}
+	return api.SetUserNotificationPreference200JSONResponse{PreferredChannel: emptyToNil(channel)}, nil
+}
+
 // toAPIDelivery converts one stored db.NotificationDelivery into the
 // OpenAPI-generated shape. ExternalRef is deliberately not exposed — it's
 // internal delivery plumbing (e.g. a Telegram "chatID:messageID" pair),

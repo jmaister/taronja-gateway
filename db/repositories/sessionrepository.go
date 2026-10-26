@@ -15,6 +15,15 @@ type SessionRepository interface {
 	UpdateSession(session *db.Session) error
 	GetSessionsByUserID(userID string) ([]db.Session, error)
 	CloseSession(token string) error
+	// ListActiveSessionsByUserID returns userID's open, unexpired sessions,
+	// most recently active first.
+	ListActiveSessionsByUserID(userID string, now time.Time) ([]db.Session, error)
+	// CloseSessionByHash closes one of userID's sessions by its token hash; it
+	// returns gorm.ErrRecordNotFound if no open session of userID matches.
+	CloseSessionByHash(userID, tokenHash string) error
+	// CloseOtherSessions closes every open session of userID except the one
+	// with keepTokenHash (pass "" to close them all) and returns how many.
+	CloseOtherSessions(userID, keepTokenHash string) (int64, error)
 }
 
 // SessionStoreDB implements the SessionRepository interface using a database.
@@ -131,4 +140,34 @@ func (s *SessionStoreDB) CloseSession(token string) error {
 		return errors.New("session already closed or not found")
 	}
 	return nil
+}
+
+func (s *SessionStoreDB) ListActiveSessionsByUserID(userID string, now time.Time) ([]db.Session, error) {
+	var sessions []db.Session
+	err := s.dbConn.Where("user_id = ? AND closed_on IS NULL AND valid_until > ?", userID, now.UTC()).
+		Order("last_activity DESC").Find(&sessions).Error
+	if err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
+func (s *SessionStoreDB) CloseSessionByHash(userID, tokenHash string) error {
+	result := s.dbConn.Model(&db.Session{}).
+		Where("user_id = ? AND token_hash = ? AND closed_on IS NULL", userID, tokenHash).
+		Update("closed_on", time.Now().UTC())
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *SessionStoreDB) CloseOtherSessions(userID, keepTokenHash string) (int64, error) {
+	result := s.dbConn.Model(&db.Session{}).
+		Where("user_id = ? AND token_hash != ? AND closed_on IS NULL", userID, keepTokenHash).
+		Update("closed_on", time.Now().UTC())
+	return result.RowsAffected, result.Error
 }

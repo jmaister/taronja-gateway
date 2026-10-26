@@ -342,6 +342,10 @@ const (
 	NotificationChannelWeb      = "web" // not an external delivery — used for RespondedVia when the user answered from the in-app list, not a link/button
 	NotificationChannelEmail    = "email"
 	NotificationChannelTelegram = "telegram"
+	// NotificationChannelSMS and NotificationChannelWhatsApp both deliver to
+	// the user's phone number (UserPhone).
+	NotificationChannelSMS      = "sms"
+	NotificationChannelWhatsApp = "whatsapp"
 	// NotificationChannelResponseWebhook is a NotificationDelivery.Channel
 	// value only — it never appears as a Notification.RespondedVia (the
 	// webhook doesn't answer a notification, it reports that one was
@@ -532,6 +536,117 @@ type NotificationPreference struct {
 	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
 }
 
+// UserIdentity links a user to one external login (provider + the provider's
+// stable user ID). A user can have several, so one account can sign in with
+// Google and GitHub.
+type UserIdentity struct {
+	ID          string    `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID      string    `gorm:"type:varchar(255);not null;index"`
+	Provider    string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_user_identities_provider_subject"`
+	Subject     string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_user_identities_provider_subject"`
+	Email       string    `gorm:"type:varchar(255)"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	LastLoginAt *time.Time
+}
+
+// BeforeCreate sets a CUID ID.
+func (u *UserIdentity) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	u.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes LastLoginAt to UTC.
+func (u *UserIdentity) BeforeSave(tx *gorm.DB) error {
+	if u.LastLoginAt != nil {
+		lastLogin := u.LastLoginAt.UTC()
+		u.LastLoginAt = &lastLogin
+	}
+	return nil
+}
+
+// AuthEvent types: the security activity shown on a user's account page.
+const (
+	AuthEventLogin            = "login"
+	AuthEventLoginFailed      = "login_failed"
+	AuthEventSignup           = "signup"
+	AuthEventPasswordChanged  = "password_changed"
+	AuthEventIdentityLinked   = "identity_linked"
+	AuthEventIdentityUnlinked = "identity_unlinked"
+	AuthEventSessionRevoked   = "session_revoked"
+)
+
+// AuthEvent is one entry in a user's security activity log.
+type AuthEvent struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement"`
+	UserID    string    `gorm:"type:varchar(255);not null;index"`
+	Type      string    `gorm:"type:varchar(50);not null"`
+	Provider  string    `gorm:"type:varchar(50)"`
+	IPAddress string    `gorm:"type:varchar(45)"`
+	UserAgent string    `gorm:"type:text"`
+	CreatedAt time.Time `gorm:"autoCreateTime;index"`
+}
+
+// UserPhone is a user's phone number, in E.164 format ("+34600123456"). It is
+// the address of every phone-based notification channel (SMS, WhatsApp). It
+// lives in its own table rather than a users column: new databases get users
+// from the Go models before the SQL migrations run, so a later ALTER TABLE
+// ADD COLUMN would fail on them.
+type UserPhone struct {
+	UserID string `gorm:"primaryKey;column:user_id;type:varchar(255);not null"`
+	Phone  string `gorm:"type:varchar(20);not null;index"`
+	// VerifiedAt is when the user proved they own the number. Nil for a
+	// number entered by an admin, which is still used for delivery.
+	VerifiedAt *time.Time
+	UpdatedAt  time.Time `gorm:"autoUpdateTime"`
+}
+
+// BeforeSave normalizes VerifiedAt to UTC.
+func (p *UserPhone) BeforeSave(tx *gorm.DB) error {
+	if p.VerifiedAt != nil {
+		verifiedAt := p.VerifiedAt.UTC()
+		p.VerifiedAt = &verifiedAt
+	}
+	return nil
+}
+
+// NotificationLinkToken is the hashed token of a short link to one
+// notification's page (/_/n/<token>), sent on channels with no room for one
+// link per action (SMS, WhatsApp). One per notification and channel attempt,
+// separate from Notification.RespondTokenHash, which the email links use.
+type NotificationLinkToken struct {
+	TokenHash      string    `gorm:"primaryKey;column:token_hash;type:varchar(64);not null"`
+	NotificationID string    `gorm:"type:varchar(255);not null;index"`
+	Channel        string    `gorm:"type:varchar(50);not null"`
+	ExpiresAt      time.Time `gorm:"not null"`
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+}
+
+// BeforeSave normalizes ExpiresAt to UTC.
+func (t *NotificationLinkToken) BeforeSave(tx *gorm.DB) error {
+	t.ExpiresAt = t.ExpiresAt.UTC()
+	return nil
+}
+
+// FeatureFlagTypeBoolean is the only FeatureFlag.Type today: the flag is on or
+// off. Typed values (integer, float, date, ...) are meant to become new type
+// constants plus a value column, without changing how existing flags behave.
+const FeatureFlagTypeBoolean = "boolean"
+
+// FeatureFlag is a named switch an admin flips at runtime, read by frontends
+// through the API and by backends through the X-Feature-Flags header.
+type FeatureFlag struct {
+	Key         string    `gorm:"primaryKey;column:key;type:varchar(100);not null"`
+	Description string    `gorm:"type:text"`
+	Type        string    `gorm:"type:varchar(20);not null;default:boolean"`
+	Enabled     bool      `gorm:"not null;default:false"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
 // Models lists every model, for AutoMigrate in the legacy migration bridge and
 // in tests that build a schema by hand.
 var Models = []interface{}{
@@ -546,4 +661,9 @@ var Models = []interface{}{
 	&NotificationChannelLink{},
 	&NotificationLinkCode{},
 	&NotificationPreference{},
+	&FeatureFlag{},
+	&UserIdentity{},
+	&AuthEvent{},
+	&UserPhone{},
+	&NotificationLinkToken{},
 }

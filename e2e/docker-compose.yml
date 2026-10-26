@@ -1,0 +1,128 @@
+# Services the end-to-end tests run against. Started by `make e2e`, or by hand:
+#   docker compose -f e2e/docker-compose.yml up -d --wait
+# Host ports are fixed so the tests (and a browser) can find them; override
+# with the variables below if they clash with something local.
+name: taronja-e2e
+
+services:
+  # Catches every email the gateway sends. Web UI: http://localhost:18025
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "${E2E_MAILPIT_SMTP_PORT:-11025}:1025"
+      - "${E2E_MAILPIT_HTTP_PORT:-18025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # OpenID Connect provider for the generic OIDC login. Console:
+  # http://localhost:18180/ui/console (log in with the e2e test users).
+  zitadel-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.19.5
+    # Runs as the host user so the tests can read the tokens it writes to
+    # e2e/.zitadel (make e2e-up sets these).
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    command: start-from-init --masterkeyFromEnv --tlsMode disabled
+    environment:
+      ZITADEL_MASTERKEY: E2eMasterkeyNeedsToHave32Chars!!
+      ZITADEL_TLS_ENABLED: "false"
+      # The default bcrypt cost (14) makes each password hash or check take
+      # seconds; test passwords do not need it.
+      ZITADEL_SYSTEMDEFAULTS_PASSWORDHASHER_HASHER_COST: 4
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      # The issuer is http://localhost:<port>, so the port must match the
+      # published one.
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: ${E2E_ZITADEL_PORT:-18180}
+      ZITADEL_EXTERNALSECURE: "false"
+      # A service account for the test setup (projects, apps, users) ...
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: e2e-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: e2e-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /keys/admin.pat
+      # ... and one allowed to act as the login UI, so the tests can sign a
+      # user in through the session API instead of a browser.
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: login-client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /keys/login-client.pat
+      # Authorize redirects to this (never started) login UI with the auth
+      # request ID, which the tests complete through the API.
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: http://localhost:13000/ui/v2/login
+    ports:
+      - "${E2E_ZITADEL_PORT:-18180}:8080"
+    volumes:
+      - ./.zitadel:/keys
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+    depends_on:
+      zitadel-db:
+        condition: service_healthy
+
+  # Stripe's own API mock: validates every request against Stripe's OpenAPI
+  # and answers with fixture objects (it keeps no state).
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - "${E2E_STRIPE_MOCK_PORT:-12111}:12111"
+
+  # Odoo for invoices (JSON-2 API). e2e/odoo/init.sh creates the database,
+  # the Spanish company, journals, tax and the API user, and writes their ids
+  # to e2e/.odoo/env.
+  odoo-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  odoo:
+    image: odoo:19.0
+    environment:
+      HOST: odoo-db
+      USER: odoo
+      PASSWORD: odoo
+    ports:
+      - "${E2E_ODOO_PORT:-18169}:8069"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+    depends_on:
+      odoo-db:
+        condition: service_healthy

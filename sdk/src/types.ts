@@ -193,3 +193,7 @@ export interface LogoutResult {
     status: number;
     url: string;
 }
+
+export interface FeatureFlagValues {
+    flags: Record<string, boolean>;
+}

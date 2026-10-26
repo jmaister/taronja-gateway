@@ -14,7 +14,7 @@ server:
 
 management:
   session:
-    durationSeconds: 86400 # 24 hours
+    durationSeconds: 1296000 # 15 days without use; renewed on every use
   admin:
     enabled: true
     username: admin

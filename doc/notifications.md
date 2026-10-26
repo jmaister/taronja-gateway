@@ -91,7 +91,8 @@ it from wherever they saw it.
 
 ## Enabling it
 
-Both channels are independent and optional; a gateway with neither
+Every channel is independent and optional (SMS and WhatsApp are
+configured as described in [SMS and WhatsApp](#sms-and-whatsapp)); a gateway with neither
 configured still has a fully working in-app notification system.
 
 ```yaml
@@ -194,6 +195,130 @@ chat is linked to the *same user* the notification was sent to — not just
 "some linked user" — otherwise anyone who discovered a notification ID
 could answer someone else's notification.
 
+## SMS and WhatsApp
+
+Both deliver to the user's **phone number**, which an admin sets through
+the users API in E.164 format (`"+34600123456"`; spaces and dashes are
+stripped, anything else is a 400):
+
+```
+POST  /api/users              {"username": "...", "email": "...", "phone": "+34600123456"}   # password is optional
+PATCH /api/users/{userId}     {"phone": "+34600123456"}     # "" removes it
+```
+
+`GET /api/users[/{id}]` returns `phone` and `phoneVerified` (false for a
+number an admin entered; such numbers are still used). Users without a
+number get a `skipped` delivery on these channels, and
+`GET /api/users/{id}/notifications/channels/status` reports them
+`not_connected`.
+
+Sending is the same as for every other channel: `POST /api/notifications`
+with `"channels": ["sms"]` or `["whatsapp"]`, or no channels and the user's
+preference (an admin can set it for users who never log in, see below).
+
+### Notification page links
+
+SMS and WhatsApp have no room for one link per action, so they carry one
+short link to the notification's page, `<server.url>/_/n/<token>`. The
+page shows the body, the notification's URL and a button per action; the
+answer is recorded when a button is pressed (a POST), so link scanners that
+open the link cannot answer. Answers count as given on that channel
+(`respondedVia: "sms"`), first answer wins as everywhere else, and links
+expire after 7 days like the email links. Without `server.url` no link is
+sent.
+
+### SMS (BulkGate)
+
+```yaml
+notification:
+  sms:
+    enabled: true
+    backend: bulkgate               # the only backend today
+    bulkgate:
+      applicationId: ${BULKGATE_APPLICATION_ID}
+      applicationToken: ${BULKGATE_APPLICATION_TOKEN}
+      senderId: gText               # alphanumeric sender...
+      senderIdValue: Academia       # ...shown as "Academia"
+    maxSegments: 2                  # default 2, at most 4
+    maxPerMinute: 60                # default 60
+```
+
+Create the application in BulkGate under *Modules & APIs → API
+administration*. `senderId` is BulkGate's sender type (`gSystem` by
+default; `gText` for an alphanumeric name, `gOwn` for your number, ...);
+which ones a country allows is up to BulkGate and the carriers.
+
+The message is the title, the body and the page link (when the notification
+has actions or a URL), each on its own line. Length decides the cost:
+
+- A single SMS holds 160 GSM-7 characters, or 153 per segment once split.
+  **One character outside GSM-7 switches the whole message to Unicode**:
+  70 characters, 67 per segment. Spanish á, í, ó and ú are outside it; ñ,
+  é and ü are in it.
+- The body (then the title) is shortened with "..." (or "…" in Unicode) to
+  fit `maxSegments`; the link is never cut.
+
+### WhatsApp (Meta Cloud API)
+
+Meta only lets a business start a conversation with an **approved message
+template**: free-form text is rejected unless the user wrote to you in the
+last 24 hours (error 131047). So every notification is sent as one
+template, the same for every notification:
+
+```yaml
+notification:
+  whatsapp:
+    enabled: true
+    phoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID}   # the number's ID in WhatsApp Manager
+    accessToken: ${WHATSAPP_ACCESS_TOKEN}        # system user token with whatsapp_business_messaging
+    template:
+      name: taronja_notification
+      language: es                               # as approved
+      linkButton: true                           # the template has the URL button below
+    # apiVersion: v23.0                           # default
+    maxPerMinute: 60
+```
+
+Create the template in WhatsApp Manager → *Message templates*:
+
+- **Category:** Utility (school notices, reminders). Marketing templates
+  cost more and need opt-in.
+- **Language:** the one in `template.language`.
+- **Body:** text with exactly two variables, `{{1}}` for the title and
+  `{{2}}` for the body. Meta rejects a body that starts or ends with a
+  variable or has little fixed text around them, so wrap them, e.g.
+  `New notice: *{{1}}*` / `{{2}}` / `Reply from the link below.` on three
+  lines (in the template's language).
+  The gateway puts newlines, tabs and runs of spaces in them on one line,
+  because Meta rejects those in variables (error 132018), and limits them
+  to 200 and 700 characters.
+- **Button (with `linkButton: true`):** a *Visit website* button with a
+  dynamic URL `https://<your server.url>/_/n/{{1}}`, e.g. labelled "Open".
+  The gateway fills `{{1}}` with the page token on every message, so the
+  user can open the notification and answer its actions.
+
+A different template shape is possible with `template.bodyVariables`: `1`
+puts "title: body" in a single `{{1}}`, `0` sends a fixed-text template
+(e.g. "You have a new notice", usually with the link button) without the
+notification's text.
+
+Wait for approval before enabling it; until then Meta rejects the
+messages (error 132001), and they are not retried.
+
+### Cost and errors
+
+Both channels cost money per message, so:
+
+- `maxPerMinute` caps messages for the whole gateway; one over the cap
+  fails with "rate limit" and the retry worker sends it in a later minute.
+- Errors that retrying cannot fix are **not retried**: an invalid number,
+  bad credentials, a number without WhatsApp, a template that does not
+  match. They are recorded as `failed` with "(not retried)". Network
+  errors, provider outages, throttling and (BulkGate) low credit are
+  retried on the usual schedule.
+- `sent` means the provider accepted the message (its ID is stored), not
+  that it reached the phone.
+
 ## Per-user channel preference
 
 A user sets which single channel they'd rather be notified on:
@@ -202,6 +327,10 @@ A user sets which single channel they'd rather be notified on:
 PUT /api/notifications/preferences
 {"preferredChannel": "telegram"}
 ```
+
+An admin sets it for another user, e.g. a contact who never logs in, with
+`PUT /api/users/{userId}/notifications/preferences` and the same body. That
+endpoint only accepts `email`, `telegram`, `sms`, `whatsapp` or empty.
 
 From then on, any `POST /api/notifications` call that notifies this user
 **without naming explicit `channels`** uses only their preferred channel,
@@ -283,6 +412,37 @@ Telegram, for free: a failed webhook call shows up in
 `GET /api/notifications/{id}/deliveries` with `channel: "response_webhook"`
 and retries on the same schedule as any other channel (see "Retries"
 below) — there's no separate, weaker reliability story for this one.
+
+## Admin history
+
+`GET /api/admin/notifications` (admin only) lists every user's
+notifications, newest first, with the recipient (`username`, `email`), the
+latest status per channel (`channels`) and an overall `status`. It is the
+dashboard's **Notifications** page, where a row opens its delivery attempts
+and errors (`GET /api/notifications/{id}/deliveries`).
+
+| Filter | Matches |
+|---|---|
+| `start_date`, `end_date` | Created in the range (ISO 8601, inclusive) |
+| `type` | The notification type, exactly (`GET /api/admin/notifications/types` lists them) |
+| `user_id` / `user` | The recipient's ID, or part of their username or email |
+| `batch_id` | One `POST /api/notifications` call |
+| `channel` | Attempted on this channel |
+| `status` | `sent`, `pending`, `failed`, `skipped` or `none`; per `channel` if given |
+| `responded`, `read` | Answered / read or not |
+| `q` | Part of the title or body |
+
+`page` (from 1) and `limit` (1-200, default 50) paginate; the response has
+the `total` matching the filters.
+
+Without `channel`, `status` is the overall one: `pending` if any channel
+is in flight or has a retry scheduled, else `failed` if any channel failed
+for good, else `sent` if any was sent, else `skipped` (no channel could
+deliver), and `none` for in-app only notifications. The response webhook
+is not counted. With `channel`, it is that channel's latest attempt (and
+`none` means it was never attempted there). For example
+`?channel=sms&status=failed&start_date=2026-10-01T00:00:00Z` finds the SMS
+that never arrived this month, and opening one shows the provider's error.
 
 ## Status
 
@@ -428,3 +588,16 @@ go test ./handlers/... -run Notification -v
 - [README.md#authentication-providers](../README.md#authentication-providers) —
   the OAuth2 provider architecture this feature's `Provider`
   interface/registry design mirrors.
+
+## Notifications the gateway sends itself
+
+Billing ([billing.md](billing.md)) notifies the payer of a subscription and
+the owners of the organization it is for, through every channel they
+prefer, with these types (the URL opens the account page):
+
+| Type | When |
+|---|---|
+| `billing.payment_failed` | The first failed charge of a period; the body says until when the features stay active. |
+| `billing.trial_ending` | 3 days before a trial ends (unless it is set to cancel). |
+| `billing.canceled` | The subscription was canceled (portal, admin or Stripe). |
+| `billing.expired` | The grace period after a failed renewal ran out. |

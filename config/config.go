@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -90,15 +92,72 @@ type AuthProviderCredentials struct {
 
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
+	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false.
 }
 
 // AuthenticationProviders defines the available authentication methods.
 // At least one should be enabled if any route requires authentication.
 type AuthenticationProviders struct {
-	Basic  BasicAuthenticationConfig `yaml:"basic"`  // Basic username/password authentication
-	Google AuthProviderCredentials   `yaml:"google"` // Google OAuth2 authentication. Optional.
-	Github AuthProviderCredentials   `yaml:"github"` // GitHub OAuth2 authentication. Optional.
+	Basic  BasicAuthenticationConfig `yaml:"basic"`          // Basic username/password authentication
+	Google AuthProviderCredentials   `yaml:"google"`         // Google OAuth2 authentication. Optional.
+	Github AuthProviderCredentials   `yaml:"github"`         // GitHub OAuth2 authentication. Optional.
+	OIDC   []OIDCProviderConfig      `yaml:"oidc,omitempty"` // Any OpenID Connect provider (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...). Optional; one entry per provider.
+}
+
+// OIDCProviderConfig is one OpenID Connect identity provider. Its endpoints
+// are read from <issuer>/.well-known/openid-configuration, so only the issuer
+// and the client credentials are needed. PKCE is always used.
+type OIDCProviderConfig struct {
+	Name         string   `yaml:"name"`             // Short ID used in the URLs (/_/auth/<name>/login and /_/auth/<name>/callback). Lowercase letters, digits and '-'. Required.
+	Label        string   `yaml:"label"`            // Shown on the login button ("Login with <label>"). Default: the name.
+	Issuer       string   `yaml:"issuer"`           // Issuer URL, e.g. "https://auth.example.com". Required.
+	ClientId     string   `yaml:"clientId"`         // Client ID registered at the provider. Can use environment variables. Required.
+	ClientSecret string   `yaml:"clientSecret"`     // Client secret. Can use environment variables. Optional: leave it empty for a public (PKCE-only) client.
+	Scopes       []string `yaml:"scopes,omitempty"` // Scopes to request. Default: openid, email, profile.
+	// TrustEmail treats every email this provider returns as verified, for
+	// providers that do not send the email_verified claim. Only enable it for
+	// a provider you control: it lets the provider's users claim any address.
+	// Default: false.
+	TrustEmail bool `yaml:"trustEmail"`
+}
+
+// DisplayLabel returns the login button label.
+func (o OIDCProviderConfig) DisplayLabel() string {
+	if o.Label != "" {
+		return o.Label
+	}
+	return o.Name
+}
+
+// oidcNamePattern keeps names safe as a URL segment.
+var oidcNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}$`)
+
+// reservedProviderNames are taken by the built-in login methods.
+var reservedProviderNames = map[string]bool{"basic": true, "google": true, "github": true}
+
+func validateOIDCProviders(providers []OIDCProviderConfig) error {
+	seen := map[string]bool{}
+	for i, p := range providers {
+		where := fmt.Sprintf("authenticationProviders.oidc[%d]", i)
+		if !oidcNamePattern.MatchString(p.Name) {
+			return fmt.Errorf("%s.name %q must be 1-30 lowercase letters, digits or '-'", where, p.Name)
+		}
+		if reservedProviderNames[p.Name] {
+			return fmt.Errorf("%s.name %q is reserved for a built-in login method", where, p.Name)
+		}
+		if seen[p.Name] {
+			return fmt.Errorf("%s.name %q is used twice", where, p.Name)
+		}
+		seen[p.Name] = true
+		issuer, err := url.Parse(p.Issuer)
+		if err != nil || (issuer.Scheme != "https" && issuer.Scheme != "http") || issuer.Host == "" {
+			return fmt.Errorf("%s.issuer must be an http(s) URL, got %q", where, p.Issuer)
+		}
+		if p.ClientId == "" {
+			return fmt.Errorf("%s.clientId is required", where)
+		}
+	}
+	return nil
 }
 
 // PrintOAuthCallbackURLs prints the OAuth callback URLs for configured providers.
@@ -112,6 +171,10 @@ func (a *AuthenticationProviders) PrintOAuthCallbackURLs(serverURL, managementPr
 		githubCallback := fmt.Sprintf("%s%s/auth/github/callback", serverURL, managementPrefix)
 		fmt.Println("[OAUTH] GitHub callback URL:")
 		fmt.Println("   ", githubCallback)
+	}
+	for _, p := range a.OIDC {
+		fmt.Printf("[OAUTH] %s (OIDC) callback URL:\n", p.DisplayLabel())
+		fmt.Println("   ", fmt.Sprintf("%s%s/auth/%s/callback", serverURL, managementPrefix, p.Name))
 	}
 }
 
@@ -127,6 +190,137 @@ type NotificationConfig struct {
 	Email           EmailNotificationConfig    `yaml:"email"`           // Email delivery via SMTP. Optional; disabled by default.
 	Telegram        TelegramNotificationConfig `yaml:"telegram"`        // Telegram delivery via a bot. Optional; disabled by default.
 	ResponseWebhook ResponseWebhookConfig      `yaml:"responseWebhook"` // Outbound callback fired when a user responds to a notification. Optional; disabled by default.
+	SMS             SMSNotificationConfig      `yaml:"sms"`             // SMS delivery to the user's phone number. Optional; disabled by default.
+	WhatsApp        WhatsAppNotificationConfig `yaml:"whatsapp"`        // WhatsApp delivery to the user's phone number, through Meta's Cloud API. Optional; disabled by default.
+}
+
+// SMSBackendBulkGate is the only SMS backend today.
+const SMSBackendBulkGate = "bulkgate"
+
+// Default and maximum SMS sizes, in segments (160 GSM-7 or 70 Unicode
+// characters each, fewer per segment once a message has several).
+const (
+	DefaultSMSMaxSegments = 2
+	MaxSMSMaxSegments     = 4
+	// DefaultMaxMessagesPerMinute caps paid channels (SMS, WhatsApp) across the
+	// whole gateway; messages over it wait for the retry worker.
+	DefaultMaxMessagesPerMinute = 60
+)
+
+// SMSNotificationConfig sends notifications by SMS to each user's phone number
+// (set through the users API). Messages are "title: body", shortened to fit
+// maxSegments, plus a short link to the notification page when it has actions
+// or a URL. Every SMS costs money: maxSegments and maxPerMinute bound the bill.
+type SMSNotificationConfig struct {
+	Enabled      bool           `yaml:"enabled"`      // Enable SMS delivery. Default: false.
+	Backend      string         `yaml:"backend"`      // SMS provider. Only "bulkgate" today. Default: "bulkgate".
+	BulkGate     BulkGateConfig `yaml:"bulkgate"`     // BulkGate settings. Required with backend bulkgate.
+	MaxSegments  int            `yaml:"maxSegments"`  // Longest message, in SMS segments (1-4). Longer bodies are shortened. Default: 2.
+	MaxPerMinute int            `yaml:"maxPerMinute"` // Most SMS sent per minute by the whole gateway; the rest wait for a retry. Default: 60.
+}
+
+// BulkGateConfig is a BulkGate "Transactional SMS" API application
+// (portal.bulkgate.com → Modules & APIs → API administration).
+type BulkGateConfig struct {
+	ApplicationID    string `yaml:"applicationId"`    // Application ID. Can use environment variables. Required.
+	ApplicationToken string `yaml:"applicationToken"` // Application token. Can use environment variables. Required.
+	// SenderID picks the sender BulkGate shows: gSystem (system number,
+	// default), gShort, gText (alphanumeric, set senderIdValue), gMobile,
+	// gOwn (your number, set senderIdValue), gProfile (set senderIdValue to
+	// the profile ID). See BulkGate's docs for what each country allows.
+	SenderID      string `yaml:"senderId"`
+	SenderIDValue string `yaml:"senderIdValue"`    // Value for senderId gText/gOwn/gProfile, e.g. "Academia".
+	APIURL        string `yaml:"apiUrl,omitempty"` // Default: https://portal.bulkgate.com/api/1.0/simple/transactional. For tests or a proxy.
+}
+
+// IsConfigured reports whether SMS delivery can actually send.
+func (c SMSNotificationConfig) IsConfigured() bool {
+	return c.Enabled && c.BulkGate.ApplicationID != "" && c.BulkGate.ApplicationToken != ""
+}
+
+func (c SMSNotificationConfig) validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.Backend != "" && c.Backend != SMSBackendBulkGate {
+		return fmt.Errorf("notification.sms.backend %q is not supported (only %q)", c.Backend, SMSBackendBulkGate)
+	}
+	if c.BulkGate.ApplicationID == "" || c.BulkGate.ApplicationToken == "" {
+		return fmt.Errorf("notification.sms is enabled but bulkgate.applicationId and/or bulkgate.applicationToken is not set")
+	}
+	if c.MaxSegments < 0 || c.MaxSegments > MaxSMSMaxSegments {
+		return fmt.Errorf("notification.sms.maxSegments must be between 1 and %d", MaxSMSMaxSegments)
+	}
+	if c.MaxPerMinute < 0 {
+		return fmt.Errorf("notification.sms.maxPerMinute cannot be negative")
+	}
+	return nil
+}
+
+// WhatsAppNotificationConfig sends notifications over WhatsApp through Meta's
+// Cloud API. Meta only lets a business message someone first with an
+// approved message template, so every notification is sent as the one
+// template configured here: create it in WhatsApp Manager (see
+// doc/notifications.md for its exact shape) and wait for approval.
+type WhatsAppNotificationConfig struct {
+	Enabled       bool                   `yaml:"enabled"`              // Enable WhatsApp delivery. Default: false.
+	PhoneNumberID string                 `yaml:"phoneNumberId"`        // The sending number's ID in WhatsApp Manager (not the number itself). Required.
+	AccessToken   string                 `yaml:"accessToken"`          // A system user access token with whatsapp_business_messaging. Can use environment variables. Required.
+	Template      WhatsAppTemplateConfig `yaml:"template"`             // The approved template every notification is sent as. Required.
+	APIVersion    string                 `yaml:"apiVersion,omitempty"` // Graph API version. Default: "v23.0".
+	APIURL        string                 `yaml:"apiUrl,omitempty"`     // Default: https://graph.facebook.com. For tests or a proxy.
+	MaxPerMinute  int                    `yaml:"maxPerMinute"`         // Most messages sent per minute by the whole gateway; the rest wait for a retry. Default: 60.
+}
+
+// WhatsAppTemplateConfig names the approved template. By default its body has
+// two variables: {{1}} gets the notification title and {{2}} its body.
+type WhatsAppTemplateConfig struct {
+	Name     string `yaml:"name"`     // Template name, e.g. "taronja_notification". Required.
+	Language string `yaml:"language"` // Template language code as approved, e.g. "es" or "en_US". Required.
+	// BodyVariables is how many variables the template body has: 2 (default:
+	// title, body), 1 ("title: body" in one) or 0 (fixed text, e.g. "You have
+	// a new notice", usually with linkButton).
+	BodyVariables *int `yaml:"bodyVariables,omitempty"`
+	// LinkButton says the template has a URL button whose URL ends in a
+	// variable (https://<server.url>/_/n/{{1}}); the gateway fills it with
+	// the notification page token, where the user sees the notification and
+	// answers its actions. Requires server.url. Default: false.
+	LinkButton bool `yaml:"linkButton"`
+}
+
+// BodyVariableCount returns BodyVariables, or 2 when it is not set.
+func (t WhatsAppTemplateConfig) BodyVariableCount() int {
+	if t.BodyVariables == nil {
+		return 2
+	}
+	return *t.BodyVariables
+}
+
+// IsConfigured reports whether WhatsApp delivery can actually send.
+func (c WhatsAppNotificationConfig) IsConfigured() bool {
+	return c.Enabled && c.PhoneNumberID != "" && c.AccessToken != "" && c.Template.Name != "" && c.Template.Language != ""
+}
+
+func (c WhatsAppNotificationConfig) validate(serverURL string) error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.PhoneNumberID == "" || c.AccessToken == "" {
+		return fmt.Errorf("notification.whatsapp is enabled but phoneNumberId and/or accessToken is not set")
+	}
+	if c.Template.Name == "" || c.Template.Language == "" {
+		return fmt.Errorf("notification.whatsapp is enabled but template.name and/or template.language is not set (WhatsApp only delivers approved templates)")
+	}
+	if v := c.Template.BodyVariables; v != nil && (*v < 0 || *v > 2) {
+		return fmt.Errorf("notification.whatsapp.template.bodyVariables must be 0, 1 or 2")
+	}
+	if c.Template.LinkButton && serverURL == "" {
+		return fmt.Errorf("notification.whatsapp.template.linkButton requires server.url, to build the notification page link")
+	}
+	if c.MaxPerMinute < 0 {
+		return fmt.Errorf("notification.whatsapp.maxPerMinute cannot be negative")
+	}
+	return nil
 }
 
 // EmailNotificationConfig configures the SMTP relay notifications with
@@ -197,8 +391,12 @@ type AdminConfig struct {
 
 // SessionConfig defines session lifetime for authenticated users.
 type SessionConfig struct {
-	DurationSeconds int `yaml:"durationSeconds"` // Session lifetime in seconds. Default: 86400 (24 hours). After this time, users must log in again.
+	DurationSeconds int `yaml:"durationSeconds"` // How long a session lasts without use, in seconds. Each use renews it to now + this (at most once an hour), so only this much inactivity logs the user out. Default: 1296000 (15 days).
 }
+
+// DefaultSessionDurationSeconds is the session lifetime when the config sets
+// none: 15 days.
+const DefaultSessionDurationSeconds = 15 * 24 * 60 * 60
 
 func (s *SessionConfig) GetDuration() time.Duration {
 	return time.Duration(s.DurationSeconds) * time.Second
@@ -231,6 +429,71 @@ type GatewayConfig struct {
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
 	Middleware              []MiddlewareConfig      `yaml:"middleware,omitempty"`    // Global middleware, run in list order. Optional; none when absent. See doc/middleware/.
+	Billing                 BillingConfig           `yaml:"billing,omitempty"`       // Payments, invoices and entitlements. Optional; disabled by default. See doc/billing.md.
+}
+
+// BillingConfig turns on payments (Stripe), invoices (Odoo) and entitlements:
+// plans sold at /_/pay/<plan> grant features that apps read from the
+// X-Entitlements header or GET /_/api/entitlements. See doc/billing.md.
+type BillingConfig struct {
+	Enabled bool                `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
+	Stripe  StripeBillingConfig `yaml:"stripe"`  // Stripe account. Required when enabled.
+	Odoo    OdooBillingConfig   `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
+}
+
+// StripeBillingConfig is the Stripe account payments go to.
+type StripeBillingConfig struct {
+	SecretKey     string `yaml:"secretKey"`        // Secret API key (sk_test_... or sk_live_...). Can use environment variables. Required.
+	WebhookSecret string `yaml:"webhookSecret"`    // Signing secret of the webhook endpoint <server.url>/_/billing/stripe/webhook (whsec_...). Can use environment variables. Required.
+	APIURL        string `yaml:"apiUrl,omitempty"` // Stripe API base URL. Default: https://api.stripe.com. For tests only.
+}
+
+// OdooBillingConfig is where invoices and credit notes are issued, through
+// Odoo's JSON-2 API (Odoo 19).
+type OdooBillingConfig struct {
+	URL              string `yaml:"url"`              // Odoo base URL, e.g. "https://odoo.example.com". Empty: Odoo is not configured and invoices stay pending.
+	Database         string `yaml:"database"`         // Odoo database name, sent as X-Odoo-Database. Required with url.
+	APIKey           string `yaml:"apiKey"`           // API key of the billing user (Billing + Contact creation rights). Can use environment variables. Required with url.
+	CompanyID        int64  `yaml:"companyId"`        // Company that issues the invoices. Required with url.
+	SalesJournalID   int64  `yaml:"salesJournalId"`   // Sales journal; must have Dedicated Credit Note Sequence on. Required with url.
+	PaymentJournalID int64  `yaml:"paymentJournalId"` // Bank journal where Stripe payments are registered (e.g. "Stripe"). Required with url.
+	TaxID            int64  `yaml:"taxId"`            // Sales tax, 21 % VAT included in price. Required with url.
+	APIKeyExpiresAt  string `yaml:"apiKeyExpiresAt"`  // Date (YYYY-MM-DD) the Odoo API key expires; the billing setup page warns 30 days before. Optional: unset, the page only reminds you to renew it.
+}
+
+// IsConfigured reports whether Odoo invoicing is set up.
+func (o OdooBillingConfig) IsConfigured() bool {
+	return o.URL != ""
+}
+
+func (b BillingConfig) validate(serverURL string) error {
+	if !b.Enabled {
+		return nil
+	}
+	if serverURL == "" {
+		return fmt.Errorf("billing requires server.url, for the Stripe Checkout return URLs")
+	}
+	if b.Stripe.SecretKey == "" || b.Stripe.WebhookSecret == "" {
+		return fmt.Errorf("billing.stripe.secretKey and billing.stripe.webhookSecret are required when billing is enabled")
+	}
+	o := b.Odoo
+	if o.IsConfigured() {
+		if _, err := url.ParseRequestURI(o.URL); err != nil {
+			return fmt.Errorf("billing.odoo.url is not a URL: %q", o.URL)
+		}
+		if o.Database == "" || o.APIKey == "" {
+			return fmt.Errorf("billing.odoo.database and billing.odoo.apiKey are required with billing.odoo.url")
+		}
+		if o.CompanyID <= 0 || o.SalesJournalID <= 0 || o.PaymentJournalID <= 0 || o.TaxID <= 0 {
+			return fmt.Errorf("billing.odoo.companyId, salesJournalId, paymentJournalId and taxId are required with billing.odoo.url")
+		}
+		if o.APIKeyExpiresAt != "" {
+			if _, err := time.Parse(time.DateOnly, o.APIKeyExpiresAt); err != nil {
+				return fmt.Errorf("billing.odoo.apiKeyExpiresAt must be a date like 2026-12-31: %q", o.APIKeyExpiresAt)
+			}
+		}
+	}
+	return nil
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -257,7 +520,7 @@ func LoadConfig(filename string) (*GatewayConfig, error) {
 
 	// Set defaults *before* unmarshalling
 	config.Server.Host = "127.0.0.1"
-	config.Management.Session.DurationSeconds = 86400
+	config.Management.Session.DurationSeconds = DefaultSessionDurationSeconds
 
 	// The version is checked before the strict decode so an old config gets the
 	// "run tg migrate" message instead of an unknown-field error.
@@ -343,6 +606,18 @@ func (c *GatewayConfig) Validate() error {
 	if c.Management.Session.DurationSeconds < 0 {
 		return fmt.Errorf("management.session.durationSeconds cannot be negative")
 	}
+	if err := validateOIDCProviders(c.AuthenticationProviders.OIDC); err != nil {
+		return err
+	}
+	if err := c.Billing.validate(c.Server.URL); err != nil {
+		return err
+	}
+	if err := c.Notification.SMS.validate(); err != nil {
+		return err
+	}
+	if err := c.Notification.WhatsApp.validate(c.Server.URL); err != nil {
+		return err
+	}
 	if err := validateMiddleware(c.Middleware); err != nil {
 		return err
 	}
@@ -387,6 +662,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool {
 	return c.AuthenticationProviders.Basic.Enabled ||
 		c.AuthenticationProviders.Google.ClientId != "" ||
 		c.AuthenticationProviders.Github.ClientId != "" ||
+		len(c.AuthenticationProviders.OIDC) > 0 ||
 		c.Management.Admin.Enabled
 }
 
@@ -402,10 +678,20 @@ type loginPageData struct {
 		Github struct {
 			Enabled bool
 		}
+		OIDC []OIDCLoginButton
 	}
 	Branding         BrandingConfig
 	RedirectURL      string
+	Message          string
+	Error            string
 	ManagementPrefix string
+	Version          string // Shown in the footer, e.g. "v1.2.3". Empty shows none.
+}
+
+// OIDCLoginButton is one OIDC provider's button on the login page.
+type OIDCLoginButton struct {
+	Name  string
+	Label string
 }
 
 // NewLoginPageData creates and populates a LoginPageData struct.
@@ -417,6 +703,9 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Basic.Enabled = gatewayConfig.AuthenticationProviders.Basic.Enabled || gatewayConfig.Management.Admin.Enabled
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
+	for _, p := range gatewayConfig.AuthenticationProviders.OIDC {
+		data.AuthenticationProviders.OIDC = append(data.AuthenticationProviders.OIDC, OIDCLoginButton{Name: p.Name, Label: p.DisplayLabel()})
+	}
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data
 }

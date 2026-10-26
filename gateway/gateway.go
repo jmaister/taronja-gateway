@@ -6,8 +6,10 @@ import (
 	"html/template" // Added for template parsing
 	"log"
 	"net/http" // Still needed for user-defined static routes from OS filesystem
+	"strings"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
@@ -30,11 +32,28 @@ type Gateway struct {
 	// middleware status/health/metrics API and by code that depends on a
 	// middleware's options.
 	MiddlewareChain *builtin.GlobalChain
-	templates       map[string]*template.Template
-	WebappEmbedFS   *embed.FS
-	StartTime       time.Time
+	// Accounts runs sign-up, password reset, email login, linked logins and
+	// the account page.
+	Accounts      *accounts.Service
+	templates     map[string]*template.Template
+	authTemplates map[string]*template.Template
+	WebappEmbedFS *embed.FS
+	StartTime     time.Time
+	// Version is the build's version, shown in the footer of the login and
+	// account pages. Set by `tg run`; empty shows none.
+	Version string
 
 	handler http.Handler
+}
+
+// DisplayVersion formats a build version for people: "v1.2.3" for a release
+// ("1.2.3" or "v1.2.3"), anything else (e.g. "Dev") as it is.
+func DisplayVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version != "" && version[0] >= '0' && version[0] <= '9' {
+		return "v" + version
+	}
+	return version
 }
 
 // --- NewGatewayWithDependencies Function ---
@@ -47,9 +66,15 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
+	authTemplates, err := parseAuthTemplates(static.StaticAssetsFS)
+	if err != nil {
+		return nil, err
+	}
+
 	gateway := &Gateway{
 		Dependencies:  deps,
 		templates:     templates,
+		authTemplates: authTemplates,
 		WebappEmbedFS: webappEmbedFS,
 		StartTime:     time.Now(),
 	}

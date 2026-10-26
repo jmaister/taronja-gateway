@@ -1,12 +1,14 @@
 package deps
 
 import (
+	"github.com/jmaister/taronja-gateway/billing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/auth"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/db/repositories"
+	"github.com/jmaister/taronja-gateway/featureflag"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
@@ -25,15 +27,23 @@ type Dependencies struct {
 	CountersRepo      repositories.CountersRepository
 	BlockedClientRepo repositories.BlockedClientRepository
 	NotificationRepo  repositories.NotificationRepository
+	UserIdentityRepo  repositories.UserIdentityRepository
+	AuthEventRepo     repositories.AuthEventRepository
+	UserPhoneRepo     repositories.UserPhoneRepository
+	OrganizationRepo  repositories.OrganizationRepository
+	BillingRepo       repositories.BillingRepository
 
 	// Services
 	SessionStore session.SessionStore
 	TokenService *auth.TokenService
+	FeatureFlags *featureflag.Service
 	// NotificationService is nil until gateway.InitNotifications sets it —
 	// unlike the repositories above, it needs config.NotificationConfig
 	// (SMTP/Telegram credentials), which isn't available yet inside
 	// NewProduction/NewTest. See gateway/notifications.go.
 	NotificationService *notification.Service
+	// Billing is nil unless billing.enabled; gateway.InitBilling sets it.
+	Billing *billing.Service
 
 	// Application state
 	StartTime time.Time
@@ -86,6 +96,10 @@ func NewProduction() *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
+	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
+	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
+	userPhoneRepo := repositories.NewUserPhoneRepositoryDB(gormDB)
+	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 24 hour duration
 	sessionStore := session.NewSessionStore(sessionRepo, 24*time.Hour)
@@ -102,8 +116,14 @@ func NewProduction() *Dependencies {
 		CountersRepo:      countersRepo,
 		BlockedClientRepo: blockedClientRepo,
 		NotificationRepo:  notificationRepo,
+		UserIdentityRepo:  userIdentityRepo,
+		AuthEventRepo:     authEventRepo,
+		UserPhoneRepo:     userPhoneRepo,
+		OrganizationRepo:  repositories.NewOrganizationRepositoryDB(gormDB),
+		BillingRepo:       repositories.NewBillingRepositoryDB(gormDB),
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
+		FeatureFlags:      featureFlags,
 		// NotificationService is left nil here — gateway.InitNotifications
 		// sets it once config.NotificationConfig is available (see its own
 		// doc comment for why that can't happen inside NewProduction).
@@ -130,6 +150,10 @@ func NewTestWithName(testName string) *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
+	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
+	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
+	userPhoneRepo := repositories.NewUserPhoneRepositoryDB(gormDB)
+	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 1 hour duration for tests
 	sessionStore := session.NewSessionStore(sessionRepo, 1*time.Hour)
@@ -143,6 +167,7 @@ func NewTestWithName(testName string) *Dependencies {
 	// (see notification.NewService's nil-provider-map-entry behavior for
 	// an unconfigured channel).
 	notificationService := notification.NewService(config.NotificationConfig{}, notificationRepo, userRepo, "")
+	notificationService.ConfigurePhoneChannels(userPhoneRepo, "")
 
 	return &Dependencies{
 		DB:                  gormDB,
@@ -153,8 +178,14 @@ func NewTestWithName(testName string) *Dependencies {
 		CountersRepo:        countersRepo,
 		BlockedClientRepo:   blockedClientRepo,
 		NotificationRepo:    notificationRepo,
+		UserIdentityRepo:    userIdentityRepo,
+		AuthEventRepo:       authEventRepo,
+		UserPhoneRepo:       userPhoneRepo,
+		OrganizationRepo:    repositories.NewOrganizationRepositoryDB(gormDB),
+		BillingRepo:         repositories.NewBillingRepositoryDB(gormDB),
 		SessionStore:        sessionStore,
 		TokenService:        tokenService,
+		FeatureFlags:        featureFlags,
 		NotificationService: notificationService,
 		StartTime:           time.Now(),
 	}

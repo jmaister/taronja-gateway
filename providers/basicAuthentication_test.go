@@ -89,7 +89,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		err := userRepo.CreateUser(testUser)
 		require.NoError(t, err, "User creation should succeed")
 		testConfig := createTestConfig()
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig, testAccountsFor(userRepo))
 
 		formData := url.Values{
 			"username": {username},
@@ -146,7 +146,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		err := userRepo.CreateUser(testUser)
 		require.NoError(t, err, "User creation should succeed")
 		testConfig := createTestConfig()
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig, testAccountsFor(userRepo))
 
 		formData := url.Values{
 			"username": {username},
@@ -193,7 +193,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		_, userRepo := setupTestBasicAuth(testDBName)
 		realSessionStore := session.NewSessionStore(nil, 24*time.Hour) // never reached — reject happens before any session lookup
 		testConfig := createTestConfig()
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig, testAccountsFor(userRepo))
 
 		formData := url.Values{
 			"username": {"no-such-user-" + fmt.Sprintf("%d", time.Now().UnixNano())},
@@ -231,7 +231,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		err := userRepo.CreateUser(testUser)
 		require.NoError(t, err, "User creation should succeed")
 		testConfig := createTestConfig()
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig, testAccountsFor(userRepo))
 
 		formData := url.Values{
 			"username": {username},
@@ -280,7 +280,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		err := userRepo.CreateUser(testUser)
 		require.NoError(t, err, "User creation should succeed")
 		testConfig := createTestConfig()
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, userRepo, testConfig, testAccountsFor(userRepo))
 
 		formData := url.Values{
 			"username": {username},
@@ -327,7 +327,7 @@ func TestRegisterBasicAuth(t *testing.T) {
 		err = mockUserRepo.EnsureAdminUser("configadmin", "admin@example.com", hashedPassword)
 		require.NoError(t, err)
 
-		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig)
+		RegisterBasicAuth(mux, realSessionStore, managementPrefix, mockUserRepo, testConfig, testAccountsFor(mockUserRepo))
 
 		formData := url.Values{
 			"username": {"configadmin"},

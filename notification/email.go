@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -43,11 +45,6 @@ func (p *EmailProvider) Channel() string { return "email" }
 // would tie up the limited delivery slots, so sendMailWithTimeout reimplements it
 // with one deadline on the connection.
 func (p *EmailProvider) Send(ctx context.Context, req SendRequest) (string, error) {
-	from := p.cfg.From
-	if p.cfg.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", p.cfg.FromName, p.cfg.From)
-	}
-
 	var body strings.Builder
 	fmt.Fprintf(&body, "%s\r\n\r\n", req.Notification.Body)
 	if req.Notification.URL != nil && *req.Notification.URL != "" {
@@ -60,18 +57,31 @@ func (p *EmailProvider) Send(ctx context.Context, req SendRequest) (string, erro
 		}
 	}
 
+	if err := p.SendMessage(ctx, req.Recipient, req.Notification.Title, body.String()); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+// SendMessage sends one plain-text email.
+func (p *EmailProvider) SendMessage(ctx context.Context, to, subject, textBody string) error {
+	// Header values are RFC 2047-encoded so non-ASCII names and titles
+	// survive strict mail servers; ASCII passes through unchanged.
+	from := (&mail.Address{Name: p.cfg.FromName, Address: p.cfg.From}).String()
+	encodedSubject := mime.QEncoding.Encode("utf-8", subject)
+
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s",
-		from, req.Recipient, req.Notification.Title, body.String())
+		from, to, encodedSubject, textBody)
 
 	addr := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
 	var auth smtp.Auth
 	if p.cfg.Username != "" {
 		auth = smtp.PlainAuth("", p.cfg.Username, p.cfg.Password, p.cfg.Host)
 	}
-	if err := sendMailWithTimeout(addr, auth, p.cfg.From, []string{req.Recipient}, []byte(msg)); err != nil {
-		return "", fmt.Errorf("smtp send failed: %w", err)
+	if err := sendMailWithTimeout(addr, auth, p.cfg.From, []string{to}, []byte(msg)); err != nil {
+		return fmt.Errorf("smtp send failed: %w", err)
 	}
-	return "", nil
+	return nil
 }
 
 // validateSMTPLine rejects a value containing CR or LF — the same guard

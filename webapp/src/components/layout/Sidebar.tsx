@@ -29,11 +29,25 @@ const Sidebar = ({
       ]
     },
     { name: 'Counters', icon: '💰', path: '/counters' },
+    { name: 'Feature Flags', icon: '🚩', path: '/feature-flags' },
     { name: 'Middleware', icon: '🧩', path: '/middleware' },
+    { name: 'Notifications', icon: '📨', path: '/notifications' },
     { name: 'Notification Channels', icon: '🔔', path: '/notifications/channels' },
     {
+      name: 'Billing',
+      icon: '💳',
+      submenu: [
+        { name: 'Organizations', path: '/organizations' },
+        { name: 'Plans', path: '/billing/plans' },
+        { name: 'Subscriptions', path: '/billing/subscriptions' },
+        { name: 'Purchases', path: '/billing/purchases' },
+        { name: 'Invoices', path: '/billing/invoices' },
+        { name: 'Setup', path: '/billing/setup' },
+      ]
+    },
+    {
       name: 'Statistics',
-      icon: '📊', 
+      icon: '📊',
       submenu: [
         { name: 'Summary', path: '/statistics/request-summary' },
         { name: 'Details', path: '/statistics/requests-details' },

@@ -6,7 +6,7 @@ server:
   url: http://localhost:8080
 management:
   session:
-    durationSeconds: 86400  # Session duration in seconds (24 hours = 86400 seconds)
+    durationSeconds: 1296000  # Inactivity before logout (15 days, the default); renewed on use
   admin:
     # Admin access to the dashboard
     # Only this user can access the /_/admin/ dashboard
@@ -100,6 +100,14 @@ authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
+  # Any OpenID Connect provider; endpoints come from the issuer's discovery
+  # document. Callback: <server.url>/_/auth/<name>/callback
+  # oidc:
+  #   - name: zitadel
+  #     label: Zitadel
+  #     issuer: https://auth.example.com
+  #     clientId: ${ZITADEL_CLIENT_ID}
+  #     clientSecret: ${ZITADEL_CLIENT_SECRET}
   # Microsoft, Facebook, and "Sign in with Apple" existed here but moved to
   # the wip/microsoft-apple-facebook-auth branch, untested — to come back
   # to later.
@@ -126,6 +134,26 @@ notification:
   # telegram:
   #   enabled: true
   #   botToken: ${TELEGRAM_BOT_TOKEN}
+  # SMS to each user's phone number (set with PATCH /api/users/{id}), via BulkGate.
+  # sms:
+  #   enabled: true
+  #   bulkgate:
+  #     applicationId: ${BULKGATE_APPLICATION_ID}
+  #     applicationToken: ${BULKGATE_APPLICATION_TOKEN}
+  #     senderId: gText
+  #     senderIdValue: MyApp
+  #   maxSegments: 2
+  #   maxPerMinute: 60
+  # WhatsApp via Meta's Cloud API. Every notification is sent as this approved
+  # template (see doc/notifications.md for its exact shape).
+  # whatsapp:
+  #   enabled: true
+  #   phoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID}
+  #   accessToken: ${WHATSAPP_ACCESS_TOKEN}
+  #   template:
+  #     name: taronja_notification
+  #     language: en
+  #     linkButton: true
   # Outbound callback fired once when a user responds to a notification,
   # so the app that created it learns about the response without polling.
   # secret is optional but recommended — it HMAC-SHA256-signs each request
@@ -135,3 +163,19 @@ notification:
   #   enabled: true
   #   url: https://your-app.example.com/webhooks/taronja-notifications
   #   secret: ${NOTIFICATION_WEBHOOK_SECRET}
+
+# Billing: plans sold through Stripe, invoices in Odoo, entitlements for the
+# apps (X-Entitlements). See doc/billing.md. Needs server.url.
+# billing:
+#   enabled: true
+#   stripe:
+#     secretKey: ${STRIPE_SECRET_KEY}
+#     webhookSecret: ${STRIPE_WEBHOOK_SECRET}
+#   odoo:
+#     url: https://odoo.example.com
+#     database: ${ODOO_DB}
+#     apiKey: ${ODOO_API_KEY}
+#     companyId: 1
+#     salesJournalId: 1
+#     paymentJournalId: 7
+#     taxId: 12

@@ -40,6 +40,9 @@ func (g *Gateway) configureManagementRoutes(staticAssetsFS embed.FS) {
 	// Register dashboard
 	g.registerDashboard(prefix)
 
+	// The page SMS/WhatsApp notification links open
+	g.registerNotificationPage()
+
 }
 
 func (g *Gateway) registerDashboard(prefix string) {
@@ -116,6 +119,12 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	)
 	metricsCfg, _ := builtin.GlobalOptions[builtin.TrafficMetricsConfig](g.MiddlewareChain, builtin.NameTrafficMetrics)
 	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
+	strictApiServer.SetFeatureFlags(g.Dependencies.FeatureFlags)
+	strictApiServer.SetUserPhones(g.Dependencies.UserPhoneRepo)
+	strictApiServer.SetOrganizations(g.Dependencies.OrganizationRepo)
+	if g.Dependencies.Billing != nil {
+		strictApiServer.SetBilling(g.Dependencies.Billing)
+	}
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, config.ManagementPrefix, false)
@@ -184,32 +193,56 @@ func (g *Gateway) registerLoginRoutes() {
 	if cfg.HasAnyAuthentication() {
 		// Background context: registration runs once at startup and provider goroutines
 		// live until the process exits.
-		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
+		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo, g.Accounts)
 	}
 
 	// Login page handler
 	loginPath := config.ManagementPrefix + "/login"
-	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		// Reads the live config. The redirect is sanitized so .RedirectURL is always a
-		// safe same-origin path wherever the template embeds it.
-		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
-
-		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
-		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root
-		tmpl, ok := g.templates[loginTemplatePath]
-		if !ok || tmpl == nil {
-			log.Printf("Error: Login template '%s' not found in cache", loginTemplatePath)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		// Execute the template
-		err := tmpl.Execute(w, data)
-		if err != nil {
-			log.Printf("Error executing login template: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-	})
+	g.Mux.HandleFunc(loginPath, g.handleLoginPage)
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
+
+	g.registerAccountRoutes()
+	g.registerBillingRoutes()
+}
+
+// handleLoginPage serves /_/login. A user who is already logged in goes
+// straight to ?redirect=; otherwise the login page is shown.
+func (g *Gateway) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	redirect := session.SanitizeRedirectPath(query.Get("redirect"))
+	// Never back to the login page itself, or it would redirect forever.
+	if strings.HasPrefix(redirect, config.ManagementPrefix+"/login") {
+		redirect = "/"
+	}
+
+	result := builtin.ValidateSessionFromRequest(r, g.Dependencies.SessionStore, g.Dependencies.TokenService)
+	if result.IsAuthenticated && result.Session != nil {
+		http.Redirect(w, r, redirect, http.StatusFound)
+		return
+	}
+
+	g.renderLoginPage(w, r, http.StatusOK, pageMessages[query.Get("msg")], pageErrors[query.Get("error")])
+}
+
+// renderLoginPage renders login.html with an optional notice and error.
+func (g *Gateway) renderLoginPage(w http.ResponseWriter, r *http.Request, status int, message, errorText string) {
+	// Reads the live config. The redirect is sanitized so .RedirectURL is always a
+	// safe same-origin path wherever the template embeds it.
+	data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
+	data.Message = message
+	data.Error = errorText
+	data.Version = DisplayVersion(g.Version)
+
+	tmpl, ok := g.templates["login.html"]
+	if !ok || tmpl == nil {
+		log.Printf("Error: Login template 'login.html' not found in cache")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	err := tmpl.Execute(w, data)
+	if err != nil {
+		log.Printf("Error executing login template: %v", err)
+	}
 }

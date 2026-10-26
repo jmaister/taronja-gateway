@@ -29,3 +29,7 @@ webapp/node_modules/
 sdk/node_modules/
 clients-temp/
 clau.sh
+
+# Tokens written by the e2e Zitadel container
+e2e/.zitadel/
+e2e/.odoo/
