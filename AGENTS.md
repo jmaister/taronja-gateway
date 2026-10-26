@@ -25,6 +25,7 @@ taronja-gateway/
 ├── middleware/                 # Plumbing: Middleware/Chain, health, metrics; builtin/ holds the implementations
 ├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
+├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -347,6 +348,14 @@ step (most will, the way Telegram does — there's no notion of "this
 gateway user's WhatsApp number" otherwise), mirror
 `NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
 `telegram.go`.
+
+### `featureflag/` — Feature Flags
+
+Zero-config on/off switches (`db.FeatureFlag`, migration `0003_feature_flags`; `Type` is always `boolean` today, kept so typed values can be added as new types plus a value column). `featureflag.Service` wraps `repositories.FeatureFlagRepository`, validates keys (`^[a-z0-9][a-z0-9._-]{0,99}$`, safe for a comma-separated header and a URL segment) and caches the key→value map in memory; every write through the service drops the cache (a generation counter stops a load that overlapped a write from re-caching stale values). Built in `deps.NewProduction`/`NewTestWithName` as `Dependencies.FeatureFlags`, handed to `StrictApiServer` with `SetFeatureFlags`.
+- Admin API: `/api/feature-flags` (list/create) and `/api/feature-flags/{key}` (get/PATCH/delete), `handlers/api_featureflags.go`, 401/403 via `requireAdminAccess`.
+- Public read: `GET /flags` (`GetFeatureFlagValues`, listed in `OperationWithNoSecurity`) — at the management root next to `/me`, not under `/api/feature-flags/`, so it cannot collide with a flag key.
+- Backends: `gateway/proxy.go` drops any client-sent `X-Feature-Flags` and sets it to the enabled keys, sorted, on every proxied request.
+- Dashboard `webapp/src/pages/FeatureFlagsPage.tsx` (+ `services/featureFlags.ts`); SDK `client.getFeatureFlags()` and `useFeatureFlags`/`useFeatureFlag` (`sdk/src/flags.tsx`).
 
 ### `handlers/` and `api/` — OpenAPI API Implementation
 

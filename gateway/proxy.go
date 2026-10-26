@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/featureflag"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
 	"github.com/jmaister/taronja-gateway/session"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -144,6 +145,16 @@ func (g *Gateway) createProxyHandlerFunc(routeConfig config.RouteConfig, targetU
 		// Validated sessions re-set them below.
 		r.Header.Del(session.UserIdHeader)
 		r.Header.Del(session.UserDataHeader)
+		r.Header.Del(featureflag.HeaderName)
+
+		if g.Dependencies.FeatureFlags != nil {
+			flags, err := g.Dependencies.FeatureFlags.HeaderValue()
+			if err != nil {
+				log.Printf("Proxy Route [%s]: could not read feature flags: %v", routeConfig.Name, err)
+			} else if flags != "" {
+				r.Header.Set(featureflag.HeaderName, flags)
+			}
+		}
 
 		// For authenticated routes, extract user ID and set header
 		if routeConfig.Authenticated {

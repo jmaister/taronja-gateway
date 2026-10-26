@@ -33,3 +33,16 @@ describe('createTaronjaClient', () => {
         await expect(client.getHealth()).rejects.toBeInstanceOf(TaronjaGatewayError);
     });
 });
+
+describe('getFeatureFlags', () => {
+    it('returns the flag map from /flags', async () => {
+        const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ flags: { 'new-checkout': true, beta: false } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        }));
+        const client = createTaronjaClient({ fetch });
+
+        await expect(client.getFeatureFlags()).resolves.toEqual({ 'new-checkout': true, beta: false });
+        expect(String(fetch.mock.calls[0][0])).toMatch(/\/_\/flags$/);
+    });
+});

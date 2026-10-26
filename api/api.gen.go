@@ -61,6 +61,21 @@ func (e ChannelStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for FeatureFlagType.
+const (
+	Boolean FeatureFlagType = "boolean"
+)
+
+// Valid indicates whether the value is a known member of the FeatureFlagType enum.
+func (e FeatureFlagType) Valid() bool {
+	switch e {
+	case Boolean:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MiddlewareHealthStatus.
 const (
 	Degraded  MiddlewareHealthStatus = "degraded"
@@ -415,6 +430,53 @@ type Error struct {
 
 	// Message Example: Unauthorized
 	Message string `json:"message"`
+}
+
+// FeatureFlag defines model for FeatureFlag.
+type FeatureFlag struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Description Example: Checkout flow v2
+	Description string `json:"description"`
+
+	// Enabled Example: true
+	Enabled bool `json:"enabled"`
+
+	// Key Example: new-checkout
+	Key string `json:"key"`
+
+	// Type Value type of a flag. Only boolean (on/off) exists today.
+	Type      FeatureFlagType `json:"type"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+}
+
+// FeatureFlagCreateRequest defines model for FeatureFlagCreateRequest.
+type FeatureFlagCreateRequest struct {
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// Key 1-100 lowercase letters, digits, '-', '_' or '.', starting with a letter or digit.
+	//
+	// Example: new-checkout
+	Key string `json:"key"`
+
+	// Type Value type of a flag. Only boolean (on/off) exists today.
+	Type *FeatureFlagType `json:"type,omitempty"`
+}
+
+// FeatureFlagType Value type of a flag. Only boolean (on/off) exists today.
+type FeatureFlagType string
+
+// FeatureFlagUpdateRequest defines model for FeatureFlagUpdateRequest.
+type FeatureFlagUpdateRequest struct {
+	Description *string `json:"description,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+}
+
+// FeatureFlagValues defines model for FeatureFlagValues.
+type FeatureFlagValues struct {
+	// Flags Example: {"dark-mode":false,"new-checkout":true}
+	Flags map[string]bool `json:"flags"`
 }
 
 // HealthResponse defines model for HealthResponse.
@@ -1140,6 +1202,12 @@ type LogoutUserParams struct {
 // AdjustUserCountersJSONRequestBody defines body for AdjustUserCounters for application/json ContentType.
 type AdjustUserCountersJSONRequestBody = CounterAdjustmentRequest
 
+// CreateFeatureFlagJSONRequestBody defines body for CreateFeatureFlag for application/json ContentType.
+type CreateFeatureFlagJSONRequestBody = FeatureFlagCreateRequest
+
+// UpdateFeatureFlagJSONRequestBody defines body for UpdateFeatureFlag for application/json ContentType.
+type UpdateFeatureFlagJSONRequestBody = FeatureFlagUpdateRequest
+
 // CreateNotificationJSONRequestBody defines body for CreateNotification for application/json ContentType.
 type CreateNotificationJSONRequestBody = CreateNotificationRequest
 
@@ -1175,6 +1243,21 @@ type ServerInterface interface {
 	// GetUserCounterHistory Get user's counter transaction history
 	// (GET /api/counters/{counterId}/{userId}/history)
 	GetUserCounterHistory(w http.ResponseWriter, r *http.Request, counterId string, userId string, params GetUserCounterHistoryParams)
+	// ListFeatureFlags List feature flags (admin only)
+	// (GET /api/feature-flags)
+	ListFeatureFlags(w http.ResponseWriter, r *http.Request)
+	// CreateFeatureFlag Create a feature flag (admin only)
+	// (POST /api/feature-flags)
+	CreateFeatureFlag(w http.ResponseWriter, r *http.Request)
+	// DeleteFeatureFlag Delete a feature flag (admin only)
+	// (DELETE /api/feature-flags/{key})
+	DeleteFeatureFlag(w http.ResponseWriter, r *http.Request, key string)
+	// GetFeatureFlag Get a feature flag (admin only)
+	// (GET /api/feature-flags/{key})
+	GetFeatureFlag(w http.ResponseWriter, r *http.Request, key string)
+	// UpdateFeatureFlag Update a feature flag (admin only)
+	// (PATCH /api/feature-flags/{key})
+	UpdateFeatureFlag(w http.ResponseWriter, r *http.Request, key string)
 	// GetMiddlewareStatus Get status (and health, where available) of every global middleware
 	// (GET /api/middleware)
 	GetMiddlewareStatus(w http.ResponseWriter, r *http.Request)
@@ -1277,6 +1360,9 @@ type ServerInterface interface {
 	// CreateToken Create a new API token for a specific user (admin only)
 	// (POST /api/users/{userId}/tokens)
 	CreateToken(w http.ResponseWriter, r *http.Request, userId string)
+	// GetFeatureFlagValues Current feature flag values
+	// (GET /flags)
+	GetFeatureFlagValues(w http.ResponseWriter, r *http.Request)
 	// HealthCheck Health check
 	// (GET /health)
 	HealthCheck(w http.ResponseWriter, r *http.Request)
@@ -1508,6 +1594,112 @@ func (siw *ServerInterfaceWrapper) GetUserCounterHistory(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetUserCounterHistory(w, r, counterId, userId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFeatureFlags operation middleware
+func (siw *ServerInterfaceWrapper) ListFeatureFlags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFeatureFlags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFeatureFlag operation middleware
+func (siw *ServerInterfaceWrapper) CreateFeatureFlag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFeatureFlag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFeatureFlag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFeatureFlag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFeatureFlag(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFeatureFlag operation middleware
+func (siw *ServerInterfaceWrapper) GetFeatureFlag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeatureFlag(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFeatureFlag operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFeatureFlag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFeatureFlag(w, r, key)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2756,6 +2948,20 @@ func (siw *ServerInterfaceWrapper) CreateToken(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetFeatureFlagValues operation middleware
+func (siw *ServerInterfaceWrapper) GetFeatureFlagValues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeatureFlagValues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
@@ -3008,6 +3214,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.GetUserCounters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/counters/{counterId}/{userId}", wrapper.AdjustUserCounters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/counters/{counterId}/{userId}/history", wrapper.GetUserCounterHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/flags", wrapper.GetFeatureFlagValues)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/feature-flags", wrapper.ListFeatureFlags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/feature-flags", wrapper.CreateFeatureFlag)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.DeleteFeatureFlag)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.GetFeatureFlag)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/feature-flags/{key}", wrapper.UpdateFeatureFlag)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/counters", wrapper.GetAvailableCounters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/counters/{counterId}", wrapper.GetAllUserCounters)
 
@@ -3447,6 +3659,390 @@ func (response GetUserCounterHistory404JSONResponse) VisitGetUserCounterHistoryR
 type GetUserCounterHistory500JSONResponse Error
 
 func (response GetUserCounterHistory500JSONResponse) VisitGetUserCounterHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeatureFlagsRequestObject struct {
+}
+
+type ListFeatureFlagsResponseObject interface {
+	VisitListFeatureFlagsResponse(w http.ResponseWriter) error
+}
+
+type ListFeatureFlags200JSONResponse []FeatureFlag
+
+func (response ListFeatureFlags200JSONResponse) VisitListFeatureFlagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeatureFlags401JSONResponse Error
+
+func (response ListFeatureFlags401JSONResponse) VisitListFeatureFlagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeatureFlags403JSONResponse Error
+
+func (response ListFeatureFlags403JSONResponse) VisitListFeatureFlagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeatureFlags500JSONResponse Error
+
+func (response ListFeatureFlags500JSONResponse) VisitListFeatureFlagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeatureFlagRequestObject struct {
+	Body *CreateFeatureFlagJSONRequestBody
+}
+
+type CreateFeatureFlagResponseObject interface {
+	VisitCreateFeatureFlagResponse(w http.ResponseWriter) error
+}
+
+type CreateFeatureFlag201JSONResponse FeatureFlag
+
+func (response CreateFeatureFlag201JSONResponse) VisitCreateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeatureFlag400JSONResponse Error
+
+func (response CreateFeatureFlag400JSONResponse) VisitCreateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeatureFlag401JSONResponse Error
+
+func (response CreateFeatureFlag401JSONResponse) VisitCreateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeatureFlag403JSONResponse Error
+
+func (response CreateFeatureFlag403JSONResponse) VisitCreateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeatureFlag409JSONResponse Error
+
+func (response CreateFeatureFlag409JSONResponse) VisitCreateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFeatureFlag500JSONResponse Error
+
+func (response CreateFeatureFlag500JSONResponse) VisitCreateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeatureFlagRequestObject struct {
+	Key string `json:"key"`
+}
+
+type DeleteFeatureFlagResponseObject interface {
+	VisitDeleteFeatureFlagResponse(w http.ResponseWriter) error
+}
+
+type DeleteFeatureFlag204Response struct {
+}
+
+func (response DeleteFeatureFlag204Response) VisitDeleteFeatureFlagResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFeatureFlag401JSONResponse Error
+
+func (response DeleteFeatureFlag401JSONResponse) VisitDeleteFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeatureFlag403JSONResponse Error
+
+func (response DeleteFeatureFlag403JSONResponse) VisitDeleteFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeatureFlag404JSONResponse Error
+
+func (response DeleteFeatureFlag404JSONResponse) VisitDeleteFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeatureFlag500JSONResponse Error
+
+func (response DeleteFeatureFlag500JSONResponse) VisitDeleteFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeatureFlagRequestObject struct {
+	Key string `json:"key"`
+}
+
+type GetFeatureFlagResponseObject interface {
+	VisitGetFeatureFlagResponse(w http.ResponseWriter) error
+}
+
+type GetFeatureFlag200JSONResponse FeatureFlag
+
+func (response GetFeatureFlag200JSONResponse) VisitGetFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeatureFlag401JSONResponse Error
+
+func (response GetFeatureFlag401JSONResponse) VisitGetFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeatureFlag403JSONResponse Error
+
+func (response GetFeatureFlag403JSONResponse) VisitGetFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeatureFlag404JSONResponse Error
+
+func (response GetFeatureFlag404JSONResponse) VisitGetFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeatureFlag500JSONResponse Error
+
+func (response GetFeatureFlag500JSONResponse) VisitGetFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeatureFlagRequestObject struct {
+	Key  string `json:"key"`
+	Body *UpdateFeatureFlagJSONRequestBody
+}
+
+type UpdateFeatureFlagResponseObject interface {
+	VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error
+}
+
+type UpdateFeatureFlag200JSONResponse FeatureFlag
+
+func (response UpdateFeatureFlag200JSONResponse) VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeatureFlag401JSONResponse Error
+
+func (response UpdateFeatureFlag401JSONResponse) VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeatureFlag403JSONResponse Error
+
+func (response UpdateFeatureFlag403JSONResponse) VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeatureFlag404JSONResponse Error
+
+func (response UpdateFeatureFlag404JSONResponse) VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFeatureFlag500JSONResponse Error
+
+func (response UpdateFeatureFlag500JSONResponse) VisitUpdateFeatureFlagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5266,6 +5862,41 @@ func (response CreateToken500JSONResponse) VisitCreateTokenResponse(w http.Respo
 	return err
 }
 
+type GetFeatureFlagValuesRequestObject struct {
+}
+
+type GetFeatureFlagValuesResponseObject interface {
+	VisitGetFeatureFlagValuesResponse(w http.ResponseWriter) error
+}
+
+type GetFeatureFlagValues200JSONResponse FeatureFlagValues
+
+func (response GetFeatureFlagValues200JSONResponse) VisitGetFeatureFlagValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeatureFlagValues500JSONResponse Error
+
+func (response GetFeatureFlagValues500JSONResponse) VisitGetFeatureFlagValuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type HealthCheckRequestObject struct {
 }
 
@@ -5431,6 +6062,21 @@ type StrictServerInterface interface {
 	// GetUserCounterHistory Get user's counter transaction history
 	// (GET /api/counters/{counterId}/{userId}/history)
 	GetUserCounterHistory(ctx context.Context, request GetUserCounterHistoryRequestObject) (GetUserCounterHistoryResponseObject, error)
+	// ListFeatureFlags List feature flags (admin only)
+	// (GET /api/feature-flags)
+	ListFeatureFlags(ctx context.Context, request ListFeatureFlagsRequestObject) (ListFeatureFlagsResponseObject, error)
+	// CreateFeatureFlag Create a feature flag (admin only)
+	// (POST /api/feature-flags)
+	CreateFeatureFlag(ctx context.Context, request CreateFeatureFlagRequestObject) (CreateFeatureFlagResponseObject, error)
+	// DeleteFeatureFlag Delete a feature flag (admin only)
+	// (DELETE /api/feature-flags/{key})
+	DeleteFeatureFlag(ctx context.Context, request DeleteFeatureFlagRequestObject) (DeleteFeatureFlagResponseObject, error)
+	// GetFeatureFlag Get a feature flag (admin only)
+	// (GET /api/feature-flags/{key})
+	GetFeatureFlag(ctx context.Context, request GetFeatureFlagRequestObject) (GetFeatureFlagResponseObject, error)
+	// UpdateFeatureFlag Update a feature flag (admin only)
+	// (PATCH /api/feature-flags/{key})
+	UpdateFeatureFlag(ctx context.Context, request UpdateFeatureFlagRequestObject) (UpdateFeatureFlagResponseObject, error)
 	// GetMiddlewareStatus Get status (and health, where available) of every global middleware
 	// (GET /api/middleware)
 	GetMiddlewareStatus(ctx context.Context, request GetMiddlewareStatusRequestObject) (GetMiddlewareStatusResponseObject, error)
@@ -5533,6 +6179,9 @@ type StrictServerInterface interface {
 	// CreateToken Create a new API token for a specific user (admin only)
 	// (POST /api/users/{userId}/tokens)
 	CreateToken(ctx context.Context, request CreateTokenRequestObject) (CreateTokenResponseObject, error)
+	// GetFeatureFlagValues Current feature flag values
+	// (GET /flags)
+	GetFeatureFlagValues(ctx context.Context, request GetFeatureFlagValuesRequestObject) (GetFeatureFlagValuesResponseObject, error)
 	// HealthCheck Health check
 	// (GET /health)
 	HealthCheck(ctx context.Context, request HealthCheckRequestObject) (HealthCheckResponseObject, error)
@@ -5743,6 +6392,146 @@ func (sh *strictHandler) GetUserCounterHistory(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserCounterHistoryResponseObject); ok {
 		if err := validResponse.VisitGetUserCounterHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFeatureFlags operation middleware
+func (sh *strictHandler) ListFeatureFlags(w http.ResponseWriter, r *http.Request) {
+	var request ListFeatureFlagsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFeatureFlags(ctx, request.(ListFeatureFlagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFeatureFlags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFeatureFlagsResponseObject); ok {
+		if err := validResponse.VisitListFeatureFlagsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateFeatureFlag operation middleware
+func (sh *strictHandler) CreateFeatureFlag(w http.ResponseWriter, r *http.Request) {
+	var request CreateFeatureFlagRequestObject
+
+	var body CreateFeatureFlagJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateFeatureFlag(ctx, request.(CreateFeatureFlagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateFeatureFlag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateFeatureFlagResponseObject); ok {
+		if err := validResponse.VisitCreateFeatureFlagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteFeatureFlag operation middleware
+func (sh *strictHandler) DeleteFeatureFlag(w http.ResponseWriter, r *http.Request, key string) {
+	var request DeleteFeatureFlagRequestObject
+
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFeatureFlag(ctx, request.(DeleteFeatureFlagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFeatureFlag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFeatureFlagResponseObject); ok {
+		if err := validResponse.VisitDeleteFeatureFlagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFeatureFlag operation middleware
+func (sh *strictHandler) GetFeatureFlag(w http.ResponseWriter, r *http.Request, key string) {
+	var request GetFeatureFlagRequestObject
+
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFeatureFlag(ctx, request.(GetFeatureFlagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFeatureFlag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFeatureFlagResponseObject); ok {
+		if err := validResponse.VisitGetFeatureFlagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateFeatureFlag operation middleware
+func (sh *strictHandler) UpdateFeatureFlag(w http.ResponseWriter, r *http.Request, key string) {
+	var request UpdateFeatureFlagRequestObject
+
+	request.Key = key
+
+	var body UpdateFeatureFlagJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateFeatureFlag(ctx, request.(UpdateFeatureFlagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateFeatureFlag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateFeatureFlagResponseObject); ok {
+		if err := validResponse.VisitUpdateFeatureFlagResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6634,6 +7423,30 @@ func (sh *strictHandler) CreateToken(w http.ResponseWriter, r *http.Request, use
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateTokenResponseObject); ok {
 		if err := validResponse.VisitCreateTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFeatureFlagValues operation middleware
+func (sh *strictHandler) GetFeatureFlagValues(w http.ResponseWriter, r *http.Request) {
+	var request GetFeatureFlagValuesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFeatureFlagValues(ctx, request.(GetFeatureFlagValuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFeatureFlagValues")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFeatureFlagValuesResponseObject); ok {
+		if err := validResponse.VisitGetFeatureFlagValuesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

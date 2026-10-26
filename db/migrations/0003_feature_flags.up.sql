@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS `feature_flags` (`key` varchar(100) NOT NULL,`description` text,`type` varchar(20) NOT NULL DEFAULT "boolean",`enabled` numeric NOT NULL DEFAULT false,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`key`));
