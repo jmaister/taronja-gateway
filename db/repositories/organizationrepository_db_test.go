@@ -316,3 +316,51 @@ func TestOrganizationRepositoryDB_OfUser_Ordered(t *testing.T) {
 	assert.Equal(t, "Banana LLC", memberships[1].Organization.Name)
 	assert.Equal(t, "Zebra Corp", memberships[2].Organization.Name)
 }
+
+func TestOrganizationRepositoryDB_Logo(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := NewOrganizationRepositoryDB(db.GetConnection())
+
+	org := &db.Organization{Name: "Logo Org"}
+	require.NoError(t, repo.Create(org))
+
+	_, err := repo.Logo(org.ID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound, "no logo yet")
+
+	png := []byte("\x89PNG\r\n\x1a\nfake")
+	require.NoError(t, repo.SetLogo(org.ID, "image/png", png))
+
+	logo, err := repo.Logo(org.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "image/png", logo.ContentType)
+	assert.Equal(t, png, logo.Data)
+	assert.False(t, logo.UpdatedAt.IsZero())
+
+	// Reads of the organization say there is a logo but do not load it.
+	got, err := repo.Get(org.ID)
+	require.NoError(t, err)
+	assert.True(t, got.HasLogo())
+	assert.Nil(t, got.Logo)
+	list, err := repo.List()
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.True(t, list[0].HasLogo())
+	assert.Nil(t, list[0].Logo)
+
+	// Renaming does not touch the logo.
+	got.Name = "Renamed"
+	require.NoError(t, repo.Update(got))
+	logo, err = repo.Logo(org.ID)
+	require.NoError(t, err)
+	assert.Equal(t, png, logo.Data)
+
+	require.NoError(t, repo.ClearLogo(org.ID))
+	_, err = repo.Logo(org.ID)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	got, err = repo.Get(org.ID)
+	require.NoError(t, err)
+	assert.False(t, got.HasLogo())
+
+	assert.ErrorIs(t, repo.SetLogo("missing", "image/png", png), gorm.ErrRecordNotFound)
+	assert.ErrorIs(t, repo.ClearLogo("missing"), gorm.ErrRecordNotFound)
+}

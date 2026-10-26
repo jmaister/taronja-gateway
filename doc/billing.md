@@ -301,7 +301,7 @@ Migration `0006_billing` (and the same models in `db.Models`):
 
 | Table | Key columns |
 |---|---|
-| `organizations` | `id`, `name`, timestamps |
+| `organizations` | `id`, `name`, `logo` (blob), `logo_content_type`, `logo_updated_at`, timestamps |
 | `organization_members` | `organization_id`, `user_id` (unique pair), `role` |
 | `billing_plans` | `key` (PK), `name`, `description`, `kind`, `interval`, `amount_cents`, `currency`, `subject`, `trial_days`, `grace_days`, `setup_fee_cents`, `setup_fee_name`, `starts`, `access_days`, `collect_shipping`, `group_key`, `active`, `stripe_product_id`, `stripe_price_id`, `stripe_first_period_price_id`, `stripe_setup_fee_price_id`, `odoo_product_id`, `odoo_setup_fee_product_id`, timestamps |
 | `billing_plan_features` | `plan_key`, `feature` |
@@ -321,6 +321,7 @@ session or admin API token.
 | Operation | Who |
 |---|---|
 | `GET/POST /organizations`, `GET/PATCH/DELETE /organizations/{id}`, `PUT/DELETE /organizations/{id}/members/{userId}` | admin |
+| `GET/PUT/DELETE /organizations/{id}/logo` | `GET`: admin or a member; `PUT`/`DELETE`: admin or an owner. The logo is stored in the database (PNG, JPEG or WebP up to 512 KiB, the type read from the bytes; SVG is refused) and served with an ETag; organizations carry a `logoUrl` (empty without a logo) |
 | `GET /me/organizations` | the user (also in `/_/me`) |
 | `GET/POST /billing/plans`, `GET/PATCH /billing/plans/{key}` (PATCH `active: false` archives) | admin |
 | `GET /entitlements` | see above |
