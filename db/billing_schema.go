@@ -345,10 +345,23 @@ type StripeEvent struct {
 	ReceivedAt time.Time `gorm:"autoCreateTime"`
 }
 
+// StuckStripeEvent is a webhook event that could not be applied yet (it
+// refers to a subscription the gateway has no row for) and that Stripe will
+// send again. It is removed when the event is finally applied.
+type StuckStripeEvent struct {
+	EventID        string    `gorm:"primaryKey;column:event_id;type:varchar(255);not null"`
+	Type           string    `gorm:"type:varchar(100);not null"`
+	SubscriptionID string    `gorm:"type:varchar(255);not null"`
+	Reason         string    `gorm:"type:text;not null"`
+	Attempts       int       `gorm:"not null"`
+	FirstSeenAt    time.Time `gorm:"not null"`
+	LastSeenAt     time.Time `gorm:"not null"`
+}
+
 // BillingModels are appended to Models.
 var BillingModels = []interface{}{
 	&Organization{}, &OrganizationMember{}, &BillingPlan{}, &BillingPlanFeature{}, &BillingCustomer{},
-	&BillingCheckout{}, &BillingSubscription{}, &BillingPurchase{}, &BillingGrant{}, &BillingDocument{}, &StripeEvent{},
+	&BillingCheckout{}, &BillingSubscription{}, &BillingPurchase{}, &BillingGrant{}, &BillingDocument{}, &StripeEvent{}, &StuckStripeEvent{},
 }
 
 func init() {

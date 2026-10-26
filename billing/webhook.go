@@ -17,9 +17,11 @@ import (
 const MaxWebhookBody = 256 << 10
 
 // ErrRetryLater: the event refers to something the gateway hasn't recorded
-// yet (events arrive out of order); the webhook answers 500 so Stripe
-// sends it again later.
+// and couldn't get from Stripe; the webhook answers 500 so Stripe sends it
+// again later, and the setup page lists it until it is applied.
 var ErrRetryLater = errors.New("event arrived before what it refers to; retry later")
+
+func retryLater(reason string) error { return fmt.Errorf("%w: %s", ErrRetryLater, reason) }
 
 // webhookTx is one event's state change: the repository bound to the
 // transaction and what to do after it commits.
@@ -27,6 +29,11 @@ type webhookTx struct {
 	repo       repositories.BillingRepository
 	invalidate map[string]bool
 	after      []func()
+	// fetched is the subscription an invoice event is about, read from
+	// Stripe before the transaction because the gateway had no row for it
+	// (fetchErr when Stripe didn't answer).
+	fetched  *StripeSubscription
+	fetchErr error
 }
 
 func (tx *webhookTx) touched(subject string) { tx.invalidate[subject] = true }
@@ -47,28 +54,29 @@ func (s *Service) HandleWebhook(ctx context.Context, payload []byte, signature s
 // same transaction as its effect, so a repeated event changes nothing.
 func (s *Service) HandleEvent(ctx context.Context, ev Event) error {
 	tx := &webhookTx{invalidate: map[string]bool{}}
+	tx.fetched, tx.fetchErr = s.prefetchSubscription(ctx, ev)
 	err := s.repo.Transaction(func(repo repositories.BillingRepository) error {
 		tx.repo = repo
 		fresh, err := repo.RecordStripeEvent(ev.ID, ev.Type)
 		if err != nil || !fresh {
 			return err
 		}
-		switch {
-		case ev.Checkout != nil && ev.Type == EventCheckoutCompleted:
-			return s.onCheckoutCompleted(tx, ev)
-		case ev.Checkout != nil && ev.Type == EventCheckoutExpired:
-			return s.onCheckoutExpired(tx, ev.Checkout)
-		case ev.Subscription != nil:
-			return s.onSubscription(tx, ev)
-		case ev.Invoice != nil && ev.Type == EventInvoicePaid:
-			return s.onInvoicePaid(tx, ev.Invoice)
-		case ev.Invoice != nil && ev.Type == EventInvoicePaymentFailed:
-			return s.onInvoiceFailed(tx, ev)
-		case ev.Refund != nil:
-			return s.onRefund(tx, ev)
+		err = s.apply(tx, ev)
+		if err != nil {
+			return err
 		}
-		return nil
+		return repo.ClearStuckEvent(ev.ID)
 	})
+	if errors.Is(err, ErrRetryLater) {
+		subID := ""
+		if ev.Invoice != nil {
+			subID = ev.Invoice.SubscriptionID
+		}
+		noteErr := s.repo.RecordStuckEvent(ev.ID, ev.Type, subID, err.Error(), s.now())
+		if noteErr != nil {
+			log.Printf("billing: noting stuck event %s: %v", ev.ID, noteErr)
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -79,6 +87,82 @@ func (s *Service) HandleEvent(ctx context.Context, ev Event) error {
 		f()
 	}
 	return nil
+}
+
+// apply runs the state change of one new event.
+func (s *Service) apply(tx *webhookTx, ev Event) error {
+	{
+		switch {
+		case ev.Checkout != nil && ev.Type == EventCheckoutCompleted:
+			return s.onCheckoutCompleted(tx, ev)
+		case ev.Checkout != nil && ev.Type == EventCheckoutExpired:
+			return s.onCheckoutExpired(tx, ev.Checkout)
+		case ev.Subscription != nil:
+			return s.onSubscription(tx, ev)
+		case ev.Invoice != nil && ev.Type == EventInvoicePaid:
+			return s.onInvoicePaid(tx, ev)
+		case ev.Invoice != nil && ev.Type == EventInvoicePaymentFailed:
+			return s.onInvoiceFailed(tx, ev)
+		case ev.Refund != nil:
+			return s.onRefund(tx, ev)
+		}
+		return nil
+	}
+}
+
+// prefetchSubscription reads from Stripe the subscription an invoice event
+// is about when the gateway has no row for it yet (invoice.paid can arrive
+// before customer.subscription.created). Done outside the transaction: it
+// is a network call.
+func (s *Service) prefetchSubscription(ctx context.Context, ev Event) (*StripeSubscription, error) {
+	inv := ev.Invoice
+	if s.stripe == nil || inv == nil || inv.SubscriptionID == "" {
+		return nil, nil
+	}
+	switch ev.Type {
+	case EventInvoicePaid:
+		if inv.AmountCents <= 0 {
+			return nil, nil
+		}
+	case EventInvoicePaymentFailed:
+	default:
+		return nil, nil
+	}
+	_, err := s.repo.GetSubscriptionByStripeID(inv.SubscriptionID)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	ss, err := s.stripe.GetSubscription(ctx, inv.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	return &ss, nil
+}
+
+// invoiceSubscription finds the subscription row an invoice event is about,
+// creating it from Stripe's copy when its own event hasn't arrived. Nil when
+// the subscription isn't the gateway's.
+func (s *Service) invoiceSubscription(tx *webhookTx, ev Event) (*db.BillingSubscription, error) {
+	id := ev.Invoice.SubscriptionID
+	sub, err := tx.repo.GetSubscriptionByStripeID(id)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return sub, err
+	}
+	if tx.fetched == nil {
+		if tx.fetchErr != nil {
+			return nil, retryLater(fmt.Sprintf("subscription %s is not recorded and Stripe didn't return it: %v", id, tx.fetchErr))
+		}
+		return nil, retryLater(fmt.Sprintf("subscription %s is not recorded", id))
+	}
+	err = s.onSubscription(tx, Event{ID: ev.ID, Type: EventSubscriptionUpdated, Created: ev.Created, Subscription: tx.fetched})
+	if err != nil {
+		return nil, err
+	}
+	sub, err = tx.repo.GetSubscriptionByStripeID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return sub, err
 }
 
 func (s *Service) onCheckoutCompleted(tx *webhookTx, ev Event) error {
@@ -371,15 +455,13 @@ func (s *Service) subscriptionRow(repo repositories.BillingRepository, ss *Strip
 
 // onInvoicePaid queues the invoice of a subscription charge and ends a
 // past-due period.
-func (s *Service) onInvoicePaid(tx *webhookTx, inv *InvoiceEvent) error {
+func (s *Service) onInvoicePaid(tx *webhookTx, ev Event) error {
+	inv := ev.Invoice
 	if inv.SubscriptionID == "" || inv.AmountCents <= 0 {
 		return nil // a trial start, or not a subscription charge
 	}
-	sub, err := tx.repo.GetSubscriptionByStripeID(inv.SubscriptionID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrRetryLater
-	}
-	if err != nil {
+	sub, err := s.invoiceSubscription(tx, ev)
+	if err != nil || sub == nil {
 		return err
 	}
 	if sub.Status == db.SubscriptionPastDue {
@@ -455,11 +537,8 @@ func (s *Service) onInvoiceFailed(tx *webhookTx, ev Event) error {
 	if inv.SubscriptionID == "" {
 		return nil
 	}
-	sub, err := tx.repo.GetSubscriptionByStripeID(inv.SubscriptionID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrRetryLater
-	}
-	if err != nil {
+	sub, err := s.invoiceSubscription(tx, ev)
+	if err != nil || sub == nil {
 		return err
 	}
 	plan, err := tx.repo.GetPlan(sub.PlanKey)

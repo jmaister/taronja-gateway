@@ -164,4 +164,11 @@ type BillingRepository interface {
 	// RecordStripeEvent stores eventID and reports whether it was new; false
 	// means it was already processed.
 	RecordStripeEvent(eventID, eventType string) (bool, error)
+	// RecordStuckEvent notes that an event could not be applied yet (adds
+	// an attempt when it is already noted).
+	RecordStuckEvent(eventID, eventType, subscriptionID, reason string, now time.Time) error
+	// ClearStuckEvent forgets a stuck event (a no-op for any other id).
+	ClearStuckEvent(eventID string) error
+	// StuckEvents lists the stuck events, oldest first.
+	StuckEvents() ([]db.StuckStripeEvent, error)
 }

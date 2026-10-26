@@ -217,6 +217,14 @@ func TestCreateSubscription_NoCard(t *testing.T) {
 	assert.Contains(t, err.Error(), "no saved card")
 }
 
+func TestGetSubscription(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{"GET /v1/subscriptions/sub_1": subscriptionJSON})
+	sub, err := c.GetSubscription(context.Background(), "sub_1")
+	require.NoError(t, err)
+	assert.Equal(t, "sub_1", sub.ID)
+	assert.Equal(t, "GET", f.last(t).Method)
+}
+
 func TestCancelSubscription(t *testing.T) {
 	f, c := newFakeStripe(t, map[string]string{
 		"POST /v1/subscriptions/sub_1":   subscriptionJSON,

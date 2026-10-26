@@ -143,6 +143,19 @@ func (f *FakeStripe) CreateSubscription(ctx context.Context, p SubscriptionParam
 	return *sub, nil
 }
 
+func (f *FakeStripe) GetSubscription(ctx context.Context, subscriptionID string) (StripeSubscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return StripeSubscription{}, f.Err
+	}
+	sub, ok := f.Subscriptions[subscriptionID]
+	if !ok {
+		return StripeSubscription{}, fmt.Errorf("no such subscription: %s", subscriptionID)
+	}
+	return *sub, nil
+}
+
 func (f *FakeStripe) CancelSubscription(ctx context.Context, subscriptionID string, atPeriodEnd bool) (StripeSubscription, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
