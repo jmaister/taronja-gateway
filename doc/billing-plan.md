@@ -20,7 +20,7 @@ reports.
 | `billing/odooapi/` | `Odoo` implemented over the JSON-2 API |
 | `db/repositories/` | `organization*.go`, `billing*.go` repositories |
 | `handlers/` | `api_organizations.go`, `api_billing_*.go`, `api_entitlements.go` |
-| `gateway/` | `pay_routes.go` (pay pages, webhook route), header injection in `proxy.go`, wiring in `setup.go` |
+| `gateway/` | `billing_routes.go` (pay pages, webhook route), header injection in `proxy.go`, wiring in `setup.go` |
 | `static/` | `pay.html`, `pay_done.html`, the account page's billing section |
 | `webapp/src/pages/` | `OrganizationsPage`, `PlansPage`, `SubscriptionsPage`, `PurchasesPage`, `InvoicesPage`, `BillingSetupPage` |
 | `e2e/` | `stripe-mock`, Odoo + Postgres, `e2e/odoo/init.sh`, `billing_test.go` |
@@ -59,8 +59,8 @@ reports.
 
 | Task | Files | Done when |
 |---|---|---|
-| 3a Pay pages: `/_/pay/{plan}` (login, subject choice, already subscribed → portal), POST creates the checkout, `/_/pay/done` polls | `gateway/pay_routes.go`, `static/pay*.html`, `billing/checkout*.go`, tests | gateway tests: logged out → login; non-member org refused; POST without CSRF 403; checkout params per plan kind |
-| 3b Webhook: signature, dedupe, every event of billing.md's table, documents queued | `billing/webhook*.go`, the route in `gateway/pay_routes.go` is 3a's: 3b exports `billing.WebhookHandler` only | tests: each event; same event twice; `invoice.paid` before `checkout.session.completed` |
+| 3a Pay pages: `/_/pay/{plan}` (login, subject choice, already subscribed → portal), POST creates the checkout, `/_/pay/done` polls | `gateway/billing_routes.go`, `static/pay*.html`, `billing/checkout*.go`, tests | gateway tests: logged out → login; non-member org refused; POST without CSRF 403; checkout params per plan kind |
+| 3b Webhook: signature, dedupe, every event of billing.md's table, documents queued | `billing/webhook*.go`, the route in `gateway/billing_routes.go` is 3a's: 3b exports `billing.WebhookHandler` only | tests: each event; same event twice; `invoice.paid` before `checkout.session.completed` |
 | 3c Activation, cancel, refunds, subscriptions and purchases API | `billing/activation*.go`, `billing/refund*.go`, `handlers/api_billing_subscriptions.go`, `handlers/api_billing_purchases.go`, tests | tests with the fake Stripe: activate twice = once; partial refund then full refund |
 | 3d Notifications `billing.*` and the daily trial-ending job | `billing/notify*.go`, tests | tests with the real notification service and the in-app channel |
 
