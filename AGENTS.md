@@ -41,6 +41,7 @@ taronja-gateway/
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
 ├── test/                       # Load-test plan (JMeter)
+├── e2e/                        # End-to-end tests (build tag e2e) + docker-compose.yml with Mailpit
 └── .github/
     ├── copilot-instructions.md # GitHub Copilot conventions (Go style, test patterns)
     └── workflows/              # CI/CD pipelines
@@ -508,6 +509,7 @@ webapp/src/
 | `make build` | Regenerate API client (`make gen`), build webapp (`npm run build`), build Go binary with embedded assets; produces `tg` executable |
 | `make run` | Run gateway with sample config (`tg run --config sample/config.yaml`) |
 | `make test` | `go test -cover ./...` — runs all Go unit tests with coverage; uses testify + in-memory DBs |
+| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
 | `make gen` | Regenerate Go OpenAPI server (`oapi-codegen`) + TS API client (`@hey-api/openapi-ts`) |
 | `make config-docs` | Generate [`doc/CONFIG.md`](./doc/CONFIG.md) from `config/` package comments via `gomarkdoc` |
 | `make cover` | Run tests + open coverage HTML report |
