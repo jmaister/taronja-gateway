@@ -129,6 +129,22 @@ func (s *Service) processDocument(ctx context.Context, d *db.BillingDocument) {
 	s.saveDocument(d)
 }
 
+// BlockedReason says why a credit note cannot be issued yet: its invoice is
+// not in Odoo. "" for anything else, including a credit note that is done.
+func (s *Service) BlockedReason(d *db.BillingDocument) string {
+	if d.Kind != db.DocumentCreditNote || d.OdooState == db.OdooStateDone || d.InvoiceDocumentID == nil {
+		return ""
+	}
+	invoice, err := s.repo.GetDocument(*d.InvoiceDocumentID)
+	if err != nil || invoice.OdooMoveID != nil {
+		return ""
+	}
+	if invoice.OdooState == db.OdooStateFailed {
+		return "Its invoice failed in Odoo (" + invoice.OdooError + "): retry the invoice first"
+	}
+	return "Waiting for its invoice, which is not issued in Odoo yet"
+}
+
 func (s *Service) saveDocument(d *db.BillingDocument) {
 	err := s.repo.UpdateDocument(d)
 	if err != nil {

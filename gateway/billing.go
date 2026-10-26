@@ -39,6 +39,10 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 	}
 	if cfg.Odoo.IsConfigured() {
 		svcCfg.Odoo = odooapi.New(cfg.Odoo)
+		if cfg.Odoo.APIKeyExpiresAt != "" {
+			// validated when the config loads
+			svcCfg.OdooKeyExpiresAt, _ = time.Parse(time.DateOnly, cfg.Odoo.APIKeyExpiresAt)
+		}
 	} else {
 		log.Printf("Billing: Odoo is not configured; invoices wait in the outbox until it is")
 	}

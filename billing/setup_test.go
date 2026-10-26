@@ -3,7 +3,9 @@ package billing
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/jmaister/taronja-gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,4 +44,68 @@ func TestSetupChecks(t *testing.T) {
 
 	e.svc.odoo = nil
 	assert.Equal(t, CheckMissing, byID()["odoo-connection"].Status)
+}
+
+func TestSetupChecks_OdooOutbox(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	check := func() SetupCheck { return e.svc.outboxCheck() }
+	e.clock = time.Now() // documents are stamped with the real creation time
+
+	c := check()
+	assert.Equal(t, CheckOK, c.Status)
+	assert.Equal(t, "0 pending, 0 retrying, 0 failed", c.Detail)
+
+	e.customer(t, "org:o1", "")
+	inv := e.invoice(t, "org:o1", "in_1")
+	c = check()
+	assert.Equal(t, CheckOK, c.Status, "a fresh document is just queued")
+	assert.Contains(t, c.Detail, "1 pending, 0 retrying, 0 failed, oldest waiting")
+
+	e.clock = e.clock.Add(2 * time.Hour)
+	c = check()
+	assert.Equal(t, CheckWarn, c.Status, "waiting for over an hour")
+	assert.Equal(t, "/billing/invoices?state=pending", c.Link)
+
+	inv.Attempts = 2
+	require.NoError(t, e.repo.UpdateDocument(inv))
+	assert.Contains(t, check().Detail, "0 pending, 1 retrying, 0 failed")
+
+	inv.OdooState = db.OdooStateFailed
+	require.NoError(t, e.repo.UpdateDocument(inv))
+	c = check()
+	assert.Equal(t, CheckMissing, c.Status)
+	assert.Equal(t, OutboxLink, c.Link)
+	assert.Contains(t, c.Detail, "1 failed")
+
+	var ids []string
+	for _, sc := range e.svc.SetupChecks(ctx) {
+		ids = append(ids, sc.ID)
+	}
+	assert.Contains(t, ids, "odoo-outbox")
+}
+
+func TestSetupChecks_OdooAPIKeyExpiry(t *testing.T) {
+	e := newEnv(t)
+	day := func(d string) time.Time {
+		v, err := time.Parse(time.DateOnly, d)
+		require.NoError(t, err)
+		return v
+	}
+	e.clock = day("2026-10-26")
+	check := func() SetupCheck { return e.svc.apiKeyCheck() }
+
+	assert.Equal(t, CheckManual, check().Status, "unset")
+	for exp, want := range map[string]string{
+		"2027-03-01": CheckOK,
+		"2026-11-25": CheckOK,
+		"2026-11-24": CheckWarn,
+		"2026-10-26": CheckWarn, // valid through the whole day
+		"2026-10-25": CheckMissing,
+	} {
+		e.svc.odooKeyExp = day(exp)
+		assert.Equal(t, want, check().Status, exp)
+	}
+	e.svc.odooKeyExp = day("2026-10-25")
+	assert.Contains(t, check().Detail, "expired on 2026-10-25")
 }

@@ -249,6 +249,16 @@ func TestBillingDocumentsAPI(t *testing.T) {
 	assert.Equal(t, "in_2", docs[0].StripeRef)
 	assert.Equal(t, "Academia mensual", docs[0].Lines[0].Description)
 
+	credit := &db.BillingDocument{Subject: failed.Subject, Kind: db.DocumentCreditNote, StripeRef: "re_2", InvoiceDocumentID: &failed.ID, AmountCents: 500, PaidAt: time.Now()}
+	require.NoError(t, billing.EnqueueDocument(f.repo, credit, lines[:1], time.Now().Add(time.Hour)))
+	resp, _ = f.s.ListBillingDocuments(admin, api.ListBillingDocumentsRequestObject{Params: api.ListBillingDocumentsParams{Kind: ptr("credit_note")}})
+	creditDocs, ok := resp.(api.ListBillingDocuments200JSONResponse)
+	require.True(t, ok)
+	require.Len(t, creditDocs, 1)
+	require.NotNil(t, creditDocs[0].BlockedReason)
+	assert.Contains(t, *creditDocs[0].BlockedReason, "invoice failed in Odoo")
+	assert.Nil(t, docs[0].BlockedReason)
+
 	resp2, _ := f.s.RetryBillingDocument(admin, api.RetryBillingDocumentRequestObject{Id: failed.ID})
 	retried, ok := resp2.(api.RetryBillingDocument200JSONResponse)
 	require.True(t, ok, "%T", resp2)
