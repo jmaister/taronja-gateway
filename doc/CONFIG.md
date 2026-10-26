@@ -440,7 +440,7 @@ DisplayLabel returns the login button label.
 <a name="OdooBillingConfig"></a>
 ## type [OdooBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L462-L470>)
 
-OdooBillingConfig is where invoices and credit notes are issued, through Odoo's JSON\-2 API \(Odoo 19 or later\).
+OdooBillingConfig is where invoices and credit notes are issued, through Odoo's JSON\-2 API \(Odoo 19\).
 
 ```go
 type OdooBillingConfig struct {

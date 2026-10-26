@@ -78,7 +78,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 	checks = append(checks, s.odoo.Checks(ctx)...)
 	return append(checks, SetupCheck{
 		ID: "odoo-api-key", Title: "Odoo API key expiry", Status: CheckManual,
-		Detail: "Odoo 19+ API keys of non-admin users expire: renew it (scope rpc) before it does",
+		Detail: "Odoo 19 API keys of non-admin users expire: renew it (scope rpc) before it does",
 	})
 }
 
