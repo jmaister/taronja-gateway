@@ -8,7 +8,7 @@ CREATE INDEX IF NOT EXISTS `idx_billing_documents_next_attempt_at` ON `billing_d
 CREATE INDEX IF NOT EXISTS `idx_billing_documents_odoo_state` ON `billing_documents`(`odoo_state`);
 CREATE UNIQUE INDEX IF NOT EXISTS `idx_billing_documents_stripe_ref` ON `billing_documents`(`stripe_ref`);
 CREATE INDEX IF NOT EXISTS `idx_billing_documents_subject` ON `billing_documents`(`subject`);
-CREATE TABLE IF NOT EXISTS `billing_grants` (`id` varchar(255) NOT NULL,`subject` varchar(300) NOT NULL,`feature` varchar(100) NOT NULL,`until` datetime,`note` text,`created_by` varchar(255),`created_at` datetime,PRIMARY KEY (`id`));
+CREATE TABLE IF NOT EXISTS `billing_grants` (`id` varchar(255) NOT NULL,`subject` varchar(300) NOT NULL,`feature` varchar(100) NOT NULL,`until` datetime,`grace_days` integer,`note` text,`created_by` varchar(255),`created_at` datetime,PRIMARY KEY (`id`));
 CREATE INDEX IF NOT EXISTS `idx_billing_grants_subject` ON `billing_grants`(`subject`);
 CREATE TABLE IF NOT EXISTS `billing_plan_features` (`plan_key` varchar(100) NOT NULL,`feature` varchar(100) NOT NULL,PRIMARY KEY (`plan_key`,`feature`));
 CREATE INDEX IF NOT EXISTS `idx_billing_plan_features_feature` ON `billing_plan_features`(`feature`);

@@ -73,6 +73,9 @@ func (s *StrictApiServer) GetEntitlements(ctx context.Context, request api.GetEn
 			Until:  feature.Until,
 			Status: api.EntitlementStatus(feature.Status),
 			Source: feature.Source,
+
+			Grace:      feature.Grace,
+			GraceUntil: feature.GraceUntil,
 		}
 	}
 

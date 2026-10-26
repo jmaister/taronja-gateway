@@ -48,10 +48,22 @@ type Service struct {
 
 	notifications *notification.Service
 
-	// entitlements caches computed entitlements per subject.
+	// Entitlements and memberships are cached per process for
+	// EntitlementCacheTTL (a second gateway instance would not see this
+	// one's invalidations).
 	mu          sync.RWMutex
-	cache       map[string]Entitlements // subject -> entitlements
-	memberships map[string][]string     // user id -> organization ids
+	cache       map[string]cachedEntitlements // subject -> entitlements
+	memberships map[string]cachedMemberships  // user id -> organization ids
+}
+
+type cachedEntitlements struct {
+	ent Entitlements
+	at  time.Time
+}
+
+type cachedMemberships struct {
+	ids []string
+	at  time.Time
 }
 
 // NewService returns a Service for cfg.
@@ -63,7 +75,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
 		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, now: now,
-		cache: map[string]Entitlements{}, memberships: map[string][]string{},
+		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
 }
 
@@ -89,8 +101,8 @@ func (s *Service) Invalidate(subject string) {
 // InvalidateAll drops every cached entitlement.
 func (s *Service) InvalidateAll() {
 	s.mu.Lock()
-	s.cache = map[string]Entitlements{}
-	s.memberships = map[string][]string{}
+	s.cache = map[string]cachedEntitlements{}
+	s.memberships = map[string]cachedMemberships{}
 	s.mu.Unlock()
 }
 
