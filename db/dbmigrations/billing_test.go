@@ -10,14 +10,14 @@ import (
 )
 
 // A database that finished the legacy bridge before billing existed gets the
-// tables only from 0006, so its SQL must give tables GORM can use.
+// tables only from 0005, so its SQL must give tables GORM can use.
 func TestBillingMigration_CreatesUsableTables(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	gdb := db.GetConnection()
 	for _, table := range []string{"organizations", "organization_members", "billing_plans", "billing_plan_features", "billing_customers", "billing_checkouts", "billing_subscriptions", "billing_purchases", "billing_grants", "billing_documents", "stripe_events"} {
 		require.NoError(t, gdb.Exec("DROP TABLE "+table).Error, table)
 	}
-	sqlText, err := fs.ReadFile(db.MigrationSchema().Migrations, "0006_billing.up.sql")
+	sqlText, err := fs.ReadFile(db.MigrationSchema().Migrations, "0005_billing.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, gdb.Exec(string(sqlText)).Error)
 

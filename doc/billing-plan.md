@@ -28,7 +28,7 @@ reports.
 ## Wave 0 — contracts (coordinator)
 
 - `config.BillingConfig` (+ validation, `doc/CONFIG.md`).
-- Migration `0006_billing.up.sql` and the models in `db/schema.go`.
+- Migration `0005_billing.up.sql` and the models in `db/schema.go`.
 - Repository interfaces in `db/repositories/billing.go` and
   `organizationrepository.go` (implementations in wave 1).
 - `billing/contracts.go`: `Subject`, `Plan`, statuses, `Stripe` and `Odoo`
