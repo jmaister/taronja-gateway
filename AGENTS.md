@@ -94,7 +94,7 @@ taronja-gateway/
 
 - **Format:** YAML, loaded via `config.LoadConfig(filePath)`
 - **Env-var expansion:** Supports `${VAR_NAME}` interpolation from OS environment (sourced from `.env`)
-- **Defaults** (`server.host: 127.0.0.1`, `management.session.durationSeconds: 86400`) are set before a strict decode; `LoadConfig` then requires `server.port` and calls `GatewayConfig.Validate()`, the single place for config rules (admin credentials, middleware entries, each route has exactly one of `to`/`toFolder`/`toFile`, non-negative cache seconds). `builtin.ValidateConfigOnly` (`tg validate`) and gateway startup call the same `Validate()`, so the rules never diverge.
+- **Defaults** (`server.host: 127.0.0.1`, `management.session.durationSeconds: 1296000`, 15 days) are set before a strict decode; `LoadConfig` then requires `server.port` and calls `GatewayConfig.Validate()`, the single place for config rules (admin credentials, middleware entries, each route has exactly one of `to`/`toFolder`/`toFile`, non-negative cache seconds). `builtin.ValidateConfigOnly` (`tg validate`) and gateway startup call the same `Validate()`, so the rules never diverge.
 - **Main config sections:**
   - `server` — host (default `127.0.0.1`), port, external URL
   - `management` — admin credentials and session lifetime. The management endpoints are always under `config.ManagementPrefix` (`/_`); it is not configurable.
@@ -169,6 +169,8 @@ taronja-gateway/
 - Validates `tg_session_token` cookie and Bearer API tokens
 - Session includes `IsAdmin` flag, provider name, expiry, and rich client metadata
 
+**Sliding sessions (`session/renewal.go`):** `SessionStoreDB.RenewFor` (set in `gateway/setup.go` from `management.session.durationSeconds`; 0 = off) makes `ValidateSession` push a used session's `ValidUntil` to now+RenewFor, at most once an hour (`needsRenewal`). `ValidateSession` has no ResponseWriter, so it records the renewal in the request context, and `session.RenewCookies` — wrapped around the whole gateway handler in `setup.go`, independent of the `middleware:` list — re-sends the cookie with the new Max-Age just before the headers go out, unless the handler set its own session cookie (login/logout). Its writer implements Flush/Hijack/Unwrap so streaming and WebSocket upgrades keep working.
+
 **`clientinfo.go`:**
 - Parses User-Agent via `github.com/ua-parser/uap-go` to extract browser, OS, device type
 - JA4H fingerprinting support (via `middleware/builtin/ja4.go`)
@@ -230,6 +232,8 @@ verified against Apple's published public keys); `microsoft.go`/
 `facebook.go` are the "normal-shaped" examples alongside `google.go`.
 
 **Generic OIDC (`oidc.go`):** `authenticationProviders.oidc` is a list; each entry becomes an `AuthenticationProvider` named by its `name` (validated in `config.validateOIDCProviders`). Two optional `AuthenticationProvider` fields exist for it: `Prepare` (runs discovery before the endpoints are used; an error answers 503) and `UsePKCE` (S256 challenge in `startAuth`, verifier kept in the `tg_pkce_verifier` cookie for `Callback`). Discovery (`oidcDiscovery.load`) is lazy, cached once it succeeds, retried until then, and checks the document's `issuer`; it fills `oauthConfig.Endpoint` once under its mutex (and `AuthStyleInParams` for a public client with no secret). `OIDCUserDataFetcher` maps the userinfo response; `email_verified` may be a bool or the string "true"; `trustEmail` overrides it. Tests: `oidc_test.go` (fake provider that checks the PKCE verifier) and `e2e/zitadel_test.go` (real Zitadel).
+
+**Login page (`gateway/management_routes.go`'s `handleLoginPage`):** a request with a valid session is redirected on the server to the sanitized `?redirect=` (never back to `/_/login`, which would loop); otherwise the page is rendered. It never hands over to an external provider by itself (an auto-login option was tried and dropped: it needed loop and re-login-after-logout workarounds). Logout never signs the user out at the provider.
 
 **Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`github.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape, the wip branch's `apple.go`):
 1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
