@@ -1,6 +1,6 @@
 # Billing and entitlements
 
-Status: **implemented** on branch `billing` (plan: [billing-plan.md](billing-plan.md)).
+Plan: [billing-plan.md](billing-plan.md).
 
 The gateway takes payments (Stripe), issues the legal invoices (Odoo) and
 turns paid plans into **entitlements**: features that are active for a user
@@ -29,7 +29,7 @@ any application.
 | Plans and prices | Created in the gateway dashboard. The gateway creates the Stripe Product and Price and the Odoo product. A price change creates a new Stripe Price; existing subscribers keep theirs. |
 | Plan kinds | Subscription (monthly / yearly, optional trial, optional setup fee, optional start on activation) and one-time payment (optional access period, optional shipping address). |
 | Apps | Read entitlements: `X-Entitlements` on proxied requests, `GET /_/api/entitlements`, or `/_/me`. Megabox also calls one endpoint, *activate*, when its box first goes online. |
-| Money | EUR, prices **VAT included**, IVA 21 %, customers in Spain. |
+| Money | **EUR only (Spain)**: plans in any other currency are refused. Prices **VAT included**, IVA 21 %, customers in Spain. |
 | Stripe | `stripe-go/v87` (API version `2026-09-30.endive`), hosted Checkout and Customer Portal; card data never reaches the gateway. Stripe sends no invoices or receipts. |
 | Odoo | One instance, one company, for every app. **JSON-2 API** (`/json/2/<model>/<method>`, Odoo 19); `/jsonrpc` and `/xmlrpc` are deprecated in Odoo 19 and removed in Odoo 22. Odoo 20 is not supported yet (it has no OIDC login). No custom Odoo module. |
 | Invoice series | One sales journal for every app: one invoice series plus its own credit note series (*Dedicated Credit Note Sequence*). Products tell apps apart. See [Invoice series](#invoice-series). |
@@ -84,25 +84,39 @@ A subject's entitlements are computed from its subscriptions, purchases and
 grants: each feature maps to the **latest** `until` among the sources that
 grant it, and is active while `now < until` (or `until` is empty).
 
-| Source | `until` | `status` |
-|---|---|---|
-| Subscription `trialing` | `trial_end` | `trial` |
-| Subscription `active` | `current_period_end + grace_days` (renewal pending) | `active` |
-| Subscription `active` with `cancel_at_period_end` | `current_period_end` | `canceling` |
-| Subscription `past_due` | `grace_until` (first failed charge + `grace_days`) | `past_due` |
-| Subscription `awaiting_activation` | empty (no expiry until activated) | `awaiting_activation` |
-| Subscription `canceled` | — (not granted) | — |
-| Purchase, one-time, `paid` | `paid_at + access_days`, or empty when 0 | `active` |
-| Purchase `refunded` | — | — |
-| Grant | its `until` (empty = forever) | `granted` |
+| Source | `until` | `status` | Grace starts |
+|---|---|---|---|
+| Subscription `trialing` | `trial_end + grace_days` | `trial` | `trial_end` |
+| Subscription `active` | `current_period_end + grace_days` (renewal pending) | `active` | `current_period_end` |
+| Subscription `active` with `cancel_at_period_end` | `current_period_end` | `canceling` | never |
+| Subscription `past_due` | `grace_until` (first failed charge + `grace_days`) | `past_due` | the failed charge |
+| Subscription `awaiting_activation` | empty (no expiry until activated) | `awaiting_activation` | never |
+| Subscription `canceled` | — (not granted) | — | — |
+| Purchase, one-time, `paid` | `paid_at + access_days`, or empty when 0 | `active` | never |
+| Purchase `refunded` | — | — | — |
+| Grant | its `until`, plus its `graceDays` when given (empty = forever) | `granted` | `until` |
 
-A **user's** entitlements are their own plus those of every organization
-they belong to; the API and the header keep them apart, so an app checks the
-organization it is working with.
+### Grace period
 
-Entitlements are cached per subject in memory and invalidated on any change
-to that subject's subscriptions, purchases, grants or memberships (the same
-pattern as feature flags).
+Access is kept for the plan's `grace_days` after a subscription's period or
+trial ends without payment, and the user must be told. A feature is **in
+grace** when `now` is past its grace start and before its `until`. Then its
+`grace` is `true` and `graceUntil` is when access ends (equal to `until`);
+otherwise `grace` is `false` and `graceUntil` is `null`. When several
+sources grant the same feature, one that is not in grace wins, so a paid
+subscription is not reported as grace because of an older grant. A grant
+has grace only when created with `graceDays` (0–60, needs an `until`);
+that is the grace of an app-managed trial (Academia).
+
+`GET /_/api/billing/subscriptions` (and `/me/billing`) report the same
+`grace` and `graceUntil` for each subscription.
+
+Entitlements are cached per subject in memory for **24 hours** (grace
+periods are days long, so an old answer is never far off), and the cache is
+cleared on **any** billing change: a subscription, purchase, grant,
+membership or plan change, a Stripe webhook, activation, cancel or refund.
+The cache lives in the gateway process: one instance only. Run several and
+a change on one is not seen by the others until the 24 hours pass.
 
 ### X-Entitlements header
 
@@ -111,11 +125,14 @@ client-sent `X-Entitlements` and sets the active ones as JSON:
 
 ```json
 {"user":{"megabox.protection":"2026-11-27T10:00:00Z"},
- "orgs":{"org_7Qm2":{"academia.access":"2026-12-01T00:00:00Z"}}}
+ "orgs":{"org_7Qm2":{"academia.access":"2026-12-01T00:00:00Z"}},
+ "grace":{"orgs":{"org_7Qm2":{"academia.access":"2026-12-01T00:00:00Z"}}}}
 ```
 
 Values are the `until` in RFC 3339 UTC, or `null` for no expiry. Only active
-features appear; an organization with none is left out. Requests without a
+features appear; an organization with none is left out. `grace` is present
+only when some feature is in grace, and lists those features with when
+access ends (`user` and `orgs`, left out when empty). Requests without a
 session get no header. Apps that need more (status, source) call the API.
 
 ### API for apps
@@ -124,8 +141,8 @@ Authenticated with a session or the admin API token, like every gateway API.
 
 | Operation | Who | What |
 |---|---|---|
-| `GET /_/api/entitlements?user_id=` or `?org_id=` | admin token; or the user themselves / a member of the org | `{"subject":"org:…","features":{"academia.access":{"until":…,"status":"trial","source":"grant"}}}` |
-| `GET /_/me` | the user | adds `organizations` (id, name, role) and `entitlements` (same shape as the header) |
+| `GET /_/api/entitlements?user_id=` or `?org_id=` | admin token; or the user themselves / a member of the org | `{"subject":"org:…","features":{"academia.access":{"until":…,"status":"trial","source":"grant","grace":false,"graceUntil":null}}}` |
+| `GET /_/me` | the user | adds `organizations` (id, name, role) and `entitlements` (same shape as the header, with `grace` when a feature is in it) |
 
 ## Workflows
 
@@ -195,16 +212,19 @@ features last until the period end.
 
 ### Refund
 
-Gateway admin, **Billing → Payments → Refund** (whole or partial amount):
-Stripe refund; for a subscription payment the subscription can be cancelled
-at once in the same action. `charge.refunded` then creates the credit note.
+Gateway admin, **Billing → Purchases → Refund** (whole or partial amount):
+Stripe refund of a *purchase* (a one-time plan, or a subscription's first
+payment with a setup fee or `on_activation`); the subscription it started
+can be cancelled in the same action. Renewal charges are refunded in the
+Stripe dashboard. Either way `charge.refunded` creates the credit note.
 
 ### Trials outside Stripe (Academia)
 
 Academia's 14-day trial starts when a school is created, before anyone pays:
 the app calls `POST /_/api/billing/grants` with the organization, the
 features and `until` = now + 14 days. A grant can also comp a subject or fix
-a mistake from the dashboard.
+a mistake through the API (there is no grants form in the dashboard yet).
+With `graceDays` the grant also gets a grace period after `until`.
 
 ## Odoo
 
@@ -377,10 +397,25 @@ billing:
     salesJournalId: 1               # with Dedicated Credit Note Sequence
     paymentJournalId: 7             # bank journal "Stripe"
     taxId: 12                       # IVA 21 % included in price
+    apiKeyExpiresAt: 2026-12-31     # optional: when the API key expires
 ```
 
 `billing.enabled` requires `server.url` (Checkout return URLs) and the Stripe
 keys; without Odoo, documents stay pending. Validated by `tg validate`.
+
+`apiKeyExpiresAt` (YYYY-MM-DD) makes the setup page's *Odoo API key expiry*
+check real: OK, a warning in the last 30 days, missing once it has passed;
+unset, the check only reminds you that Odoo 19 keys of non-admin users
+expire.
+
+### Problems in the dashboard
+
+**Billing → Setup** shows, besides the connections, the *Odoo invoice queue*
+(documents pending, retrying and failed, and how long the oldest has waited,
+linking to the filtered **Invoices** list) and the API key expiry. In
+**Invoices**, a failed document shows Odoo's last error and its attempt
+count with a *Retry* button; a credit note whose invoice is not issued yet
+(or failed) says so and offers *Retry its invoice*.
 
 ## Security
 
@@ -402,7 +437,7 @@ keys; without Odoo, documents stay pending. Validated by `tg validate`.
 | Stripe API shape | `stripe/stripe-mock` (Stripe's own mock, validates every request against Stripe's OpenAPI) in `e2e/docker-compose.yml`: every adapter call is made against it. |
 | Odoo, real | `odoo:19.0` with Postgres in `e2e/docker-compose.yml`, initialised by `e2e/odoo/init.sh` (Spanish company, `l10n_es`, journal with credit note sequence, Stripe journal, VAT-included tax, API user and key): partner, invoice, payment, credit note, PDF, simplified invoice. Veri\*Factu registration is tested with `E2E_ODOO_VERIFACTU=1` against AEAT pre-production. |
 | Whole flow | e2e test with a scripted Stripe (`httptest` server speaking the Stripe API for the calls the flow makes, signed webhooks from `webhook.GenerateTestSignedPayload`) and the real Odoo: pay link → checkout → webhook → entitlement in the header → Odoo invoice with PDF → refund → credit note; failed renewal → grace → expired; activation. |
-| Live, opt-in | With `E2E_STRIPE_SECRET_KEY` (test mode) and `stripe listen`: a real Checkout with card 4242… |
+| Live, opt-in | With `STRIPE_TEST_SECRET_KEY` (test mode; refuses live keys): the real Stripe API creates a product, prices, a customer, Checkout sessions and a portal session. No `stripe listen` is needed: webhooks are not part of it. |
 
 ## Applications
 
@@ -410,7 +445,7 @@ keys; without Odoo, documents stay pending. Validated by `tg validate`.
 
 Done on Academia's branch `gateway-billing` (its PLAN.md §8). Academia sells
 **modules**, so its features are per module: `academia.<module>` (today
-`academia.music_player`).
+`academia.access`).
 
 - Its `billing/` package (Stripe Checkout, portal, webhook), the processed
   events table and the organization's Stripe customer and billing status
@@ -429,7 +464,7 @@ Done on Academia's branch `gateway-billing` (its PLAN.md §8). Academia sells
   (plans from `ACADEMIA_BILLING_PLANS`) and **Invoices and payments** =
   `/_/account`.
 - Plans `academia-monthly` and `academia-yearly` (group `academia`, subject
-  `org`, feature `academia.music_player`) are created by Academia's
+  `org`, feature `academia.access`) are created by Academia's
   `scripts/gateway-billing-plans.sh` (or in the dashboard).
 - The gateway route to Academia's API must be `authenticated: true` for the
   gateway to send `X-Entitlements` (otherwise Academia asks the API).
@@ -446,9 +481,10 @@ Odoo module go away.
 
 ## Still open
 
-- Stripe test mode run (needs test keys); everything else is tested without
-  them (stripe-mock for the API shape, signed events for the webhook).
-- Refunds of subscription charges are made in the Stripe dashboard (the
-  gateway's refund action covers purchases); `charge.refunded` issues the
-  credit note either way.
-- Veri\*Factu submission is not tested (needs a certificate).
+- Stripe **webhooks** are not tested against real Stripe (the live test
+  covers the API calls); events are tested with signed payloads.
+- Veri\*Factu registration is tested against AEAT pre-production with
+  `E2E_ODOO_VERIFACTU=1`, using Odoo's demo certificate; a real certificate
+  is not.
+- The entitlement cache is per process (one gateway instance).
+- No dashboard form for grants: they are created through the API.
