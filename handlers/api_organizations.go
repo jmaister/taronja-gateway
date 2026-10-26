@@ -39,7 +39,7 @@ func (s *StrictApiServer) organizationDetail(org *db.Organization) (api.Organiza
 	if err != nil {
 		return api.OrganizationDetail{}, err
 	}
-	out := api.OrganizationDetail{Id: org.ID, Name: org.Name, CreatedAt: org.CreatedAt, Members: make([]api.OrganizationMember, 0, len(members))}
+	out := api.OrganizationDetail{Id: org.ID, Name: org.Name, CreatedAt: org.CreatedAt, LogoUrl: orgLogoURL(org), Members: make([]api.OrganizationMember, 0, len(members))}
 	for _, m := range members {
 		member := api.OrganizationMember{UserId: m.UserID, Role: api.OrganizationMemberRole(m.Role)}
 		user, err := s.findUser(m.UserID)
@@ -77,7 +77,7 @@ func (s *StrictApiServer) ListOrganizations(ctx context.Context, request api.Lis
 			log.Printf("Error listing members of organization %s: %v", org.ID, err)
 			return api.ListOrganizations500JSONResponse{Code: http.StatusInternalServerError, Message: "Failed to list organizations"}, nil
 		}
-		resp = append(resp, api.Organization{Id: org.ID, Name: org.Name, CreatedAt: org.CreatedAt, MemberCount: len(members)})
+		resp = append(resp, api.Organization{Id: org.ID, Name: org.Name, CreatedAt: org.CreatedAt, MemberCount: len(members), LogoUrl: orgLogoURL(&org)})
 	}
 	return resp, nil
 }
@@ -298,7 +298,7 @@ func (s *StrictApiServer) myOrganizations(userID string) ([]api.MyOrganization, 
 	}
 	out := make([]api.MyOrganization, 0, len(memberships))
 	for _, m := range memberships {
-		out = append(out, api.MyOrganization{Id: m.Organization.ID, Name: m.Organization.Name, Role: api.MyOrganizationRole(m.Role)})
+		out = append(out, api.MyOrganization{Id: m.Organization.ID, Name: m.Organization.Name, Role: api.MyOrganizationRole(m.Role), LogoUrl: orgLogoURL(&m.Organization)})
 	}
 	return out, nil
 }

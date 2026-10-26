@@ -1227,9 +1227,12 @@ type MyBillingSubscription struct {
 
 // MyOrganization defines model for MyOrganization.
 type MyOrganization struct {
-	Id   string             `json:"id"`
-	Name string             `json:"name"`
-	Role MyOrganizationRole `json:"role"`
+	Id string `json:"id"`
+
+	// LogoUrl Where the logo image is served; empty when there is none
+	LogoUrl string             `json:"logoUrl"`
+	Name    string             `json:"name"`
+	Role    MyOrganizationRole `json:"role"`
 }
 
 // MyOrganizationRole defines model for MyOrganization.Role.
@@ -1343,10 +1346,13 @@ type NotificationStatus struct {
 
 // Organization defines model for Organization.
 type Organization struct {
-	CreatedAt   time.Time `json:"createdAt"`
-	Id          string    `json:"id"`
-	MemberCount int       `json:"memberCount"`
-	Name        string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+	Id        string    `json:"id"`
+
+	// LogoUrl Where the logo image is served; empty when there is none
+	LogoUrl     string `json:"logoUrl"`
+	MemberCount int    `json:"memberCount"`
+	Name        string `json:"name"`
 }
 
 // OrganizationCreateRequest defines model for OrganizationCreateRequest.
@@ -1359,10 +1365,13 @@ type OrganizationCreateRequest struct {
 
 // OrganizationDetail defines model for OrganizationDetail.
 type OrganizationDetail struct {
-	CreatedAt time.Time            `json:"createdAt"`
-	Id        string               `json:"id"`
-	Members   []OrganizationMember `json:"members"`
-	Name      string               `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+	Id        string    `json:"id"`
+
+	// LogoUrl Where the logo image is served; empty when there is none
+	LogoUrl string               `json:"logoUrl"`
+	Members []OrganizationMember `json:"members"`
+	Name    string               `json:"name"`
 }
 
 // OrganizationMember defines model for OrganizationMember.
@@ -1943,6 +1952,12 @@ type RespondToNotificationJSONBody struct {
 	ActionId string `json:"actionId"`
 }
 
+// GetOrganizationLogoParams defines parameters for GetOrganizationLogo.
+type GetOrganizationLogoParams struct {
+	// IfNoneMatch The ETag of the copy the client already has
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // GetBlockedClientsParams defines parameters for GetBlockedClients.
 type GetBlockedClientsParams struct {
 	// Ip Optional filter to only blocks recorded for this IP address
@@ -2314,6 +2329,15 @@ type ServerInterface interface {
 	// UpdateOrganization Rename an organization (admin only)
 	// (PATCH /api/organizations/{orgId})
 	UpdateOrganization(w http.ResponseWriter, r *http.Request, orgId string)
+	// DeleteOrganizationLogo Remove the organization's logo (admin, or an owner)
+	// (DELETE /api/organizations/{orgId}/logo)
+	DeleteOrganizationLogo(w http.ResponseWriter, r *http.Request, orgId string)
+	// GetOrganizationLogo The organization's logo image (admin, or a member)
+	// (GET /api/organizations/{orgId}/logo)
+	GetOrganizationLogo(w http.ResponseWriter, r *http.Request, orgId string, params GetOrganizationLogoParams)
+	// SetOrganizationLogo Set the organization's logo (admin, or an owner; PNG, JPEG or WebP up to 512 KiB)
+	// (PUT /api/organizations/{orgId}/logo)
+	SetOrganizationLogo(w http.ResponseWriter, r *http.Request, orgId string)
 	// RemoveOrganizationMember Remove a user from an organization (admin only)
 	// (DELETE /api/organizations/{orgId}/members/{userId})
 	RemoveOrganizationMember(w http.ResponseWriter, r *http.Request, orgId string, userId string)
@@ -4052,6 +4076,108 @@ func (siw *ServerInterfaceWrapper) UpdateOrganization(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteOrganizationLogo operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrganizationLogo(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationLogo operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetOrganizationLogoParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationLogo(w, r, orgId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOrganizationLogo operation middleware
+func (siw *ServerInterfaceWrapper) SetOrganizationLogo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", r.PathValue("orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOrganizationLogo(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RemoveOrganizationMember operation middleware
 func (siw *ServerInterfaceWrapper) RemoveOrganizationMember(w http.ResponseWriter, r *http.Request) {
 
@@ -5279,6 +5405,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{orgId}", wrapper.DeleteOrganization)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{orgId}", wrapper.GetOrganization)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/organizations/{orgId}", wrapper.UpdateOrganization)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{orgId}/logo", wrapper.DeleteOrganizationLogo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{orgId}/logo", wrapper.GetOrganizationLogo)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/organizations/{orgId}/logo", wrapper.SetOrganizationLogo)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{orgId}/members/{userId}", wrapper.RemoveOrganizationMember)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/organizations/{orgId}/members/{userId}", wrapper.SetOrganizationMember)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/me/organizations", wrapper.ListMyOrganizations)
@@ -9254,6 +9383,345 @@ func (response UpdateOrganization500JSONResponse) VisitUpdateOrganizationRespons
 	return err
 }
 
+type DeleteOrganizationLogoRequestObject struct {
+	OrgId string `json:"orgId"`
+}
+
+type DeleteOrganizationLogoResponseObject interface {
+	VisitDeleteOrganizationLogoResponse(w http.ResponseWriter) error
+}
+
+type DeleteOrganizationLogo204Response struct {
+}
+
+func (response DeleteOrganizationLogo204Response) VisitDeleteOrganizationLogoResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteOrganizationLogo401JSONResponse Error
+
+func (response DeleteOrganizationLogo401JSONResponse) VisitDeleteOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganizationLogo403JSONResponse Error
+
+func (response DeleteOrganizationLogo403JSONResponse) VisitDeleteOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganizationLogo404JSONResponse Error
+
+func (response DeleteOrganizationLogo404JSONResponse) VisitDeleteOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganizationLogo500JSONResponse Error
+
+func (response DeleteOrganizationLogo500JSONResponse) VisitDeleteOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationLogoRequestObject struct {
+	OrgId  string `json:"orgId"`
+	Params GetOrganizationLogoParams
+}
+
+type GetOrganizationLogoResponseObject interface {
+	VisitGetOrganizationLogoResponse(w http.ResponseWriter) error
+}
+
+type GetOrganizationLogo200ResponseHeaders struct {
+	CacheControl *string
+	ETag         *string
+}
+
+type GetOrganizationLogo200ImagejpegResponse struct {
+	Body          io.Reader
+	Headers       GetOrganizationLogo200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetOrganizationLogo200ImagejpegResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOrganizationLogo200ImagepngResponse struct {
+	Body          io.Reader
+	Headers       GetOrganizationLogo200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetOrganizationLogo200ImagepngResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/png")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOrganizationLogo200ImagewebpResponse struct {
+	Body          io.Reader
+	Headers       GetOrganizationLogo200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetOrganizationLogo200ImagewebpResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/webp")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOrganizationLogo304Response struct {
+}
+
+func (response GetOrganizationLogo304Response) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetOrganizationLogo401JSONResponse Error
+
+func (response GetOrganizationLogo401JSONResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationLogo403JSONResponse Error
+
+func (response GetOrganizationLogo403JSONResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationLogo404JSONResponse Error
+
+func (response GetOrganizationLogo404JSONResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationLogo500JSONResponse Error
+
+func (response GetOrganizationLogo500JSONResponse) VisitGetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogoRequestObject struct {
+	OrgId       string `json:"orgId"`
+	ContentType string
+	Body        io.Reader
+}
+
+type SetOrganizationLogoResponseObject interface {
+	VisitSetOrganizationLogoResponse(w http.ResponseWriter) error
+}
+
+type SetOrganizationLogo200JSONResponse OrganizationDetail
+
+func (response SetOrganizationLogo200JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogo400JSONResponse Error
+
+func (response SetOrganizationLogo400JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogo401JSONResponse Error
+
+func (response SetOrganizationLogo401JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogo403JSONResponse Error
+
+func (response SetOrganizationLogo403JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogo404JSONResponse Error
+
+func (response SetOrganizationLogo404JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogo413JSONResponse Error
+
+func (response SetOrganizationLogo413JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrganizationLogo500JSONResponse Error
+
+func (response SetOrganizationLogo500JSONResponse) VisitSetOrganizationLogoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RemoveOrganizationMemberRequestObject struct {
 	OrgId  string `json:"orgId"`
 	UserId string `json:"userId"`
@@ -10864,6 +11332,15 @@ type StrictServerInterface interface {
 	// UpdateOrganization Rename an organization (admin only)
 	// (PATCH /api/organizations/{orgId})
 	UpdateOrganization(ctx context.Context, request UpdateOrganizationRequestObject) (UpdateOrganizationResponseObject, error)
+	// DeleteOrganizationLogo Remove the organization's logo (admin, or an owner)
+	// (DELETE /api/organizations/{orgId}/logo)
+	DeleteOrganizationLogo(ctx context.Context, request DeleteOrganizationLogoRequestObject) (DeleteOrganizationLogoResponseObject, error)
+	// GetOrganizationLogo The organization's logo image (admin, or a member)
+	// (GET /api/organizations/{orgId}/logo)
+	GetOrganizationLogo(ctx context.Context, request GetOrganizationLogoRequestObject) (GetOrganizationLogoResponseObject, error)
+	// SetOrganizationLogo Set the organization's logo (admin, or an owner; PNG, JPEG or WebP up to 512 KiB)
+	// (PUT /api/organizations/{orgId}/logo)
+	SetOrganizationLogo(ctx context.Context, request SetOrganizationLogoRequestObject) (SetOrganizationLogoResponseObject, error)
 	// RemoveOrganizationMember Remove a user from an organization (admin only)
 	// (DELETE /api/organizations/{orgId}/members/{userId})
 	RemoveOrganizationMember(ctx context.Context, request RemoveOrganizationMemberRequestObject) (RemoveOrganizationMemberResponseObject, error)
@@ -12538,6 +13015,88 @@ func (sh *strictHandler) UpdateOrganization(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateOrganizationResponseObject); ok {
 		if err := validResponse.VisitUpdateOrganizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteOrganizationLogo operation middleware
+func (sh *strictHandler) DeleteOrganizationLogo(w http.ResponseWriter, r *http.Request, orgId string) {
+	var request DeleteOrganizationLogoRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOrganizationLogo(ctx, request.(DeleteOrganizationLogoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOrganizationLogo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOrganizationLogoResponseObject); ok {
+		if err := validResponse.VisitDeleteOrganizationLogoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrganizationLogo operation middleware
+func (sh *strictHandler) GetOrganizationLogo(w http.ResponseWriter, r *http.Request, orgId string, params GetOrganizationLogoParams) {
+	var request GetOrganizationLogoRequestObject
+
+	request.OrgId = orgId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrganizationLogo(ctx, request.(GetOrganizationLogoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrganizationLogo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrganizationLogoResponseObject); ok {
+		if err := validResponse.VisitGetOrganizationLogoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOrganizationLogo operation middleware
+func (sh *strictHandler) SetOrganizationLogo(w http.ResponseWriter, r *http.Request, orgId string) {
+	var request SetOrganizationLogoRequestObject
+
+	request.OrgId = orgId
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOrganizationLogo(ctx, request.(SetOrganizationLogoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOrganizationLogo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOrganizationLogoResponseObject); ok {
+		if err := validResponse.VisitSetOrganizationLogoResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
