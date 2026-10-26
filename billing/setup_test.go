@@ -85,6 +85,29 @@ func TestSetupChecks_OdooOutbox(t *testing.T) {
 	assert.Contains(t, ids, "odoo-outbox")
 }
 
+func TestSetupChecks_StuckStripeEvents(t *testing.T) {
+	e := newEnv(t)
+	check := func() SetupCheck { return e.svc.stuckEventsCheck() }
+	assert.Equal(t, CheckOK, check().Status)
+
+	require.NoError(t, e.repo.RecordStuckEvent("evt_1", EventInvoicePaid, "sub_1", "not recorded", e.clock))
+	c := check()
+	assert.Equal(t, CheckWarn, c.Status, "just arrived")
+	assert.Contains(t, c.Detail, "invoice.paid evt_1 (sub_1, 1 attempts)")
+
+	e.clock = e.clock.Add(3 * time.Hour)
+	assert.Equal(t, CheckMissing, check().Status, "waiting for over two hours")
+
+	var ids []string
+	for _, sc := range e.svc.SetupChecks(context.Background()) {
+		ids = append(ids, sc.ID)
+	}
+	assert.Contains(t, ids, "stripe-events")
+
+	require.NoError(t, e.repo.ClearStuckEvent("evt_1"))
+	assert.Equal(t, CheckOK, check().Status)
+}
+
 func TestSetupChecks_OdooAPIKeyExpiry(t *testing.T) {
 	e := newEnv(t)
 	day := func(d string) time.Time {
