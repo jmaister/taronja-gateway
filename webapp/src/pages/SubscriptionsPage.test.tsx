@@ -16,6 +16,7 @@ vi.mock('../services/billing', () => ({
                 currentPeriodEnd: '2026-11-25T00:00:00Z',
                 trialEnd: null,
                 cancelAtPeriodEnd: false,
+                grace: false,
                 graceUntil: null,
             },
             {
@@ -26,7 +27,19 @@ vi.mock('../services/billing', () => ({
                 currentPeriodEnd: '2027-01-01T00:00:00Z',
                 trialEnd: '2026-11-01T00:00:00Z',
                 cancelAtPeriodEnd: false,
+                grace: false,
                 graceUntil: null,
+            },
+            {
+                id: 'sub-3',
+                subject: 'org:789',
+                planKey: 'academia-monthly',
+                status: 'past_due',
+                currentPeriodEnd: '2026-10-20T00:00:00Z',
+                trialEnd: null,
+                cancelAtPeriodEnd: false,
+                grace: true,
+                graceUntil: '2026-10-30T00:00:00Z',
             },
         ],
         isLoading: false,
@@ -79,5 +92,11 @@ describe('SubscriptionsPage', () => {
     it('shows cancel button for active subscriptions', () => {
         const html = render();
         expect(html).toContain('Cancel');
+    });
+
+    it('flags a subscription in its grace period', () => {
+        const html = render();
+        expect(html).toContain('In grace until');
+        expect(html.match(/In grace until/g)).toHaveLength(1);
     });
 });

@@ -87,6 +87,16 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 				User: header.User,
 				Orgs: header.Orgs,
 			}
+			if header.Grace != nil {
+				grace := &api.EntitlementHeaderGrace{}
+				if len(header.Grace.User) > 0 {
+					grace.User = &header.Grace.User
+				}
+				if len(header.Grace.Orgs) > 0 {
+					grace.Orgs = &header.Grace.Orgs
+				}
+				response.Entitlements.Grace = grace
+			}
 		}
 	}
 
