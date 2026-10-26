@@ -51,6 +51,7 @@ Users created before this feature keep logging in as before: migration
   without use, or when revoked here, or on a password change.
 - Recent activity: logins (with the method), failed password logins, account
   creation, password changes, linking, revoked sessions.
+- Billing, when enabled (see [billing.md](billing.md)).
 
 Forms are protected against CSRF with a token derived from the session.
 
