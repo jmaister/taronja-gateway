@@ -532,6 +532,57 @@ type NotificationPreference struct {
 	UpdatedAt        time.Time `gorm:"autoUpdateTime"`
 }
 
+// UserIdentity links a user to one external login (provider + the provider's
+// stable user ID). A user can have several, so one account can sign in with
+// Google and GitHub.
+type UserIdentity struct {
+	ID          string    `gorm:"primaryKey;column:id;type:varchar(255);not null"`
+	UserID      string    `gorm:"type:varchar(255);not null;index"`
+	Provider    string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_user_identities_provider_subject"`
+	Subject     string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_user_identities_provider_subject"`
+	Email       string    `gorm:"type:varchar(255)"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	LastLoginAt *time.Time
+}
+
+// BeforeCreate sets a CUID ID.
+func (u *UserIdentity) BeforeCreate(tx *gorm.DB) error {
+	newId, err := cuid.NewCrypto(rand.Reader)
+	if err != nil {
+		return err
+	}
+	u.ID = newId
+	return nil
+}
+
+// BeforeSave normalizes LastLoginAt to UTC.
+func (u *UserIdentity) BeforeSave(tx *gorm.DB) error {
+	if u.LastLoginAt != nil {
+		lastLogin := u.LastLoginAt.UTC()
+		u.LastLoginAt = &lastLogin
+	}
+	return nil
+}
+
+// AuthEvent types: the security activity log of a user.
+const (
+	AuthEventLogin          = "login"
+	AuthEventLoginFailed    = "login_failed"
+	AuthEventSignup         = "signup"
+	AuthEventIdentityLinked = "identity_linked"
+)
+
+// AuthEvent is one entry in a user's security activity log.
+type AuthEvent struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement"`
+	UserID    string    `gorm:"type:varchar(255);not null;index"`
+	Type      string    `gorm:"type:varchar(50);not null"`
+	Provider  string    `gorm:"type:varchar(50)"`
+	IPAddress string    `gorm:"type:varchar(45)"`
+	UserAgent string    `gorm:"type:text"`
+	CreatedAt time.Time `gorm:"autoCreateTime;index"`
+}
+
 // FeatureFlagTypeBoolean is the only FeatureFlag.Type today: the flag is on or
 // off. Typed values (integer, float, date, ...) are meant to become new type
 // constants plus a value column, without changing how existing flags behave.
@@ -563,4 +614,6 @@ var Models = []interface{}{
 	&NotificationLinkCode{},
 	&NotificationPreference{},
 	&FeatureFlag{},
+	&UserIdentity{},
+	&AuthEvent{},
 }

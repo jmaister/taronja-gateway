@@ -26,6 +26,8 @@ type Dependencies struct {
 	CountersRepo      repositories.CountersRepository
 	BlockedClientRepo repositories.BlockedClientRepository
 	NotificationRepo  repositories.NotificationRepository
+	UserIdentityRepo  repositories.UserIdentityRepository
+	AuthEventRepo     repositories.AuthEventRepository
 
 	// Services
 	SessionStore session.SessionStore
@@ -88,6 +90,8 @@ func NewProduction() *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
+	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
+	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
 	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 24 hour duration
@@ -105,6 +109,8 @@ func NewProduction() *Dependencies {
 		CountersRepo:      countersRepo,
 		BlockedClientRepo: blockedClientRepo,
 		NotificationRepo:  notificationRepo,
+		UserIdentityRepo:  userIdentityRepo,
+		AuthEventRepo:     authEventRepo,
 		SessionStore:      sessionStore,
 		TokenService:      tokenService,
 		FeatureFlags:      featureFlags,
@@ -134,6 +140,8 @@ func NewTestWithName(testName string) *Dependencies {
 	countersRepo := repositories.NewDBCountersRepository(gormDB)
 	blockedClientRepo := repositories.NewBlockedClientRepositoryDB(gormDB)
 	notificationRepo := repositories.NewNotificationRepositoryDB(gormDB)
+	userIdentityRepo := repositories.NewUserIdentityRepositoryDB(gormDB)
+	authEventRepo := repositories.NewAuthEventRepositoryDB(gormDB)
 	featureFlags := featureflag.NewService(repositories.NewFeatureFlagRepositoryDB(gormDB))
 
 	// Create session store with 1 hour duration for tests
@@ -158,6 +166,8 @@ func NewTestWithName(testName string) *Dependencies {
 		CountersRepo:        countersRepo,
 		BlockedClientRepo:   blockedClientRepo,
 		NotificationRepo:    notificationRepo,
+		UserIdentityRepo:    userIdentityRepo,
+		AuthEventRepo:       authEventRepo,
 		SessionStore:        sessionStore,
 		TokenService:        tokenService,
 		FeatureFlags:        featureFlags,

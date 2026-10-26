@@ -100,6 +100,14 @@ authenticationProviders:
   github:
     clientId: ${GITHUB_CLIENT_ID}
     clientSecret: ${GITHUB_CLIENT_SECRET}
+  # Any OpenID Connect provider; endpoints come from the issuer's discovery
+  # document. Callback: <server.url>/_/auth/<name>/callback
+  # oidc:
+  #   - name: zitadel
+  #     label: Zitadel
+  #     issuer: https://auth.example.com
+  #     clientId: ${ZITADEL_CLIENT_ID}
+  #     clientSecret: ${ZITADEL_CLIENT_SECRET}
   # Microsoft, Facebook, and "Sign in with Apple" existed here but moved to
   # the wip/microsoft-apple-facebook-auth branch, untested — to come back
   # to later.

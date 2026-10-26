@@ -142,7 +142,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 			Branding: config.BrandingConfig{},
 		}
 
-		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo, testAccountsFor(userRepo))
 
 		// Test that the login endpoint is registered
 		loginReq := httptest.NewRequest("GET", "/_/auth/google/login", nil)
@@ -176,7 +176,7 @@ func TestRegisterGoogleAuth(t *testing.T) {
 			Branding: config.BrandingConfig{},
 		}
 
-		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo)
+		RegisterGoogleAuth(mux, sessionStore, gatewayConfig, userRepo, testAccountsFor(userRepo))
 
 		// Test that no endpoints are registered
 		loginReq := httptest.NewRequest("GET", "/_/auth/google/login", nil)
@@ -231,7 +231,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 
 		// Create authentication provider
 		provider := GoogleProvider{}
-		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore, gatewayConfig)
+		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore, gatewayConfig, testAccountsFor(userRepo))
 		authProvider.Fetcher = mockFetcher
 
 		// Register endpoints
@@ -282,7 +282,7 @@ func TestGoogleOAuth2Flow(t *testing.T) {
 		}
 
 		provider := GoogleProvider{}
-		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore, gatewayConfig)
+		authProvider := NewAuthenticationProvider(oauthConfig, provider, "Google", userRepo, sessionStore, gatewayConfig, testAccountsFor(userRepo))
 
 		mux := http.NewServeMux()
 		authProvider.RegisterEndpoints(mux)

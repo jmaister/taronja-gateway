@@ -90,6 +90,7 @@
             align-items: center;
         }
         .login-container input[type="text"],
+        .login-container input[type="email"],
         .login-container input[type="password"] {
             width: 100%;
             padding: 14px;
@@ -168,6 +169,11 @@
         .oauth-github img {
             filter: brightness(0) invert(1); /* Make black SVG logo white */
         }
+        .oauth-oidc {
+            background-color: #343a40;
+            color: #ffffff;
+            padding: 18px 10px !important;
+        }
         .oauth-other {
             background-color: #6c757d; /* Ensure this rule is not empty */
         }
@@ -220,6 +226,7 @@
         <img src="{{.Branding.LogoUrl}}" alt="Logo" class="logo">
         {{end}}
         <h1>Login</h1>
+        {{if .Error}}<div class="error-message" role="alert" style="display:block">{{.Error}}</div>{{end}}
 
         <div class="oauth-buttons">
             {{if .AuthenticationProviders.Google.Enabled}}
@@ -234,10 +241,15 @@
                 Login with GitHub
             </a>
             {{end}}
+            {{range .AuthenticationProviders.OIDC}}
+            <a href="{{$.ManagementPrefix}}/auth/{{.Name}}/login{{if $.RedirectURL}}?redirect={{urlquery $.RedirectURL}}{{end}}" class="oauth-provider oauth-oidc">
+                Login with {{.Label}}
+            </a>
+            {{end}}
         </div>
 
         {{/* Show separator if both basic login and at least one OAuth provider are enabled and visible */}}
-        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled)}}
+        {{if and .AuthenticationProviders.Basic.Enabled (or .AuthenticationProviders.Google.Enabled .AuthenticationProviders.Github.Enabled .AuthenticationProviders.OIDC)}}
         <div class="separator">
             <span>or</span>
         </div>

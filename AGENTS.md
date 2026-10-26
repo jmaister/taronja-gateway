@@ -23,9 +23,10 @@ taronja-gateway/
 ├── gateway/                    # HTTP server assembly, routing, reverse proxy
 ├── handlers/                   # OpenAPI handler implementations (one per resource)
 ├── middleware/                 # Plumbing: Middleware/Chain, health, metrics; builtin/ holds the implementations
-├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2)
+├── providers/                  # Auth providers (Basic, Google OAuth2, GitHub OAuth2, generic OIDC)
 ├── notification/               # Generic notification system: storage, email/Telegram delivery
 ├── featureflag/                # Feature flag service (cached values, X-Feature-Flags header)
+├── accounts/                   # External login resolution (identities) and activity log
 ├── session/                    # Session store, client-info parsing, IP geolocation
 ├── auth/                       # API bearer token service
 ├── db/                         # GORM models, repositories (User, Session, Token, etc.), SQLite
@@ -41,7 +42,7 @@ taronja-gateway/
 ├── doc/                        # Architecture decisions, config reference, middleware docs
 ├── scripts/                    # Install scripts, GoReleaser setup, migration helpers
 ├── test/                       # Load-test plan (JMeter)
-├── e2e/                        # End-to-end tests (build tag e2e) + docker-compose.yml with Mailpit
+├── e2e/                        # End-to-end tests (build tag e2e) + docker-compose.yml with Mailpit and Zitadel
 └── .github/
     ├── copilot-instructions.md # GitHub Copilot conventions (Go style, test patterns)
     └── workflows/              # CI/CD pipelines
@@ -228,6 +229,8 @@ of-REST shape above (its client secret is a JWT the gateway signs itself,
 verified against Apple's published public keys); `microsoft.go`/
 `facebook.go` are the "normal-shaped" examples alongside `google.go`.
 
+**Generic OIDC (`oidc.go`):** `authenticationProviders.oidc` is a list; each entry becomes an `AuthenticationProvider` named by its `name` (validated in `config.validateOIDCProviders`). Two optional `AuthenticationProvider` fields exist for it: `Prepare` (runs discovery before the endpoints are used; an error answers 503) and `UsePKCE` (S256 challenge in `startAuth`, verifier kept in the `tg_pkce_verifier` cookie for `Callback`). Discovery (`oidcDiscovery.load`) is lazy, cached once it succeeds, retried until then, and checks the document's `issuer`; it fills `oauthConfig.Endpoint` once under its mutex (and `AuthStyleInParams` for a public client with no secret). `OIDCUserDataFetcher` maps the userinfo response; `email_verified` may be a bool or the string "true"; `trustEmail` overrides it. Tests: `oidc_test.go` (fake provider that checks the PKCE verifier) and `e2e/zitadel_test.go` (real Zitadel).
+
 **Adding another OAuth2 provider is usually a small, self-contained addition** — the generic `AuthenticationProvider` above already owns the entire flow (state/CSRF, redirect cookie, code exchange, user find-or-create, session creation, login/logout routing); a new provider only supplies the provider-specific glue, mirroring `google.go`/`github.go` (or, if it turns out to need the `ClientSecretFunc`/`ResponseMode`/ID-token-instead-of-REST shape, the wip branch's `apple.go`):
 1. A `Name() string` type (e.g. `type XxxProvider struct{}`).
 2. A `UserDataFetcher` implementation: normally one HTTP call to the provider's own "get current user" API, mapping its response into the shared `UserInfo` struct.
@@ -349,6 +352,13 @@ step (most will, the way Telegram does — there's no notion of "this
 gateway user's WhatsApp number" otherwise), mirror
 `NotificationChannelLink`/`NotificationLinkCode` and the `/start` flow in
 `telegram.go`.
+
+### `accounts/` — External Logins and Activity
+
+Full reference: [doc/accounts.md](./doc/accounts.md). `accounts.Service` (built in `gateway/setup.go`'s `newAccountsService`, stored as `Gateway.Accounts`) resolves OAuth/OIDC logins to users and records the activity log, with no HTTP handlers.
+- **Tables** (migration `0004_accounts`): `user_identities` (provider + subject per external login; backfilled from `users.provider/provider_id` for Google/GitHub), `auth_events` (activity log).
+- **OAuth login** goes through `ResolveExternalLogin` (in `providers.AuthenticationProvider.Callback`): identity by (provider, subject) first, then same-email auto-link only when `canAutoLink` (provider-verified email, account email confirmed or no password, not the config admin), else `ErrLinkRequired` → `/_/login?error=link_required` (messages in `gateway/login_errors.go`). An unverified provider email never creates a user (`?error=email_not_verified`).
+- Model IDs for `UserIdentity` are set in `BeforeCreate`, not `BeforeSave`: GORM runs `BeforeSave` on `Model(&X{}).Update(...)` too, and an ID set there ends up in the `WHERE`, so the update silently matches nothing.
 
 ### `featureflag/` — Feature Flags
 
@@ -509,7 +519,7 @@ webapp/src/
 | `make build` | Regenerate API client (`make gen`), build webapp (`npm run build`), build Go binary with embedded assets; produces `tg` executable |
 | `make run` | Run gateway with sample config (`tg run --config sample/config.yaml`) |
 | `make test` | `go test -cover ./...` — runs all Go unit tests with coverage; uses testify + in-memory DBs |
-| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
+| `make e2e` | Starts `e2e/docker-compose.yml` (Mailpit, Zitadel), runs `go test -tags e2e ./e2e/...` against an in-process gateway (notifications, OIDC login, feature flags), stops the services. See [`doc/e2e.md`](./doc/e2e.md) |
 | `make gen` | Regenerate Go OpenAPI server (`oapi-codegen`) + TS API client (`@hey-api/openapi-ts`) |
 | `make config-docs` | Generate [`doc/CONFIG.md`](./doc/CONFIG.md) from `config/` package comments via `gomarkdoc` |
 | `make cover` | Run tests + open coverage HTML report |

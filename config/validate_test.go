@@ -90,3 +90,34 @@ func TestValidate_AdminNeedsCredentials(t *testing.T) {
 	cfg.Management.Admin.Username, cfg.Management.Admin.Password = "admin", "secret"
 	assert.NoError(t, cfg.Validate())
 }
+
+func TestValidate_OIDCProviders(t *testing.T) {
+	valid := OIDCProviderConfig{Name: "zitadel", Issuer: "https://auth.example.com", ClientId: "id"}
+	with := func(edit func(*OIDCProviderConfig)) GatewayConfig {
+		p := valid
+		edit(&p)
+		return GatewayConfig{AuthenticationProviders: AuthenticationProviders{OIDC: []OIDCProviderConfig{p}}}
+	}
+
+	ok := with(func(*OIDCProviderConfig) {})
+	require.NoError(t, ok.Validate())
+	assert.True(t, ok.HasAnyAuthentication())
+	assert.Equal(t, "zitadel", valid.DisplayLabel())
+
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"bad name":      {with(func(p *OIDCProviderConfig) { p.Name = "Zitadel IdP" }), "lowercase letters"},
+		"reserved name": {with(func(p *OIDCProviderConfig) { p.Name = "github" }), "reserved"},
+		"no issuer":     {with(func(p *OIDCProviderConfig) { p.Issuer = "" }), "issuer must be"},
+		"bad issuer":    {with(func(p *OIDCProviderConfig) { p.Issuer = "auth.example.com" }), "issuer must be"},
+		"no client id":  {with(func(p *OIDCProviderConfig) { p.ClientId = "" }), "clientId is required"},
+		"duplicate":     {GatewayConfig{AuthenticationProviders: AuthenticationProviders{OIDC: []OIDCProviderConfig{valid, valid}}}, "used twice"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, tc.cfg.Validate(), tc.wantErr)
+		})
+	}
+}

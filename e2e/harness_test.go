@@ -49,9 +49,22 @@ type testGateway struct {
 // may use {{URL}} and {{PORT}} for the gateway's own address.
 func startGateway(t *testing.T, configYAML string) *testGateway {
 	t.Helper()
+	listener, _ := listenGateway(t)
+	return startGatewayOn(t, listener, configYAML)
+}
 
+// listenGateway reserves the gateway's address before it starts, for tests
+// that must register its URL somewhere first (e.g. an OIDC redirect URI).
+func listenGateway(t *testing.T) (net.Listener, string) {
+	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
+	return listener, fmt.Sprintf("http://127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port)
+}
+
+// startGatewayOn is startGateway on a listener from listenGateway.
+func startGatewayOn(t *testing.T, listener net.Listener, configYAML string) *testGateway {
+	t.Helper()
 	port := listener.Addr().(*net.TCPAddr).Port
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 
@@ -170,6 +183,26 @@ func (c *client) sendJSON(method, path string, body any, wantStatus int) map[str
 	return out
 }
 
+func (c *client) getPage(path string) (*http.Response, string) {
+	c.t.Helper()
+	resp, err := c.http.Get(c.base + path)
+	require.NoError(c.t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(c.t, err)
+	return resp, string(body)
+}
+
+// me returns /_/me for a signed-in client and nil otherwise.
+func (c *client) me() map[string]any {
+	c.t.Helper()
+	resp, body := c.do(http.MethodGet, "/_/me", nil)
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	return mustJSON(c.t, body)
+}
+
 // eventually polls check until it returns true or timeout passes.
 func eventually(t *testing.T, timeout time.Duration, what string, check func() bool) {
 	t.Helper()
@@ -181,4 +214,11 @@ func eventually(t *testing.T, timeout time.Duration, what string, check func() b
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("timed out after %s waiting for %s", timeout, what)
+}
+
+func mustJSON(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(body, &out))
+	return out
 }

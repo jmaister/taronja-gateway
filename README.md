@@ -42,10 +42,12 @@ Features table, shows what is implemented and what is planned.
 | Authentication: OAuth2        | ✅       | v0.0.1 |
 | - OAuth2: GitHub              | ✅       | v0.0.1 |
 | - OAuth2: Google              | ✅       | v0.0.1 |
+| - OpenID Connect: any provider (Zitadel, Keycloak, Authentik, ...) | ✅ | unreleased |
 | - OAuth2: Microsoft (Entra ID / Azure AD)¹ | 🚧 |        |
 | - OAuth2: Facebook¹           | 🚧       |        |
 | - OAuth2: Apple (Sign in with Apple)¹ | 🚧 |        |
 | Authentication: Token         | ✅       | v0.0.9 |
+| One user per person across Google, GitHub and OIDC logins | ✅ | unreleased |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
@@ -303,7 +305,7 @@ See [doc/routes.md](doc/routes.md) for examples and load balancing, and [doc/CAC
 
 ### Authentication Providers
 
-Basic (username/password) authentication and the Google and GitHub OAuth2 providers are configured under `authenticationProviders`. Each is independent and optional, and the login page shows a button for every enabled one.
+Basic (username/password) authentication, the Google and GitHub OAuth2 providers, and any number of OpenID Connect providers (Zitadel, Keycloak, Authentik, Authelia, Pocket ID, ...) are configured under `authenticationProviders`. Each is independent and optional, and the login page shows a button for every enabled one.
 
 ```yaml
 authenticationProviders:
@@ -312,6 +314,8 @@ authenticationProviders:
 ```
 
 See [doc/authentication-providers.md](doc/authentication-providers.md) for the OAuth2 setup and callback URLs.
+
+Google, GitHub and OIDC logins resolve to one user per person (same verified email, same user). See [doc/accounts.md](doc/accounts.md).
 
 ### Branding
 
