@@ -565,6 +565,7 @@ type BillingGrant struct {
 	CreatedAt time.Time  `json:"createdAt"`
 	CreatedBy string     `json:"createdBy"`
 	Feature   string     `json:"feature"`
+	GraceDays *int       `json:"graceDays,omitempty"`
 	Id        string     `json:"id"`
 	Note      string     `json:"note"`
 	Subject   string     `json:"subject"`
@@ -574,8 +575,11 @@ type BillingGrant struct {
 // BillingGrantRequest defines model for BillingGrantRequest.
 type BillingGrantRequest struct {
 	Features []string `json:"features"`
-	Note     *string  `json:"note,omitempty"`
-	Subject  string   `json:"subject"`
+
+	// GraceDays Days of grace after until (needs until); omit for none
+	GraceDays *int    `json:"graceDays,omitempty"`
+	Note      *string `json:"note,omitempty"`
+	Subject   string  `json:"subject"`
 
 	// Until Omit for no expiry
 	Until *time.Time `json:"until,omitempty"`
@@ -624,12 +628,15 @@ type BillingPlanInput struct {
 	AccessDays *int `json:"accessDays,omitempty"`
 
 	// AmountCents VAT included
-	AmountCents     int64    `json:"amountCents"`
-	CollectShipping *bool    `json:"collectShipping,omitempty"`
-	Description     *string  `json:"description,omitempty"`
-	Features        []string `json:"features"`
-	GraceDays       *int     `json:"graceDays,omitempty"`
-	Group           *string  `json:"group,omitempty"`
+	AmountCents     int64 `json:"amountCents"`
+	CollectShipping *bool `json:"collectShipping,omitempty"`
+
+	// Currency EUR only (Spain) for now; anything else is a 400. Default eur
+	Currency    *string  `json:"currency,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Features    []string `json:"features"`
+	GraceDays   *int     `json:"graceDays,omitempty"`
+	Group       *string  `json:"group,omitempty"`
 
 	// Interval month or year (subscription plans)
 	Interval *string `json:"interval,omitempty"`
@@ -656,18 +663,21 @@ type BillingPlanInputSubject string
 
 // BillingPlanUpdate defines model for BillingPlanUpdate.
 type BillingPlanUpdate struct {
-	AccessDays      *int      `json:"accessDays,omitempty"`
-	Active          *bool     `json:"active,omitempty"`
-	AmountCents     *int64    `json:"amountCents,omitempty"`
-	CollectShipping *bool     `json:"collectShipping,omitempty"`
-	Description     *string   `json:"description,omitempty"`
-	Features        *[]string `json:"features,omitempty"`
-	GraceDays       *int      `json:"graceDays,omitempty"`
-	Group           *string   `json:"group,omitempty"`
-	Name            *string   `json:"name,omitempty"`
-	SetupFeeCents   *int64    `json:"setupFeeCents,omitempty"`
-	SetupFeeName    *string   `json:"setupFeeName,omitempty"`
-	TrialDays       *int      `json:"trialDays,omitempty"`
+	AccessDays      *int   `json:"accessDays,omitempty"`
+	Active          *bool  `json:"active,omitempty"`
+	AmountCents     *int64 `json:"amountCents,omitempty"`
+	CollectShipping *bool  `json:"collectShipping,omitempty"`
+
+	// Currency EUR only (Spain) for now; anything else is a 400
+	Currency      *string   `json:"currency,omitempty"`
+	Description   *string   `json:"description,omitempty"`
+	Features      *[]string `json:"features,omitempty"`
+	GraceDays     *int      `json:"graceDays,omitempty"`
+	Group         *string   `json:"group,omitempty"`
+	Name          *string   `json:"name,omitempty"`
+	SetupFeeCents *int64    `json:"setupFeeCents,omitempty"`
+	SetupFeeName  *string   `json:"setupFeeName,omitempty"`
+	TrialDays     *int      `json:"trialDays,omitempty"`
 }
 
 // BillingPortalRequest defines model for BillingPortalRequest.
@@ -720,11 +730,16 @@ type BillingSetupActionRequest struct {
 
 // BillingSubscription defines model for BillingSubscription.
 type BillingSubscription struct {
-	ActivatedAt          *time.Time                `json:"activatedAt,omitempty"`
-	CancelAtPeriodEnd    bool                      `json:"cancelAtPeriodEnd"`
-	CanceledAt           *time.Time                `json:"canceledAt,omitempty"`
-	CreatedAt            time.Time                 `json:"createdAt"`
-	CurrentPeriodEnd     *time.Time                `json:"currentPeriodEnd,omitempty"`
+	ActivatedAt       *time.Time `json:"activatedAt,omitempty"`
+	CancelAtPeriodEnd bool       `json:"cancelAtPeriodEnd"`
+	CanceledAt        *time.Time `json:"canceledAt,omitempty"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	CurrentPeriodEnd  *time.Time `json:"currentPeriodEnd,omitempty"`
+
+	// Grace True while in the grace period: payment overdue, or the trial or paid period has ended
+	Grace bool `json:"grace"`
+
+	// GraceUntil When access ends while grace is true; null otherwise
 	GraceUntil           *time.Time                `json:"graceUntil,omitempty"`
 	Id                   string                    `json:"id"`
 	PayerUserId          string                    `json:"payerUserId"`
@@ -960,11 +975,17 @@ type CreateNotificationResponse struct {
 
 // Entitlement defines model for Entitlement.
 type Entitlement struct {
+	// Grace True while in the grace period: payment overdue, or the trial, grant or paid period has ended. Tell the user.
+	Grace bool `json:"grace"`
+
+	// GraceUntil When access ends while grace is true (same as until); null otherwise
+	GraceUntil *time.Time `json:"graceUntil"`
+
 	// Source "subscription:<id>", "purchase:<id>" or "grant:<id>"
 	Source string            `json:"source"`
 	Status EntitlementStatus `json:"status"`
 
-	// Until When the feature stops; null = no expiry
+	// Until When access ends
 	Until *time.Time `json:"until,omitempty"`
 }
 
@@ -973,8 +994,16 @@ type EntitlementStatus string
 
 // EntitlementHeader Active features as in the X-Entitlements header (until, or null for no expiry)
 type EntitlementHeader struct {
-	Orgs map[string]map[string]*time.Time `json:"orgs"`
-	User map[string]*time.Time            `json:"user"`
+	// Grace The features in their grace period and when access to each ends; absent from the header when none is
+	Grace *EntitlementHeaderGrace          `json:"grace,omitempty"`
+	Orgs  map[string]map[string]*time.Time `json:"orgs"`
+	User  map[string]*time.Time            `json:"user"`
+}
+
+// EntitlementHeaderGrace The features in their grace period and when access to each ends; absent from the header when none is
+type EntitlementHeaderGrace struct {
+	Orgs *map[string]map[string]time.Time `json:"orgs,omitempty"`
+	User *map[string]time.Time            `json:"user,omitempty"`
 }
 
 // EntitlementSet defines model for EntitlementSet.

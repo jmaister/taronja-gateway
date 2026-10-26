@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"testing"
@@ -120,6 +121,18 @@ func TestBillingPlansAPI(t *testing.T) {
 	resp, _ = f.s.CreateBillingPlan(admin, api.CreateBillingPlanRequestObject{Body: bad})
 	assert.IsType(t, api.CreateBillingPlan400JSONResponse{}, resp)
 
+	usd := planBody()
+	usd.Key, usd.Currency = "usd-plan", ptr("USD")
+	resp, _ = f.s.CreateBillingPlan(admin, api.CreateBillingPlanRequestObject{Body: usd})
+	assert.IsType(t, api.CreateBillingPlan400JSONResponse{}, resp, "EUR only")
+	eur := planBody()
+	eur.Key, eur.Currency = "eur-plan", ptr("EUR")
+	resp, _ = f.s.CreateBillingPlan(admin, api.CreateBillingPlanRequestObject{Body: eur})
+	require.IsType(t, api.CreateBillingPlan201JSONResponse{}, resp)
+	assert.Equal(t, "eur", resp.(api.CreateBillingPlan201JSONResponse).Currency)
+	r0, _ := f.s.UpdateBillingPlan(admin, api.UpdateBillingPlanRequestObject{Key: "academia-monthly", Body: &api.BillingPlanUpdate{Currency: ptr("gbp")}})
+	assert.IsType(t, api.UpdateBillingPlan400JSONResponse{}, r0, "EUR only")
+
 	var r any
 	r, _ = f.s.UpdateBillingPlan(admin, api.UpdateBillingPlanRequestObject{Key: "academia-monthly", Body: &api.BillingPlanUpdate{AmountCents: ptr(int64(3500))}})
 	updated, ok := r.(api.UpdateBillingPlan200JSONResponse)
@@ -131,9 +144,9 @@ func TestBillingPlansAPI(t *testing.T) {
 	r, _ = f.s.UpdateBillingPlan(admin, api.UpdateBillingPlanRequestObject{Key: "academia-monthly", Body: &api.BillingPlanUpdate{Active: ptr(false)}})
 	require.IsType(t, api.UpdateBillingPlan200JSONResponse{}, r)
 	r, _ = f.s.ListBillingPlans(admin, api.ListBillingPlansRequestObject{})
-	assert.Empty(t, r, "archived plans are hidden by default")
+	assert.Len(t, r, 1, "archived plans are hidden by default")
 	r, _ = f.s.ListBillingPlans(admin, api.ListBillingPlansRequestObject{Params: api.ListBillingPlansParams{IncludeArchived: ptr(true)}})
-	assert.Len(t, r, 1)
+	assert.Len(t, r, 2)
 
 	r, _ = f.s.GetBillingPlan(admin, api.GetBillingPlanRequestObject{Key: "missing"})
 	assert.IsType(t, api.GetBillingPlan404JSONResponse{}, r)
@@ -156,11 +169,13 @@ func TestBillingGrantsAndEntitlementsAPI(t *testing.T) {
 	assert.Equal(t, "admin", grants[0].CreatedBy)
 
 	for name, body := range map[string]api.BillingGrantRequest{
-		"unknown org":  {Subject: "org:nope", Features: []string{"a.b"}},
-		"unknown user": {Subject: "user:nope", Features: []string{"a.b"}},
-		"bad feature":  {Subject: "org:" + f.orgID, Features: []string{"a.b", "Bad"}},
-		"no features":  {Subject: "org:" + f.orgID},
-		"bad subject":  {Subject: "team:1", Features: []string{"a.b"}},
+		"unknown org":              {Subject: "org:nope", Features: []string{"a.b"}},
+		"unknown user":             {Subject: "user:nope", Features: []string{"a.b"}},
+		"bad feature":              {Subject: "org:" + f.orgID, Features: []string{"a.b", "Bad"}},
+		"no features":              {Subject: "org:" + f.orgID},
+		"bad subject":              {Subject: "team:1", Features: []string{"a.b"}},
+		"grace days without until": {Subject: "org:" + f.orgID, Features: []string{"a.b"}, GraceDays: ptr(3)},
+		"too many grace days":      {Subject: "org:" + f.orgID, Features: []string{"a.b"}, Until: &until, GraceDays: ptr(61)},
 	} {
 		resp, err := f.s.CreateBillingGrant(admin, api.CreateBillingGrantRequestObject{Body: &body})
 		require.NoError(t, err)
@@ -180,6 +195,9 @@ func TestBillingGrantsAndEntitlementsAPI(t *testing.T) {
 	assert.Equal(t, "org:"+f.orgID, got.Subject)
 	assert.Equal(t, api.EntitlementStatus("granted"), got.Features["academia.access"].Status)
 	assert.Equal(t, until, got.Features["academia.access"].Until.UTC())
+	assert.False(t, got.Features["academia.access"].Grace)
+	assert.Nil(t, got.Features["academia.access"].GraceUntil)
+	assert.Nil(t, meGrace(t, f, f.user.ID), "no grace member in /_/me")
 	assert.IsType(t, api.GetEntitlements200JSONResponse{}, ent(sessionContext(f.user.ID, false), byOrg), "a member")
 	assert.IsType(t, api.GetEntitlements403JSONResponse{}, ent(sessionContext(f.other.ID, false), byOrg), "not a member")
 	assert.IsType(t, api.GetEntitlements200JSONResponse{}, ent(sessionContext(f.other.ID, false), api.GetEntitlementsParams{UserId: &f.other.ID}), "themselves")
@@ -256,4 +274,48 @@ func TestBillingDocumentsAPI(t *testing.T) {
 	assert.IsType(t, api.GetBillingDocumentPdf401JSONResponse{}, pdf(context.Background(), issued.ID))
 	assert.IsType(t, api.GetBillingDocumentPdf404JSONResponse{}, pdf(admin, "missing"))
 	assert.IsType(t, api.GetBillingDocumentPdf404JSONResponse{}, pdf(sessionContext(f.other.ID, false), failed.ID), "not issued yet")
+}
+
+func meGrace(t *testing.T, f *billingFixture, userID string) *api.EntitlementHeaderGrace {
+	t.Helper()
+	me, err := f.s.GetCurrentUser(sessionContext(userID, false), api.GetCurrentUserRequestObject{})
+	require.NoError(t, err)
+	meResp, ok := me.(api.GetCurrentUser200JSONResponse)
+	require.True(t, ok, "%T", me)
+	require.NotNil(t, meResp.Entitlements)
+	return meResp.Entitlements.Grace
+}
+
+// A grant that ended but has grace days is still returned, flagged.
+func TestBillingGrantGraceAPI(t *testing.T) {
+	f := newBillingFixture(t)
+	admin := sessionContext("admin", true)
+	ended := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+
+	resp, err := f.s.CreateBillingGrant(admin, api.CreateBillingGrantRequestObject{Body: &api.BillingGrantRequest{
+		Subject: "org:" + f.orgID, Features: []string{"academia.access"}, Until: &ended, GraceDays: ptr(2),
+	}})
+	require.NoError(t, err)
+	grants, ok := resp.(api.CreateBillingGrant201JSONResponse)
+	require.True(t, ok, "%T %+v", resp, resp)
+	require.NotNil(t, grants[0].GraceDays)
+	assert.Equal(t, 2, *grants[0].GraceDays)
+
+	list, _ := f.s.ListBillingGrants(admin, api.ListBillingGrantsRequestObject{})
+	assert.Equal(t, 2, *list.(api.ListBillingGrants200JSONResponse)[0].GraceDays)
+
+	r, err := f.s.GetEntitlements(admin, api.GetEntitlementsRequestObject{Params: api.GetEntitlementsParams{OrgId: &f.orgID}})
+	require.NoError(t, err)
+	got := r.(api.GetEntitlements200JSONResponse).Features["academia.access"]
+	assert.True(t, got.Grace)
+	require.NotNil(t, got.GraceUntil)
+	assert.Equal(t, ended.AddDate(0, 0, 2), got.GraceUntil.UTC())
+	assert.Equal(t, got.Until.UTC(), got.GraceUntil.UTC(), "until includes the grace")
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"grace":true`)
+
+	grace := meGrace(t, f, f.user.ID)
+	require.NotNil(t, grace)
+	assert.Equal(t, ended.AddDate(0, 0, 2), (*grace.Orgs)[f.orgID]["academia.access"].UTC())
 }

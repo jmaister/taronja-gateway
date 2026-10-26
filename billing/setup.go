@@ -106,6 +106,7 @@ func (s *Service) RunSetupAction(ctx context.Context, action string) error {
 				return err
 			}
 		}
+		s.InvalidateAll()
 		return nil
 	}
 	return fmt.Errorf("%w: unknown action %q", ErrInvalid, action)

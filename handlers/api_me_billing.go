@@ -42,7 +42,7 @@ func (s *StrictApiServer) GetMyBilling(ctx context.Context, request api.GetMyBil
 			planName = plan.Name
 		}
 		resp.Subscriptions = append(resp.Subscriptions, api.MyBillingSubscription{
-			Subscription: subscriptionToAPI(&sub),
+			Subscription: s.subscriptionToAPI(&sub),
 			PlanName:     planName,
 			SubjectName:  "", // user's own name, empty for now
 		})
@@ -80,7 +80,7 @@ func (s *StrictApiServer) GetMyBilling(ctx context.Context, request api.GetMyBil
 				planName = plan.Name
 			}
 			resp.Subscriptions = append(resp.Subscriptions, api.MyBillingSubscription{
-				Subscription: subscriptionToAPI(&sub),
+				Subscription: s.subscriptionToAPI(&sub),
 				PlanName:     planName,
 				SubjectName:  orgMembership.Organization.Name,
 			})
