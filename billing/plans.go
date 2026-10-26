@@ -22,6 +22,7 @@ type PlanInput struct {
 	Kind            string
 	Interval        string
 	AmountCents     int64
+	Currency        string // empty = EUR
 	Features        []string
 	Subject         string
 	TrialDays       int
@@ -35,6 +36,9 @@ type PlanInput struct {
 	Active          bool
 }
 
+// DefaultCurrency is the only currency plans can use for now (Spain).
+const DefaultCurrency = "eur"
+
 // DefaultGraceDays is a new plan's grace when none is given.
 const DefaultGraceDays = 7
 
@@ -44,7 +48,7 @@ var planKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,99}$`)
 func PlanInputFrom(p repositories.BillingPlanWithFeatures) PlanInput {
 	return PlanInput{
 		Key: p.Key, Name: p.Name, Description: p.Description, Kind: p.Kind, Interval: p.Interval,
-		AmountCents: p.AmountCents, Features: slices.Clone(p.Features), Subject: p.Subject,
+		AmountCents: p.AmountCents, Currency: p.Currency, Features: slices.Clone(p.Features), Subject: p.Subject,
 		TrialDays: p.TrialDays, GraceDays: p.GraceDays, SetupFeeCents: p.SetupFeeCents, SetupFeeName: p.SetupFeeName,
 		Starts: p.Starts, AccessDays: p.AccessDays, CollectShipping: p.CollectShipping, Group: p.GroupKey, Active: p.Active,
 	}
@@ -71,6 +75,13 @@ func (in *PlanInput) normalize() error {
 	}
 	if in.AmountCents <= 0 {
 		return invalid("amount must be positive")
+	}
+	in.Currency = strings.ToLower(strings.TrimSpace(in.Currency))
+	if in.Currency == "" {
+		in.Currency = DefaultCurrency
+	}
+	if in.Currency != DefaultCurrency {
+		return invalid("currency: EUR only (Spain)")
 	}
 	if !slices.Contains([]string{db.PlanSubjectUser, db.PlanSubjectOrg, db.PlanSubjectEither}, in.Subject) {
 		return invalid("subject must be user, org or either")
@@ -168,7 +179,7 @@ func (s *Service) CreatePlan(ctx context.Context, in PlanInput) (*repositories.B
 	if s.stripe == nil {
 		return nil, ErrNotConfigured
 	}
-	plan := &repositories.BillingPlanWithFeatures{BillingPlan: db.BillingPlan{Key: in.Key, Currency: "eur"}}
+	plan := &repositories.BillingPlanWithFeatures{BillingPlan: db.BillingPlan{Key: in.Key, Currency: DefaultCurrency}}
 	applyInput(plan, in)
 	err = s.syncStripe(ctx, plan, nil)
 	if err != nil {

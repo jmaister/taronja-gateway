@@ -3963,10 +3963,12 @@ components:
     Entitlement:
       type: object
       properties:
-        until: {type: string, format: date-time, nullable: true, description: When the feature stops; null = no expiry}
+        until: {type: string, format: date-time, nullable: true, description: When access ends, grace period included; null = no expiry}
         status: {type: string, enum: [trial, active, canceling, past_due, awaiting_activation, granted]}
         source: {type: string, description: '"subscription:<id>", "purchase:<id>" or "grant:<id>"'}
-      required: [status, source]
+        grace: {type: boolean, description: 'True while in the grace period: payment overdue, or the trial, grant or paid period has ended. Tell the user.'}
+        graceUntil: {type: string, format: date-time, nullable: true, description: 'When access ends while grace is true (same as until); null otherwise'}
+      required: [status, source, grace, graceUntil]
     EntitlementSet:
       type: object
       properties:
@@ -3987,7 +3989,20 @@ components:
           additionalProperties:
             type: object
             additionalProperties: {type: string, format: date-time, nullable: true}
+        grace: {$ref: '#/components/schemas/EntitlementHeaderGrace'}
       required: [user, orgs]
+    EntitlementHeaderGrace:
+      type: object
+      description: The features in their grace period and when access to each ends; absent from the header when none is
+      properties:
+        user:
+          type: object
+          additionalProperties: {type: string, format: date-time}
+        orgs:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {type: string, format: date-time}
     BillingPlanInput:
       type: object
       properties:
@@ -3997,6 +4012,7 @@ components:
         kind: {type: string, enum: [subscription, one_time]}
         interval: {type: string, description: 'month or year (subscription plans)'}
         amountCents: {type: integer, format: int64, description: VAT included}
+        currency: {type: string, description: 'EUR only (Spain) for now; anything else is a 400. Default eur'}
         features: {type: array, items: {type: string}}
         subject: {type: string, enum: [user, org, either]}
         trialDays: {type: integer}
@@ -4014,6 +4030,7 @@ components:
         name: {type: string}
         description: {type: string}
         amountCents: {type: integer, format: int64}
+        currency: {type: string, description: 'EUR only (Spain) for now; anything else is a 400'}
         features: {type: array, items: {type: string}}
         trialDays: {type: integer}
         graceDays: {type: integer}
@@ -4062,11 +4079,12 @@ components:
         currentPeriodEnd: {type: string, format: date-time, nullable: true}
         trialEnd: {type: string, format: date-time, nullable: true}
         cancelAtPeriodEnd: {type: boolean}
-        graceUntil: {type: string, format: date-time, nullable: true}
+        grace: {type: boolean, description: 'True while in the grace period: payment overdue, or the trial or paid period has ended'}
+        graceUntil: {type: string, format: date-time, nullable: true, description: 'When access ends while grace is true; null otherwise'}
         activatedAt: {type: string, format: date-time, nullable: true}
         canceledAt: {type: string, format: date-time, nullable: true}
         createdAt: {type: string, format: date-time}
-      required: [id, subject, planKey, payerUserId, status, cancelAtPeriodEnd, createdAt]
+      required: [id, subject, planKey, payerUserId, status, cancelAtPeriodEnd, grace, createdAt]
     ShippingAddress:
       type: object
       properties:
@@ -4109,6 +4127,7 @@ components:
         subject: {type: string}
         features: {type: array, items: {type: string}}
         until: {type: string, format: date-time, nullable: true, description: Omit for no expiry}
+        graceDays: {type: integer, nullable: true, minimum: 0, maximum: 60, description: Days of grace after until (needs until); omit for none}
         note: {type: string}
       required: [subject, features]
     BillingGrant:
@@ -4118,6 +4137,7 @@ components:
         subject: {type: string}
         feature: {type: string}
         until: {type: string, format: date-time, nullable: true}
+        graceDays: {type: integer, nullable: true}
         note: {type: string}
         createdBy: {type: string}
         createdAt: {type: string, format: date-time}

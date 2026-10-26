@@ -28,23 +28,46 @@ const (
 	SourceGrant        = "grant"
 )
 
+// EntitlementCacheTTL is how long computed entitlements are reused. Every
+// billing change invalidates them sooner; the TTL only bounds a missed
+// invalidation, and grace periods are days long.
+const EntitlementCacheTTL = 24 * time.Hour
+
 // Feature is one entitlement: active while now < Until, or forever when
-// Until is nil.
+// Until is nil. Until includes the grace period. Grace is true while the
+// subject is in it (the payment is overdue, the trial or grant has ended, or
+// the subscription period has run out) and GraceUntil is then when access
+// ends (equal to Until); both are zero otherwise.
 type Feature struct {
-	Until  *time.Time `json:"until"`
-	Status string     `json:"status"`
-	Source string     `json:"source"`
+	Until      *time.Time `json:"until"`
+	Status     string     `json:"status"`
+	Source     string     `json:"source"`
+	Grace      bool       `json:"grace"`
+	GraceUntil *time.Time `json:"graceUntil"`
+
+	// graceFrom is when the grace period starts; nil = the source has none.
+	graceFrom *time.Time
+}
+
+// inGrace returns f with Grace and GraceUntil set for now.
+func (f Feature) inGrace(now time.Time) Feature {
+	f.Grace, f.GraceUntil = false, nil
+	if f.graceFrom != nil && f.Until != nil && !now.Before(*f.graceFrom) {
+		f.Grace, f.GraceUntil = true, f.Until
+	}
+	return f
 }
 
 // Entitlements maps a feature key to the source that grants it longest.
 type Entitlements map[string]Feature
 
-// Active returns the features active at now.
+// Active returns the features active at now, with their grace flags set
+// for now.
 func (e Entitlements) Active(now time.Time) Entitlements {
 	out := Entitlements{}
 	for key, f := range e {
 		if f.Until == nil || now.Before(*f.Until) {
-			out[key] = f
+			out[key] = f.inGrace(now)
 		}
 	}
 	return out
@@ -58,10 +81,29 @@ type UserEntitlements struct {
 }
 
 // Header is the X-Entitlements value: the until of each active feature
-// (null = no expiry); organizations without any are left out.
+// (null = no expiry); organizations without any are left out. Grace lists
+// the features that are in their grace period with when access ends; it is
+// absent when none is.
 type Header struct {
-	User map[string]*time.Time            `json:"user"`
-	Orgs map[string]map[string]*time.Time `json:"orgs"`
+	User  map[string]*time.Time            `json:"user"`
+	Orgs  map[string]map[string]*time.Time `json:"orgs"`
+	Grace *HeaderGrace                     `json:"grace,omitempty"`
+}
+
+// HeaderGrace is the features in grace: feature -> when access ends.
+type HeaderGrace struct {
+	User map[string]time.Time            `json:"user,omitempty"`
+	Orgs map[string]map[string]time.Time `json:"orgs,omitempty"`
+}
+
+func graceUntils(e Entitlements) map[string]time.Time {
+	out := map[string]time.Time{}
+	for key, f := range e {
+		if f.Grace && f.GraceUntil != nil {
+			out[key] = f.GraceUntil.UTC().Truncate(time.Second)
+		}
+	}
+	return out
 }
 
 func untils(e Entitlements) map[string]*time.Time {
@@ -79,12 +121,20 @@ func untils(e Entitlements) map[string]*time.Time {
 
 // Header returns u's active features at now in header form.
 func (u UserEntitlements) Header(now time.Time) Header {
-	h := Header{User: untils(u.User.Active(now)), Orgs: map[string]map[string]*time.Time{}}
+	userActive := u.User.Active(now)
+	h := Header{User: untils(userActive), Orgs: map[string]map[string]*time.Time{}}
+	grace := HeaderGrace{User: graceUntils(userActive), Orgs: map[string]map[string]time.Time{}}
 	for orgID, e := range u.Orgs {
 		active := e.Active(now)
 		if len(active) > 0 {
 			h.Orgs[orgID] = untils(active)
+			if g := graceUntils(active); len(g) > 0 {
+				grace.Orgs[orgID] = g
+			}
 		}
+	}
+	if len(grace.User) > 0 || len(grace.Orgs) > 0 {
+		h.Grace = &grace
 	}
 	return h
 }
@@ -99,10 +149,63 @@ func addDays(t time.Time, days int) time.Time {
 	return t.AddDate(0, 0, days)
 }
 
+// subscriptionFeature is what subscription s gives (before the expiry check):
+// false when it gives nothing.
+func subscriptionFeature(graceDays int, s db.BillingSubscription) (Feature, bool) {
+	var f Feature
+	switch s.Status {
+	case db.SubscriptionTrialing:
+		if s.TrialEnd == nil {
+			return f, false
+		}
+		until := addDays(*s.TrialEnd, graceDays)
+		f = Feature{Until: &until, Status: StatusTrial, graceFrom: s.TrialEnd}
+	case db.SubscriptionActive:
+		if s.CurrentPeriodEnd == nil {
+			return f, false
+		}
+		if s.CancelAtPeriodEnd {
+			f = Feature{Until: s.CurrentPeriodEnd, Status: StatusCanceling}
+		} else {
+			until := addDays(*s.CurrentPeriodEnd, graceDays)
+			f = Feature{Until: &until, Status: StatusActive, graceFrom: s.CurrentPeriodEnd}
+		}
+	case db.SubscriptionPastDue:
+		until := s.GraceUntil
+		if until == nil && s.CurrentPeriodEnd != nil {
+			u := addDays(*s.CurrentPeriodEnd, graceDays)
+			until = &u
+		}
+		if until == nil {
+			return f, false
+		}
+		// Past due is a grace period from the start.
+		f = Feature{Until: until, Status: StatusPastDue, graceFrom: &time.Time{}}
+	case db.SubscriptionAwaitingActivation:
+		f = Feature{Status: StatusAwaitingActivation}
+	default:
+		return f, false
+	}
+	f.Source = SourceSubscription
+	return f, true
+}
+
+// SubscriptionGrace reports whether s, on a plan with graceDays of grace,
+// is in its grace period at now and when access then ends.
+func SubscriptionGrace(now time.Time, graceDays int, s db.BillingSubscription) (bool, *time.Time) {
+	f, ok := subscriptionFeature(graceDays, s)
+	if !ok || (f.Until != nil && !now.Before(*f.Until)) {
+		return false, nil
+	}
+	f = f.inGrace(now)
+	return f.Grace, f.GraceUntil
+}
+
 // Compute applies doc/billing.md's rules to a subject's subscriptions,
 // purchases and grants: each feature gets the latest until among its
-// sources, nil (no expiry) beating any date. Sources already expired at
-// now are left out.
+// sources, nil (no expiry) beating any date, except that a source that is
+// not in its grace period beats one that is. Sources already expired at now
+// (grace included) are left out.
 func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeatures, subs []db.BillingSubscription, purchases []db.BillingPurchase, grants []db.BillingGrant) Entitlements {
 	out := Entitlements{}
 	grant := func(feature string, f Feature) {
@@ -110,7 +213,17 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 			return
 		}
 		cur, ok := out[feature]
-		if !ok || (cur.Until != nil && (f.Until == nil || f.Until.After(*cur.Until))) {
+		if !ok {
+			out[feature] = f
+			return
+		}
+		curGrace, fGrace := cur.inGrace(now).Grace, f.inGrace(now).Grace
+		switch {
+		case curGrace != fGrace:
+			if curGrace {
+				out[feature] = f
+			}
+		case cur.Until != nil && (f.Until == nil || f.Until.After(*cur.Until)):
 			out[feature] = f
 		}
 	}
@@ -120,39 +233,10 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 		if !ok {
 			continue
 		}
-		var f Feature
-		switch s.Status {
-		case db.SubscriptionTrialing:
-			if s.TrialEnd == nil {
-				continue
-			}
-			f = Feature{Until: s.TrialEnd, Status: StatusTrial}
-		case db.SubscriptionActive:
-			if s.CurrentPeriodEnd == nil {
-				continue
-			}
-			if s.CancelAtPeriodEnd {
-				f = Feature{Until: s.CurrentPeriodEnd, Status: StatusCanceling}
-			} else {
-				until := addDays(*s.CurrentPeriodEnd, plan.GraceDays)
-				f = Feature{Until: &until, Status: StatusActive}
-			}
-		case db.SubscriptionPastDue:
-			until := s.GraceUntil
-			if until == nil && s.CurrentPeriodEnd != nil {
-				u := addDays(*s.CurrentPeriodEnd, plan.GraceDays)
-				until = &u
-			}
-			if until == nil {
-				continue
-			}
-			f = Feature{Until: until, Status: StatusPastDue}
-		case db.SubscriptionAwaitingActivation:
-			f = Feature{Status: StatusAwaitingActivation}
-		default:
+		f, ok := subscriptionFeature(plan.GraceDays, s)
+		if !ok {
 			continue
 		}
-		f.Source = SourceSubscription
 		for _, feature := range plan.Features {
 			grant(feature, f)
 		}
@@ -176,7 +260,12 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 	}
 
 	for _, g := range grants {
-		grant(g.Feature, Feature{Until: g.Until, Status: StatusGranted, Source: SourceGrant})
+		f := Feature{Until: g.Until, Status: StatusGranted, Source: SourceGrant}
+		if g.Until != nil && g.GraceDays != nil && *g.GraceDays > 0 {
+			until := addDays(*g.Until, *g.GraceDays)
+			f.Until, f.graceFrom = &until, g.Until
+		}
+		grant(g.Feature, f)
 	}
 	return out
 }
@@ -185,10 +274,10 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 // features still have to be filtered with Active).
 func (s *Service) SubjectEntitlements(subject string) (Entitlements, error) {
 	s.mu.RLock()
-	e, ok := s.cache[subject]
+	c, ok := s.cache[subject]
 	s.mu.RUnlock()
-	if ok {
-		return e, nil
+	if ok && s.fresh(c.at) {
+		return c.ent, nil
 	}
 	computed, err := s.computeSubjects([]string{subject})
 	if err != nil {
@@ -229,7 +318,7 @@ func (s *Service) computeSubjects(subjects []string) (map[string]Entitlements, e
 	}
 	s.mu.Lock()
 	for subject, e := range out {
-		s.cache[subject] = e
+		s.cache[subject] = cachedEntitlements{ent: e, at: now}
 	}
 	s.mu.Unlock()
 	return out, nil
@@ -249,10 +338,10 @@ func filter[T any](items []T, keep func(T) bool) []T {
 // until InvalidateUser).
 func (s *Service) UserOrgIDs(userID string) ([]string, error) {
 	s.mu.RLock()
-	ids, ok := s.memberships[userID]
+	m, ok := s.memberships[userID]
 	s.mu.RUnlock()
-	if ok {
-		return ids, nil
+	if ok && s.fresh(m.at) {
+		return m.ids, nil
 	}
 	if s.orgs == nil {
 		return nil, nil
@@ -261,12 +350,12 @@ func (s *Service) UserOrgIDs(userID string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("billing: organizations of %s: %w", userID, err)
 	}
-	ids = make([]string, 0, len(memberships))
+	ids := make([]string, 0, len(memberships))
 	for _, m := range memberships {
 		ids = append(ids, m.Organization.ID)
 	}
 	s.mu.Lock()
-	s.memberships[userID] = ids
+	s.memberships[userID] = cachedMemberships{ids: ids, at: s.now()}
 	s.mu.Unlock()
 	return ids, nil
 }
@@ -285,8 +374,8 @@ func (s *Service) ForUser(userID string) (UserEntitlements, error) {
 	var missing []string
 	s.mu.RLock()
 	for _, subject := range subjects {
-		if e, ok := s.cache[subject]; ok {
-			byS[subject] = e
+		if c, ok := s.cache[subject]; ok && s.fresh(c.at) {
+			byS[subject] = c.ent
 		} else {
 			missing = append(missing, subject)
 		}
@@ -316,8 +405,14 @@ func (s *Service) InvalidateUser(userID string) {
 	s.mu.Unlock()
 }
 
-// CreateGrant gives subject feature until (nil = forever).
-func (s *Service) CreateGrant(subject, feature string, until *time.Time, note, createdBy string) (*db.BillingGrant, error) {
+// fresh reports whether something cached at at is still within the TTL.
+func (s *Service) fresh(at time.Time) bool {
+	return s.now().Sub(at) < EntitlementCacheTTL
+}
+
+// CreateGrant gives subject feature until (nil = forever), plus graceDays
+// (nil or 0 = none) of grace after until.
+func (s *Service) CreateGrant(subject, feature string, until *time.Time, graceDays *int, note, createdBy string) (*db.BillingGrant, error) {
 	_, _, err := ParseSubject(subject)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -330,7 +425,13 @@ func (s *Service) CreateGrant(subject, feature string, until *time.Time, note, c
 	if err != nil {
 		return nil, err
 	}
-	g := &db.BillingGrant{Subject: subject, Feature: feature, Until: until, Note: strings.TrimSpace(note), CreatedBy: createdBy}
+	if graceDays != nil && (*graceDays < 0 || *graceDays > 60) {
+		return nil, fmt.Errorf("%w: grace days: 0-60", ErrInvalid)
+	}
+	if graceDays != nil && until == nil {
+		return nil, fmt.Errorf("%w: grace days need an until", ErrInvalid)
+	}
+	g := &db.BillingGrant{Subject: subject, Feature: feature, Until: until, GraceDays: graceDays, Note: strings.TrimSpace(note), CreatedBy: createdBy}
 	err = s.repo.CreateGrant(g)
 	if err != nil {
 		return nil, fmt.Errorf("billing: creating grant: %w", err)

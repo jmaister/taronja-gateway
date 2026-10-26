@@ -135,7 +135,11 @@ export function SubscriptionsPage() {
                                                 {sub.cancelAtPeriodEnd ? 'Yes' : '—'}
                                             </td>
                                             <td className="px-4 py-3 text-muted-fg text-xs">
-                                                {sub.graceUntil ? new Date(sub.graceUntil).toLocaleDateString() : '—'}
+                                                {sub.grace && sub.graceUntil ? (
+                                                    <span className="px-2 py-1 rounded text-xs font-medium bg-warning/10 text-warning">
+                                                        In grace until {new Date(sub.graceUntil).toLocaleDateString()}
+                                                    </span>
+                                                ) : '—'}
                                             </td>
                                             <td className="px-4 py-3 text-right space-x-2">
                                                 {sub.status === 'awaiting_activation' && (

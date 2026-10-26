@@ -42,6 +42,7 @@ func (s *StrictApiServer) ListBillingGrants(ctx context.Context, request api.Lis
 			Subject:   grants[i].Subject,
 			Feature:   grants[i].Feature,
 			Until:     grants[i].Until,
+			GraceDays: grants[i].GraceDays,
 			Note:      grants[i].Note,
 			CreatedBy: grants[i].CreatedBy,
 			CreatedAt: grants[i].CreatedAt,
@@ -105,7 +106,7 @@ func (s *StrictApiServer) CreateBillingGrant(ctx context.Context, request api.Cr
 	// Create one grant per feature
 	resp := make(api.CreateBillingGrant201JSONResponse, 0, len(request.Body.Features))
 	for _, feature := range request.Body.Features {
-		grant, err := s.billing.CreateGrant(subject, strings.TrimSpace(feature), request.Body.Until, note, creatorID)
+		grant, err := s.billing.CreateGrant(subject, strings.TrimSpace(feature), request.Body.Until, request.Body.GraceDays, note, creatorID)
 		if errors.Is(err, billing.ErrInvalid) {
 			return api.CreateBillingGrant400JSONResponse{Code: http.StatusBadRequest, Message: err.Error()}, nil
 		}
@@ -122,6 +123,7 @@ func (s *StrictApiServer) CreateBillingGrant(ctx context.Context, request api.Cr
 			Subject:   grant.Subject,
 			Feature:   grant.Feature,
 			Until:     grant.Until,
+			GraceDays: grant.GraceDays,
 			Note:      grant.Note,
 			CreatedBy: grant.CreatedBy,
 			CreatedAt: grant.CreatedAt,

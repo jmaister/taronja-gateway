@@ -70,6 +70,7 @@ func (s *StrictApiServer) CreateBillingPlan(ctx context.Context, request api.Cre
 		Kind:            string(request.Body.Kind),
 		Interval:        stringVal(request.Body.Interval),
 		AmountCents:     request.Body.AmountCents,
+		Currency:        stringVal(request.Body.Currency),
 		Features:        request.Body.Features,
 		Subject:         subject,
 		TrialDays:       intVal(request.Body.TrialDays),
@@ -161,6 +162,9 @@ func (s *StrictApiServer) UpdateBillingPlan(ctx context.Context, request api.Upd
 	}
 	if request.Body.AmountCents != nil {
 		in.AmountCents = *request.Body.AmountCents
+	}
+	if request.Body.Currency != nil {
+		in.Currency = *request.Body.Currency
 	}
 	if request.Body.Active != nil {
 		in.Active = *request.Body.Active

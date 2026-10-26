@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
 	"github.com/jmaister/taronja-gateway/billing"
@@ -43,7 +44,7 @@ func (s *StrictApiServer) ListBillingSubscriptions(ctx context.Context, request 
 
 	resp := make(api.ListBillingSubscriptions200JSONResponse, 0, len(subs))
 	for _, sub := range subs {
-		resp = append(resp, subscriptionToAPI(&sub))
+		resp = append(resp, s.subscriptionToAPI(&sub))
 	}
 	return resp, nil
 }
@@ -75,7 +76,7 @@ func (s *StrictApiServer) ActivateBillingSubscription(ctx context.Context, reque
 		return api.ActivateBillingSubscription500JSONResponse{Code: http.StatusInternalServerError, Message: "Failed to activate subscription"}, nil
 	}
 
-	return api.ActivateBillingSubscription200JSONResponse(subscriptionToAPI(sub)), nil
+	return api.ActivateBillingSubscription200JSONResponse(s.subscriptionToAPI(sub)), nil
 }
 
 // CancelBillingSubscription handles POST /api/billing/subscriptions/{id}/cancel (admin): cancel a subscription.
@@ -107,11 +108,20 @@ func (s *StrictApiServer) CancelBillingSubscription(ctx context.Context, request
 		return api.CancelBillingSubscription500JSONResponse{Code: http.StatusInternalServerError, Message: "Failed to cancel subscription"}, nil
 	}
 
-	return api.CancelBillingSubscription200JSONResponse(subscriptionToAPI(sub)), nil
+	return api.CancelBillingSubscription200JSONResponse(s.subscriptionToAPI(sub)), nil
 }
 
-// subscriptionToAPI converts a db.BillingSubscription to an API response.
-func subscriptionToAPI(sub *db.BillingSubscription) api.BillingSubscription {
+// subscriptionToAPI converts a db.BillingSubscription to an API response;
+// Grace and GraceUntil say whether it is in its grace period now.
+func (s *StrictApiServer) subscriptionToAPI(sub *db.BillingSubscription) api.BillingSubscription {
+	graceDays := billing.DefaultGraceDays
+	if s.billing != nil {
+		plan, err := s.billing.GetPlan(sub.PlanKey)
+		if err == nil {
+			graceDays = plan.GraceDays
+		}
+	}
+	grace, graceUntil := billing.SubscriptionGrace(time.Now(), graceDays, *sub)
 	return api.BillingSubscription{
 		Id:                   sub.ID,
 		Subject:              sub.Subject,
@@ -122,7 +132,8 @@ func subscriptionToAPI(sub *db.BillingSubscription) api.BillingSubscription {
 		TrialEnd:             sub.TrialEnd,
 		CurrentPeriodEnd:     sub.CurrentPeriodEnd,
 		CancelAtPeriodEnd:    sub.CancelAtPeriodEnd,
-		GraceUntil:           sub.GraceUntil,
+		Grace:                grace,
+		GraceUntil:           graceUntil,
 		ActivatedAt:          sub.ActivatedAt,
 		CanceledAt:           sub.CanceledAt,
 		CreatedAt:            sub.CreatedAt,
