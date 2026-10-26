@@ -28,8 +28,7 @@ type Client struct {
 type Option func(*clientOptions)
 
 type clientOptions struct {
-	apiURL     string
-	httpClient *http.Client
+	apiURL string
 }
 
 // WithAPIURL sends every request to url instead of api.stripe.com
@@ -38,24 +37,20 @@ func WithAPIURL(url string) Option {
 	return func(o *clientOptions) { o.apiURL = url }
 }
 
-// WithHTTPClient sets the HTTP client.
-func WithHTTPClient(c *http.Client) Option {
-	return func(o *clientOptions) { o.httpClient = c }
-}
-
 // New returns a Client for the secret key; webhookSecret verifies webhooks.
 func New(secretKey, webhookSecret string, opts ...Option) *Client {
-	o := clientOptions{httpClient: &http.Client{Timeout: 80 * time.Second}}
+	var o clientOptions
+	httpClient := &http.Client{Timeout: 80 * time.Second}
 	for _, opt := range opts {
 		opt(&o)
 	}
 	var clientOpts []stripe.ClientOption
 	if o.apiURL != "" {
 		maxRetries := int64(0)
-		cfg := &stripe.BackendConfig{URL: stripe.String(o.apiURL), HTTPClient: o.httpClient, MaxNetworkRetries: &maxRetries}
+		cfg := &stripe.BackendConfig{URL: stripe.String(o.apiURL), HTTPClient: httpClient, MaxNetworkRetries: &maxRetries}
 		clientOpts = append(clientOpts, stripe.WithBackends(stripe.NewBackendsWithConfig(cfg)))
 	} else {
-		cfg := &stripe.BackendConfig{HTTPClient: o.httpClient}
+		cfg := &stripe.BackendConfig{HTTPClient: httpClient}
 		clientOpts = append(clientOpts, stripe.WithBackends(stripe.NewBackendsWithConfig(cfg)))
 	}
 	return &Client{sc: stripe.NewClient(secretKey, clientOpts...), webhookSecret: webhookSecret}

@@ -110,7 +110,7 @@ services:
       retries: 30
 
   odoo:
-    image: odoo:${E2E_ODOO_VERSION:-19.0}
+    image: odoo:${E2E_ODOO_VERSION:-20.0}
     environment:
       HOST: odoo-db
       USER: odoo

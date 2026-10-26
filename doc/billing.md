@@ -400,7 +400,7 @@ keys; without Odoo, documents stay pending. Validated by `tg validate`.
 |---|---|
 | Unit | Each package against `httptest` fakes: Stripe adapter, Odoo JSON-2 client, entitlement rules (table tests over every status), webhook state machine (same event twice, out of order), outbox retries. |
 | Stripe API shape | `stripe/stripe-mock` (Stripe's own mock, validates every request against Stripe's OpenAPI) in `e2e/docker-compose.yml`: every adapter call is made against it. |
-| Odoo, real | `odoo:19.0` (and `odoo:20.0`, same JSON-2) with Postgres in `e2e/docker-compose.yml`, initialised by `e2e/odoo/init.sh` (Spanish company, `l10n_es`, journal with credit note sequence, Stripe journal, VAT-included tax, API user and key): partner, invoice, payment, credit note, PDF, simplified invoice. Veri\*Factu submission is not tested (needs a certificate). |
+| Odoo, real | `odoo:20.0` (default; `E2E_ODOO_VERSION=19.0` also passes) with Postgres in `e2e/docker-compose.yml`, initialised by `e2e/odoo/init.sh` (Spanish company, `l10n_es`, journal with credit note sequence, Stripe journal, VAT-included tax, API user and key): partner, invoice, payment, credit note, PDF, simplified invoice. Veri\*Factu registration is tested with `E2E_ODOO_VERIFACTU=1` against AEAT pre-production. |
 | Whole flow | e2e test with a scripted Stripe (`httptest` server speaking the Stripe API for the calls the flow makes, signed webhooks from `webhook.GenerateTestSignedPayload`) and the real Odoo: pay link → checkout → webhook → entitlement in the header → Odoo invoice with PDF → refund → credit note; failed renewal → grace → expired; activation. |
 | Live, opt-in | With `E2E_STRIPE_SECRET_KEY` (test mode) and `stripe listen`: a real Checkout with card 4242… |
 
