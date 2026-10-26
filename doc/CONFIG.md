@@ -133,7 +133,7 @@ BasicAuthenticationConfig controls basic authentication provider.
 
 ```go
 type BasicAuthenticationConfig struct {
-    Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
+    Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false.
 }
 ```
 
@@ -345,7 +345,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L445>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L447>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -363,7 +363,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L453>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L455>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool

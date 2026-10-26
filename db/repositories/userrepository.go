@@ -12,6 +12,9 @@ import (
 // UserRepository interface for abstracting user database operations
 type UserRepository interface {
 	FindUserByIdOrUsername(id, username, email string) (*db.User, error)
+	// FindUserByEmail matches email case-insensitively; a missing user
+	// returns gorm.ErrRecordNotFound.
+	FindUserByEmail(email string) (*db.User, error)
 	CreateUser(user *db.User) error
 	GetAllUsers() ([]*db.User, error)
 	UpdateUser(user *db.User) error
@@ -66,6 +69,15 @@ func (r *UserRepositoryDB) FindUserByIdOrUsername(id, username, email string) (*
 	}
 
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (r *UserRepositoryDB) FindUserByEmail(email string) (*db.User, error) {
+	var user db.User
+	err := r.db.Where("LOWER(email) = LOWER(?)", email).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 // CreateUser adds a new user to the repository

@@ -8,6 +8,7 @@ import (
 	"net/http" // Still needed for user-defined static routes from OS filesystem
 	"time"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
@@ -30,9 +31,13 @@ type Gateway struct {
 	// middleware status/health/metrics API and by code that depends on a
 	// middleware's options.
 	MiddlewareChain *builtin.GlobalChain
-	templates       map[string]*template.Template
-	WebappEmbedFS   *embed.FS
-	StartTime       time.Time
+	// Accounts runs sign-up, password reset, email login, linked logins and
+	// the account page.
+	Accounts      *accounts.Service
+	templates     map[string]*template.Template
+	authTemplates map[string]*template.Template
+	WebappEmbedFS *embed.FS
+	StartTime     time.Time
 
 	handler http.Handler
 }
@@ -47,9 +52,15 @@ func NewGatewayWithDependencies(cfg *config.GatewayConfig, webappEmbedFS *embed.
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
+	authTemplates, err := parseAuthTemplates(static.StaticAssetsFS)
+	if err != nil {
+		return nil, err
+	}
+
 	gateway := &Gateway{
 		Dependencies:  deps,
 		templates:     templates,
+		authTemplates: authTemplates,
 		WebappEmbedFS: webappEmbedFS,
 		StartTime:     time.Now(),
 	}

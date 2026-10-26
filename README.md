@@ -46,6 +46,8 @@ Features table, shows what is implemented and what is planned.
 | - OAuth2: Facebook¹           | 🚧       |        |
 | - OAuth2: Apple (Sign in with Apple)¹ | 🚧 |        |
 | Authentication: Token         | ✅       | v0.0.9 |
+| Several logins per account (account linking) | ✅ | unreleased |
+| Account page: password, sessions, recent activity | ✅ | unreleased |
 | Authentication: JWT           | 🚧       |        |
 | Authorization using RBAC      | 🚧       |        |
 | HTTP Cache Control            | ✅       | v0.0.12 |
@@ -312,6 +314,8 @@ authenticationProviders:
 ```
 
 See [doc/authentication-providers.md](doc/authentication-providers.md) for the OAuth2 setup and callback URLs.
+
+The gateway also manages accounts for OAuth logins: linking Google and GitHub logins to one account, and an account page at `/_/account` where users change their password, see and sign out their sessions, and review recent activity. See [doc/accounts.md](doc/accounts.md).
 
 ### Branding
 

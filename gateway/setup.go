@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/gateway/deps"
 	"github.com/jmaister/taronja-gateway/middleware/builtin"
@@ -81,6 +82,7 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	g.RateLimiter = rt.rateLimiter
 	g.MiddlewareChain = rt.middlewareChain
 	g.AuthMiddleware = rt.authMiddleware
+	g.Accounts = newAccountsService(g.Dependencies)
 
 	// Registers every route/management handler onto the mux just built
 	// above.
@@ -93,4 +95,14 @@ func (g *Gateway) setup(cfg *config.GatewayConfig) error {
 	g.handler = rt.handler
 
 	return nil
+}
+
+// newAccountsService builds the accounts service.
+func newAccountsService(d *deps.Dependencies) *accounts.Service {
+	return accounts.NewService(accounts.Repositories{
+		Users:      d.UserRepo,
+		Sessions:   d.SessionRepo,
+		Identities: d.UserIdentityRepo,
+		Events:     d.AuthEventRepo,
+	})
 }

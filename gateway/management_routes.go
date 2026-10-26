@@ -185,32 +185,38 @@ func (g *Gateway) registerLoginRoutes() {
 	if cfg.HasAnyAuthentication() {
 		// Background context: registration runs once at startup and provider goroutines
 		// live until the process exits.
-		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo)
+		providers.RegisterProviders(context.Background(), g.Mux, g.Dependencies.SessionStore, cfg, g.Dependencies.UserRepo, g.Accounts)
 	}
 
 	// Login page handler
 	loginPath := config.ManagementPrefix + "/login"
 	g.Mux.HandleFunc(loginPath, func(w http.ResponseWriter, r *http.Request) {
-		// Reads the live config. The redirect is sanitized so .RedirectURL is always a
-		// safe same-origin path wherever the template embeds it.
-		data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
-
-		// Retrieve the pre-parsed template from the map (parsed from embedded FS)
-		loginTemplatePath := "login.html" // Key for the template map, path relative to embedded FS root
-		tmpl, ok := g.templates[loginTemplatePath]
-		if !ok || tmpl == nil {
-			log.Printf("Error: Login template '%s' not found in cache", loginTemplatePath)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		// Execute the template
-		err := tmpl.Execute(w, data)
-		if err != nil {
-			log.Printf("Error executing login template: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
+		query := r.URL.Query()
+		g.renderLoginPage(w, r, http.StatusOK, pageMessages[query.Get("msg")], pageErrors[query.Get("error")])
 	})
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
+
+	g.registerAccountRoutes()
+}
+
+// renderLoginPage renders login.html with an optional notice and error.
+func (g *Gateway) renderLoginPage(w http.ResponseWriter, r *http.Request, status int, message, errorText string) {
+	// Reads the live config. The redirect is sanitized so .RedirectURL is always a
+	// safe same-origin path wherever the template embeds it.
+	data := config.NewLoginPageData(session.SanitizeRedirectPath(r.URL.Query().Get("redirect")), g.GatewayConfig)
+	data.Message = message
+	data.Error = errorText
+
+	tmpl, ok := g.templates["login.html"]
+	if !ok || tmpl == nil {
+		log.Printf("Error: Login template 'login.html' not found in cache")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	err := tmpl.Execute(w, data)
+	if err != nil {
+		log.Printf("Error executing login template: %v", err)
+	}
 }

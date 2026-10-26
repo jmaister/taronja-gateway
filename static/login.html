@@ -90,6 +90,7 @@
             align-items: center;
         }
         .login-container input[type="text"],
+        .login-container input[type="email"],
         .login-container input[type="password"] {
             width: 100%;
             padding: 14px;
@@ -181,6 +182,15 @@
             font-size: 14px;
             display: none;
         }
+        .notice-message {
+            background-color: #e7f3ff;
+            color: #084298;
+            border: 1px solid #b6d4fe;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
         .loading {
             background-color: #6c757d !important;
             cursor: not-allowed !important;
@@ -220,6 +230,8 @@
         <img src="{{.Branding.LogoUrl}}" alt="Logo" class="logo">
         {{end}}
         <h1>Login</h1>
+        {{if .Message}}<div class="notice-message" role="status">{{.Message}}</div>{{end}}
+        {{if .Error}}<div class="error-message" role="alert" style="display:block">{{.Error}}</div>{{end}}
 
         <div class="oauth-buttons">
             {{if .AuthenticationProviders.Google.Enabled}}

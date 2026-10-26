@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/db/repositories"
@@ -30,6 +32,18 @@ func TestMain(m *testing.M) {
 	os.Exit(exitVal)
 }
 
+// testAccountsFor builds a real accounts service on the current test database,
+// around userRepo.
+func testAccountsFor(userRepo repositories.UserRepository) *accounts.Service {
+	conn := db.GetConnection()
+	return accounts.NewService(accounts.Repositories{
+		Users:      userRepo,
+		Sessions:   repositories.NewSessionRepositoryDB(conn),
+		Identities: repositories.NewUserIdentityRepositoryDB(conn),
+		Events:     repositories.NewAuthEventRepositoryDB(conn),
+	})
+}
+
 func createTestAuthProvider() *AuthenticationProvider {
 	provider := NewSimpleAuthProvider("test")
 	oauthConfig := &oauth2.Config{
@@ -48,7 +62,7 @@ func createTestAuthProvider() *AuthenticationProvider {
 		},
 	}
 
-	return NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore, gatewayConfig)
+	return NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore, gatewayConfig, testAccountsFor(testUserRepo))
 }
 
 func TestLogoutWithValidSession(t *testing.T) {
@@ -583,7 +597,7 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		},
 	}
 
-	authProvider := NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore, gatewayConfig)
+	authProvider := NewAuthenticationProvider(oauthConfig, provider, "Test Provider", testUserRepo, testSessionStore, gatewayConfig, testAccountsFor(testUserRepo))
 
 	// Set mock fetcher
 	mockFetcher := &MockUserDataFetcher{
@@ -729,20 +743,13 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		assert.NotEmpty(t, sessionCookie.Value)
 	})
 
-	// TestCallbackWithMockedOAuthFlow/OAuth_callback_rejects_login_when_the_
-	// provider_reports_an_unverified_email is the regression test for the
-	// account-creation path unconditionally setting EmailConfirmed: true
-	// regardless of what the provider actually reported — an unverified
-	// email from a provider that can return one would otherwise create an
-	// immediately-usable, "confirmed" account, letting anyone claim any
-	// email address. A new user is still created (so its state is
-	// inspectable/fixable by an admin), but login itself is rejected via
-	// validateUserLogin, same as it already is for an unconfirmed local
-	// account.
+	// An unverified email from the provider must neither log in nor create an
+	// account: an unusable account would still claim the address.
 	t.Run("OAuth callback rejects login when the provider reports an unverified email", func(t *testing.T) {
 		state := "test-state-value-unverified"
 		code := "test-auth-code-unverified"
 
+		mockFetcher.userInfo.ID = "oauth-user-unverified"
 		mockFetcher.userInfo.Email = "unverified-user@example.com"
 		mockFetcher.userInfo.Username = "unverifieduser"
 		mockFetcher.userInfo.VerifiedEmail = false
@@ -754,16 +761,113 @@ func TestCallbackWithMockedOAuthFlow(t *testing.T) {
 		w := httptest.NewRecorder()
 		authProvider.Callback(w, req)
 
-		assert.Equal(t, http.StatusUnauthorized, w.Code, "login must be rejected when the provider's email isn't verified")
-
-		cookies := w.Result().Cookies()
-		for _, cookie := range cookies {
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/_/login?error=email_not_verified", w.Header().Get("Location"))
+		for _, cookie := range w.Result().Cookies() {
 			assert.NotEqual(t, session.SessionCookieName, cookie.Name, "no session must be issued for an unverified-email login")
 		}
 
-		createdUser, err := testUserRepo.FindUserByIdOrUsername("", "", "unverified-user@example.com")
+		_, err := testUserRepo.FindUserByIdOrUsername("", "", "unverified-user@example.com")
+		assert.Error(t, err, "no account is created")
+	})
+}
+
+// callbackWith runs a callback for profile, with extra cookies on the request.
+func callbackWith(t *testing.T, ap *AuthenticationProvider, fetcher *MockUserDataFetcher, info UserInfo, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	fetcher.userInfo = &info
+	req := httptest.NewRequest("GET", "/_/auth/test/callback?state=s&code=c", nil)
+	req.AddCookie(&http.Cookie{Name: StateCookieName, Value: "s"})
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	ap.Callback(w, req)
+	return w
+}
+
+func TestCallbackLinksAccounts(t *testing.T) {
+	mockOAuthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":"mock-access-token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer mockOAuthServer.Close()
+
+	oauthConfig := &oauth2.Config{
+		ClientID:    "id",
+		RedirectURL: "http://localhost:8080/_/auth/test/callback",
+		Endpoint:    oauth2.Endpoint{TokenURL: mockOAuthServer.URL + "/token"},
+	}
+	gatewayConfig := &config.GatewayConfig{Management: config.ManagementConfig{Session: config.SessionConfig{DurationSeconds: 3600}}}
+	ap := NewAuthenticationProvider(oauthConfig, NewSimpleAuthProvider("test"), "Test", testUserRepo, testSessionStore, gatewayConfig, testAccountsFor(testUserRepo))
+	fetcher := &MockUserDataFetcher{}
+	ap.Fetcher = fetcher
+
+	owner := &db.User{Email: "linker@example.com", Username: "linker", Password: "pw-12345678", EmailConfirmed: true}
+	require.NoError(t, testUserRepo.CreateUser(owner))
+	ownerSession, err := testSessionStore.NewSession(nil, owner, "basic", time.Hour)
+	require.NoError(t, err)
+
+	t.Run("an existing account with the same proven email is linked on login", func(t *testing.T) {
+		w := callbackWith(t, ap, fetcher, UserInfo{ID: "link-auto", Email: "linker@example.com", VerifiedEmail: true})
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/", w.Header().Get("Location"))
+		identity, err := repositories.NewUserIdentityRepositoryDB(db.GetConnection()).FindByProviderSubject("test", "link-auto")
 		require.NoError(t, err)
-		require.NotNil(t, createdUser, "the account should still be created, just not usable to log in yet")
-		assert.False(t, createdUser.EmailConfirmed)
+		assert.Equal(t, owner.ID, identity.UserID)
+	})
+
+	t.Run("an account the email may have been squatted on is not linked", func(t *testing.T) {
+		squatted := &db.User{Email: "squatted@example.com", Username: "squatted", Password: "pw-12345678"}
+		require.NoError(t, testUserRepo.CreateUser(squatted))
+		w := callbackWith(t, ap, fetcher, UserInfo{ID: "link-squat", Email: "squatted@example.com", VerifiedEmail: true})
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, "/_/login?error=link_required", w.Header().Get("Location"))
+	})
+
+	t.Run("the account page links an account with a different email", func(t *testing.T) {
+		intent := &http.Cookie{Name: LinkIntentCookieName, Value: accounts.CSRFToken(ownerSession.Token)}
+		sessionCookie := &http.Cookie{Name: session.SessionCookieName, Value: ownerSession.Token}
+		w := callbackWith(t, ap, fetcher, UserInfo{ID: "link-explicit", Email: "work@corp.example", VerifiedEmail: true}, intent, sessionCookie)
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.Equal(t, AccountPath+"?msg=linked", w.Header().Get("Location"))
+		for _, c := range w.Result().Cookies() {
+			if c.Name == session.SessionCookieName {
+				t.Fatal("linking keeps the current session; it does not log in again")
+			}
+		}
+
+		w = callbackWith(t, ap, fetcher, UserInfo{ID: "link-explicit", Email: "work@corp.example", VerifiedEmail: true})
+		assert.Equal(t, "/", w.Header().Get("Location"), "the linked account now logs in as the owner")
+	})
+
+	t.Run("a link intent from another session is refused", func(t *testing.T) {
+		intent := &http.Cookie{Name: LinkIntentCookieName, Value: accounts.CSRFToken("someone-else")}
+		sessionCookie := &http.Cookie{Name: session.SessionCookieName, Value: ownerSession.Token}
+		w := callbackWith(t, ap, fetcher, UserInfo{ID: "link-forged", Email: "x@corp.example", VerifiedEmail: true}, intent, sessionCookie)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+
+	t.Run("Link requires a session and its CSRF token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/_/auth/test/link", strings.NewReader("csrf=wrong"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: session.SessionCookieName, Value: ownerSession.Token})
+		w := httptest.NewRecorder()
+		ap.Link(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+
+		req = httptest.NewRequest(http.MethodPost, "/_/auth/test/link", strings.NewReader("csrf="+accounts.CSRFToken(ownerSession.Token)))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: session.SessionCookieName, Value: ownerSession.Token})
+		w = httptest.NewRecorder()
+		ap.Link(w, req)
+		assert.Equal(t, http.StatusTemporaryRedirect, w.Code, "goes to the provider")
+		var intentSet bool
+		for _, c := range w.Result().Cookies() {
+			if c.Name == LinkIntentCookieName && c.Value == accounts.CSRFToken(ownerSession.Token) {
+				intentSet = true
+			}
+		}
+		assert.True(t, intentSet)
 	})
 }

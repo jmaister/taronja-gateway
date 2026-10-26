@@ -36,6 +36,7 @@ Open http://localhost:18025 after `make e2e-up` to see the emails a test run sen
   links; opening an action link without a session records the answer once;
   a multi-recipient notification sends one email per user and the batch
   status reports them sent.
+- `accounts_test.go`: the account page's password change, session revocation, CSRF check and activity list.
 - `featureflags_test.go`: flags created and toggled by an admin show up on the
   public `/_/flags` endpoint and in the `X-Feature-Flags` header a proxied
   backend receives, and a client cannot forge that header.

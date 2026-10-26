@@ -90,7 +90,7 @@ type AuthProviderCredentials struct {
 
 // BasicAuthenticationConfig controls basic authentication provider.
 type BasicAuthenticationConfig struct {
-	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false
+	Enabled bool `yaml:"enabled"` // Enable basic (username/password) authentication. Default: false.
 }
 
 // AuthenticationProviders defines the available authentication methods.
@@ -405,6 +405,8 @@ type loginPageData struct {
 	}
 	Branding         BrandingConfig
 	RedirectURL      string
+	Message          string
+	Error            string
 	ManagementPrefix string
 }
 
