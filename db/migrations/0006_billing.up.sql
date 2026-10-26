@@ -24,3 +24,4 @@ CREATE TABLE IF NOT EXISTS `organization_members` (`organization_id` varchar(255
 CREATE INDEX IF NOT EXISTS `idx_organization_members_user_id` ON `organization_members`(`user_id`);
 CREATE TABLE IF NOT EXISTS `organizations` (`id` varchar(255) NOT NULL,`name` varchar(255) NOT NULL,`logo` blob,`logo_content_type` varchar(50),`logo_updated_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`));
 CREATE TABLE IF NOT EXISTS `stripe_events` (`event_id` varchar(255) NOT NULL,`type` varchar(100) NOT NULL,`received_at` datetime,PRIMARY KEY (`event_id`));
+CREATE TABLE IF NOT EXISTS `stuck_stripe_events` (`event_id` varchar(255) NOT NULL,`type` varchar(100) NOT NULL,`subscription_id` varchar(255) NOT NULL,`reason` text NOT NULL,`attempts` integer NOT NULL,`first_seen_at` datetime NOT NULL,`last_seen_at` datetime NOT NULL,PRIMARY KEY (`event_id`));

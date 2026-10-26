@@ -7,6 +7,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // BillingRepositoryDB implements BillingRepository using GORM.
@@ -477,6 +478,33 @@ func (r *BillingRepositoryDB) RecordStripeEvent(eventID, eventType string) (bool
 
 	// Any other error is returned
 	return false, result.Error
+}
+
+// RecordStuckEvent stores a stuck event or counts another attempt.
+func (r *BillingRepositoryDB) RecordStuckEvent(eventID, eventType, subscriptionID, reason string, now time.Time) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "event_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"reason":       reason,
+			"attempts":     gorm.Expr("attempts + 1"),
+			"last_seen_at": now,
+		}),
+	}).Create(&db.StuckStripeEvent{
+		EventID: eventID, Type: eventType, SubscriptionID: subscriptionID, Reason: reason,
+		Attempts: 1, FirstSeenAt: now, LastSeenAt: now,
+	}).Error
+}
+
+// ClearStuckEvent deletes a stuck event.
+func (r *BillingRepositoryDB) ClearStuckEvent(eventID string) error {
+	return r.db.Delete(&db.StuckStripeEvent{}, "event_id = ?", eventID).Error
+}
+
+// StuckEvents returns the stuck events, oldest first.
+func (r *BillingRepositoryDB) StuckEvents() ([]db.StuckStripeEvent, error) {
+	var events []db.StuckStripeEvent
+	err := r.db.Order("first_seen_at ASC").Find(&events).Error
+	return events, err
 }
 
 // isDuplicateError checks if an error is a duplicate key constraint error.

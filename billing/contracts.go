@@ -147,6 +147,9 @@ type Stripe interface {
 	EnsureCustomer(ctx context.Context, existingID, subject, name, email string) (string, error)
 	CreateCheckoutSession(ctx context.Context, p CheckoutParams) (CheckoutSession, error)
 	CreateSubscription(ctx context.Context, p SubscriptionParams) (StripeSubscription, error)
+	// GetSubscription reads a subscription (a webhook that arrives before the
+	// subscription's own event).
+	GetSubscription(ctx context.Context, subscriptionID string) (StripeSubscription, error)
 	// CancelSubscription cancels at once (atPeriodEnd false) or at the end
 	// of the current period.
 	CancelSubscription(ctx context.Context, subscriptionID string, atPeriodEnd bool) (StripeSubscription, error)

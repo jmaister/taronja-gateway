@@ -222,6 +222,14 @@ func (c *Client) latestCard(ctx context.Context, customerID string) (string, err
 	return "", fmt.Errorf("stripe: customer %s has no saved card", customerID)
 }
 
+func (c *Client) GetSubscription(ctx context.Context, subscriptionID string) (billing.StripeSubscription, error) {
+	sub, err := c.sc.V1Subscriptions.Retrieve(ctx, subscriptionID, nil)
+	if err != nil {
+		return billing.StripeSubscription{}, wrap(err)
+	}
+	return mapSubscription(sub), nil
+}
+
 func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string, atPeriodEnd bool) (billing.StripeSubscription, error) {
 	var sub *stripe.Subscription
 	var err error

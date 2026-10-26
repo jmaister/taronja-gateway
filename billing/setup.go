@@ -70,7 +70,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			plans.Detail = fmt.Sprintf("%d active plans", len(list))
 		}
 	}
-	checks = append(checks, plans)
+	checks = append(checks, plans, s.stuckEventsCheck())
 
 	if s.odoo == nil {
 		return append(checks, SetupCheck{ID: "odoo-connection", Title: "Odoo", Status: CheckMissing,
@@ -100,6 +100,41 @@ func (s *Service) outboxCheck() SetupCheck {
 	case st.Retrying > 0 || (st.OldestPending != nil && s.now().Sub(*st.OldestPending) > time.Hour):
 		c.Status, c.Link = CheckWarn, "/billing/invoices?state=pending"
 	}
+	return c
+}
+
+// stuckEventsAfter is how long a Stripe event may wait for its subscription
+// before the setup page turns red: Stripe's retries are minutes apart at first.
+const stuckEventsAfter = 2 * time.Hour
+
+// stuckEventsShown caps the events the check names.
+const stuckEventsShown = 5
+
+func (s *Service) stuckEventsCheck() SetupCheck {
+	c := SetupCheck{ID: "stripe-events", Title: "Stripe events waiting", Status: CheckOK, Detail: "no event is waiting for its subscription"}
+	events, err := s.repo.StuckEvents()
+	if err != nil {
+		c.Status, c.Detail = CheckMissing, err.Error()
+		return c
+	}
+	if len(events) == 0 {
+		return c
+	}
+	age := s.now().Sub(events[0].FirstSeenAt)
+	c.Status = CheckWarn
+	if age > stuckEventsAfter {
+		c.Status = CheckMissing
+	}
+	var parts []string
+	for i, e := range events {
+		if i == stuckEventsShown {
+			parts = append(parts, fmt.Sprintf("and %d more", len(events)-stuckEventsShown))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s %s (%s, %d attempts)", e.Type, e.EventID, e.SubscriptionID, e.Attempts))
+	}
+	c.Detail = fmt.Sprintf("%d events refer to a subscription the gateway doesn't have and Stripe couldn't give; the oldest has waited %s: %s. Stripe retries for up to 3 days; after that resend the event from Stripe (Developers → Events)",
+		len(events), age.Round(time.Minute), strings.Join(parts, "; "))
 	return c
 }
 
