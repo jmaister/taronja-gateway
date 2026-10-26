@@ -6,6 +6,8 @@ import {
     deleteOrganization,
     setOrganizationMember,
     removeOrganizationMember,
+    setOrganizationLogo,
+    deleteOrganizationLogo,
 } from '@/apiclient';
 import type {
     Organization,
@@ -122,6 +124,39 @@ export function useRemoveOrganizationMember() {
             handleResponse(response);
         },
         onSuccess: (_, { orgId }) => {
+            queryClient.invalidateQueries({ queryKey: organizationKeys.detail(orgId) });
+        },
+    });
+}
+
+export function useSetOrganizationLogo() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ orgId, file }: { orgId: string; file: File }) => {
+            const response = await setOrganizationLogo({
+                path: { orgId },
+                body: file,
+                headers: { 'Content-Type': 'image/*' },
+                client: customApiClient,
+            });
+            return handleResponse<OrganizationDetail>(response);
+        },
+        onSuccess: (_, { orgId }) => {
+            queryClient.invalidateQueries({ queryKey: organizationKeys.all() });
+            queryClient.invalidateQueries({ queryKey: organizationKeys.detail(orgId) });
+        },
+    });
+}
+
+export function useDeleteOrganizationLogo() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (orgId: string) => {
+            const response = await deleteOrganizationLogo({ path: { orgId }, client: customApiClient });
+            handleResponse(response);
+        },
+        onSuccess: (_, orgId) => {
+            queryClient.invalidateQueries({ queryKey: organizationKeys.all() });
             queryClient.invalidateQueries({ queryKey: organizationKeys.detail(orgId) });
         },
     });

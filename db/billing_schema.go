@@ -38,7 +38,17 @@ type Organization struct {
 	Name      string    `gorm:"type:varchar(255);not null"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+
+	// The logo image. The repository never loads Logo with the
+	// organization (see OrganizationLogoColumns); LogoUpdatedAt is nil
+	// when there is no logo.
+	Logo            []byte `gorm:"type:blob"`
+	LogoContentType string `gorm:"type:varchar(50)"`
+	LogoUpdatedAt   *time.Time
 }
+
+// HasLogo reports whether the organization has a logo.
+func (o *Organization) HasLogo() bool { return o.LogoUpdatedAt != nil }
 
 func (o *Organization) BeforeCreate(tx *gorm.DB) error {
 	if o.ID != "" {
