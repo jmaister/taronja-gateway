@@ -287,3 +287,7 @@ func TestBilling_WholeFlow(t *testing.T) {
 	boxInvoice := waitDocument(t, gw, admin, "pi_e2e_box")
 	assert.Len(t, boxInvoice["lines"], 2, "the box and the first month")
 }
+
+func uniqueEmail(name string) string {
+	return fmt.Sprintf("%s-%d@example.com", name, time.Now().UnixNano())
+}

@@ -16,6 +16,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type AuthenticationProviders](<#AuthenticationProviders>)
   - [func \(a \*AuthenticationProviders\) PrintOAuthCallbackURLs\(serverURL, managementPrefix string\)](<#AuthenticationProviders.PrintOAuthCallbackURLs>)
 - [type BasicAuthenticationConfig](<#BasicAuthenticationConfig>)
+- [type BillingConfig](<#BillingConfig>)
 - [type BrandingConfig](<#BrandingConfig>)
 - [type EmailNotificationConfig](<#EmailNotificationConfig>)
   - [func \(e EmailNotificationConfig\) IsConfigured\(\) bool](<#EmailNotificationConfig.IsConfigured>)
@@ -33,6 +34,8 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type OIDCLoginButton](<#OIDCLoginButton>)
 - [type OIDCProviderConfig](<#OIDCProviderConfig>)
   - [func \(o OIDCProviderConfig\) DisplayLabel\(\) string](<#OIDCProviderConfig.DisplayLabel>)
+- [type OdooBillingConfig](<#OdooBillingConfig>)
+  - [func \(o OdooBillingConfig\) IsConfigured\(\) bool](<#OdooBillingConfig.IsConfigured>)
 - [type ResponseWebhookConfig](<#ResponseWebhookConfig>)
   - [func \(w ResponseWebhookConfig\) IsConfigured\(\) bool](<#ResponseWebhookConfig.IsConfigured>)
 - [type RouteConfig](<#RouteConfig>)
@@ -45,6 +48,7 @@ import "github.com/jmaister/taronja-gateway/config"
 - [type ServerConfig](<#ServerConfig>)
 - [type SessionConfig](<#SessionConfig>)
   - [func \(s \*SessionConfig\) GetDuration\(\) time.Duration](<#SessionConfig.GetDuration>)
+- [type StripeBillingConfig](<#StripeBillingConfig>)
 - [type TelegramNotificationConfig](<#TelegramNotificationConfig>)
   - [func \(t TelegramNotificationConfig\) IsConfigured\(\) bool](<#TelegramNotificationConfig.IsConfigured>)
 
@@ -147,6 +151,19 @@ type BasicAuthenticationConfig struct {
 }
 ```
 
+<a name="BillingConfig"></a>
+## type [BillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L307-L311>)
+
+BillingConfig turns on payments \(Stripe\), invoices \(Odoo\) and entitlements: plans sold at /\_/pay/\<plan\> grant features that apps read from the X\-Entitlements header or GET /\_/api/entitlements. See doc/billing.md.
+
+```go
+type BillingConfig struct {
+    Enabled bool                `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
+    Stripe  StripeBillingConfig `yaml:"stripe"`  // Stripe account. Required when enabled.
+    Odoo    OdooBillingConfig   `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
+}
+```
+
 <a name="BrandingConfig"></a>
 ## type [BrandingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L182-L184>)
 
@@ -185,7 +202,7 @@ func (e EmailNotificationConfig) IsConfigured() bool
 IsConfigured reports whether email delivery has the minimum settings \(host and from address\) to actually attempt a send.
 
 <a name="GatewayConfig"></a>
-## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L290-L301>)
+## type [GatewayConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L290-L302>)
 
 GatewayConfig is the root configuration structure for Taronja Gateway. It contains all settings needed to run the gateway including server, routing, authentication, and management. Configuration is loaded from a YAML file and supports environment variable expansion \($\{VAR\_NAME\}\).
 
@@ -201,11 +218,12 @@ type GatewayConfig struct {
     Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
     Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
     Middleware              []MiddlewareConfig      `yaml:"middleware,omitempty"`    // Global middleware, run in list order. Optional; none when absent. See doc/middleware/.
+    Billing                 BillingConfig           `yaml:"billing,omitempty"`       // Payments, invoices and entitlements. Optional; disabled by default. See doc/billing.md.
 }
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L304>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L369>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -214,7 +232,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L456>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L524>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -223,7 +241,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GatewayConfig.Validate"></a>
-### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L406>)
+### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L471>)
 
 ```go
 func (c *GatewayConfig) Validate() error
@@ -308,7 +326,7 @@ type NotificationConfig struct {
 ```
 
 <a name="OIDCLoginButton"></a>
-## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L485-L488>)
+## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L553-L556>)
 
 OIDCLoginButton is one OIDC provider's button on the login page.
 
@@ -348,6 +366,33 @@ func (o OIDCProviderConfig) DisplayLabel() string
 ```
 
 DisplayLabel returns the login button label.
+
+<a name="OdooBillingConfig"></a>
+## type [OdooBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L322-L331>)
+
+OdooBillingConfig is where invoices and credit notes are issued, through Odoo's JSON\-2 API \(Odoo 19\).
+
+```go
+type OdooBillingConfig struct {
+    URL              string `yaml:"url"`              // Odoo base URL, e.g. "https://odoo.example.com". Empty: Odoo is not configured and invoices stay pending.
+    Database         string `yaml:"database"`         // Odoo database name, sent as X-Odoo-Database. Required with url.
+    APIKey           string `yaml:"apiKey"`           // API key of the billing user (Billing + Contact creation rights). Can use environment variables. Required with url.
+    CompanyID        int64  `yaml:"companyId"`        // Company that issues the invoices. Required with url.
+    SalesJournalID   int64  `yaml:"salesJournalId"`   // Sales journal; must have Dedicated Credit Note Sequence on. Required with url.
+    PaymentJournalID int64  `yaml:"paymentJournalId"` // Bank journal where Stripe payments are registered (e.g. "Stripe"). Required with url.
+    TaxID            int64  `yaml:"taxId"`            // Sales tax, 21 % VAT included in price. Required with url.
+    APIKeyExpiresAt  string `yaml:"apiKeyExpiresAt"`  // Date (YYYY-MM-DD) the Odoo API key expires; the billing setup page warns 30 days before. Optional: unset, the page only reminds you to renew it.
+}
+```
+
+<a name="OdooBillingConfig.IsConfigured"></a>
+### func \(OdooBillingConfig\) [IsConfigured](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L334>)
+
+```go
+func (o OdooBillingConfig) IsConfigured() bool
+```
+
+IsConfigured reports whether Odoo invoicing is set up.
 
 <a name="ResponseWebhookConfig"></a>
 ## type [ResponseWebhookConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L234-L244>)
@@ -397,7 +442,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L527>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L595>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -406,7 +451,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.IsStatic"></a>
-### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L429>)
+### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L497>)
 
 ```go
 func (r RouteConfig) IsStatic() bool
@@ -415,7 +460,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L535>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L603>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool
@@ -484,6 +529,19 @@ func (s *SessionConfig) GetDuration() time.Duration
 ```
 
 
+
+<a name="StripeBillingConfig"></a>
+## type [StripeBillingConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L314-L318>)
+
+StripeBillingConfig is the Stripe account payments go to.
+
+```go
+type StripeBillingConfig struct {
+    SecretKey     string `yaml:"secretKey"`        // Secret API key (sk_test_... or sk_live_...). Can use environment variables. Required.
+    WebhookSecret string `yaml:"webhookSecret"`    // Signing secret of the webhook endpoint <server.url>/_/billing/stripe/webhook (whsec_...). Can use environment variables. Required.
+    APIURL        string `yaml:"apiUrl,omitempty"` // Stripe API base URL. Default: https://api.stripe.com. For tests only.
+}
+```
 
 <a name="TelegramNotificationConfig"></a>
 ## type [TelegramNotificationConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L220-L223>)

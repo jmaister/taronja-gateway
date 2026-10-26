@@ -323,7 +323,7 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
 
 ## Data model
 
-Migration `0006_billing` (and the same models in `db.Models`):
+Migration `0005_billing` (and the same models in `db.Models`):
 
 | Table | Key columns |
 |---|---|
