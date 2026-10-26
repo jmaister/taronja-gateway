@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import type { Organization } from '@/apiclient';
 import { QueryState } from '../components/QueryState';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
@@ -15,6 +15,8 @@ import {
     useOrganization,
     useSetOrganizationMember,
     useRemoveOrganizationMember,
+    useSetOrganizationLogo,
+    useDeleteOrganizationLogo,
 } from '../services/organizations';
 
 function CreateOrganizationForm() {
@@ -69,6 +71,66 @@ function CreateOrganizationForm() {
     );
 }
 
+const MAX_LOGO_BYTES = 512 * 1024;
+
+function OrganizationLogoEditor({ orgId, name, logoUrl }: { orgId: string; name: string; logoUrl?: string }) {
+    const setLogo = useSetOrganizationLogo();
+    const removeLogo = useDeleteOrganizationLogo();
+    const [tooLarge, setTooLarge] = useState(false);
+
+    const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        setTooLarge(file.size > MAX_LOGO_BYTES);
+        if (file.size > MAX_LOGO_BYTES) return;
+        setLogo.mutate({ orgId, file });
+    };
+
+    return (
+        <div>
+            <h4 className="font-semibold mb-4">Logo</h4>
+            <div className="flex items-center gap-4">
+                {logoUrl ? (
+                    <img src={logoUrl} alt={`${name} logo`} className="h-16 w-16 rounded border border-border object-contain" />
+                ) : (
+                    <div className="h-16 w-16 rounded border border-dashed border-border flex items-center justify-center text-xs text-muted-fg">
+                        No logo
+                    </div>
+                )}
+                <div className="space-y-2">
+                    <label className="block text-sm">
+                        <span className="sr-only">Upload logo</span>
+                        <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            aria-label="Upload logo"
+                            onChange={onFile}
+                            disabled={setLogo.isPending}
+                            className="text-sm"
+                        />
+                    </label>
+                    {logoUrl && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-danger"
+                            disabled={removeLogo.isPending}
+                            onClick={() => removeLogo.mutate(orgId)}
+                        >
+                            Remove logo
+                        </Button>
+                    )}
+                </div>
+            </div>
+            <p className="mt-2 text-xs text-muted-fg">PNG, JPEG or WebP, up to 512 KiB.</p>
+            {tooLarge && <p className="mt-2 text-sm text-danger">The image is larger than 512 KiB.</p>}
+            {setLogo.error && <p className="mt-2 text-sm text-danger">{setLogo.error.message}</p>}
+            {removeLogo.error && <p className="mt-2 text-sm text-danger">{removeLogo.error.message}</p>}
+        </div>
+    );
+}
+
 interface DetailPanelProps {
     organization: Organization;
     onClose: () => void;
@@ -107,6 +169,12 @@ function OrganizationDetailPanel({ organization, onClose }: DetailPanelProps) {
                 </div>
 
                 <div className="p-6 space-y-6">
+                    <OrganizationLogoEditor
+                        orgId={organization.id}
+                        name={organization.name}
+                        logoUrl={details.data?.logoUrl || organization.logoUrl || undefined}
+                    />
+
                     <div>
                         <h4 className="font-semibold mb-4">Add Member</h4>
                         <form onSubmit={onAddMember} className="space-y-3">
@@ -227,7 +295,14 @@ export function OrganizationsPage() {
                                 <tbody>
                                     {organizations.data?.map(org => (
                                         <tr key={org.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                                            <td className="px-4 py-3 font-medium">{org.name}</td>
+                                            <td className="px-4 py-3 font-medium">
+                                                <span className="flex items-center gap-3">
+                                                    {org.logoUrl && (
+                                                        <img src={org.logoUrl} alt="" className="h-6 w-6 rounded object-contain" />
+                                                    )}
+                                                    {org.name}
+                                                </span>
+                                            </td>
                                             <td className="px-4 py-3 text-muted-fg">
                                                 {org.memberCount}
                                             </td>
