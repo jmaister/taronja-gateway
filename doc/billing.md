@@ -25,7 +25,7 @@ any application.
 |---|---|
 | Who pays | A **subject**: a gateway user, or an **organization** of the gateway. Any member who pays activates the plan's features for the whole organization. |
 | Organizations | Optional gateway feature: the gateway admin (or an app, with the admin API token) creates organizations and assigns users to them. |
-| Payment link | A gateway page, `/_/pay/<plan>`. It requires login (sign-up included), then redirects to Stripe Checkout. The purchase is tied to the logged-in user or their organization, never matched by email. |
+| Payment link | A gateway page, `/_/pay/<plan>`. It requires login, then redirects to Stripe Checkout. The purchase is tied to the logged-in user or their organization, never matched by email. |
 | Plans and prices | Created in the gateway dashboard. The gateway creates the Stripe Product and Price and the Odoo product. A price change creates a new Stripe Price; existing subscribers keep theirs. |
 | Plan kinds | Subscription (monthly / yearly, optional trial, optional setup fee, optional start on activation) and one-time payment (optional access period, optional shipping address). |
 | Apps | Read entitlements: `X-Entitlements` on proxied requests, `GET /_/api/entitlements`, or `/_/me`. Megabox also calls one endpoint, *activate*, when its box first goes online. |
@@ -150,7 +150,7 @@ Authenticated with a session or the admin API token, like every gateway API.
 
 1. The app links to `/_/pay/<plan>` (optionally `?org=<id>` and
    `?redirect=<path>`). Academia's "Subscribe" button is such a link.
-2. Not logged in → the login page (sign-up included), back here after.
+2. Not logged in → the login page, back here after.
 3. The page shows the plan (name, price VAT included, interval, trial,
    features in words) and the subject: the user, or one of their
    organizations (`?org=` preselects it; a user who isn't a member is
