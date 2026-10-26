@@ -318,7 +318,7 @@ type StripeBillingConfig struct {
 }
 
 // OdooBillingConfig is where invoices and credit notes are issued, through
-// Odoo's JSON-2 API (Odoo 19 or later).
+// Odoo's JSON-2 API (Odoo 19).
 type OdooBillingConfig struct {
 	URL              string `yaml:"url"`              // Odoo base URL, e.g. "https://odoo.example.com". Empty: Odoo is not configured and invoices stay pending.
 	Database         string `yaml:"database"`         // Odoo database name, sent as X-Odoo-Database. Required with url.
