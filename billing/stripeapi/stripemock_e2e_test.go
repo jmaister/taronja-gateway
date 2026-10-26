@@ -146,6 +146,10 @@ func TestE2E_Subscription(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, sub.ID)
 
+	got, err := client.GetSubscription(ctx, sub.ID)
+	require.NoError(t, err)
+	assert.Equal(t, sub.ID, got.ID)
+
 	// Test CancelSubscription
 	_, err = client.CancelSubscription(ctx, sub.ID, true)
 	require.NoError(t, err)
