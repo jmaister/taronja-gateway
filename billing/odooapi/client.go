@@ -28,22 +28,10 @@ type Client struct {
 	fields map[string]map[string]bool // model -> field names, from fields_get
 }
 
-// Option configures a Client.
-type Option func(*Client)
-
-// WithHTTPClient sets the HTTP client (default: 60 s timeout).
-func WithHTTPClient(h *http.Client) Option {
-	return func(c *Client) { c.http = h }
-}
-
 // New returns a client for cfg; with no URL every call returns
 // billing.ErrNotConfigured.
-func New(cfg config.OdooBillingConfig, opts ...Option) *Client {
-	c := &Client{cfg: cfg, http: &http.Client{Timeout: 60 * time.Second}, fields: map[string]map[string]bool{}}
-	for _, opt := range opts {
-		opt(c)
-	}
-	return c
+func New(cfg config.OdooBillingConfig) *Client {
+	return &Client{cfg: cfg, http: &http.Client{Timeout: 60 * time.Second}, fields: map[string]map[string]bool{}}
 }
 
 var _ billing.Odoo = (*Client)(nil)
