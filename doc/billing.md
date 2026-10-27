@@ -496,3 +496,9 @@ Odoo module go away.
   is not.
 - The entitlement cache is per process (one gateway instance).
 - No dashboard form for grants: they are created through the API.
+- Bank reconciliation of Stripe payouts is manual. The gateway records each
+  payment in the Stripe journal (`paymentJournalId`), but Stripe pays out
+  batches net of fees and refunds, so accounting must match each payout with
+  its payments and book the fees by hand. It could be automated by importing
+  the payouts as bank statements (Stripe balance transactions) or with an
+  Odoo connector.
