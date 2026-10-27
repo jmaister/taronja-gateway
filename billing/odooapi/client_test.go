@@ -185,7 +185,6 @@ func TestIssueMove_NewInvoiceRunsEveryStep(t *testing.T) {
 	f.on("account.move/action_post", func(M) any { return true })
 	f.on("account.payment.register/create", func(M) any { return []int64{5} })
 	f.on("account.payment.register/action_create_payments", func(M) any { return M{} })
-	f.on("res.partner/search_read", func(M) any { return []M{{"id": 55, "email": false}} })
 	f.on("account.move.send.wizard/create", func(M) any { return []int64{6} })
 	f.on("account.move.send.wizard/action_send_and_print", func(M) any { return M{} })
 	f.on("account.move/write", func(M) any { return true })

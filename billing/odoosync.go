@@ -100,32 +100,46 @@ func (s *Service) ProcessDueDocuments(ctx context.Context) (int, error) {
 	return len(docs), nil
 }
 
-// processDocument runs one attempt and records its outcome on d.
+// processDocument runs one attempt and records its outcome on d: issued in
+// Odoo, then emailed. A failed email retries without reissuing.
 func (s *Service) processDocument(ctx context.Context, d *db.BillingDocument) {
-	issued, err := s.issue(ctx, d)
-	if errors.Is(err, errInvoiceNotIssued) {
-		// Not a failure: check again shortly without using up attempts.
-		d.NextAttemptAt = s.now().Add(time.Minute)
-		d.OdooError = err.Error()
-		s.saveDocument(d)
-		return
-	}
-	if err != nil {
-		d.Attempts++
-		d.OdooError = err.Error()
-		if d.Attempts >= MaxOdooAttempts {
-			d.OdooState = db.OdooStateFailed
-		} else {
-			d.NextAttemptAt = s.now().Add(OdooBackoff(d.Attempts))
+	if d.OdooMoveID == nil {
+		issued, err := s.issue(ctx, d)
+		if errors.Is(err, errInvoiceNotIssued) {
+			// Not a failure: check again shortly without using up attempts.
+			d.NextAttemptAt = s.now().Add(time.Minute)
+			d.OdooError = err.Error()
+			s.saveDocument(d)
+			return
 		}
-		log.Printf("billing: Odoo %s %s (attempt %d): %v", d.Kind, d.StripeRef, d.Attempts, err)
-		s.saveDocument(d)
-		return
+		if err != nil {
+			s.failAttempt(d, err)
+			return
+		}
+		moveID := issued.MoveID
+		issuedAt := issued.IssuedAt
+		d.OdooMoveID, d.Number, d.IssuedAt = &moveID, issued.Number, &issuedAt
 	}
-	moveID := issued.MoveID
-	issuedAt := issued.IssuedAt
-	d.OdooMoveID, d.Number, d.IssuedAt = &moveID, issued.Number, &issuedAt
+	if d.EmailedAt == nil {
+		err := s.emailDocument(ctx, d)
+		if err != nil {
+			s.failAttempt(d, fmt.Errorf("emailing: %w", err))
+			return
+		}
+	}
 	d.OdooState, d.OdooError = db.OdooStateDone, ""
+	s.saveDocument(d)
+}
+
+func (s *Service) failAttempt(d *db.BillingDocument, err error) {
+	d.Attempts++
+	d.OdooError = err.Error()
+	if d.Attempts >= MaxOdooAttempts {
+		d.OdooState = db.OdooStateFailed
+	} else {
+		d.NextAttemptAt = s.now().Add(OdooBackoff(d.Attempts))
+	}
+	log.Printf("billing: Odoo %s %s (attempt %d): %v", d.Kind, d.StripeRef, d.Attempts, err)
 	s.saveDocument(d)
 }
 

@@ -308,6 +308,17 @@ type BillingConfig struct {
 	Enabled bool                `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
 	Stripe  StripeBillingConfig `yaml:"stripe"`  // Stripe account. Required when enabled.
 	Odoo    OdooBillingConfig   `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
+	Email   BillingEmailConfig  `yaml:"email"`   // Look of the invoice emails. Optional. They are sent through notifications.email.
+}
+
+// BillingEmailConfig customizes the email the gateway sends with each invoice
+// and credit note (PDF attached).
+type BillingEmailConfig struct {
+	BrandName    string `yaml:"brandName"`    // Name in the header, the subject and the footer. Default: the server.url host.
+	LogoURL      string `yaml:"logoUrl"`      // Absolute URL of a logo shown at the top. Optional.
+	Thanks       string `yaml:"thanks"`       // Thank-you paragraph. Default: "Gracias por tu compra."
+	Footer       string `yaml:"footer"`       // Text at the bottom, e.g. company name and address. Optional.
+	TemplateFile string `yaml:"templateFile"` // Path of a Go html/template file that replaces the built-in HTML email. Optional; see doc/billing.md for its fields.
 }
 
 // StripeBillingConfig is the Stripe account payments go to.
@@ -344,6 +355,16 @@ func (b BillingConfig) validate(serverURL string) error {
 	}
 	if b.Stripe.SecretKey == "" || b.Stripe.WebhookSecret == "" {
 		return fmt.Errorf("billing.stripe.secretKey and billing.stripe.webhookSecret are required when billing is enabled")
+	}
+	if b.Email.LogoURL != "" {
+		if _, err := url.ParseRequestURI(b.Email.LogoURL); err != nil {
+			return fmt.Errorf("billing.email.logoUrl is not a URL: %q", b.Email.LogoURL)
+		}
+	}
+	if b.Email.TemplateFile != "" {
+		if _, err := os.Stat(b.Email.TemplateFile); err != nil {
+			return fmt.Errorf("billing.email.templateFile: %w", err)
+		}
 	}
 	o := b.Odoo
 	if o.IsConfigured() {

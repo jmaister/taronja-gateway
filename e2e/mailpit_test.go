@@ -32,6 +32,14 @@ type mailpitMessage struct {
 	From    mailpitAddress
 	To      []mailpitAddress
 	Text    string
+	HTML    string
+}
+
+// mailpitFullMessage is a message read with its body and attachments (the
+// summary has only the attachment count).
+type mailpitFullMessage struct {
+	mailpitMessage
+	Attachments []struct{ FileName, ContentType string }
 }
 
 // mailpitMessagesTo returns the messages Mailpit holds for one recipient, in
@@ -48,13 +56,13 @@ func mailpitMessagesTo(t *testing.T, recipient string) []mailpitMessage {
 }
 
 // mailpitMessage returns one message with its body.
-func mailpitGetMessage(t *testing.T, id string) mailpitMessage {
+func mailpitGetMessage(t *testing.T, id string) mailpitFullMessage {
 	t.Helper()
 	resp, err := http.Get(mailpitURL + "/api/v1/message/" + id)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var msg mailpitMessage
+	var msg mailpitFullMessage
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&msg))
 	return msg
 }
@@ -80,22 +88,26 @@ func mailpitAdvertisesAuth() bool {
 	return ok
 }
 
-func emailConfig() string {
+func notificationEmailYAML() string {
 	credentials := ""
 	if mailpitAdvertisesAuth() {
 		credentials = "    username: e2e\n    password: e2e-smtp-password\n"
 	}
-	return baseConfig(`authenticationProviders:
-  basic:
-    enabled: true
-notification:
+	return `notification:
   email:
     enabled: true
     host: localhost
     port: ` + mailpitSMTPPort + `
 ` + credentials + `    from: noreply@taronja.test
     fromName: Taronja E2E
-`)
+`
+}
+
+func emailConfig() string {
+	return baseConfig(`authenticationProviders:
+  basic:
+    enabled: true
+` + notificationEmailYAML())
 }
 
 // A notification created through the API reaches the user's inbox over SMTP,

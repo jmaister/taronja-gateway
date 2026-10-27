@@ -41,7 +41,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 		},
 		SetupCheck{
 			ID: "stripe-emails", Title: "Stripe customer emails off", Status: CheckManual,
-			Detail: "Turn off \"Successful payments\" and \"Finalized invoices\" emails: Odoo sends the legal invoices",
+			Detail: "Turn off \"Successful payments\" and \"Finalized invoices\" emails: the gateway emails the invoices",
 			Link:   "https://dashboard.stripe.com/settings/emails",
 		},
 		SetupCheck{
@@ -70,7 +70,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			plans.Detail = fmt.Sprintf("%d active plans", len(list))
 		}
 	}
-	checks = append(checks, plans, s.stuckEventsCheck())
+	checks = append(checks, plans, s.stuckEventsCheck(), s.invoiceEmailCheck())
 
 	if s.odoo == nil {
 		return append(checks, SetupCheck{ID: "odoo-connection", Title: "Odoo", Status: CheckMissing,
@@ -78,6 +78,14 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 	}
 	checks = append(checks, s.odoo.Checks(ctx)...)
 	return append(checks, s.outboxCheck(), s.apiKeyCheck())
+}
+
+func (s *Service) invoiceEmailCheck() SetupCheck {
+	c := SetupCheck{ID: "invoice-emails", Title: "Invoice emails", Status: CheckOK, Detail: "invoices and credit notes are emailed with their PDF"}
+	if s.mailer == nil {
+		c.Status, c.Detail = CheckMissing, "notifications.email is not configured: invoices are issued but not emailed"
+	}
+	return c
 }
 
 // OutboxLink is an in-app path: the documents page filtered to the ones Odoo gave up on.

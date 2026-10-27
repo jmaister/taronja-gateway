@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/notification"
 )
 
 // Subject is who a purchase is for: "user:<id>" or "org:<id>".
@@ -293,20 +295,25 @@ type Odoo interface {
 	// UpsertProduct finds the service product by code ("TG-<plan>"),
 	// creates or renames it, and returns its id.
 	UpsertProduct(ctx context.Context, code, name string) (int64, error)
-	// IssueMove creates (or finds, by Ref), posts, pays and sends the move,
+	// IssueMove creates (or finds, by Ref), posts and pays the move, renders its PDF,
 	// and returns its number. A credit note fails with ErrNoCreditNoteSeries
 	// while the sales journal has no dedicated credit note sequence.
 	IssueMove(ctx context.Context, m OdooMove) (OdooIssued, error)
-	// PDF returns the PDF Odoo stored when it sent the move, or ErrPDFNotFound.
+	// PDF returns the PDF Odoo rendered when it issued the move, or ErrPDFNotFound.
 	PDF(ctx context.Context, moveID int64) (filename string, data []byte, err error)
 	// Checks returns the setup checks of doc/billing.md's setup page.
 	Checks(ctx context.Context) []SetupCheck
 }
 
+// Mailer sends the invoice emails (notification.EmailProvider).
+type Mailer interface {
+	SendMail(ctx context.Context, m notification.Mail) error
+}
+
 var (
 	// ErrNoCreditNoteSeries: Spanish credit notes need their own series.
 	ErrNoCreditNoteSeries = errors.New(`the Odoo sales journal needs "Dedicated Credit Note Sequence" on, so credit notes get their own series`)
-	// ErrPDFNotFound: Odoo has no PDF for the move (not sent yet).
+	// ErrPDFNotFound: Odoo has no PDF for the move.
 	ErrPDFNotFound = errors.New("invoice PDF not found")
 )
 

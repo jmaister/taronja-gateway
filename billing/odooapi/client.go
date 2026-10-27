@@ -257,7 +257,7 @@ func (c *Client) UpsertProduct(ctx context.Context, code, name string) (int64, e
 	}, nil)
 }
 
-var moveFields = []string{"id", "name", "state", "payment_state", "is_move_sent", "invoice_date", "partner_id", "l10n_es_is_simplified"}
+var moveFields = []string{"id", "name", "state", "payment_state", "is_move_sent", "invoice_date", "l10n_es_is_simplified"}
 
 // IssueMove runs each step only if the move still needs it, so a retry
 // after a failure halfway (posted but not paid, say) finishes the job.
@@ -300,9 +300,9 @@ func (c *Client) IssueMove(ctx context.Context, m billing.OdooMove) (billing.Odo
 		}
 	}
 	if !boolean(move["is_move_sent"]) {
-		err = c.send(ctx, moveID, id(move["partner_id"]))
+		err = c.renderPDF(ctx, moveID)
 		if err != nil {
-			return billing.OdooIssued{}, fmt.Errorf("sending %s: %w", m.Ref, err)
+			return billing.OdooIssued{}, fmt.Errorf("rendering the PDF of %s: %w", m.Ref, err)
 		}
 	}
 
@@ -386,17 +386,9 @@ func (c *Client) registerPayment(ctx context.Context, moveID int64, m billing.Od
 	return c.call(ctx, "account.payment.register", "action_create_payments", M{"ids": []int64{wizardID}}, wizardCtx, nil)
 }
 
-// send generates the PDF and emails it when the partner has an email
-// ("manual" only generates it).
-func (c *Client) send(ctx context.Context, moveID, partnerID int64) error {
-	method := "manual"
-	partner, err := c.readOne(ctx, "res.partner", partnerID, []string{"email"})
-	if err != nil {
-		return err
-	}
-	if partner != nil && str(partner["email"]) != "" {
-		method = "email"
-	}
+// renderPDF has Odoo render the PDF (the gateway emails it) and register the
+// move with the required electronic invoicing systems.
+func (c *Client) renderPDF(ctx context.Context, moveID int64) error {
 	extraEdis, err := c.requiredEdis(ctx, moveID)
 	if err != nil {
 		return err
@@ -404,7 +396,7 @@ func (c *Client) send(ctx context.Context, moveID, partnerID int64) error {
 	wizardCtx := M{"active_model": "account.move", "active_ids": []int64{moveID}}
 	wizardID, err := c.create(ctx, "account.move.send.wizard", M{
 		"move_id":         moveID,
-		"sending_methods": []string{method},
+		"sending_methods": []string{"manual"},
 		"extra_edis":      extraEdis,
 	}, wizardCtx)
 	if err != nil {

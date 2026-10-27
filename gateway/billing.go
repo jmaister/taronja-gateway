@@ -46,6 +46,23 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 	} else {
 		log.Printf("Billing: Odoo is not configured; invoices wait in the outbox until it is")
 	}
+	svcCfg.Email = cfg.Email
+	if cfg.Email.TemplateFile != "" {
+		tmpl, err := billing.ParseEmailTemplate(cfg.Email.TemplateFile)
+		if err != nil {
+			log.Printf("Billing: billing.email.templateFile, using the built-in email: %v", err)
+		} else {
+			svcCfg.EmailTemplate = tmpl
+		}
+	}
+	if d.NotificationService != nil {
+		if mailer := d.NotificationService.EmailProvider(); mailer != nil {
+			svcCfg.Mailer = mailer
+		}
+	}
+	if svcCfg.Mailer == nil {
+		log.Printf("Billing: notifications.email is not configured; invoices are not emailed")
+	}
 	svc := billing.NewService(svcCfg)
 	svc.SetNotifications(d.NotificationService)
 	d.Billing = svc

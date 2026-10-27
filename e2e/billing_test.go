@@ -73,7 +73,10 @@ billing:
     salesJournalId: ` + odoo["ODOO_SALES_JOURNAL_ID"] + `
     paymentJournalId: ` + odoo["ODOO_PAYMENT_JOURNAL_ID"] + `
     taxId: ` + odoo["ODOO_TAX_ID"] + `
-`)
+  email:
+    brandName: Academia E2E
+    thanks: Gracias por confiar en Academia E2E.
+` + notificationEmailYAML())
 }
 
 // sendEvent posts a Stripe event, signed like Stripe signs it, to the
@@ -142,6 +145,7 @@ func waitDocument(t *testing.T, gw *testGateway, admin *client, stripeRef string
 // entitlement in the header → Odoo invoice with PDF; a one-time purchase →
 // refund → credit note in its own series; a failed renewal; activation.
 func TestBilling_WholeFlow(t *testing.T) {
+	requireMailpit(t)
 	gateway.OutboxInterval = time.Second
 	backendSaw := make(chan string, 10)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -224,6 +228,7 @@ func TestBilling_WholeFlow(t *testing.T) {
 		trialEnd, trialEnd, priceID, trialEnd, periodEnd)))
 	invoice := waitDocument(t, gw, admin, "in_e2e_1")
 	assert.NotEmpty(t, invoice["number"])
+	requireInvoiceEmail(t, email, invoice["number"].(string))
 	resp, pdf := payer.do(http.MethodGet, "/_/api/billing/documents/"+invoice["id"].(string)+"/pdf", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(pdf))
 	assert.True(t, strings.HasPrefix(string(pdf), "%PDF"))
@@ -298,4 +303,26 @@ func TestBilling_WholeFlow(t *testing.T) {
 
 func uniqueEmail(name string) string {
 	return fmt.Sprintf("%s-%d@example.com", name, time.Now().UnixNano())
+}
+
+// requireInvoiceEmail waits for the gateway's email of a document: the
+// number in the subject, the thank-you text and the PDF attached.
+func requireInvoiceEmail(t *testing.T, to, number string) {
+	t.Helper()
+	var msg mailpitFullMessage
+	eventually(t, time.Minute, "the email of "+number, func() bool {
+		for _, m := range mailpitMessagesTo(t, to) {
+			if strings.Contains(m.Subject, number) {
+				msg = mailpitGetMessage(t, m.ID)
+				return true
+			}
+		}
+		return false
+	})
+	assert.Contains(t, msg.Subject, "Academia E2E")
+	assert.Contains(t, msg.HTML, "Gracias por confiar en Academia E2E.")
+	assert.Contains(t, msg.Text, number)
+	require.Len(t, msg.Attachments, 1)
+	assert.Equal(t, "application/pdf", msg.Attachments[0].ContentType)
+	assert.True(t, strings.HasSuffix(msg.Attachments[0].FileName, ".pdf"), msg.Attachments[0].FileName)
 }

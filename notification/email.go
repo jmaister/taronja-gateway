@@ -1,14 +1,19 @@
 package notification
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 
@@ -72,13 +77,83 @@ func (p *EmailProvider) SendMessage(ctx context.Context, to, subject, textBody s
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s",
 		from, to, encodedSubject, textBody)
+	return p.deliver(to, []byte(msg))
+}
 
+// Attachment is a file attached to a Mail.
+type Attachment struct {
+	Name string
+	Data []byte
+}
+
+// Mail is an email with a plain-text and an HTML body and attachments.
+type Mail struct {
+	To, Subject, Text, HTML string
+	Attachments             []Attachment
+}
+
+// SendMail sends m as multipart/mixed: the text and HTML alternatives, then
+// the attachments (sent as application/pdf).
+func (p *EmailProvider) SendMail(ctx context.Context, m Mail) error {
+	from := (&mail.Address{Name: p.cfg.FromName, Address: p.cfg.From}).String()
+	to := (&mail.Address{Address: m.To}).String()
+	var msg bytes.Buffer
+	fmt.Fprintf(&msg, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\n", from, to, mime.QEncoding.Encode("utf-8", m.Subject))
+	mixed := multipart.NewWriter(&msg)
+	fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=%s\r\n\r\n", mixed.Boundary())
+
+	var altBody bytes.Buffer
+	alt := multipart.NewWriter(&altBody)
+	for _, body := range []struct{ kind, content string }{{"plain", m.Text}, {"html", m.HTML}} {
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Type", "text/"+body.kind+"; charset=utf-8")
+		h.Set("Content-Transfer-Encoding", "base64")
+		w, err := alt.CreatePart(h)
+		if err != nil {
+			return err
+		}
+		writeBase64(w, []byte(body.content))
+	}
+	alt.Close()
+	altHeader := textproto.MIMEHeader{}
+	altHeader.Set("Content-Type", "multipart/alternative; boundary="+alt.Boundary())
+	part, err := mixed.CreatePart(altHeader)
+	if err != nil {
+		return err
+	}
+	part.Write(altBody.Bytes())
+
+	for _, a := range m.Attachments {
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Type", "application/pdf")
+		h.Set("Content-Transfer-Encoding", "base64")
+		h.Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": a.Name}))
+		w, err := mixed.CreatePart(h)
+		if err != nil {
+			return err
+		}
+		writeBase64(w, a.Data)
+	}
+	mixed.Close()
+	return p.deliver(m.To, msg.Bytes())
+}
+
+func writeBase64(w io.Writer, data []byte) {
+	encoded := base64.StdEncoding.EncodeToString(data)
+	for len(encoded) > 76 {
+		io.WriteString(w, encoded[:76]+"\r\n")
+		encoded = encoded[76:]
+	}
+	io.WriteString(w, encoded+"\r\n")
+}
+
+func (p *EmailProvider) deliver(to string, msg []byte) error {
 	addr := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
 	var auth smtp.Auth
 	if p.cfg.Username != "" {
 		auth = smtp.PlainAuth("", p.cfg.Username, p.cfg.Password, p.cfg.Host)
 	}
-	if err := sendMailWithTimeout(addr, auth, p.cfg.From, []string{to}, []byte(msg)); err != nil {
+	if err := sendMailWithTimeout(addr, auth, p.cfg.From, []string{to}, msg); err != nil {
 		return fmt.Errorf("smtp send failed: %w", err)
 	}
 	return nil
