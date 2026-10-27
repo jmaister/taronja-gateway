@@ -33,6 +33,7 @@ type authPage struct {
 	Title   string
 	Prefix  string
 	LogoURL string
+	Brand   string
 	Message string
 	Error   string
 	Wide    bool
@@ -47,7 +48,11 @@ type authPage struct {
 }
 
 func (g *Gateway) newAuthPage(title string) authPage {
-	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl}
+	brand := g.GatewayConfig.Billing.Email.BrandName
+	if brand == "" {
+		brand = g.GatewayConfig.Name
+	}
+	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl, Brand: brand}
 }
 
 func (g *Gateway) renderAuthPage(w http.ResponseWriter, status int, name string, page authPage) {

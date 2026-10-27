@@ -1,56 +1,75 @@
 {{define "content"}}
 {{with .Account}}
-<div class="row">
-    <div>
-        <strong>{{.Email}}</strong>
-        {{if .EmailConfirmed}}<span class="badge ok">confirmed</span>{{else}}<span class="badge warn">not confirmed</span>{{end}}
-        {{if .Name}}<div class="muted">{{.Name}}</div>{{end}}
+<section class="card">
+    <div class="row">
+        <div>
+            <h2>{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</h2>
+            {{if .Name}}<div class="muted">{{.Email}}</div>{{end}}
+            <div style="margin-top:6px">{{if .EmailConfirmed}}<span class="badge ok">Email confirmed</span>{{else}}<span class="badge warn">Email not confirmed</span>{{end}}</div>
+        </div>
+        <div>
+            <a href="/">Back to the app</a> ·
+            <a href="{{$.Prefix}}/logout">Log out</a>
+        </div>
     </div>
-    <div>
-        <a href="/">Back to the app</a> ·
-        <a href="{{$.Prefix}}/logout">Log out</a>
-    </div>
-</div>
+</section>
 
 {{with .Billing}}
-<h2>Billing</h2>
-{{if .Subscriptions}}
-<table>
-    <tr><th>Plan</th><th>For</th><th>Status</th><th></th></tr>
-    {{range .Subscriptions}}
-    <tr>
-        <td>{{.Plan}}</td>
-        <td>{{.Owner}}</td>
-        <td>{{.Status}}{{if .Next}}<div class="muted">{{.Next}}</div>{{end}}</td>
-        <td style="text-align:right">
-            {{if .Manage}}
-            <form method="POST" action="{{$.Prefix}}/account/billing/portal">
-                <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
-                <input type="hidden" name="subject" value="{{.Subject}}">
-                <button type="submit" class="small">Manage</button>
-            </form>
-            {{end}}
-        </td>
-    </tr>
+<section class="card">
+    <h2>Subscriptions</h2>
+    {{if .Subscriptions}}
+    <div class="table-wrap"><table>
+        <tr><th>Plan</th><th>For</th><th>Status</th><th>Next</th></tr>
+        {{range .Subscriptions}}
+        <tr>
+            <td><strong>{{.Plan}}</strong></td>
+            <td>{{.Owner}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.Status}}</span></td>
+            <td class="muted">{{.Next}}</td>
+        </tr>
+        {{end}}
+    </table></div>
+    {{else}}
+    <p class="empty">You have no subscriptions yet.</p>
     {{end}}
-</table>
-{{else}}
-<p class="muted">No subscriptions.</p>
+</section>
+
+{{if .HasManage}}
+<section class="card">
+    <h2>Manage your subscription</h2>
+    <p class="hint muted">Click to change plan, update your card, see your payments or cancel. You will go to Stripe's secure customer portal, and come back here when you finish.</p>
+    {{range .Subscriptions}}{{if .Manage}}
+    <div class="row">
+        <div><strong>{{.Plan}}</strong> <span class="muted">· {{.Owner}}</span></div>
+        <form method="POST" action="{{$.Prefix}}/account/billing/portal">
+            <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
+            <input type="hidden" name="subject" value="{{.Subject}}">
+            <button type="submit" class="small">Manage subscription</button>
+        </form>
+    </div>
+    {{end}}{{end}}
+</section>
 {{end}}
-{{if .Documents}}
-<table>
-    <tr><th>Document</th><th>For</th><th>Date</th><th>Amount</th><th></th></tr>
-    {{range .Documents}}
-    <tr>
-        <td>{{.Kind}} {{.Number}}</td>
-        <td>{{.Owner}}</td>
-        <td class="muted">{{.Date}}</td>
-        <td>{{.Amount}}</td>
-        <td style="text-align:right">{{if .PDF}}<a href="{{.PDF}}" target="_blank" rel="noopener">PDF</a>{{end}}</td>
-    </tr>
+
+<section class="card">
+    <h2>Invoices</h2>
+    {{if .Documents}}
+    <div class="table-wrap"><table>
+        <tr><th>Document</th><th>For</th><th>Date</th><th class="num">Amount</th><th></th></tr>
+        {{range .Documents}}
+        <tr>
+            <td>{{.Number}} <span class="badge {{if eq .Kind "Credit note"}}warn{{end}}">{{.Kind}}</span></td>
+            <td>{{.Owner}}</td>
+            <td class="muted">{{.Date}}</td>
+            <td class="num">{{.Amount}}</td>
+            <td class="num">{{if .PDF}}<a href="{{.PDF}}" target="_blank" rel="noopener">PDF</a>{{end}}</td>
+        </tr>
+        {{end}}
+    </table></div>
+    {{else}}
+    <p class="empty">Your invoices will appear here after your first payment. They are also emailed to you.</p>
     {{end}}
-</table>
-{{end}}
+</section>
 {{end}}
 {{end}}
 {{end}}

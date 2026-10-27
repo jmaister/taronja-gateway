@@ -5,37 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}}</title>
     <style>
+        :root {
+            --bg: #f4f5f9; --surface: #fff; --text: #1f2430; --muted: #6b7280; --border: #e5e7ee;
+            --primary: #2563eb; --primary-hover: #1d4ed8; --on-primary: #fff;
+            --notice-bg: #e8f1ff; --notice-fg: #1e40af; --error-bg: #fdecec; --error-fg: #991b1b;
+            --ok-bg: #dcf5e6; --ok-fg: #14532d; --warn-bg: #fff2cc; --warn-fg: #7a4b00; --bad-bg: #fde2e2; --bad-fg: #991b1b;
+            --chip-bg: #eef0f6; --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #12141a; --surface: #1b1f29; --text: #e8eaf0; --muted: #98a0b3; --border: #2b3140;
+                --primary: #5b8def; --primary-hover: #7aa3f5; --on-primary: #0b1020;
+                --notice-bg: #1c2a4a; --notice-fg: #b9d0ff; --error-bg: #3b1d20; --error-fg: #ffb4b4;
+                --ok-bg: #16352a; --ok-fg: #9be3b9; --warn-bg: #3d3216; --warn-fg: #f6d58a; --bad-bg: #3b1d20; --bad-fg: #ffb4b4;
+                --chip-bg: #262c3a; --shadow: none;
+            }
+        }
         * { box-sizing: border-box; }
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
-            color: #333;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
             margin: 0;
-            padding: 40px 16px 80px;
-            display: flex;
-            justify-content: center;
+            padding: 32px 16px 88px;
+            line-height: 1.5;
         }
+        .page { width: 100%; max-width: 440px; margin: 0 auto; }
+        .page.wide { max-width: 780px; }
+        .brand { text-align: center; margin: 0 0 24px; font-weight: 700; font-size: 18px; letter-spacing: .2px; }
+        .logo { display: block; max-width: 200px; max-height: 64px; margin: 0 auto; object-fit: contain; }
+        h1 { margin: 0 0 20px; font-size: 26px; text-align: center; line-height: 1.25; }
+        .page.wide h1 { text-align: left; }
+        h2 { margin: 0 0 4px; font-size: 17px; }
+        p { margin: 0 0 12px; }
         .card {
-            background: #fff;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-            width: 100%;
-            max-width: 420px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+            margin: 0 0 16px;
         }
-        .card.wide { max-width: 760px; }
-        h1 { margin: 0 0 20px; font-size: 26px; text-align: center; }
-        h2 { font-size: 18px; margin: 28px 0 12px; padding-top: 20px; border-top: 1px solid #eee; }
-        p { line-height: 1.5; }
-        .logo { display: block; max-width: 200px; max-height: 80px; margin: 0 auto 20px; object-fit: contain; }
+        .card > :last-child { margin-bottom: 0; }
+        .card .hint { margin: 0 0 16px; }
+        a { color: var(--primary); }
         form { margin: 0; }
-        label { display: block; font-size: 14px; color: #555; margin-top: 12px; }
+        label { display: block; font-size: 14px; color: var(--muted); margin-top: 12px; }
         input[type="text"], input[type="email"], input[type="password"] {
             width: 100%;
             padding: 12px;
             margin: 6px 0 4px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text);
             font-size: 16px;
         }
         input.code { font-size: 28px; letter-spacing: 8px; text-align: center; font-family: monospace; }
@@ -43,71 +66,69 @@
             display: inline-block;
             width: 100%;
             margin-top: 16px;
-            padding: 12px;
-            background-color: #007bff;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
+            padding: 11px 16px;
+            background: var(--primary);
+            color: var(--on-primary);
+            border: 1px solid transparent;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
+            font: inherit;
+            font-weight: 600;
             text-align: center;
             text-decoration: none;
         }
-        button:hover, .button:hover { background-color: #0056b3; }
-        button.small {
-            width: auto;
-            margin: 0;
-            padding: 6px 12px;
-            font-size: 13px;
-            font-weight: normal;
-            background: #fff;
-            color: #b02a37;
-            border: 1px solid #e3a5ab;
-        }
-        button.small:hover { background: #fbeaec; }
-        button.secondary { background: #6c757d; }
-        .notice, .error {
-            border-radius: 6px;
-            padding: 12px;
-            margin: 0 0 16px;
-            font-size: 14px;
-        }
-        .notice { background: #e7f3ff; color: #084298; border: 1px solid #b6d4fe; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        button:hover, .button:hover { background: var(--primary-hover); }
+        button.secondary, .button.secondary { background: transparent; color: var(--primary); border-color: var(--border); }
+        button.secondary:hover, .button.secondary:hover { background: var(--chip-bg); }
+        button.small { width: auto; margin: 0; padding: 7px 14px; font-size: 14px; }
+        a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+        .notice, .error { border-radius: 10px; padding: 12px 14px; margin: 0 0 16px; font-size: 14px; }
+        .notice { background: var(--notice-bg); color: var(--notice-fg); }
+        .error { background: var(--error-bg); color: var(--error-fg); }
         .links { margin-top: 20px; text-align: center; font-size: 14px; }
-        .links a { color: #007bff; text-decoration: none; margin: 0 8px; }
-        .muted { color: #777; font-size: 13px; }
+        .links a { margin: 0 8px; text-decoration: none; }
+        .muted { color: var(--muted); font-size: 13px; }
+        .table-wrap { overflow-x: auto; margin-top: 12px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
-        th { color: #777; font-weight: normal; font-size: 13px; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #e9ecef; }
-        .badge.ok { background: #d1e7dd; color: #0f5132; }
-        .badge.warn { background: #fff3cd; color: #664d03; }
-        .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        tr:last-child td { border-bottom: 0; }
+        th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+        td.num, th.num { text-align: right; white-space: nowrap; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--chip-bg); color: var(--muted); white-space: nowrap; }
+        .badge.ok { background: var(--ok-bg); color: var(--ok-fg); }
+        .badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
+        .badge.bad { background: var(--bad-bg); color: var(--bad-fg); }
+        .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        .row + .row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .row > form { flex: 0 0 auto; }
+        .row .button, .row button { margin-top: 0; width: auto; }
+        .price { font-size: 28px; font-weight: 700; }
+        .chips { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+        .chips li { background: var(--chip-bg); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+        .empty { color: var(--muted); font-size: 14px; margin: 12px 0 0; }
         .footer {
             position: fixed;
             bottom: 0;
             left: 0;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: bold;
-            color: #f3f3f3;
-            background: rgba(71, 71, 71, 0.8);
             width: 100%;
+            padding: 10px 20px;
+            font-size: 13px;
             text-align: right;
+            color: var(--muted);
+            background: var(--surface);
+            border-top: 1px solid var(--border);
         }
-        .footer a { color: inherit; text-decoration: none; }
+        .footer a { color: inherit; text-decoration: none; font-weight: 600; }
     </style>
 </head>
 <body>
-    <div class="card{{if .Wide}} wide{{end}}">
-        {{if .LogoURL}}<img src="{{.LogoURL}}" alt="Logo" class="logo">{{end}}
+    <main class="page{{if .Wide}} wide{{end}}">
+        {{if .LogoURL}}<div class="brand"><img src="{{.LogoURL}}" alt="{{.Brand}}" class="logo"></div>{{else if .Brand}}<div class="brand">{{.Brand}}</div>{{end}}
         <h1>{{.Title}}</h1>
         {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
         {{if .Error}}<div class="error" role="alert">{{.Error}}</div>{{end}}
         {{template "content" .}}
-    </div>
+    </main>
     <footer class="footer">
         Powered by <a href="https://github.com/jmaister/taronja-gateway" target="_blank" rel="noopener noreferrer">Taronja Gateway</a>
     </footer>
