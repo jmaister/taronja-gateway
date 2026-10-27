@@ -136,6 +136,8 @@ func TestValidate_Billing(t *testing.T) {
 	}{
 		"key expiry":       {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: expiring}}, ""},
 		"bad key expiry":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: badExpiry}}, "apiKeyExpiresAt"},
+		"bad logo":         {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{LogoURL: "logo.png"}}}, "logoUrl"},
+		"missing template": {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{TemplateFile: "/nonexistent/email.html"}}}, "templateFile"},
 		"disabled":         {GatewayConfig{Billing: BillingConfig{Stripe: StripeBillingConfig{}}}, ""},
 		"stripe only":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe}}, ""},
 		"with odoo":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo}}, ""},

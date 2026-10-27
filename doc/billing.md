@@ -35,7 +35,7 @@ any application.
 | Invoice series | One sales journal for every app: one invoice series plus its own credit note series (*Dedicated Credit Note Sequence*). Products tell apps apart. See [Invoice series](#invoice-series). |
 | Customer NIF | Optional, collected by Stripe Checkout. With NIF: full invoice (Veri\*Factu F1). Without: simplified invoice (F2). |
 | Grace | 7 days after a failed renewal by default, per plan. Features stay active during grace. |
-| Emails | Odoo emails the legal invoice (PDF attached, Veri\*Factu submitted). The gateway's notifications send the rest (payment failed, trial ending, cancelled). |
+| Emails | The gateway emails each invoice and credit note with its PDF attached (through `notification.email`; the look is `billing.email`). Odoo sends nothing. The gateway's notifications send the rest (payment failed, trial ending, cancelled). |
 | Data | No production data yet: migrations may assume empty billing tables. |
 
 ## Concepts
@@ -265,20 +265,23 @@ already happened, so a retry never duplicates anything:
 4. **Payment** — `account.payment.register` in the "Stripe" journal
    (inbound for an invoice, outbound for a credit note), memo = the Stripe
    reference.
-5. **Send** — `account.move.send.wizard` → `action_send_and_print`: Odoo
-   emails the PDF to the partner and submits it to Veri\*Factu.
-6. **Done** — the move id, number (`F/2026/00012`), invoice date and
+5. **PDF** — `account.move.send.wizard` → `action_send_and_print` with the
+   `manual` method: Odoo renders the PDF and submits the move to Veri\*Factu,
+   but sends no email.
+6. **Email** — the gateway sends the PDF to the customer (see *Invoice
+   emails*).
+7. **Done** — the move id, number (`F/2026/00012`), invoice date and
    Veri\*Factu state are stored.
 
 Failures store the error and retry with backoff (1 min, 5 min, 30 min, 2 h,
-then every 6 h); after 10 attempts the document is `failed` until the admin
+then every 6 h); a failed email retries the same way without reissuing in Odoo; after 10 attempts the document is `failed` until the admin
 presses **Retry**. With Odoo not configured, documents stay pending. A
 credit note waits until its invoice is done.
 
 **PDF** — `GET /_/api/billing/documents/{id}/pdf` returns the attachment
-Odoo stored when it sent the document (`invoice_pdf_report_id`), so Odoo
+Odoo rendered for the document (`invoice_pdf_report_id`), so Odoo
 never needs to be reachable from the internet. Allowed to the gateway admin,
-the paying user, and owners of the paying organization. 404 until sent; 503
+the paying user, and owners of the paying organization. 404 until issued; 503
 when Odoo is down or not configured.
 
 **Products** — the gateway creates an Odoo service product per plan
@@ -336,7 +339,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_subscriptions` | `id`, `subject`, `plan_key`, `payer_user_id`, `status`, `stripe_subscription_id` (unique, null while awaiting activation), `stripe_payment_method_id`, `current_period_end`, `trial_end`, `cancel_at_period_end`, `grace_until`, `activated_at`, `canceled_at` |
 | `billing_purchases` | `id`, `subject`, `plan_key`, `payer_user_id`, `checkout_id`, `subscription_id` (for a first payment), `status` (`paid`, `refunded`), `amount_cents`, `refunded_cents`, `stripe_payment_intent_id` (unique), `paid_at`, `shipping_*` (name, phone, address) |
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |
-| `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at` |
+| `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at`, `emailed_at` |
 | `stripe_events` | `event_id` (PK), `type`, `received_at` |
 | `stuck_stripe_events` | `event_id` (PK), `type`, `subscription_id`, `reason`, `attempts`, `first_seen_at`, `last_seen_at` (removed when the event is applied) |
 
@@ -385,7 +388,27 @@ Through the gateway's notification service (every channel the user prefers),
 to the payer (and owners of the organization), type `billing.*`:
 `billing.payment_failed` (portal link, the date features stop),
 `billing.trial_ending` (3 days before), `billing.canceled`,
-`billing.expired`. Invoices themselves are emailed by Odoo.
+`billing.expired`.
+
+### Invoice emails
+
+Once a document is issued in Odoo, the gateway emails it to the customer's
+billing email (the one Stripe collected), with the PDF attached, exactly once
+(`billing_documents.emailed_at`). Invoices say the plan, the amount, the
+period of each line, the trial end and when the subscription renews or ends,
+and link to `/_/account`; credit notes show the refunded amount. A failed
+send retries with the document's backoff and ends up in the *Odoo invoice
+queue* like an Odoo failure. Without `notification.email` (or without a
+customer email) the document is still issued, just not emailed; the setup
+page's *Invoice emails* check turns red in the first case.
+
+`billing.email` customizes it: `brandName` (header, subject, default: the
+`server.url` host), `logoUrl`, `thanks`, `footer` and `templateFile`, a Go
+`html/template` that replaces the built-in HTML. The template receives
+`.Brand`, `.LogoURL`, `.Greeting`, `.Thanks`, `.Footer`, `.CreditNote`,
+`.Number`, `.Date`, `.Total`, `.AccountURL`, `.Lines` (each with
+`.Description`, `.Amount`, `.Period`) and `.Notes` (the subscription
+sentences). The plain-text part is always the built-in one.
 
 ## Configuration
 
@@ -405,6 +428,12 @@ billing:
     paymentJournalId: 7             # bank journal "Stripe"
     taxId: 12                       # IVA 21 % included in price
     apiKeyExpiresAt: 2026-12-31     # optional: when the API key expires
+  email:                            # optional: look of the invoice emails
+    brandName: Academia
+    logoUrl: https://academia.example.com/logo.png
+    thanks: Gracias por tu compra.
+    footer: Academia SL · C/ Mayor 1, Valencia
+    templateFile: ./invoice-email.html
 ```
 
 `billing.enabled` requires `server.url` (Checkout return URLs) and the Stripe

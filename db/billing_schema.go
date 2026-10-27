@@ -319,6 +319,7 @@ type BillingDocument struct {
 	NextAttemptAt time.Time `gorm:"not null;index"`
 	Number        string    `gorm:"type:varchar(100)"`
 	IssuedAt      *time.Time
+	EmailedAt     *time.Time
 	CreatedAt     time.Time `gorm:"autoCreateTime"`
 	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
 }
@@ -333,7 +334,7 @@ func (d *BillingDocument) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (d *BillingDocument) BeforeSave(tx *gorm.DB) error {
-	d.PaidAt, d.NextAttemptAt, d.IssuedAt = d.PaidAt.UTC(), d.NextAttemptAt.UTC(), utcPtr(d.IssuedAt)
+	d.PaidAt, d.NextAttemptAt, d.IssuedAt, d.EmailedAt = d.PaidAt.UTC(), d.NextAttemptAt.UTC(), utcPtr(d.IssuedAt), utcPtr(d.EmailedAt)
 	return nil
 }
 

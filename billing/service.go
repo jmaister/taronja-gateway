@@ -3,10 +3,12 @@ package billing
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/jmaister/taronja-gateway/config"
 	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/notification"
 	"gorm.io/gorm"
@@ -31,6 +33,11 @@ type Config struct {
 	ServerURL string
 	// StripeMode is "test" or "live" (from the secret key), for the setup page.
 	StripeMode string
+	// Mailer sends the invoice emails; nil sends none.
+	Mailer Mailer
+	// Email customizes them; EmailTemplate replaces the built-in HTML.
+	Email         config.BillingEmailConfig
+	EmailTemplate *template.Template
 	// OdooKeyExpiresAt is when the Odoo API key expires; zero when unknown.
 	OdooKeyExpiresAt time.Time
 	// Now defaults to time.Now.
@@ -50,6 +57,9 @@ type Service struct {
 	now        func() time.Time
 
 	notifications *notification.Service
+	mailer        Mailer
+	email         config.BillingEmailConfig
+	emailTemplate *template.Template
 
 	// Entitlements and memberships are cached per process for
 	// EntitlementCacheTTL (a second gateway instance would not see this
@@ -78,6 +88,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
 		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, odooKeyExp: cfg.OdooKeyExpiresAt, now: now,
+		mailer: cfg.Mailer, email: cfg.Email, emailTemplate: cfg.EmailTemplate,
 		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
 }

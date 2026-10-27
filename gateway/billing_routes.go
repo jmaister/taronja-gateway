@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -81,13 +80,7 @@ var subscriptionLabels = map[string]string{
 }
 
 // FormatEUR writes cents as Spanish euros: 2900 -> "29,00 €".
-func FormatEUR(cents int64) string {
-	sign := ""
-	if cents < 0 {
-		sign, cents = "-", -cents
-	}
-	return fmt.Sprintf("%s%d,%02d €", sign, cents/100, cents%100)
-}
+func FormatEUR(cents int64) string { return billing.FormatEUR(cents) }
 
 func formatDay(t *time.Time) string {
 	if t == nil {
