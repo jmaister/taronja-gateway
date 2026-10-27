@@ -18,6 +18,7 @@ import { MiddlewarePage } from './pages/MiddlewarePage';
 import { ConnectionStatusPage } from './pages/ConnectionStatusPage';
 import { FeatureFlagsPage } from './pages/FeatureFlagsPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
+import { OrganizationDetailPage } from './pages/OrganizationDetailPage';
 import { PlansPage } from './pages/PlansPage';
 import { SubscriptionsPage } from './pages/SubscriptionsPage';
 import { PurchasesPage } from './pages/PurchasesPage';
@@ -127,6 +128,7 @@ function App() {
                     <Route path="/feature-flags" element={<FeatureFlagsPage />} />
                     <Route path="/notifications/channels" element={<ConnectionStatusPage />} />
                     <Route path="/organizations" element={<OrganizationsPage />} />
+                    <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
                     <Route path="/billing/plans" element={<PlansPage />} />
                     <Route path="/billing/subscriptions" element={<SubscriptionsPage />} />
                     <Route path="/billing/purchases" element={<PurchasesPage />} />
