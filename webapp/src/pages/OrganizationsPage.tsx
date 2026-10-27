@@ -5,6 +5,7 @@ import { QueryState } from '../components/QueryState';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { UserPicker } from '../components/UserPicker';
 import { FormField } from '../components/ui/FormField';
 import { PageHeader } from '../components/ui/PageHeader';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -23,6 +24,7 @@ function CreateOrganizationForm() {
     const create = useCreateOrganization();
     const [name, setName] = useState('');
     const [ownerId, setOwnerId] = useState('');
+    const [pickerKey, setPickerKey] = useState(0);
 
     const onSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -33,6 +35,7 @@ function CreateOrganizationForm() {
                 onSuccess: () => {
                     setName('');
                     setOwnerId('');
+                    setPickerKey(k => k + 1);
                 },
             },
         );
@@ -53,13 +56,8 @@ function CreateOrganizationForm() {
                             placeholder="Acme Inc"
                         />
                     </FormField>
-                    <FormField label="Owner User ID (optional)" htmlFor="org-owner">
-                        <Input
-                            id="org-owner"
-                            value={ownerId}
-                            onChange={e => setOwnerId(e.target.value)}
-                            placeholder="user-123"
-                        />
+                    <FormField label="Owner (optional)" htmlFor="org-owner">
+                        <UserPicker key={pickerKey} id="org-owner" value={ownerId} onChange={setOwnerId} />
                     </FormField>
                     <Button type="submit" disabled={!name || create.isPending}>
                         {create.isPending ? 'Creating…' : 'Create'}
@@ -141,6 +139,7 @@ function OrganizationDetailPanel({ organization, onClose }: DetailPanelProps) {
     const addMember = useSetOrganizationMember();
     const removeMember = useRemoveOrganizationMember();
     const [userId, setUserId] = useState('');
+    const [pickerKey, setPickerKey] = useState(0);
     const [role, setRole] = useState<'owner' | 'member'>('member');
     const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
 
@@ -152,6 +151,7 @@ function OrganizationDetailPanel({ organization, onClose }: DetailPanelProps) {
             {
                 onSuccess: () => {
                     setUserId('');
+                    setPickerKey(k => k + 1);
                     setRole('member');
                 },
             },
@@ -178,13 +178,8 @@ function OrganizationDetailPanel({ organization, onClose }: DetailPanelProps) {
                     <div>
                         <h4 className="font-semibold mb-4">Add Member</h4>
                         <form onSubmit={onAddMember} className="space-y-3">
-                            <FormField label="User ID" htmlFor="member-user-id" required>
-                                <Input
-                                    id="member-user-id"
-                                    value={userId}
-                                    onChange={e => setUserId(e.target.value)}
-                                    placeholder="user-123"
-                                />
+                            <FormField label="User" htmlFor="member-user-id" required>
+                                <UserPicker key={pickerKey} id="member-user-id" value={userId} onChange={setUserId} />
                             </FormField>
                             <FormField label="Role" htmlFor="member-role" required>
                                 <select
