@@ -1,4 +1,6 @@
 {{define "content"}}
+<section class="card">
 {{if .Body}}<p>{{.Body}}</p>{{end}}
 {{if .LinkURL}}<a class="button" href="{{.LinkURL}}">{{.LinkLabel}}</a>{{end}}
+</section>
 {{end}}

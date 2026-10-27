@@ -1,20 +1,21 @@
 {{define "content"}}
 {{with .Pay}}
-<h2>{{.Name}}</h2>
+<section class="card">
 {{if .Description}}<p>{{.Description}}</p>{{end}}
-<p><strong>{{.Price}}</strong> <span class="muted">VAT included</span></p>
+<p class="price">{{.Price}} <span class="muted">VAT included</span></p>
 {{if .SetupFee}}<p class="muted">Plus, once: {{.SetupFee}}</p>{{end}}
-{{if .Features}}
-<ul>{{range .Features}}<li>{{.}}</li>{{end}}</ul>
-{{end}}
+{{if .Features}}<ul class="chips">{{range .Features}}<li>{{.}}</li>{{end}}</ul>{{end}}
+</section>
+<section class="card">
 {{if .NeedsOrg}}
 <p>This plan is bought for an organization, and you don't belong to any yet. Ask the application to add you to yours.</p>
 {{else}}
+<h2>Who is it for?</h2>
 {{range .Options}}
 <div class="row">
     <div>
         <strong>{{.Label}}</strong>
-        {{if .Subscribed}}<span class="badge ok">subscribed</span>{{else if .Trial}}<span class="badge warn">{{.Trial}} days free</span>{{end}}
+        {{if .Subscribed}}<span class="badge ok">subscribed</span>{{else if .Trial}}<span class="badge warn">{{.Trial}}-day free trial</span>{{end}}
     </div>
     <div>
         {{if .Subscribed}}
@@ -39,6 +40,7 @@
 </div>
 {{end}}
 {{end}}
+</section>
 <p class="muted">Payments are processed by Stripe. Invoices are emailed to you and listed in your account.</p>
 {{end}}
 {{end}}

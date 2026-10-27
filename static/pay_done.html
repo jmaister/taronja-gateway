@@ -1,5 +1,6 @@
 {{define "content"}}
 {{with .PayDone}}
+<section class="card">
 {{if eq .Status "completed"}}
 <p>Thank you! Your payment is confirmed.</p>
 <a class="button" href="{{.Redirect}}">Continue</a>
@@ -11,5 +12,6 @@
 <p>Confirming your payment…</p>
 <p class="muted">This page refreshes by itself.</p>
 {{end}}
+</section>
 {{end}}
 {{end}}

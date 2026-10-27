@@ -120,7 +120,7 @@ func TestPayPage(t *testing.T) {
 	assert.Contains(t, page, "Academia mensual")
 	assert.Contains(t, page, "29,00 € / month")
 	assert.Contains(t, page, "Escuela")
-	assert.Contains(t, page, "14 days free")
+	assert.Contains(t, page, "14-day free trial")
 	assert.NotContains(t, page, "Myself", "an organization plan")
 
 	other := &db.Organization{Name: "Otra"}
@@ -204,7 +204,9 @@ func TestPayFlow(t *testing.T) {
 
 	// The account page lists it, with Manage → the Stripe portal.
 	page = readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
-	assert.Contains(t, page, "Billing")
+	assert.Contains(t, page, "<h2>Subscriptions</h2>")
+	assert.Contains(t, page, "<h2>Manage your subscription</h2>")
+	assert.Contains(t, page, "<h2>Invoices</h2>")
 	assert.Contains(t, page, "Academia mensual")
 	assert.Contains(t, page, "Trial until")
 	resp = bg.do(t, http.MethodPost, "/_/account/billing/portal", url.Values{"csrf": {csrf}, "subject": {"org:" + bg.orgID}}, true)
@@ -222,6 +224,10 @@ func TestBillingRoutesOffWithoutBilling(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestDisplayFeatures(t *testing.T) {
+	assert.Equal(t, []string{"a.b"}, displayFeatures([]string{"all", "a.b"}))
 }
 
 func TestFormatEUR(t *testing.T) {

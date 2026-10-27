@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,9 +63,25 @@ type billingView struct {
 	CSRF          string
 }
 
+// HasManage is true when any subscription can be managed in the Stripe portal.
+func (b *billingView) HasManage() bool {
+	for _, s := range b.Subscriptions {
+		if s.Manage {
+			return true
+		}
+	}
+	return false
+}
+
 type accountSubscription struct {
-	Plan, Owner, Status, Next, Subject string
-	Manage                             bool
+	Plan, Owner, Status, StatusClass, Next, Subject string
+	Manage                                          bool
+}
+
+var subscriptionClasses = map[string]string{
+	db.SubscriptionTrialing: "warn",
+	db.SubscriptionActive:   "ok",
+	db.SubscriptionPastDue:  "bad",
 }
 
 type accountDocument struct {
@@ -77,6 +94,11 @@ var subscriptionLabels = map[string]string{
 	db.SubscriptionActive:             "Active",
 	db.SubscriptionPastDue:            "Payment failed",
 	db.SubscriptionCanceled:           "Canceled",
+}
+
+// displayFeatures drops the catch-all "all" feature, which says nothing to a buyer.
+func displayFeatures(features []string) []string {
+	return slices.DeleteFunc(slices.Clone(features), func(f string) bool { return f == "all" })
 }
 
 // FormatEUR writes cents as Spanish euros: 2900 -> "29,00 €".
@@ -124,7 +146,7 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 		return
 	}
 	view := &payView{
-		Plan: plan.Key, Name: plan.Name, Description: plan.Description, Features: plan.Features,
+		Plan: plan.Key, Name: plan.Name, Description: plan.Description, Features: displayFeatures(plan.Features),
 		CSRF: accounts.CSRFToken(acct.session.Token), Redirect: billing.SafeRedirect(redirect),
 		Price: FormatEUR(plan.AmountCents),
 	}
@@ -298,7 +320,7 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			if err == nil {
 				name = plan.Name
 			}
-			item := accountSubscription{Plan: name, Owner: o.label, Status: labelOr(subscriptionLabels, s.Status), Subject: o.subject,
+			item := accountSubscription{Plan: name, Owner: o.label, Status: labelOr(subscriptionLabels, s.Status), StatusClass: subscriptionClasses[s.Status], Subject: o.subject,
 				Manage: s.StripeSubscriptionID != nil && s.Status != db.SubscriptionCanceled}
 			switch {
 			case s.Status == db.SubscriptionCanceled:
