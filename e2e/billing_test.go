@@ -25,9 +25,17 @@ import (
 
 const webhookSecret = "whsec_e2e"
 
-// odooEnv reads what e2e/odoo/init.sh wrote (make e2e-up).
+// odooEnv reads what e2e/odoo/init.sh wrote (make e2e-up), or the
+// E2E_ODOO_* variables when E2E_ODOO_URL is set (an Odoo prepared by hand).
 func odooEnv(t *testing.T) map[string]string {
 	t.Helper()
+	if os.Getenv("E2E_ODOO_URL") != "" {
+		env := map[string]string{}
+		for _, k := range []string{"URL", "DB", "API_KEY", "COMPANY_ID", "SALES_JOURNAL_ID", "PAYMENT_JOURNAL_ID", "TAX_ID"} {
+			env["ODOO_"+k] = os.Getenv("E2E_ODOO_" + k)
+		}
+		return env
+	}
 	f, err := os.Open(".odoo/env")
 	require.NoError(t, err, "run make e2e-up: it prepares Odoo and writes e2e/.odoo/env")
 	defer f.Close()
