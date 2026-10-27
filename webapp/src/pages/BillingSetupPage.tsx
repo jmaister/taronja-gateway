@@ -19,7 +19,7 @@ function StatusBadge({ status }: { status: string }) {
     const badge = badges[status] || badges.check;
 
     return (
-        <span className={`px-3 py-1 rounded text-xs font-medium ${badge.bg} ${badge.color}`}>
+        <span className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap shrink-0 ${badge.bg} ${badge.color}`}>
             {badge.label}
         </span>
     );
