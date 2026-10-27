@@ -5,6 +5,10 @@ import { OrganizationsPage } from './OrganizationsPage';
 
 const calls = vi.hoisted(() => ({ mutations: [] as unknown[] }));
 
+vi.mock('../services/users', () => ({
+    useUsers: () => ({ data: [{ id: 'user-1', username: 'alice', name: 'Alice', email: 'alice@example.com' }] }),
+}));
+
 vi.mock('../services/organizations', () => ({
     useOrganizations: () => ({
         data: [
