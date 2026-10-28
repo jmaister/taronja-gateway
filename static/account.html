@@ -5,21 +5,21 @@
         <div>
             <h2>{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</h2>
             {{if .Name}}<div class="muted">{{.Email}}</div>{{end}}
-            <div style="margin-top:6px">{{if .EmailConfirmed}}<span class="badge ok">Email confirmed</span>{{else}}<span class="badge warn">Email not confirmed</span>{{end}}</div>
+            <div style="margin-top:6px">{{if .EmailConfirmed}}<span class="badge ok">Email confirmado</span>{{else}}<span class="badge warn">Email sin confirmar</span>{{end}}</div>
         </div>
         <div>
-            <a href="/">Back to the app</a> ·
-            <a href="{{$.Prefix}}/logout">Log out</a>
+            <a href="/">Volver a la aplicación</a> ·
+            <a href="{{$.Prefix}}/logout">Cerrar sesión</a>
         </div>
     </div>
 </section>
 
 {{with .Billing}}
 <section class="card">
-    <h2>Subscriptions</h2>
+    <h2>Suscripciones</h2>
     {{if .Subscriptions}}
     <div class="table-wrap"><table>
-        <tr><th>Plan</th><th>For</th><th>Status</th><th>Next</th></tr>
+        <tr><th>Plan</th><th>Para</th><th>Estado</th><th>Próximo</th></tr>
         {{range .Subscriptions}}
         <tr>
             <td><strong>{{.Plan}}</strong></td>
@@ -30,21 +30,21 @@
         {{end}}
     </table></div>
     {{else}}
-    <p class="empty">You have no subscriptions yet.</p>
+    <p class="empty">Todavía no tienes suscripciones.</p>
     {{end}}
 </section>
 
 {{if .HasManage}}
 <section class="card">
-    <h2>Manage your subscription</h2>
-    <p class="hint muted">Click to change plan, update your card, see your payments or cancel. You will go to Stripe's secure customer portal, and come back here when you finish.</p>
+    <h2>Gestionar suscripción</h2>
+    <p class="hint muted">Haz clic para cambiar de plan, cambiar la tarjeta, ver tus pagos o cancelar. Irás al portal seguro de Stripe y volverás aquí al terminar.</p>
     {{range .Subscriptions}}{{if .Manage}}
     <div class="row">
         <div><strong>{{.Plan}}</strong> <span class="muted">· {{.Owner}}</span></div>
         <form method="POST" action="{{$.Prefix}}/account/billing/portal">
             <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
             <input type="hidden" name="subject" value="{{.Subject}}">
-            <button type="submit" class="small">Manage subscription</button>
+            <button type="submit" class="small">Gestionar suscripción</button>
         </form>
     </div>
     {{end}}{{end}}
@@ -52,13 +52,13 @@
 {{end}}
 
 <section class="card">
-    <h2>Invoices</h2>
+    <h2>Facturas</h2>
     {{if .Documents}}
     <div class="table-wrap"><table>
-        <tr><th>Document</th><th>For</th><th>Date</th><th class="num">Amount</th><th></th></tr>
+        <tr><th>Documento</th><th>Para</th><th>Fecha</th><th class="num">Importe</th><th></th></tr>
         {{range .Documents}}
         <tr>
-            <td>{{.Number}} <span class="badge {{if eq .Kind "Credit note"}}warn{{end}}">{{.Kind}}</span></td>
+            <td>{{.Number}} <span class="badge {{if eq .Kind "Abono"}}warn{{end}}">{{.Kind}}</span></td>
             <td>{{.Owner}}</td>
             <td class="muted">{{.Date}}</td>
             <td class="num">{{.Amount}}</td>
@@ -67,7 +67,7 @@
         {{end}}
     </table></div>
     {{else}}
-    <p class="empty">Your invoices will appear here after your first payment. They are also emailed to you.</p>
+    <p class="empty">Tus facturas aparecerán aquí después del primer pago. También te las enviamos por email.</p>
     {{end}}
 </section>
 {{end}}

@@ -118,9 +118,9 @@ func TestPayPage(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	page := readBody(t, resp)
 	assert.Contains(t, page, "Academia mensual")
-	assert.Contains(t, page, "29,00 € / month")
+	assert.Contains(t, page, "29,00 € / mes")
 	assert.Contains(t, page, "Escuela")
-	assert.Contains(t, page, "14-day free trial")
+	assert.Contains(t, page, "Prueba gratuita de 14 días")
 	assert.NotContains(t, page, "Myself", "an organization plan")
 
 	other := &db.Organization{Name: "Otra"}
@@ -179,7 +179,7 @@ func TestPayFlow(t *testing.T) {
 
 	done = bg.do(t, http.MethodGet, "/_/pay/done?checkout="+checkoutID, nil, true)
 	page := readBody(t, done)
-	assert.Contains(t, page, "Your payment is confirmed")
+	assert.Contains(t, page, "Tu pago está confirmado")
 	assert.Contains(t, page, `href="/settings"`)
 
 	// The app sees the feature on the next proxied request; client copies are dropped.
@@ -198,17 +198,17 @@ func TestPayFlow(t *testing.T) {
 
 	// Paying again: the pay page offers the portal.
 	page = readBody(t, bg.do(t, http.MethodGet, "/_/pay/academia-monthly?org="+bg.orgID, nil, true))
-	assert.Contains(t, page, "Manage subscription")
+	assert.Contains(t, page, "Gestionar suscripción")
 	resp = bg.do(t, http.MethodPost, "/_/pay/academia-monthly", url.Values{"csrf": {csrf}, "org": {bg.orgID}}, true)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
 	// The account page lists it, with Manage → the Stripe portal.
 	page = readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
-	assert.Contains(t, page, "<h2>Subscriptions</h2>")
-	assert.Contains(t, page, "<h2>Manage your subscription</h2>")
-	assert.Contains(t, page, "<h2>Invoices</h2>")
+	assert.Contains(t, page, "<h2>Suscripciones</h2>")
+	assert.Contains(t, page, "<h2>Gestionar suscripción</h2>")
+	assert.Contains(t, page, "<h2>Facturas</h2>")
 	assert.Contains(t, page, "Academia mensual")
-	assert.Contains(t, page, "Trial until")
+	assert.Contains(t, page, "Prueba hasta el")
 	resp = bg.do(t, http.MethodPost, "/_/account/billing/portal", url.Values{"csrf": {csrf}, "subject": {"org:" + bg.orgID}}, true)
 	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	assert.Equal(t, "https://billing.stripe.test/p/cus_1", resp.Header.Get("Location"))

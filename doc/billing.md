@@ -155,8 +155,8 @@ Authenticated with a session or the admin API token, like every gateway API.
    features in words) and the subject: the user, or one of their
    organizations (`?org=` preselects it; a user who isn't a member is
    refused). A subject that already has an active subscription in the
-   plan's group gets "Manage subscription" (the portal) instead of "Pay".
-4. **Pay** (POST, CSRF) → the gateway ensures the subject's Stripe customer
+   plan's group gets "Gestionar suscripción" (the portal) instead of "Pagar".
+4. **Pagar** (POST, CSRF) → the gateway ensures the subject's Stripe customer
    and creates a Checkout Session, then 303 to Stripe:
    - subscription, `starts: on_payment`: `mode: subscription`, the plan's
      price, `subscription_data.trial_period_days` when the subject hasn't
