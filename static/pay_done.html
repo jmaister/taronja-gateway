@@ -2,15 +2,15 @@
 {{with .PayDone}}
 <section class="card">
 {{if eq .Status "completed"}}
-<p>Thank you! Your payment is confirmed.</p>
-<a class="button" href="{{.Redirect}}">Continue</a>
+<p>¡Gracias! Tu pago está confirmado.</p>
+<a class="button" href="{{.Redirect}}">Continuar</a>
 {{else if eq .Status "expired"}}
-<p>The payment wasn't completed.</p>
-<a class="button" href="{{.Redirect}}">Back</a>
+<p>El pago no se ha completado.</p>
+<a class="button" href="{{.Redirect}}">Volver</a>
 {{else}}
 <meta http-equiv="refresh" content="2">
-<p>Confirming your payment…</p>
-<p class="muted">This page refreshes by itself.</p>
+<p>Confirmando tu pago…</p>
+<p class="muted">Esta página se actualiza sola.</p>
 {{end}}
 </section>
 {{end}}

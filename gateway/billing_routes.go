@@ -89,11 +89,11 @@ type accountDocument struct {
 }
 
 var subscriptionLabels = map[string]string{
-	db.SubscriptionAwaitingActivation: "Pending activation",
-	db.SubscriptionTrialing:           "Trial",
-	db.SubscriptionActive:             "Active",
-	db.SubscriptionPastDue:            "Payment failed",
-	db.SubscriptionCanceled:           "Canceled",
+	db.SubscriptionAwaitingActivation: "Pendiente de activar",
+	db.SubscriptionTrialing:           "En prueba",
+	db.SubscriptionActive:             "Activa",
+	db.SubscriptionPastDue:            "Pago fallido",
+	db.SubscriptionCanceled:           "Cancelada",
 }
 
 // displayFeatures drops the catch-all "all" feature, which says nothing to a buyer.
@@ -142,7 +142,7 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 	svc := g.Dependencies.Billing
 	plan, err := svc.GetPlan(planKey)
 	if err != nil || !plan.Active {
-		g.renderMessage(w, http.StatusNotFound, "Plan not found", "This plan doesn't exist or is no longer sold.", "/", "Back")
+		g.renderMessage(w, http.StatusNotFound, "Plan no encontrado", "Este plan no existe o ya no se vende.", "/", "Volver")
 		return
 	}
 	view := &payView{
@@ -152,9 +152,9 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 	}
 	switch plan.Interval {
 	case db.PlanIntervalMonth:
-		view.Price += " / month"
+		view.Price += " / mes"
 	case db.PlanIntervalYear:
-		view.Price += " / year"
+		view.Price += " / año"
 	}
 	if plan.SetupFeeCents > 0 {
 		view.SetupFee = plan.SetupFeeName + ": " + FormatEUR(plan.SetupFeeCents)
@@ -170,7 +170,7 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 		view.Options = append(view.Options, opt)
 	}
 	if plan.Subject != db.PlanSubjectOrg {
-		addOption(billing.UserSubject(acct.user.ID), "", "Myself ("+acct.user.Email+")")
+		addOption(billing.UserSubject(acct.user.ID), "", "Yo ("+acct.user.Email+")")
 	}
 	if plan.Subject != db.PlanSubjectUser && g.Dependencies.OrganizationRepo != nil {
 		memberships, err := g.Dependencies.OrganizationRepo.OfUser(acct.user.ID)
@@ -183,7 +183,7 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 			addOption(billing.OrgSubject(m.Organization.ID), m.Organization.ID, m.Organization.Name)
 		}
 		if orgID != "" && !member {
-			g.renderMessage(w, http.StatusForbidden, "Not your organization", "You can only pay for yourself or an organization you belong to.", "/", "Back")
+			g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización a la que perteneces.", "/", "Volver")
 			return
 		}
 		view.NeedsOrg = plan.Subject == db.PlanSubjectOrg && len(memberships) == 0
@@ -210,7 +210,7 @@ func (g *Gateway) handlePay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !accounts.ValidCSRF(acct.session.Token, r.FormValue("csrf")) {
-		http.Error(w, "Forbidden: the form expired, reload the page and try again", http.StatusForbidden)
+		http.Error(w, "Prohibido: el formulario ha caducado, recarga la página e inténtalo de nuevo", http.StatusForbidden)
 		return
 	}
 	planKey, orgID, redirect := r.PathValue("plan"), r.FormValue("org"), r.FormValue("redirect")
@@ -222,14 +222,14 @@ func (g *Gateway) handlePay(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
 	case errors.Is(err, billing.ErrForbidden):
-		g.renderMessage(w, http.StatusForbidden, "Not your organization", "You can only pay for yourself or an organization you belong to.", "/", "Back")
+		g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización a la que perteneces.", "/", "Volver")
 	case errors.Is(err, billing.ErrAlreadySubscribed):
-		g.renderPayPage(w, r, http.StatusConflict, acct, planKey, orgID, redirect, "There is already a subscription to this plan: manage it instead.")
+		g.renderPayPage(w, r, http.StatusConflict, acct, planKey, orgID, redirect, "Ya hay una suscripción a este plan: gestiónala en su lugar.")
 	case errors.Is(err, billing.ErrInvalid), errors.Is(err, billing.ErrNotFound):
 		g.renderPayPage(w, r, http.StatusBadRequest, acct, planKey, orgID, redirect, strings.TrimPrefix(err.Error(), billing.ErrInvalid.Error()+": "))
 	default:
 		log.Printf("Pay: checkout for %s by %s failed: %v", planKey, acct.user.ID, err)
-		g.renderPayPage(w, r, http.StatusBadGateway, acct, planKey, orgID, redirect, "The payment page couldn't be opened. Try again in a moment.")
+		g.renderPayPage(w, r, http.StatusBadGateway, acct, planKey, orgID, redirect, "No se ha podido abrir la página de pago. Inténtalo de nuevo en un momento.")
 	}
 }
 
@@ -243,14 +243,14 @@ func (g *Gateway) handlePayDone(w http.ResponseWriter, r *http.Request) {
 	}
 	checkout, err := g.Dependencies.Billing.GetCheckout(r.URL.Query().Get("checkout"), acct.user.ID)
 	if err != nil {
-		g.renderMessage(w, http.StatusNotFound, "Payment not found", "We couldn't find this payment.", "/", "Back")
+		g.renderMessage(w, http.StatusNotFound, "Pago no encontrado", "No hemos encontrado este pago.", "/", "Volver")
 		return
 	}
 	redirect := checkout.Redirect
 	if redirect == "" {
 		redirect = "/"
 	}
-	page := g.newAuthPage("Payment")
+	page := g.newAuthPage("Pago")
 	page.PayDone = &payDoneView{Status: checkout.Status, Redirect: redirect}
 	g.renderAuthPage(w, http.StatusOK, "pay_done.html", page)
 }
@@ -282,7 +282,7 @@ func (g *Gateway) handlePortal(w http.ResponseWriter, r *http.Request, acct *acc
 	portalURL, err := g.Dependencies.Billing.PortalURL(r.Context(), r.FormValue("subject"), acct.user.ID)
 	if err != nil {
 		log.Printf("Account: portal for %s by %s: %v", r.FormValue("subject"), acct.user.ID, err)
-		g.renderAccountPage(w, http.StatusBadRequest, acct, "", "The subscription can't be managed right now.")
+		g.renderAccountPage(w, http.StatusBadRequest, acct, "", "La suscripción no se puede gestionar ahora mismo.")
 		return
 	}
 	http.Redirect(w, r, portalURL, http.StatusSeeOther)
@@ -325,13 +325,13 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			switch {
 			case s.Status == db.SubscriptionCanceled:
 			case s.Status == db.SubscriptionTrialing:
-				item.Next = "Trial until " + formatDay(s.TrialEnd)
+				item.Next = "Prueba hasta el " + formatDay(s.TrialEnd)
 			case s.CancelAtPeriodEnd:
-				item.Next = "Ends " + formatDay(s.CurrentPeriodEnd)
+				item.Next = "Termina el " + formatDay(s.CurrentPeriodEnd)
 			case s.Status == db.SubscriptionPastDue:
-				item.Next = "Access until " + formatDay(s.GraceUntil)
+				item.Next = "Acceso hasta el " + formatDay(s.GraceUntil)
 			case s.CurrentPeriodEnd != nil:
-				item.Next = "Renews " + formatDay(s.CurrentPeriodEnd)
+				item.Next = "Se renueva el " + formatDay(s.CurrentPeriodEnd)
 			}
 			view.Subscriptions = append(view.Subscriptions, item)
 		}
@@ -340,9 +340,9 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			log.Printf("Account page: documents of %s: %v", o.subject, err)
 		}
 		for _, d := range docs {
-			item := accountDocument{Kind: "Invoice", Number: d.Number, Date: formatDay(&d.PaidAt), Amount: FormatEUR(d.AmountCents), Owner: o.label}
+			item := accountDocument{Kind: "Factura", Number: d.Number, Date: formatDay(&d.PaidAt), Amount: FormatEUR(d.AmountCents), Owner: o.label}
 			if d.Kind == db.DocumentCreditNote {
-				item.Kind, item.Amount = "Credit note", FormatEUR(-d.AmountCents)
+				item.Kind, item.Amount = "Abono", FormatEUR(-d.AmountCents)
 			}
 			if d.OdooState == db.OdooStateDone {
 				item.PDF = config.ManagementPrefix + "/api/billing/documents/" + url.PathEscape(d.ID) + "/pdf"

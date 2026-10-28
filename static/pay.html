@@ -2,20 +2,20 @@
 {{with .Pay}}
 <section class="card">
 {{if .Description}}<p>{{.Description}}</p>{{end}}
-<p class="price">{{.Price}} <span class="muted">VAT included</span></p>
-{{if .SetupFee}}<p class="muted">Plus, once: {{.SetupFee}}</p>{{end}}
+<p class="price">{{.Price}} <span class="muted">IVA incluido</span></p>
+{{if .SetupFee}}<p class="muted">Más, una sola vez: {{.SetupFee}}</p>{{end}}
 {{if .Features}}<ul class="chips">{{range .Features}}<li>{{.}}</li>{{end}}</ul>{{end}}
 </section>
 <section class="card">
 {{if .NeedsOrg}}
-<p>This plan is bought for an organization, and you don't belong to any yet. Ask the application to add you to yours.</p>
+<p>Este plan se compra para una organización y todavía no perteneces a ninguna. Pide a la aplicación que te añada a la tuya.</p>
 {{else}}
-<h2>Who is it for?</h2>
+<h2>¿Para quién es?</h2>
 {{range .Options}}
 <div class="row">
     <div>
         <strong>{{.Label}}</strong>
-        {{if .Subscribed}}<span class="badge ok">subscribed</span>{{else if .Trial}}<span class="badge warn">{{.Trial}}-day free trial</span>{{end}}
+        {{if .Subscribed}}<span class="badge ok">suscrito</span>{{else if .Trial}}<span class="badge warn">Prueba gratuita de {{.Trial}} días</span>{{end}}
     </div>
     <div>
         {{if .Subscribed}}
@@ -23,17 +23,17 @@
         <form method="POST" action="{{$.Prefix}}/account/billing/portal">
             <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
             <input type="hidden" name="subject" value="org:{{.OrgID}}">
-            <button type="submit" class="secondary">Manage subscription</button>
+            <button type="submit" class="secondary">Gestionar suscripción</button>
         </form>
         {{else}}
-        <a class="button secondary" href="{{$.Prefix}}/account">Manage subscription</a>
+        <a class="button secondary" href="{{$.Prefix}}/account">Gestionar suscripción</a>
         {{end}}
         {{else}}
         <form method="POST" action="{{$.Prefix}}/pay/{{$.Pay.Plan}}">
             <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
             <input type="hidden" name="org" value="{{.OrgID}}">
             <input type="hidden" name="redirect" value="{{$.Pay.Redirect}}">
-            <button type="submit"{{if .Selected}} autofocus{{end}}>Pay</button>
+            <button type="submit"{{if .Selected}} autofocus{{end}}>Pagar</button>
         </form>
         {{end}}
     </div>
@@ -41,6 +41,6 @@
 {{end}}
 {{end}}
 </section>
-<p class="muted">Payments are processed by Stripe. Invoices are emailed to you and listed in your account.</p>
+<p class="muted">Los pagos los procesa Stripe. Te enviamos las facturas por email y las verás en tu cuenta.</p>
 {{end}}
 {{end}}

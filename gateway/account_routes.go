@@ -83,7 +83,7 @@ func (g *Gateway) renderAccountPage(w http.ResponseWriter, status int, acct *acc
 		CSRF:           accounts.CSRFToken(acct.session.Token),
 		Billing:        g.accountBilling(acct),
 	}
-	page := g.newAuthPage("Your account")
+	page := g.newAuthPage("Tu cuenta")
 	page.Wide = true
 	page.Message = message
 	page.Error = errorText
