@@ -44,6 +44,11 @@ type Feature struct {
 	Source     string     `json:"source"`
 	Grace      bool       `json:"grace"`
 	GraceUntil *time.Time `json:"graceUntil"`
+	// EndsAt is when the source ends before any grace: the trial's end, the
+	// paid period's end (renewal, or cancellation when canceling), the
+	// grant's or purchase's end; nil = no end. Past due has no earlier end
+	// than Until.
+	EndsAt *time.Time `json:"endsAt"`
 
 	// graceFrom is when the grace period starts; nil = the source has none.
 	graceFrom *time.Time
@@ -159,16 +164,16 @@ func subscriptionFeature(graceDays int, s db.BillingSubscription) (Feature, bool
 			return f, false
 		}
 		until := addDays(*s.TrialEnd, graceDays)
-		f = Feature{Until: &until, Status: StatusTrial, graceFrom: s.TrialEnd}
+		f = Feature{Until: &until, EndsAt: s.TrialEnd, Status: StatusTrial, graceFrom: s.TrialEnd}
 	case db.SubscriptionActive:
 		if s.CurrentPeriodEnd == nil {
 			return f, false
 		}
 		if s.CancelAtPeriodEnd {
-			f = Feature{Until: s.CurrentPeriodEnd, Status: StatusCanceling}
+			f = Feature{Until: s.CurrentPeriodEnd, EndsAt: s.CurrentPeriodEnd, Status: StatusCanceling}
 		} else {
 			until := addDays(*s.CurrentPeriodEnd, graceDays)
-			f = Feature{Until: &until, Status: StatusActive, graceFrom: s.CurrentPeriodEnd}
+			f = Feature{Until: &until, EndsAt: s.CurrentPeriodEnd, Status: StatusActive, graceFrom: s.CurrentPeriodEnd}
 		}
 	case db.SubscriptionPastDue:
 		until := s.GraceUntil
@@ -180,7 +185,7 @@ func subscriptionFeature(graceDays int, s db.BillingSubscription) (Feature, bool
 			return f, false
 		}
 		// Past due is a grace period from the start.
-		f = Feature{Until: until, Status: StatusPastDue, graceFrom: &time.Time{}}
+		f = Feature{Until: until, EndsAt: until, Status: StatusPastDue, graceFrom: &time.Time{}}
 	case db.SubscriptionAwaitingActivation:
 		f = Feature{Status: StatusAwaitingActivation}
 	default:
@@ -252,7 +257,7 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 		f := Feature{Status: StatusActive, Source: SourcePurchase}
 		if plan.AccessDays > 0 {
 			until := addDays(p.PaidAt, plan.AccessDays)
-			f.Until = &until
+			f.Until, f.EndsAt = &until, &until
 		}
 		for _, feature := range plan.Features {
 			grant(feature, f)
@@ -260,7 +265,7 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 	}
 
 	for _, g := range grants {
-		f := Feature{Until: g.Until, Status: StatusGranted, Source: SourceGrant}
+		f := Feature{Until: g.Until, EndsAt: g.Until, Status: StatusGranted, Source: SourceGrant}
 		if g.Until != nil && g.GraceDays != nil && *g.GraceDays > 0 {
 			until := addDays(*g.Until, *g.GraceDays)
 			f.Until, f.graceFrom = &until, g.Until

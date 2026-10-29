@@ -71,6 +71,7 @@ func (s *StrictApiServer) GetEntitlements(ctx context.Context, request api.GetEn
 	for key, feature := range active {
 		features[key] = api.Entitlement{
 			Until:  feature.Until,
+			EndsAt: feature.EndsAt,
 			Status: api.EntitlementStatus(feature.Status),
 			Source: feature.Source,
 
