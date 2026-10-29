@@ -323,7 +323,7 @@ type BillingEmailConfig struct {
 
 // StripeBillingConfig is the Stripe account payments go to.
 type StripeBillingConfig struct {
-	SecretKey     string `yaml:"secretKey"`        // Secret API key (sk_test_... or sk_live_...). Can use environment variables. Required.
+	SecretKey     string `yaml:"secretKey"`        // Secret API key (sk_test_... or sk_live_...). Can use environment variables. Required. A test key is refused when server.url is a public https address.
 	WebhookSecret string `yaml:"webhookSecret"`    // Signing secret of the webhook endpoint <server.url>/_/billing/stripe/webhook (whsec_...). Can use environment variables. Required.
 	APIURL        string `yaml:"apiUrl,omitempty"` // Stripe API base URL. Default: https://api.stripe.com. For tests only.
 }
@@ -346,6 +346,15 @@ func (o OdooBillingConfig) IsConfigured() bool {
 	return o.URL != ""
 }
 
+// IsLiveStripeKey reports whether key is a live-mode Stripe key.
+func IsLiveStripeKey(key string) bool {
+	return strings.HasPrefix(key, "sk_live_") || strings.HasPrefix(key, "rk_live_")
+}
+
+func isLocalHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || strings.HasSuffix(host, ".localhost")
+}
+
 func (b BillingConfig) validate(serverURL string) error {
 	if !b.Enabled {
 		return nil
@@ -355,6 +364,11 @@ func (b BillingConfig) validate(serverURL string) error {
 	}
 	if b.Stripe.SecretKey == "" || b.Stripe.WebhookSecret == "" {
 		return fmt.Errorf("billing.stripe.secretKey and billing.stripe.webhookSecret are required when billing is enabled")
+	}
+	if !IsLiveStripeKey(b.Stripe.SecretKey) {
+		if u, err := url.Parse(serverURL); err == nil && u.Scheme == "https" && !isLocalHost(u.Hostname()) {
+			return fmt.Errorf("billing.stripe.secretKey is a test key but server.url %q is a public https address: use a live key (sk_live_ or rk_live_), or an http or localhost server.url", serverURL)
+		}
 	}
 	if b.Email.LogoURL != "" {
 		if _, err := url.ParseRequestURI(b.Email.LogoURL); err != nil {

@@ -23,7 +23,7 @@ any application.
 
 | Topic | Decision |
 |---|---|
-| Who pays | A **subject**: a gateway user, or an **organization** of the gateway. Any member who pays activates the plan's features for the whole organization. |
+| Who pays | A **subject**: a gateway user, or an **organization** of the gateway. An owner of the organization who pays activates the plan's features for the whole organization. |
 | Organizations | Optional gateway feature: the gateway admin (or an app, with the admin API token) creates organizations and assigns users to them. |
 | Payment link | A gateway page, `/_/pay/<plan>`. It requires login, then redirects to Stripe Checkout. The purchase is tied to the logged-in user or their organization, never matched by email. |
 | Plans and prices | Created in the gateway dashboard. The gateway creates the Stripe Product and Price and the Odoo product. A price change creates a new Stripe Price; existing subscribers keep theirs. |
@@ -153,8 +153,8 @@ Authenticated with a session or the admin API token, like every gateway API.
 2. Not logged in → the login page, back here after.
 3. The page shows the plan (name, price VAT included, interval, trial,
    features in words) and the subject: the user, or one of their
-   organizations (`?org=` preselects it; a user who isn't a member is
-   refused). A subject that already has an active subscription in the
+   organizations (`?org=` preselects it; only organizations the user owns are offered,
+   anything else is refused). A subject that already has an active subscription in the
    plan's group gets "Gestionar suscripción" (the portal) instead of "Pagar".
 4. **Pagar** (POST, CSRF) → the gateway ensures the subject's Stripe customer
    and creates a Checkout Session, then 303 to Stripe:

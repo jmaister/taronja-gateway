@@ -178,15 +178,20 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 			log.Printf("Pay page: organizations of %s: %v", acct.user.ID, err)
 		}
 		member := false
+		owned := 0
 		for _, m := range memberships {
+			if m.Role != db.OrganizationRoleOwner {
+				continue
+			}
+			owned++
 			member = member || m.Organization.ID == orgID
 			addOption(billing.OrgSubject(m.Organization.ID), m.Organization.ID, m.Organization.Name)
 		}
 		if orgID != "" && !member {
-			g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización a la que perteneces.", "/", "Volver")
+			g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización de la que eres propietario.", "/", "Volver")
 			return
 		}
-		view.NeedsOrg = plan.Subject == db.PlanSubjectOrg && len(memberships) == 0
+		view.NeedsOrg = plan.Subject == db.PlanSubjectOrg && owned == 0
 	}
 	if len(view.Options) > 0 {
 		selected := false
@@ -222,7 +227,7 @@ func (g *Gateway) handlePay(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
 	case errors.Is(err, billing.ErrForbidden):
-		g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización a la que perteneces.", "/", "Volver")
+		g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización de la que eres propietario.", "/", "Volver")
 	case errors.Is(err, billing.ErrAlreadySubscribed):
 		g.renderPayPage(w, r, http.StatusConflict, acct, planKey, orgID, redirect, "Ya hay una suscripción a este plan: gestiónala en su lugar.")
 	case errors.Is(err, billing.ErrInvalid), errors.Is(err, billing.ErrNotFound):

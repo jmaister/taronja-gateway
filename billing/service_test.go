@@ -43,7 +43,7 @@ func (e *testEnv) org(t *testing.T, name string, members ...string) string {
 	o := &db.Organization{Name: name}
 	require.NoError(t, e.orgs.Create(o))
 	for _, m := range members {
-		require.NoError(t, e.orgs.SetMember(o.ID, m, "member"))
+		require.NoError(t, e.orgs.SetMember(o.ID, m, "owner"))
 	}
 	return o.ID
 }
