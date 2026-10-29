@@ -11,7 +11,7 @@ import {
 function StatusBadge({ status }: { status: string }) {
     const badges: Record<string, { bg: string; color: string; label: string }> = {
         ok: { bg: 'bg-success/10', color: 'text-success', label: 'OK' },
-        check: { bg: 'bg-warning/10', color: 'text-warning', label: 'Check' },
+        check: { bg: 'bg-warning/10', color: 'text-warning', label: 'Atención' },
         missing: { bg: 'bg-danger/10', color: 'text-danger', label: 'Missing' },
         manual: { bg: 'bg-muted/10', color: 'text-muted-fg', label: 'By hand' },
     };

@@ -3,7 +3,7 @@ import type { UserResponse } from '@/apiclient';
 import { useUsers } from '../services/users';
 import { Input } from './ui/Input';
 
-const userLabel = (u: UserResponse) =>
+export const userLabel = (u: UserResponse) =>
     `${u.username}${u.name ? ` (${u.name})` : ''}${u.email ? ` · ${u.email}` : ''}`;
 
 interface Props {
