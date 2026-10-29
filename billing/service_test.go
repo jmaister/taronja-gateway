@@ -73,7 +73,7 @@ func TestForUser_CachesAndInvalidates(t *testing.T) {
 	require.NoError(t, err)
 	ent, err = e.svc.ForUser("u1")
 	require.NoError(t, err)
-	assert.Equal(t, Feature{Until: &until, Status: StatusGranted, Source: SourceGrant}, ent.Orgs[orgID]["academia.access"])
+	assert.Equal(t, Feature{Until: &until, EndsAt: &until, Status: StatusGranted, Source: SourceGrant}, ent.Orgs[orgID]["academia.access"])
 
 	// A subscription written straight to the repository is not seen until
 	// the subject is invalidated: the cache is what the request path reads.

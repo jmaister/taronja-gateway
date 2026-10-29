@@ -479,7 +479,7 @@ func TestOneTimePurchase(t *testing.T) {
 	ent, err := e.svc.ForUser("u1")
 	require.NoError(t, err)
 	until := e.clock.AddDate(0, 0, 60)
-	assert.Equal(t, Feature{Until: &until, Status: StatusActive, Source: SourcePurchase}, ent.User["academia.summer"])
+	assert.Equal(t, Feature{Until: &until, EndsAt: &until, Status: StatusActive, Source: SourcePurchase}, ent.User["academia.summer"])
 	inv, err := e.repo.GetDocumentByStripeRef("pi_7")
 	require.NoError(t, err)
 	lines, _ := DocumentLines(inv)

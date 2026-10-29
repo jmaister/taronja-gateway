@@ -3964,11 +3964,12 @@ components:
       type: object
       properties:
         until: {type: string, format: date-time, nullable: true, description: When access ends, grace period included; null = no expiry}
+        endsAt: {type: string, format: date-time, nullable: true, description: 'When the trial, paid period (renewal, or cancellation when canceling), grant or purchase ends, before any grace; null = no end. For "your trial ends on …". Same as until when past due'}
         status: {type: string, enum: [trial, active, canceling, past_due, awaiting_activation, granted]}
         source: {type: string, description: '"subscription:<id>", "purchase:<id>" or "grant:<id>"'}
         grace: {type: boolean, description: 'True while in the grace period: payment overdue, or the trial, grant or paid period has ended. Tell the user.'}
         graceUntil: {type: string, format: date-time, nullable: true, description: 'When access ends while grace is true (same as until); null otherwise'}
-      required: [status, source, grace, graceUntil]
+      required: [status, source, grace, graceUntil, endsAt]
     EntitlementSet:
       type: object
       properties:

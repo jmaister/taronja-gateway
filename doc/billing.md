@@ -108,6 +108,12 @@ subscription is not reported as grace because of an older grant. A grant
 has grace only when created with `graceDays` (0–60, needs an `until`);
 that is the grace of an app-managed trial (Academia).
 
+Each feature in `GET /_/api/entitlements` also has `endsAt`: when its source
+ends before any grace (a trial's end, a paid period's end (the renewal, or
+the cancellation when canceling), a grant's or purchase's end), `null` when
+it has none. Use it for "your trial ends on …". It is not in the
+`X-Entitlements` header.
+
 `GET /_/api/billing/subscriptions` (and `/me/billing`) report the same
 `grace` and `graceUntil` for each subscription.
 
@@ -141,7 +147,7 @@ Authenticated with a session or the admin API token, like every gateway API.
 
 | Operation | Who | What |
 |---|---|---|
-| `GET /_/api/entitlements?user_id=` or `?org_id=` | admin token; or the user themselves / a member of the org | `{"subject":"org:…","features":{"academia.access":{"until":…,"status":"trial","source":"grant","grace":false,"graceUntil":null}}}` |
+| `GET /_/api/entitlements?user_id=` or `?org_id=` | admin token; or the user themselves / a member of the org | `{"subject":"org:…","features":{"academia.access":{"until":…,"status":"trial","source":"grant","endsAt":…,"grace":false,"graceUntil":null}}}` |
 | `GET /_/me` | the user | adds `organizations` (id, name, role) and `entitlements` (same shape as the header, with `grace` when a feature is in it) |
 
 ## Workflows

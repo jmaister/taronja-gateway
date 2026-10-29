@@ -51,22 +51,22 @@ func TestCompute_Subscriptions(t *testing.T) {
 		want *Feature // for app.access / box.protection; nil = not granted
 	}{
 		{"trialing until trial end", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionTrialing, TrialEnd: at(10)},
-			&Feature{Until: at(17), Status: StatusTrial}},
+			&Feature{Until: at(17), EndsAt: at(10), Status: StatusTrial}},
 		{"trial ended, within grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionTrialing, TrialEnd: at(-1)},
-			graceFeature(Feature{Until: at(6), Status: StatusTrial}, at(6))},
+			graceFeature(Feature{Until: at(6), EndsAt: at(-1), Status: StatusTrial}, at(6))},
 		{"trial ended, grace over", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionTrialing, TrialEnd: at(-8)}, nil},
 		{"trial ended, no grace days", db.BillingSubscription{PlanKey: "nograce", Status: db.SubscriptionTrialing, TrialEnd: at(-1)}, nil},
 		{"active: period end plus grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionActive, CurrentPeriodEnd: at(5)},
-			&Feature{Until: at(12), Status: StatusActive}},
+			&Feature{Until: at(12), EndsAt: at(5), Status: StatusActive}},
 		{"active renewal pending within grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionActive, CurrentPeriodEnd: at(-3)},
-			graceFeature(Feature{Until: at(4), Status: StatusActive}, at(4))},
+			graceFeature(Feature{Until: at(4), EndsAt: at(-3), Status: StatusActive}, at(4))},
 		{"active, grace 0, period over", db.BillingSubscription{PlanKey: "nograce", Status: db.SubscriptionActive, CurrentPeriodEnd: at(-1)}, nil},
 		{"canceling: period end without grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionActive, CurrentPeriodEnd: at(5), CancelAtPeriodEnd: true},
-			&Feature{Until: at(5), Status: StatusCanceling}},
+			&Feature{Until: at(5), EndsAt: at(5), Status: StatusCanceling}},
 		{"past due within grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, CurrentPeriodEnd: at(-2), GraceUntil: at(5)},
-			graceFeature(Feature{Until: at(5), Status: StatusPastDue}, at(5))},
+			graceFeature(Feature{Until: at(5), EndsAt: at(5), Status: StatusPastDue}, at(5))},
 		{"past due without grace_until: period end plus grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, CurrentPeriodEnd: at(-2)},
-			graceFeature(Feature{Until: at(5), Status: StatusPastDue}, at(5))},
+			graceFeature(Feature{Until: at(5), EndsAt: at(5), Status: StatusPastDue}, at(5))},
 		{"past due after grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, GraceUntil: at(-1)}, nil},
 		{"awaiting activation never expires", db.BillingSubscription{PlanKey: "box", Status: db.SubscriptionAwaitingActivation},
 			&Feature{Status: StatusAwaitingActivation}},
@@ -102,7 +102,7 @@ func TestCompute_Purchases(t *testing.T) {
 		want     *Feature
 	}{
 		{"one-time with access days", db.BillingPurchase{PlanKey: "pass30", Status: db.PurchaseStatusPaid, PaidAt: now.AddDate(0, 0, -10)},
-			&Feature{Until: at(20), Status: StatusActive, Source: SourcePurchase}},
+			&Feature{Until: at(20), EndsAt: at(20), Status: StatusActive, Source: SourcePurchase}},
 		{"one-time expired", db.BillingPurchase{PlanKey: "pass30", Status: db.PurchaseStatusPaid, PaidAt: now.AddDate(0, 0, -31)}, nil},
 		{"one-time forever", db.BillingPurchase{PlanKey: "forever", Status: db.PurchaseStatusPaid, PaidAt: now.AddDate(-2, 0, 0)},
 			&Feature{Status: StatusActive, Source: SourcePurchase}},
@@ -129,8 +129,8 @@ func TestCompute_LatestUntilWins(t *testing.T) {
 		{Feature: "other.thing", Until: nil},
 	}
 	got := active(Compute(now, testPlans(), subs, nil, grants))
-	assert.Equal(t, Feature{Until: at(12), Status: StatusGranted, Source: SourceGrant}, got["app.access"])
-	assert.Equal(t, Feature{Until: at(10), Status: StatusTrial, Source: SourceSubscription}, got["app.extra"])
+	assert.Equal(t, Feature{Until: at(12), EndsAt: at(12), Status: StatusGranted, Source: SourceGrant}, got["app.access"])
+	assert.Equal(t, Feature{Until: at(10), EndsAt: at(3), Status: StatusTrial, Source: SourceSubscription}, got["app.extra"])
 	assert.Equal(t, Feature{Status: StatusGranted, Source: SourceGrant}, got["other.thing"])
 
 	// No expiry beats any date, in either order.
@@ -165,9 +165,9 @@ func TestCompute_Grants(t *testing.T) {
 		want  *Feature
 	}{
 		{"until in the future, grace not started", db.BillingGrant{Feature: "g.f", Until: at(3), GraceDays: &two},
-			&Feature{Until: at(5), Status: StatusGranted, Source: SourceGrant}},
+			&Feature{Until: at(5), EndsAt: at(3), Status: StatusGranted, Source: SourceGrant}},
 		{"until passed, in grace", db.BillingGrant{Feature: "g.f", Until: at(-1), GraceDays: &two},
-			graceFeature(Feature{Until: at(1), Status: StatusGranted, Source: SourceGrant}, at(1))},
+			graceFeature(Feature{Until: at(1), EndsAt: at(-1), Status: StatusGranted, Source: SourceGrant}, at(1))},
 		{"grace over", db.BillingGrant{Feature: "g.f", Until: at(-3), GraceDays: &two}, nil},
 		{"no grace days", db.BillingGrant{Feature: "g.f", Until: at(-1)}, nil},
 		{"zero grace days", db.BillingGrant{Feature: "g.f", Until: at(-1), GraceDays: &zero}, nil},
@@ -192,7 +192,7 @@ func TestCompute_PrefersSourceNotInGrace(t *testing.T) {
 	subs := []db.BillingSubscription{{PlanKey: "monthly", Status: db.SubscriptionActive, CurrentPeriodEnd: at(-1)}} // grace until +6
 	grants := []db.BillingGrant{{Feature: "app.access", Until: at(3)}}
 	got := active(Compute(now, testPlans(), subs, nil, grants))
-	assert.Equal(t, Feature{Until: at(3), Status: StatusGranted, Source: SourceGrant}, got["app.access"])
+	assert.Equal(t, Feature{Until: at(3), EndsAt: at(3), Status: StatusGranted, Source: SourceGrant}, got["app.access"])
 
 	got = active(Compute(now, testPlans(), subs, nil, []db.BillingGrant{{Feature: "app.access", Until: at(-5)}}))
 	assert.Equal(t, graceFeature(Feature{Until: at(6), Status: StatusActive, Source: SourceSubscription}, at(6)).Grace, got["app.access"].Grace)

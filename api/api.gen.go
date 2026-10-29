@@ -978,6 +978,9 @@ type CreateNotificationResponse struct {
 
 // Entitlement defines model for Entitlement.
 type Entitlement struct {
+	// EndsAt When the trial, paid period (renewal, or cancellation when canceling), grant or purchase ends, before any grace; null = no end. For "your trial ends on …". Same as until when past due
+	EndsAt *time.Time `json:"endsAt"`
+
 	// Grace True while in the grace period: payment overdue, or the trial, grant or paid period has ended. Tell the user.
 	Grace bool `json:"grace"`
 
