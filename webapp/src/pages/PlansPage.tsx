@@ -246,7 +246,11 @@ function CreatePlanForm() {
                         </FormField>
                     )}
 
-                    <FormField label="Group" htmlFor="plan-group">
+                    <FormField
+                        label="Group"
+                        htmlFor="plan-group"
+                        description="Give the same group to the versions of one product (monthly and yearly): customers can switch between them in the Stripe portal, and the free trial is given once per group."
+                    >
                         <Input
                             id="plan-group"
                             value={formData.group}
