@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,6 +23,13 @@ func (e *testEnv) withNotifications() *repositories.NotificationRepositoryDB {
 	repo := repositories.NewNotificationRepositoryDB(conn)
 	e.svc.SetNotifications(notification.NewService(config.NotificationConfig{}, repo, repositories.NewDBUserRepository(conn), ""))
 	return repo
+}
+
+func (e *testEnv) checkout(t *testing.T, subject, planKey string) string {
+	t.Helper()
+	c := &db.BillingCheckout{Subject: subject, PlanKey: planKey, UserID: "u1", Status: db.CheckoutStatusOpen}
+	require.NoError(t, e.repo.CreateCheckout(c))
+	return c.ID
 }
 
 func (e *testEnv) event(t *testing.T, ev Event) {
@@ -85,6 +93,9 @@ func TestStartCheckout_Rules(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalid, "an org plan needs an org")
 	_, _, err = e.svc.StartCheckout(ctx, CheckoutRequest{PlanKey: plan.Key, Payer: payer, OrgID: other})
 	assert.ErrorIs(t, err, ErrForbidden, "not a member")
+	require.NoError(t, e.orgs.SetMember(other, "u1", "member"))
+	_, _, err = e.svc.StartCheckout(ctx, CheckoutRequest{PlanKey: plan.Key, Payer: payer, OrgID: other})
+	assert.ErrorIs(t, err, ErrForbidden, "a member who isn't an owner")
 	_, _, err = e.svc.StartCheckout(ctx, CheckoutRequest{PlanKey: "missing", Payer: payer, OrgID: orgID})
 	assert.ErrorIs(t, err, ErrNotFound)
 
@@ -248,7 +259,7 @@ func TestWebhook_OutOfOrderAndSwitch(t *testing.T) {
 
 	e.event(t, Event{ID: "evt_b", Type: EventSubscriptionCreated, Subscription: &StripeSubscription{
 		ID: "sub_9", Status: "active", CurrentPeriodEnd: e.clock.AddDate(0, 1, 0), PriceID: monthly.StripePriceID,
-		Metadata: map[string]string{"tg_subject": "org:o9", "tg_plan": monthly.Key},
+		Metadata: map[string]string{"tg_subject": "org:o9", "tg_plan": monthly.Key, "tg_checkout": e.checkout(t, "org:o9", monthly.Key)},
 	}})
 	e.event(t, early) // Stripe's retry now works
 	_, err = e.repo.GetDocumentByStripeRef("in_9")
@@ -269,6 +280,36 @@ func TestWebhook_OutOfOrderAndSwitch(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// Metadata is a pointer, not a source of truth: it can't attach a
+// subscription to a subject or plan its checkout wasn't for.
+func TestWebhook_ForgedMetadataIgnored(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	monthly, err := e.svc.CreatePlan(ctx, monthlyInput())
+	require.NoError(t, err)
+	mine := e.checkout(t, "org:mine", monthly.Key)
+
+	for i, meta := range []map[string]string{
+		{"tg_subject": "org:victim", "tg_plan": monthly.Key, "tg_checkout": mine},
+		{"tg_subject": "org:mine", "tg_plan": "other-plan", "tg_checkout": mine},
+		{"tg_subject": "org:mine", "tg_plan": monthly.Key, "tg_checkout": "nope"},
+		{"tg_subject": "org:mine", "tg_plan": monthly.Key},
+	} {
+		id := fmt.Sprintf("sub_forged%d", i)
+		e.event(t, Event{ID: "evt_" + id, Type: EventSubscriptionCreated, Subscription: &StripeSubscription{ID: id, Status: "active", Metadata: meta}})
+		_, err = e.repo.GetSubscriptionByStripeID(id)
+		assert.Error(t, err, "case %d", i)
+	}
+
+	row := &db.BillingSubscription{Subject: "org:mine", PlanKey: monthly.Key, Status: db.SubscriptionAwaitingActivation}
+	require.NoError(t, e.repo.CreateSubscription(row))
+	e.event(t, Event{ID: "evt_rowforged", Type: EventSubscriptionCreated, Subscription: &StripeSubscription{
+		ID: "sub_rowforged", Status: "active", Metadata: map[string]string{"tg_subscription": row.ID, "tg_subject": "org:victim"},
+	}})
+	_, err = e.repo.GetSubscriptionByStripeID("sub_rowforged")
+	assert.Error(t, err)
+}
+
 // An invoice event that arrives before its subscription's own event reads
 // the subscription from Stripe and is applied at once.
 func TestWebhook_InvoiceBeforeSubscriptionFetchesIt(t *testing.T) {
@@ -279,7 +320,7 @@ func TestWebhook_InvoiceBeforeSubscriptionFetchesIt(t *testing.T) {
 	periodEnd := e.clock.AddDate(0, 1, 0)
 	e.stripe.Subscriptions["sub_f"] = &StripeSubscription{
 		ID: "sub_f", Status: "active", CurrentPeriodEnd: periodEnd, PriceID: monthly.StripePriceID,
-		Metadata: map[string]string{"tg_subject": "org:of", "tg_plan": monthly.Key},
+		Metadata: map[string]string{"tg_subject": "org:of", "tg_plan": monthly.Key, "tg_checkout": e.checkout(t, "org:of", monthly.Key)},
 	}
 
 	e.event(t, Event{ID: "evt_p", Type: EventInvoicePaid, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_f", SubscriptionID: "sub_f", AmountCents: 2900}})
@@ -298,7 +339,7 @@ func TestWebhook_InvoiceBeforeSubscriptionFetchesIt(t *testing.T) {
 	// A failed renewal of a subscription the gateway has not seen starts the grace period.
 	e.stripe.Subscriptions["sub_g"] = &StripeSubscription{
 		ID: "sub_g", Status: "past_due", CurrentPeriodEnd: periodEnd, PriceID: monthly.StripePriceID,
-		Metadata: map[string]string{"tg_subject": "org:og", "tg_plan": monthly.Key},
+		Metadata: map[string]string{"tg_subject": "org:og", "tg_plan": monthly.Key, "tg_checkout": e.checkout(t, "org:og", monthly.Key)},
 	}
 	e.event(t, Event{ID: "evt_q", Type: EventInvoicePaymentFailed, Created: e.clock, Invoice: &InvoiceEvent{InvoiceID: "in_g", SubscriptionID: "sub_g", AmountCents: 2900}})
 	sub, err = e.repo.GetSubscriptionByStripeID("sub_g")
@@ -473,7 +514,8 @@ func TestNotifyDue(t *testing.T) {
 func TestPortalURL(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	orgID := e.org(t, "Escuela", "member1")
+	orgID := e.org(t, "Escuela")
+	require.NoError(t, e.orgs.SetMember(orgID, "member1", "member"))
 	require.NoError(t, e.orgs.SetMember(orgID, "owner1", "owner"))
 	require.NoError(t, e.repo.SaveCustomer(&db.BillingCustomer{Subject: "org:" + orgID, StripeCustomerID: "cus_9"}))
 

@@ -46,7 +46,7 @@ func SafeRedirect(redirect string) string {
 }
 
 // PaySubject decides who a purchase of plan is for: the organization orgID
-// (the user must belong to it) or the user.
+// (the user must be one of its owners) or the user.
 func (s *Service) PaySubject(plan *repositories.BillingPlanWithFeatures, userID, orgID string) (Subject, error) {
 	if orgID == "" {
 		if plan.Subject == db.PlanSubjectOrg {
@@ -60,12 +60,15 @@ func (s *Service) PaySubject(plan *repositories.BillingPlanWithFeatures, userID,
 	if s.orgs == nil {
 		return "", ErrForbidden
 	}
-	_, err := s.orgs.Member(orgID, userID)
+	m, err := s.orgs.Member(orgID, userID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", fmt.Errorf("%w: you are not a member of that organization", ErrForbidden)
 	}
 	if err != nil {
 		return "", err
+	}
+	if m.Role != db.OrganizationRoleOwner {
+		return "", fmt.Errorf("%w: only an owner can pay for the organization", ErrForbidden)
 	}
 	return OrgSubject(orgID), nil
 }
@@ -274,7 +277,7 @@ func (s *Service) PortalURL(ctx context.Context, subject, userID string) (string
 			return "", ErrForbidden
 		}
 		m, err := s.orgs.Member(id, userID)
-		if err != nil || m.Role != "owner" {
+		if err != nil || m.Role != db.OrganizationRoleOwner {
 			return "", ErrForbidden
 		}
 	}

@@ -431,6 +431,10 @@ func (s *Service) subscriptionRow(repo repositories.BillingRepository, ss *Strip
 		if err != nil {
 			return nil, err
 		}
+		if sub.Subject != ss.Metadata["tg_subject"] {
+			log.Printf("billing: subscription %s metadata names another subject than row %s, ignored", ss.ID, rowID)
+			return nil, nil
+		}
 		sub.StripeSubscriptionID = &stripeID
 		return sub, nil
 	}
@@ -438,14 +442,14 @@ func (s *Service) subscriptionRow(repo repositories.BillingRepository, ss *Strip
 	if subject == "" || planKey == "" {
 		return nil, nil
 	}
-	payer := ""
-	if checkoutID := ss.Metadata["tg_checkout"]; checkoutID != "" {
-		checkout, err := repo.GetCheckout(checkoutID)
-		if err == nil {
-			payer = checkout.UserID
-		}
+	// The metadata is only a pointer: subject and plan must be what this
+	// gateway stored when the checkout started.
+	checkout, err := repo.GetCheckout(ss.Metadata["tg_checkout"])
+	if err != nil || checkout.Subject != subject || checkout.PlanKey != planKey {
+		log.Printf("billing: subscription %s metadata doesn't match a checkout of this gateway, ignored", ss.ID)
+		return nil, nil
 	}
-	sub = &db.BillingSubscription{Subject: subject, PlanKey: planKey, PayerUserID: payer, Status: stripeStatus(ss.Status), StripeSubscriptionID: &stripeID}
+	sub = &db.BillingSubscription{Subject: subject, PlanKey: planKey, PayerUserID: checkout.UserID, Status: stripeStatus(ss.Status), StripeSubscriptionID: &stripeID}
 	err = repo.CreateSubscription(sub)
 	if errors.Is(err, repositories.ErrDuplicate) {
 		return repo.GetSubscriptionByStripeID(ss.ID)

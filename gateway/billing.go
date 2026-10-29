@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -30,7 +29,7 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 		stripeOpts = append(stripeOpts, stripeapi.WithAPIURL(cfg.Stripe.APIURL))
 	}
 	mode := "test"
-	if strings.HasPrefix(cfg.Stripe.SecretKey, "sk_live_") || strings.HasPrefix(cfg.Stripe.SecretKey, "rk_live_") {
+	if config.IsLiveStripeKey(cfg.Stripe.SecretKey) {
 		mode = "live"
 	}
 	svcCfg := billing.Config{
