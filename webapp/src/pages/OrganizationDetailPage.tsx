@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { QueryState } from '../components/QueryState';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { UserPicker } from '../components/UserPicker';
+import { UserPicker, userLabel } from '../components/UserPicker';
 import { FormField } from '../components/ui/FormField';
 import { PageHeader } from '../components/ui/PageHeader';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -15,6 +15,7 @@ import {
     useSetOrganizationLogo,
     useDeleteOrganizationLogo,
 } from '../services/organizations';
+import { useUsers } from '../services/users';
 
 const MAX_LOGO_BYTES = 512 * 1024;
 
@@ -79,6 +80,7 @@ function OrganizationLogoEditor({ orgId, name, logoUrl }: { orgId: string; name:
 export function OrganizationDetailPage() {
     const { id: orgId = '' } = useParams();
     const details = useOrganization(orgId);
+    const { data: users = [] } = useUsers();
     const addMember = useSetOrganizationMember();
     const removeMember = useRemoveOrganizationMember();
     const [userId, setUserId] = useState('');
@@ -150,7 +152,9 @@ export function OrganizationDetailPage() {
                                             className="flex items-center justify-between p-3 bg-muted/30 rounded"
                                         >
                                             <div className="text-sm">
-                                                <div className="font-medium">{member.userId}</div>
+                                                <div className="font-medium">
+                                                    {(u => (u ? userLabel(u) : member.userId))(users.find(u => u.id === member.userId))}
+                                                </div>
                                                 <div className="text-xs text-muted-fg">{member.role}</div>
                                             </div>
                                             <Button

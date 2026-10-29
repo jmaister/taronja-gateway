@@ -94,10 +94,10 @@ describe('BillingSetupPage', () => {
         expect(nextOkBadge).toBeGreaterThan(okIndex);
     });
 
-    it('shows correct badge for Check status', () => {
+    it('shows correct badge for warn status', () => {
         const html = render();
         const checkIndex = html.indexOf('Stripe Webhook');
-        const nextCheckBadge = html.indexOf('Check', checkIndex);
+        const nextCheckBadge = html.indexOf('Atención', checkIndex);
         expect(nextCheckBadge).toBeGreaterThan(checkIndex);
     });
 
