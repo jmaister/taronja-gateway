@@ -374,6 +374,11 @@ func (s *Service) onSubscription(tx *webhookTx, ev Event) error {
 		log.Printf("billing: %s for unknown subscription %s (no tg_ metadata), ignored", ev.Type, ss.ID)
 		return nil
 	}
+	if sub.StripeEventAt != nil && ev.Created.Before(*sub.StripeEventAt) {
+		log.Printf("billing: %s %s is older than the subscription's state, ignored", ev.Type, ev.ID)
+		return nil
+	}
+	sub.StripeEventAt = &ev.Created
 	wasCanceled := sub.Status == db.SubscriptionCanceled
 	status := stripeStatus(ss.Status)
 	if ev.Type == EventSubscriptionDeleted {
@@ -569,6 +574,10 @@ func (s *Service) onInvoiceFailed(tx *webhookTx, ev Event) error {
 
 // onRefund queues a credit note for what was newly refunded and marks a
 // fully refunded purchase.
+// refundWaitsFor is how long a refund of an unknown charge is retried: its
+// invoice may still be on its way; after that it is not the gateway's.
+const refundWaitsFor = time.Hour
+
 func (s *Service) onRefund(tx *webhookTx, ev Event) error {
 	r := ev.Refund
 	// The invoice the charge paid (a subscription charge) or the payment
@@ -581,6 +590,9 @@ func (s *Service) onRefund(tx *webhookTx, ev Event) error {
 		}
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if s.now().Sub(ev.Created) < refundWaitsFor {
+			return retryLater("charge.refunded for " + r.ChargeID + " before its invoice")
+		}
 		log.Printf("billing: charge.refunded for %s, which the gateway didn't invoice, ignored", r.ChargeID)
 		return nil
 	}
