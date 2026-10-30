@@ -195,6 +195,7 @@ type BillingSubscription struct {
 	GraceUntil            *time.Time
 	ActivatedAt           *time.Time
 	CanceledAt            *time.Time
+	StripeEventAt         *time.Time
 	CreatedAt             time.Time `gorm:"autoCreateTime"`
 	UpdatedAt             time.Time `gorm:"autoUpdateTime"`
 }
@@ -211,6 +212,7 @@ func (s *BillingSubscription) BeforeCreate(tx *gorm.DB) error {
 func (s *BillingSubscription) BeforeSave(tx *gorm.DB) error {
 	s.CurrentPeriodEnd, s.TrialEnd, s.GraceUntil = utcPtr(s.CurrentPeriodEnd), utcPtr(s.TrialEnd), utcPtr(s.GraceUntil)
 	s.ActivatedAt, s.CanceledAt = utcPtr(s.ActivatedAt), utcPtr(s.CanceledAt)
+	s.StripeEventAt = utcPtr(s.StripeEventAt)
 	return nil
 }
 
