@@ -44,7 +44,8 @@
         <form method="POST" action="{{$.Prefix}}/account/billing/portal">
             <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
             <input type="hidden" name="subject" value="{{.Subject}}">
-            <button type="submit" class="small">Gestionar suscripción</button>
+            <button type="submit" class="small" title="Se abre en Stripe">Gestionar suscripción{{template "stripeicon"}}</button>
+            <span class="cue">Se abre en Stripe</span>
         </form>
     </div>
     {{end}}{{end}}

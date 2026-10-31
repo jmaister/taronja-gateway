@@ -121,6 +121,7 @@ func TestPayPage(t *testing.T) {
 	assert.Contains(t, page, "29,00 € / mes")
 	assert.Contains(t, page, "Escuela")
 	assert.Contains(t, page, "Prueba gratuita de 14 días")
+	assert.Contains(t, page, "Pago seguro en Stripe")
 	assert.NotContains(t, page, "Myself", "an organization plan")
 
 	other := &db.Organization{Name: "Otra"}
@@ -199,6 +200,7 @@ func TestPayFlow(t *testing.T) {
 	// Paying again: the pay page offers the portal.
 	page = readBody(t, bg.do(t, http.MethodGet, "/_/pay/academia-monthly?org="+bg.orgID, nil, true))
 	assert.Contains(t, page, "Gestionar suscripción")
+	assert.Contains(t, page, "Se abre en Stripe")
 	resp = bg.do(t, http.MethodPost, "/_/pay/academia-monthly", url.Values{"csrf": {csrf}, "org": {bg.orgID}}, true)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
@@ -206,6 +208,7 @@ func TestPayFlow(t *testing.T) {
 	page = readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
 	assert.Contains(t, page, "<h2>Suscripciones</h2>")
 	assert.Contains(t, page, "<h2>Gestionar suscripción</h2>")
+	assert.Contains(t, page, "Se abre en Stripe")
 	assert.Contains(t, page, "<h2>Facturas</h2>")
 	assert.Contains(t, page, "Academia mensual")
 	assert.Contains(t, page, "Prueba hasta el")

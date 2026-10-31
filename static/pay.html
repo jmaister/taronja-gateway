@@ -23,7 +23,8 @@
         <form method="POST" action="{{$.Prefix}}/account/billing/portal">
             <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
             <input type="hidden" name="subject" value="org:{{.OrgID}}">
-            <button type="submit" class="secondary">Gestionar suscripción</button>
+            <button type="submit" class="secondary" title="Se abre en Stripe">Gestionar suscripción{{template "stripeicon"}}</button>
+            <span class="cue">Se abre en Stripe</span>
         </form>
         {{else}}
         <a class="button secondary" href="{{$.Prefix}}/account">Gestionar suscripción</a>
@@ -33,7 +34,8 @@
             <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
             <input type="hidden" name="org" value="{{.OrgID}}">
             <input type="hidden" name="redirect" value="{{$.Pay.Redirect}}">
-            <button type="submit"{{if .Selected}} autofocus{{end}}>Pagar</button>
+            <button type="submit"{{if .Selected}} autofocus{{end}} title="Pago seguro en Stripe">Pagar{{template "stripeicon"}}</button>
+            <span class="cue">Pago seguro en Stripe</span>
         </form>
         {{end}}
     </div>

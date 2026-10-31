@@ -125,7 +125,8 @@ describe('BillingSetupPage', () => {
     it('shows link when available', () => {
         const html = render();
         expect(html).toContain('https://dashboard.stripe.com/apikeys');
-        expect(html).toContain('More info');
+        expect(html).toContain('Open in Stripe');
+        expect(html).toContain('Opens the Stripe dashboard in a new tab');
     });
 
     it('shows action button when available', () => {
