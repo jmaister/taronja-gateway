@@ -114,7 +114,11 @@ func (s *StrictApiServer) CreateMyBillingPortal(ctx context.Context, request api
 
 	subject := request.Body.Subject
 
-	url, err := s.billing.PortalURL(ctx, subject, sess.UserID)
+	returnPath := ""
+	if request.Body.ReturnUrl != nil {
+		returnPath = *request.Body.ReturnUrl
+	}
+	url, err := s.billing.PortalURL(ctx, subject, sess.UserID, returnPath)
 	if errors.Is(err, billing.ErrForbidden) {
 		return api.CreateMyBillingPortal403JSONResponse{Code: http.StatusForbidden, Message: "You do not have access to this subject"}, nil
 	}

@@ -15,17 +15,18 @@ type FakeStripe struct {
 	mu sync.Mutex
 	n  int
 
-	Products      map[string]string // id -> name
-	Prices        map[string]StripePriceParams
-	ArchivedPrice map[string]bool
-	LookupKeys    map[string]string // lookup key -> price id
-	Customers     map[string]string // id -> subject
-	Sessions      []CheckoutParams
-	Subscriptions map[string]*StripeSubscription
-	Created       []SubscriptionParams
-	Canceled      []string
-	Refunds       []FakeRefund
-	Portal        *PortalParams
+	Products        map[string]string // id -> name
+	Prices          map[string]StripePriceParams
+	ArchivedPrice   map[string]bool
+	LookupKeys      map[string]string // lookup key -> price id
+	Customers       map[string]string // id -> subject
+	PortalReturnURL string
+	Sessions        []CheckoutParams
+	Subscriptions   map[string]*StripeSubscription
+	Created         []SubscriptionParams
+	Canceled        []string
+	Refunds         []FakeRefund
+	Portal          *PortalParams
 
 	// Err, when set, is returned by every call.
 	Err error
@@ -189,6 +190,9 @@ func (f *FakeStripe) PortalURL(ctx context.Context, customerID, returnURL string
 	if f.Err != nil {
 		return "", f.Err
 	}
+	f.mu.Lock()
+	f.PortalReturnURL = returnURL
+	f.mu.Unlock()
 	return "https://billing.stripe.test/p/" + customerID, nil
 }
 

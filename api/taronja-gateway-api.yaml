@@ -4190,6 +4190,9 @@ components:
       type: object
       properties:
         subject: {type: string}
+        returnUrl:
+          type: string
+          description: Path on this site where Stripe sends the user back (default /_/account); anything else is ignored.
       required: [subject]
     BillingPortalResponse:
       type: object
