@@ -119,6 +119,11 @@ type OIDCProviderConfig struct {
 	// a provider you control: it lets the provider's users claim any address.
 	// Default: false.
 	TrustEmail bool `yaml:"trustEmail"`
+	// Signup shows a "Crear cuenta" link on the login page and lets
+	// /_/auth/<name>/login?signup=1 ask the provider for its registration
+	// form (prompt=create). The provider must allow self-registration.
+	// Default: false.
+	Signup bool `yaml:"signup"`
 }
 
 // DisplayLabel returns the login button label.
@@ -483,8 +488,9 @@ type loginPageData struct {
 
 // OIDCLoginButton is one OIDC provider's button on the login page.
 type OIDCLoginButton struct {
-	Name  string
-	Label string
+	Name   string
+	Label  string
+	Signup bool
 }
 
 // NewLoginPageData creates and populates a LoginPageData struct.
@@ -497,7 +503,7 @@ func NewLoginPageData(redirectURL string, gatewayConfig *GatewayConfig) loginPag
 	data.AuthenticationProviders.Google.Enabled = gatewayConfig.AuthenticationProviders.Google.ClientId != ""
 	data.AuthenticationProviders.Github.Enabled = gatewayConfig.AuthenticationProviders.Github.ClientId != ""
 	for _, p := range gatewayConfig.AuthenticationProviders.OIDC {
-		data.AuthenticationProviders.OIDC = append(data.AuthenticationProviders.OIDC, OIDCLoginButton{Name: p.Name, Label: p.DisplayLabel()})
+		data.AuthenticationProviders.OIDC = append(data.AuthenticationProviders.OIDC, OIDCLoginButton{Name: p.Name, Label: p.DisplayLabel(), Signup: p.Signup})
 	}
 	data.Branding.LogoUrl = gatewayConfig.Branding.LogoUrl
 	return data

@@ -198,6 +198,7 @@ func NewOIDCAuthenticationProvider(cfg config.OIDCProviderConfig, sessionStore s
 	ap := NewAuthenticationProvider(oauthConfig, OIDCProvider{name: cfg.Name}, cfg.DisplayLabel(), userRepo, sessionStore, gatewayConfig, accountsService)
 	ap.Fetcher = &OIDCUserDataFetcher{discovery: discovery, trustEmail: cfg.TrustEmail, provider: cfg.Name}
 	ap.UsePKCE = true
+	ap.AllowSignup = cfg.Signup
 	ap.Prepare = func(ctx context.Context) error {
 		_, err := discovery.load(ctx)
 		return err

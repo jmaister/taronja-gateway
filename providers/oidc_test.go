@@ -247,3 +247,33 @@ func TestOIDCDiscovery_RejectsIssuerMismatch(t *testing.T) {
 }
 
 func testDBConn() *gorm.DB { return db.GetConnection() }
+
+func TestOIDCLogin_SignupAsksForTheRegistrationForm(t *testing.T) {
+	authorize := func(h *oidcHarness, path string) url.Values {
+		w := httptest.NewRecorder()
+		h.mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusTemporaryRedirect, w.Code, w.Body.String())
+		location, err := url.Parse(w.Header().Get("Location"))
+		require.NoError(t, err)
+		redirectCookie := ""
+		for _, c := range w.Result().Cookies() {
+			if c.Name == RedirectUrlCookieName {
+				redirectCookie = c.Value
+			}
+		}
+		q := location.Query()
+		q.Set("test_redirect_cookie", redirectCookie)
+		return q
+	}
+
+	enabled := newOIDCHarness(t, func(c *config.OIDCProviderConfig) { c.Signup = true })
+	q := authorize(enabled, "/_/auth/zid/login?signup=1&redirect=/start")
+	assert.Equal(t, "create", q.Get("prompt"))
+	assert.Equal(t, "S256", q.Get("code_challenge_method"))
+	assert.Equal(t, "/start", q.Get("test_redirect_cookie"))
+
+	assert.Empty(t, authorize(enabled, "/_/auth/zid/login?redirect=/start").Get("prompt"))
+
+	disabled := newOIDCHarness(t, nil)
+	assert.Empty(t, authorize(disabled, "/_/auth/zid/login?signup=1").Get("prompt"))
+}

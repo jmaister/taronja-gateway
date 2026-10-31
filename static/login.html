@@ -245,6 +245,11 @@
             <a href="{{$.ManagementPrefix}}/auth/{{.Name}}/login{{if $.RedirectURL}}?redirect={{urlquery $.RedirectURL}}{{end}}" class="oauth-provider oauth-oidc">
                 Login with {{.Label}}
             </a>
+            {{if .Signup}}
+            <a href="{{$.ManagementPrefix}}/auth/{{.Name}}/login?signup=1{{if $.RedirectURL}}&redirect={{urlquery $.RedirectURL}}{{end}}" class="oauth-provider oauth-oidc">
+                Crear cuenta
+            </a>
+            {{end}}
             {{end}}
         </div>
 

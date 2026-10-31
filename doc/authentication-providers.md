@@ -62,6 +62,7 @@ authenticationProviders:
       clientSecret: ${ZITADEL_CLIENT_SECRET}   # empty for a public (PKCE) client
       # scopes: [openid, email, profile]       # the default
       # trustEmail: false                      # see below
+      # signup: false                          # see "Self-registration"
 ```
 
 At the provider, create a web application with the authorization code flow
@@ -89,6 +90,18 @@ How it works:
   described in [accounts.md](accounts.md#how-an-external-login-is-resolved).
 - `name` must be lowercase letters, digits or `-`, and not `basic`, `google`,
   or `github`.
+
+### Self-registration
+
+The gateway has no sign-up form: let the provider do it. With `signup: true`
+the login page shows a "Crear cuenta" link, and
+`/_/auth/<name>/login?signup=1&redirect=/start` sends the authorization
+request with `prompt=create`, which opens the provider's registration form
+(without `signup: true` the parameter is ignored). The `redirect` is kept as
+in a normal login. In Zitadel, enable **Register allowed** in the
+organization's *Login Behavior* settings and require verified emails
+(*Login Behavior → Verify email*), so the gateway sees `email_verified: true`
+and only links accounts of verified emails.
 
 The end-to-end tests run this against a real Zitadel (`e2e/zitadel_test.go`).
 

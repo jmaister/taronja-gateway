@@ -57,3 +57,17 @@ func TestLoginPage_RedirectsALoggedInUserOnTheServer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code, "no session: the page is shown")
 	assert.Contains(t, w.Body.String(), `name="password"`)
 }
+
+func TestLoginPage_SignupLinkOnlyWhenTheOIDCProviderAllowsIt(t *testing.T) {
+	oidc := func(signup bool) config.AuthenticationProviders {
+		return config.AuthenticationProviders{OIDC: []config.OIDCProviderConfig{{Name: "zitadel", Issuer: "https://auth.example.com", ClientId: "id", Signup: signup}}}
+	}
+
+	gw, _ := newLoginTestGateway(t, oidc(false))
+	assert.NotContains(t, get(gw, "/_/login").Body.String(), "Crear cuenta")
+
+	gw, _ = newLoginTestGateway(t, oidc(true))
+	body := get(gw, "/_/login?redirect=/start").Body.String()
+	assert.Contains(t, body, "Crear cuenta")
+	assert.Contains(t, body, "/_/auth/zitadel/login?signup=1&redirect=%2Fstart")
+}
