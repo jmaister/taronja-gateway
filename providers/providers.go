@@ -130,6 +130,10 @@ type AuthenticationProvider struct {
 	// the verifier to the token exchange.
 	UsePKCE bool
 
+	// AllowSignup lets ?signup=1 on the login URL send prompt=create, which
+	// opens the provider's registration form.
+	AllowSignup bool
+
 	// Prepare, when set, runs before the provider's endpoints are used (for
 	// OIDC: discovery). An error answers 503, so a provider that is down does
 	// not break the rest of the gateway.
@@ -183,6 +187,9 @@ func (ap *AuthenticationProvider) startAuth(w http.ResponseWriter, r *http.Reque
 	var opts []oauth2.AuthCodeOption
 	if ap.ResponseMode != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("response_mode", ap.ResponseMode))
+	}
+	if ap.AllowSignup && r.URL.Query().Get("signup") == "1" {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", "create"))
 	}
 	if ap.UsePKCE {
 		verifier := oauth2.GenerateVerifier()
