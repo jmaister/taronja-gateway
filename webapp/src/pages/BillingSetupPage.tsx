@@ -8,6 +8,8 @@ import {
     useRunBillingSetupAction,
 } from '../services/billing';
 
+const isStripeLink = (url: string) => url.includes('stripe.com');
+
 function StatusBadge({ status }: { status: string }) {
     const badges: Record<string, { bg: string; color: string; label: string }> = {
         ok: { bg: 'bg-success/10', color: 'text-success', label: 'OK' },
@@ -64,11 +66,12 @@ export function BillingSetupPage() {
                                         {check.link && !check.link.startsWith('/') && (
                                             <a
                                                 href={check.link}
+                                                title={isStripeLink(check.link) ? 'Opens the Stripe dashboard in a new tab' : undefined}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-sm text-primary hover:underline flex items-center gap-1"
                                             >
-                                                More info ↗
+                                                {isStripeLink(check.link) ? 'Open in Stripe ↗' : 'More info ↗'}
                                             </a>
                                         )}
                                         {check.action && (
