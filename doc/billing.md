@@ -368,7 +368,7 @@ session or admin API token.
 | `GET /billing/documents?subject=&state=`, `POST /billing/documents/{id}/retry` | admin |
 | `GET /billing/documents/{id}/pdf` | admin, payer, organization owners |
 | `GET /me/billing` | the user: subscriptions and documents of themselves and of organizations they own |
-| `POST /me/billing/portal` `{subject}` | the payer or an owner: a Stripe portal URL |
+| `POST /me/billing/portal` `{subject, returnUrl?}` | the payer or an owner: a Stripe portal URL; `returnUrl` is a path on this site where Stripe sends the user back (default `/_/account`; anything else is ignored) |
 | `GET /billing/setup` , `POST /billing/setup/actions` | admin: configuration checks and fixes |
 
 Pages (server-rendered like the account pages): `/_/pay/{plan}` (GET page,

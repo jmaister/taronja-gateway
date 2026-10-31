@@ -685,7 +685,9 @@ type BillingPlanUpdate struct {
 
 // BillingPortalRequest defines model for BillingPortalRequest.
 type BillingPortalRequest struct {
-	Subject string `json:"subject"`
+	// ReturnUrl Path on this site where Stripe sends the user back (default /_/account); anything else is ignored.
+	ReturnUrl *string `json:"returnUrl,omitempty"`
+	Subject   string  `json:"subject"`
 }
 
 // BillingPortalResponse defines model for BillingPortalResponse.

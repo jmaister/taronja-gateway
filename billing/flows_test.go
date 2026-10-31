@@ -519,13 +519,24 @@ func TestPortalURL(t *testing.T) {
 	require.NoError(t, e.orgs.SetMember(orgID, "owner1", "owner"))
 	require.NoError(t, e.repo.SaveCustomer(&db.BillingCustomer{Subject: "org:" + orgID, StripeCustomerID: "cus_9"}))
 
-	u, err := e.svc.PortalURL(ctx, "org:"+orgID, "owner1")
+	u, err := e.svc.PortalURL(ctx, "org:"+orgID, "owner1", "")
 	require.NoError(t, err)
 	assert.Equal(t, "https://billing.stripe.test/p/cus_9", u)
-	_, err = e.svc.PortalURL(ctx, "org:"+orgID, "member1")
+	assert.Equal(t, e.svc.serverURL+"/_/account", e.stripe.PortalReturnURL)
+	for returnPath, want := range map[string]string{
+		"/org/1/settings":   "/org/1/settings",
+		"https://evil.test": "/_/account",
+		"//evil.test":       "/_/account",
+		"/\\evil.test":      "/_/account",
+	} {
+		_, err = e.svc.PortalURL(ctx, "org:"+orgID, "owner1", returnPath)
+		require.NoError(t, err)
+		assert.Equal(t, e.svc.serverURL+want, e.stripe.PortalReturnURL, returnPath)
+	}
+	_, err = e.svc.PortalURL(ctx, "org:"+orgID, "member1", "")
 	assert.ErrorIs(t, err, ErrForbidden)
-	_, err = e.svc.PortalURL(ctx, "user:u5", "u6")
+	_, err = e.svc.PortalURL(ctx, "user:u5", "u6", "")
 	assert.ErrorIs(t, err, ErrForbidden)
-	_, err = e.svc.PortalURL(ctx, "user:u5", "u5")
+	_, err = e.svc.PortalURL(ctx, "user:u5", "u5", "")
 	assert.True(t, errors.Is(err, ErrNotFound), err)
 }

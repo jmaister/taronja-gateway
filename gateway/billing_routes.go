@@ -284,7 +284,7 @@ func (g *Gateway) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) handlePortal(w http.ResponseWriter, r *http.Request, acct *accountRequest) {
-	portalURL, err := g.Dependencies.Billing.PortalURL(r.Context(), r.FormValue("subject"), acct.user.ID)
+	portalURL, err := g.Dependencies.Billing.PortalURL(r.Context(), r.FormValue("subject"), acct.user.ID, "")
 	if err != nil {
 		log.Printf("Account: portal for %s by %s: %v", r.FormValue("subject"), acct.user.ID, err)
 		g.renderAccountPage(w, http.StatusBadRequest, acct, "", "La suscripción no se puede gestionar ahora mismo.")

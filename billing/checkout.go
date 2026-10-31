@@ -260,8 +260,9 @@ func (s *Service) GetCheckout(id, userID string) (*db.BillingCheckout, error) {
 
 // PortalURL returns a Stripe Customer Portal URL for subject, for a user
 // allowed to manage it (the user themselves, or an owner of the
-// organization).
-func (s *Service) PortalURL(ctx context.Context, subject, userID string) (string, error) {
+// organization). Stripe sends them back to returnPath when it is a path on
+// this site, else to the account page.
+func (s *Service) PortalURL(ctx context.Context, subject, userID, returnPath string) (string, error) {
 	if s.stripe == nil {
 		return "", ErrNotConfigured
 	}
@@ -285,5 +286,8 @@ func (s *Service) PortalURL(ctx context.Context, subject, userID string) (string
 	if err != nil || c.StripeCustomerID == "" {
 		return "", fmt.Errorf("%w: no Stripe customer for %s", ErrNotFound, subject)
 	}
-	return s.stripe.PortalURL(ctx, c.StripeCustomerID, s.serverURL+"/_/account")
+	if returnPath = SafeRedirect(returnPath); returnPath == "" {
+		returnPath = "/_/account"
+	}
+	return s.stripe.PortalURL(ctx, c.StripeCustomerID, s.serverURL+returnPath)
 }
