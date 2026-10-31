@@ -298,6 +298,106 @@ type GatewayConfig struct {
 	Geolocation             GeolocationConfig       `yaml:"geolocation"`             // IP geolocation service settings. Optional.
 	Notification            NotificationConfig      `yaml:"notification"`            // Notification system settings. Optional.
 	Middleware              []MiddlewareConfig      `yaml:"middleware,omitempty"`    // Global middleware, run in list order. Optional; none when absent. See doc/middleware/.
+	Billing                 BillingConfig           `yaml:"billing,omitempty"`       // Payments, invoices and entitlements. Optional; disabled by default. See doc/billing.md.
+}
+
+// BillingConfig turns on payments (Stripe), invoices (Odoo) and entitlements:
+// plans sold at /_/pay/<plan> grant features that apps read from the
+// X-Entitlements header or GET /_/api/entitlements. See doc/billing.md.
+type BillingConfig struct {
+	Enabled bool                `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
+	Stripe  StripeBillingConfig `yaml:"stripe"`  // Stripe account. Required when enabled.
+	Odoo    OdooBillingConfig   `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
+	Email   BillingEmailConfig  `yaml:"email"`   // Look of the invoice emails. Optional. They are sent through notifications.email.
+}
+
+// BillingEmailConfig customizes the email the gateway sends with each invoice
+// and credit note (PDF attached).
+type BillingEmailConfig struct {
+	BrandName    string `yaml:"brandName"`    // Name in the header, the subject and the footer. Default: the server.url host.
+	LogoURL      string `yaml:"logoUrl"`      // Absolute URL of a logo shown at the top. Optional.
+	Thanks       string `yaml:"thanks"`       // Thank-you paragraph. Default: "Gracias por tu compra."
+	Footer       string `yaml:"footer"`       // Text at the bottom, e.g. company name and address. Optional.
+	TemplateFile string `yaml:"templateFile"` // Path of a Go html/template file that replaces the built-in HTML email. Optional; see doc/billing.md for its fields.
+}
+
+// StripeBillingConfig is the Stripe account payments go to.
+type StripeBillingConfig struct {
+	SecretKey     string `yaml:"secretKey"`        // Secret API key (sk_test_... or sk_live_...). Can use environment variables. Required. A test key is refused when server.url is a public https address.
+	WebhookSecret string `yaml:"webhookSecret"`    // Signing secret of the webhook endpoint <server.url>/_/billing/stripe/webhook (whsec_...). Can use environment variables. Required.
+	APIURL        string `yaml:"apiUrl,omitempty"` // Stripe API base URL. Default: https://api.stripe.com. For tests only.
+}
+
+// OdooBillingConfig is where invoices and credit notes are issued, through
+// Odoo's JSON-2 API (Odoo 19).
+type OdooBillingConfig struct {
+	URL              string `yaml:"url"`              // Odoo base URL, e.g. "https://odoo.example.com". Empty: Odoo is not configured and invoices stay pending.
+	Database         string `yaml:"database"`         // Odoo database name, sent as X-Odoo-Database. Required with url.
+	APIKey           string `yaml:"apiKey"`           // API key of the billing user (Billing + Contact creation rights). Can use environment variables. Required with url.
+	CompanyID        int64  `yaml:"companyId"`        // Company that issues the invoices. Required with url.
+	SalesJournalID   int64  `yaml:"salesJournalId"`   // Sales journal; must have Dedicated Credit Note Sequence on. Required with url.
+	PaymentJournalID int64  `yaml:"paymentJournalId"` // Bank journal where Stripe payments are registered (e.g. "Stripe"). Required with url.
+	TaxID            int64  `yaml:"taxId"`            // Sales tax, 21 % VAT included in price. Required with url.
+	APIKeyExpiresAt  string `yaml:"apiKeyExpiresAt"`  // Date (YYYY-MM-DD) the Odoo API key expires; the billing setup page warns 30 days before. Optional: unset, the page only reminds you to renew it.
+}
+
+// IsConfigured reports whether Odoo invoicing is set up.
+func (o OdooBillingConfig) IsConfigured() bool {
+	return o.URL != ""
+}
+
+// IsLiveStripeKey reports whether key is a live-mode Stripe key.
+func IsLiveStripeKey(key string) bool {
+	return strings.HasPrefix(key, "sk_live_") || strings.HasPrefix(key, "rk_live_")
+}
+
+func isLocalHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || strings.HasSuffix(host, ".localhost")
+}
+
+func (b BillingConfig) validate(serverURL string) error {
+	if !b.Enabled {
+		return nil
+	}
+	if serverURL == "" {
+		return fmt.Errorf("billing requires server.url, for the Stripe Checkout return URLs")
+	}
+	if b.Stripe.SecretKey == "" || b.Stripe.WebhookSecret == "" {
+		return fmt.Errorf("billing.stripe.secretKey and billing.stripe.webhookSecret are required when billing is enabled")
+	}
+	if !IsLiveStripeKey(b.Stripe.SecretKey) {
+		if u, err := url.Parse(serverURL); err == nil && u.Scheme == "https" && !isLocalHost(u.Hostname()) {
+			return fmt.Errorf("billing.stripe.secretKey is a test key but server.url %q is a public https address: use a live key (sk_live_ or rk_live_), or an http or localhost server.url", serverURL)
+		}
+	}
+	if b.Email.LogoURL != "" {
+		if _, err := url.ParseRequestURI(b.Email.LogoURL); err != nil {
+			return fmt.Errorf("billing.email.logoUrl is not a URL: %q", b.Email.LogoURL)
+		}
+	}
+	if b.Email.TemplateFile != "" {
+		if _, err := os.Stat(b.Email.TemplateFile); err != nil {
+			return fmt.Errorf("billing.email.templateFile: %w", err)
+		}
+	}
+	o := b.Odoo
+	if o.IsConfigured() {
+		if _, err := url.ParseRequestURI(o.URL); err != nil {
+			return fmt.Errorf("billing.odoo.url is not a URL: %q", o.URL)
+		}
+		if o.Database == "" || o.APIKey == "" {
+			return fmt.Errorf("billing.odoo.database and billing.odoo.apiKey are required with billing.odoo.url")
+		}
+		if o.CompanyID <= 0 || o.SalesJournalID <= 0 || o.PaymentJournalID <= 0 || o.TaxID <= 0 {
+			return fmt.Errorf("billing.odoo.companyId, salesJournalId, paymentJournalId and taxId are required with billing.odoo.url")
+		}
+		if o.APIKeyExpiresAt != "" {
+			if _, err := time.Parse(time.DateOnly, o.APIKeyExpiresAt); err != nil {
+				return fmt.Errorf("billing.odoo.apiKeyExpiresAt must be a date like 2026-12-31: %q", o.APIKeyExpiresAt)
+			}
+		}
+	}
+	return nil
 }
 
 // LoadConfig reads, parses, and validates the YAML configuration file.
@@ -411,6 +511,9 @@ func (c *GatewayConfig) Validate() error {
 		return fmt.Errorf("management.session.durationSeconds cannot be negative")
 	}
 	if err := validateOIDCProviders(c.AuthenticationProviders.OIDC); err != nil {
+		return err
+	}
+	if err := c.Billing.validate(c.Server.URL); err != nil {
 		return err
 	}
 	if err := validateMiddleware(c.Middleware); err != nil {

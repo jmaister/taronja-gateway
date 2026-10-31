@@ -1,0 +1,76 @@
+{{define "content"}}
+{{with .Account}}
+<section class="card">
+    <div class="row">
+        <div>
+            <h2>{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</h2>
+            {{if .Name}}<div class="muted">{{.Email}}</div>{{end}}
+            <div style="margin-top:6px">{{if .EmailConfirmed}}<span class="badge ok">Email confirmado</span>{{else}}<span class="badge warn">Email sin confirmar</span>{{end}}</div>
+        </div>
+        <div>
+            <a href="/">Volver a la aplicación</a> ·
+            <a href="{{$.Prefix}}/logout">Cerrar sesión</a>
+        </div>
+    </div>
+</section>
+
+{{with .Billing}}
+<section class="card">
+    <h2>Suscripciones</h2>
+    {{if .Subscriptions}}
+    <div class="table-wrap"><table>
+        <tr><th>Plan</th><th>Para</th><th>Estado</th><th>Próximo</th></tr>
+        {{range .Subscriptions}}
+        <tr>
+            <td><strong>{{.Plan}}</strong></td>
+            <td>{{.Owner}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.Status}}</span></td>
+            <td class="muted">{{.Next}}</td>
+        </tr>
+        {{end}}
+    </table></div>
+    {{else}}
+    <p class="empty">Todavía no tienes suscripciones.</p>
+    {{end}}
+</section>
+
+{{if .HasManage}}
+<section class="card">
+    <h2>Gestionar suscripción</h2>
+    <p class="hint muted">Haz clic para cambiar de plan, cambiar la tarjeta, ver tus pagos o cancelar. Irás al portal seguro de Stripe y volverás aquí al terminar.</p>
+    {{range .Subscriptions}}{{if .Manage}}
+    <div class="row">
+        <div><strong>{{.Plan}}</strong> <span class="muted">· {{.Owner}}</span></div>
+        <form method="POST" action="{{$.Prefix}}/account/billing/portal">
+            <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
+            <input type="hidden" name="subject" value="{{.Subject}}">
+            <button type="submit" class="small" title="Se abre en Stripe">Gestionar suscripción{{template "stripeicon"}}</button>
+            <span class="cue">Se abre en Stripe</span>
+        </form>
+    </div>
+    {{end}}{{end}}
+</section>
+{{end}}
+
+<section class="card">
+    <h2>Facturas</h2>
+    {{if .Documents}}
+    <div class="table-wrap"><table>
+        <tr><th>Documento</th><th>Para</th><th>Fecha</th><th class="num">Importe</th><th></th></tr>
+        {{range .Documents}}
+        <tr>
+            <td>{{.Number}} <span class="badge {{if eq .Kind "Abono"}}warn{{end}}">{{.Kind}}</span></td>
+            <td>{{.Owner}}</td>
+            <td class="muted">{{.Date}}</td>
+            <td class="num">{{.Amount}}</td>
+            <td class="num">{{if .PDF}}<a href="{{.PDF}}" target="_blank" rel="noopener">PDF</a>{{end}}</td>
+        </tr>
+        {{end}}
+    </table></div>
+    {{else}}
+    <p class="empty">Tus facturas aparecerán aquí después del primer pago. También te las enviamos por email.</p>
+    {{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

@@ -117,6 +117,10 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	metricsCfg, _ := builtin.GlobalOptions[builtin.TrafficMetricsConfig](g.MiddlewareChain, builtin.NameTrafficMetrics)
 	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
 	strictApiServer.SetFeatureFlags(g.Dependencies.FeatureFlags)
+	strictApiServer.SetOrganizations(g.Dependencies.OrganizationRepo)
+	if g.Dependencies.Billing != nil {
+		strictApiServer.SetBilling(g.Dependencies.Billing)
+	}
 	// Convert the StrictServerInterface to the standard ServerInterface
 
 	strictSessionMiddleware := builtin.StrictSessionMiddleware(g.Dependencies.SessionStore, g.Dependencies.TokenService, config.ManagementPrefix, false)
@@ -192,6 +196,9 @@ func (g *Gateway) registerLoginRoutes() {
 	loginPath := config.ManagementPrefix + "/login"
 	g.Mux.HandleFunc(loginPath, g.handleLoginPage)
 	log.Printf("Registered Management Route: %-25s | Path: %s | Auth: %t", "Login Page", loginPath, false) // Added log for login page
+
+	g.registerAccountRoutes()
+	g.registerBillingRoutes()
 }
 
 // handleLoginPage serves /_/login. A user who is already logged in goes

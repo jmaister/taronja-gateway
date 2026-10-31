@@ -1,0 +1,48 @@
+{{define "content"}}
+{{with .Pay}}
+<section class="card">
+{{if .Description}}<p>{{.Description}}</p>{{end}}
+<p class="price">{{.Price}} <span class="muted">IVA incluido</span></p>
+{{if .SetupFee}}<p class="muted">Más, una sola vez: {{.SetupFee}}</p>{{end}}
+{{if .Features}}<ul class="chips">{{range .Features}}<li>{{.}}</li>{{end}}</ul>{{end}}
+</section>
+<section class="card">
+{{if .NeedsOrg}}
+<p>Este plan se compra para una organización y todavía no perteneces a ninguna. Pide a la aplicación que te añada a la tuya.</p>
+{{else}}
+<h2>¿Para quién es?</h2>
+{{range .Options}}
+<div class="row">
+    <div>
+        <strong>{{.Label}}</strong>
+        {{if .Subscribed}}<span class="badge ok">suscrito</span>{{else if .Trial}}<span class="badge warn">Prueba gratuita de {{.Trial}} días</span>{{end}}
+    </div>
+    <div>
+        {{if .Subscribed}}
+        {{if .OrgID}}
+        <form method="POST" action="{{$.Prefix}}/account/billing/portal">
+            <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
+            <input type="hidden" name="subject" value="org:{{.OrgID}}">
+            <button type="submit" class="secondary" title="Se abre en Stripe">Gestionar suscripción{{template "stripeicon"}}</button>
+            <span class="cue">Se abre en Stripe</span>
+        </form>
+        {{else}}
+        <a class="button secondary" href="{{$.Prefix}}/account">Gestionar suscripción</a>
+        {{end}}
+        {{else}}
+        <form method="POST" action="{{$.Prefix}}/pay/{{$.Pay.Plan}}">
+            <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
+            <input type="hidden" name="org" value="{{.OrgID}}">
+            <input type="hidden" name="redirect" value="{{$.Pay.Redirect}}">
+            <button type="submit"{{if .Selected}} autofocus{{end}} title="Pago seguro en Stripe">Pagar{{template "stripeicon"}}</button>
+            <span class="cue">Pago seguro en Stripe</span>
+        </form>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+</section>
+<p class="muted">Los pagos los procesa Stripe. Te enviamos las facturas por email y las verás en tu cuenta.</p>
+{{end}}
+{{end}}

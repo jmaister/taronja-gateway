@@ -26,7 +26,7 @@ login form.
 | Service | Purpose | Host ports | Override |
 |---------|---------|------------|----------|
 | [Zitadel](https://zitadel.com/) + Postgres | OpenID Connect provider for the generic OIDC login. | `18180` | `E2E_ZITADEL_PORT` (compose) and `E2E_ZITADEL_URL` (tests) |
-| [Mailpit](https://mailpit.axllent.org/) | Catches every email the gateway sends. Tests read it back through Mailpit's API. | SMTP `11025`, web UI and API `18025` | `E2E_MAILPIT_SMTP_PORT`, `E2E_MAILPIT_HTTP_PORT` (compose) and `E2E_MAILPIT_URL` (tests) |
+| [Mailpit](https://mailpit.axllent.org/) | Catches every email the gateway sends. Tests read it back through Mailpit's API. | SMTP `11025`, web UI and API `18025` | `E2E_MAILPIT_SMTP_PORT`, `E2E_MAILPIT_HTTP_PORT` (compose) and `E2E_MAILPIT_URL` (tests). `make e2e-up` reuses a Mailpit already answering on that URL (another project's) instead of starting its own |
 
 Open http://localhost:18025 after `make e2e-up` to see the emails a test run sent.
 
@@ -56,4 +56,10 @@ seconds. First start takes about 40 seconds.
   public `/_/flags` endpoint and in the `X-Feature-Flags` header a proxied
   backend receives, and a client cannot forge that header.
 
-Tests use unique usernames/emails per run, so they do not need a clean Mailpit.
+Tests use unique usernames/emails per run, so they do not need a clean Mailpit. SMTP credentials are sent only when the Mailpit offers AUTH, so a shared Mailpit without it works too.
+
+Another Odoo: with `E2E_ODOO_URL` set, the billing tests use that Odoo instead of e2e/.odoo/env, read from `E2E_ODOO_DB`, `E2E_ODOO_API_KEY`, `E2E_ODOO_COMPANY_ID`, `E2E_ODOO_SALES_JOURNAL_ID`, `E2E_ODOO_PAYMENT_JOURNAL_ID` and `E2E_ODOO_TAX_ID`. They create invoices there, so use a test journal.
+
+Veri*Factu: `E2E_ODOO_VERIFACTU=1 make e2e` installs `l10n_es_edi_verifactu` in Odoo, loads Odoo's demo certificate on the company and registers invoices and credit notes against AEAT's pre-production service (needs internet); verified on Odoo 19.
+
+Real Stripe: `STRIPE_TEST_SECRET_KEY=sk_test_… go test -tags e2e -run TestLive ./billing/stripeapi/` creates a product, prices, a customer, Checkout sessions and a portal session in Stripe's test mode (refuses a live key; skipped when the variable is unset).

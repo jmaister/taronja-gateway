@@ -29,6 +29,13 @@ Users created before this feature keep logging in as before: migration
 account creation and automatic linking, with the client IP and user agent.
 There is no page for it yet.
 
+## Account page
+
+`/_/account` shows the signed-in user's email and, when billing is enabled, their
+subscriptions and documents with a button to the Stripe customer portal (see
+[billing.md](billing.md)). Forms are protected against CSRF with a token derived
+from the session. There is no password change, session list or manual linking.
+
 ## Where the code is
 
 - `accounts/` — the flows (`Service`), with no HTTP handlers.

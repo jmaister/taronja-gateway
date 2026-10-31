@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"net/url"
 	"regexp"
 	"testing"
@@ -31,6 +32,14 @@ type mailpitMessage struct {
 	From    mailpitAddress
 	To      []mailpitAddress
 	Text    string
+	HTML    string
+}
+
+// mailpitFullMessage is a message read with its body and attachments (the
+// summary has only the attachment count).
+type mailpitFullMessage struct {
+	mailpitMessage
+	Attachments []struct{ FileName, ContentType string }
 }
 
 // mailpitMessagesTo returns the messages Mailpit holds for one recipient, in
@@ -47,13 +56,13 @@ func mailpitMessagesTo(t *testing.T, recipient string) []mailpitMessage {
 }
 
 // mailpitMessage returns one message with its body.
-func mailpitGetMessage(t *testing.T, id string) mailpitMessage {
+func mailpitGetMessage(t *testing.T, id string) mailpitFullMessage {
 	t.Helper()
 	resp, err := http.Get(mailpitURL + "/api/v1/message/" + id)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var msg mailpitMessage
+	var msg mailpitFullMessage
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&msg))
 	return msg
 }
@@ -67,20 +76,38 @@ func requireMailpit(t *testing.T) {
 	resp.Body.Close()
 }
 
-func emailConfig() string {
-	return baseConfig(`authenticationProviders:
-  basic:
-    enabled: true
-notification:
+// mailpitAdvertisesAuth reports whether the SMTP server offers AUTH: the
+// compose Mailpit does, a Mailpit shared with other projects may not.
+func mailpitAdvertisesAuth() bool {
+	client, err := smtp.Dial("localhost:" + mailpitSMTPPort)
+	if err != nil {
+		return false
+	}
+	defer client.Close()
+	ok, _ := client.Extension("AUTH")
+	return ok
+}
+
+func notificationEmailYAML() string {
+	credentials := ""
+	if mailpitAdvertisesAuth() {
+		credentials = "    username: e2e\n    password: e2e-smtp-password\n"
+	}
+	return `notification:
   email:
     enabled: true
     host: localhost
     port: ` + mailpitSMTPPort + `
-    username: e2e
-    password: e2e-smtp-password
-    from: noreply@taronja.test
+` + credentials + `    from: noreply@taronja.test
     fromName: Taronja E2E
-`)
+`
+}
+
+func emailConfig() string {
+	return baseConfig(`authenticationProviders:
+  basic:
+    enabled: true
+` + notificationEmailYAML())
 }
 
 // A notification created through the API reaches the user's inbox over SMTP,

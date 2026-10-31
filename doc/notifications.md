@@ -428,3 +428,16 @@ go test ./handlers/... -run Notification -v
 - [README.md#authentication-providers](../README.md#authentication-providers) —
   the OAuth2 provider architecture this feature's `Provider`
   interface/registry design mirrors.
+
+## Notifications the gateway sends itself
+
+Billing ([billing.md](billing.md)) notifies the payer of a subscription and
+the owners of the organization it is for, through every channel they
+prefer, with these types (the URL opens the account page):
+
+| Type | When |
+|---|---|
+| `billing.payment_failed` | The first failed charge of a period; the body says until when the features stay active. |
+| `billing.trial_ending` | 3 days before a trial ends (unless it is set to cancel). |
+| `billing.canceled` | The subscription was canceled (portal, admin or Stripe). |
+| `billing.expired` | The grace period after a failed renewal ran out. |

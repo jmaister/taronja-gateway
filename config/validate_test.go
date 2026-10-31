@@ -121,3 +121,44 @@ func TestValidate_OIDCProviders(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_Billing(t *testing.T) {
+	stripe := StripeBillingConfig{SecretKey: "sk_live_x", WebhookSecret: "whsec_x"}
+	testKey := StripeBillingConfig{SecretKey: "sk_test_x", WebhookSecret: "whsec_x"}
+	odoo := OdooBillingConfig{URL: "https://odoo.example.com", Database: "prod", APIKey: "k", CompanyID: 1, SalesJournalID: 2, PaymentJournalID: 3, TaxID: 4}
+	server := ServerConfig{URL: "https://example.com"}
+	expiring := odoo
+	expiring.APIKeyExpiresAt = "2026-12-31"
+	badExpiry := odoo
+	badExpiry.APIKeyExpiresAt = "31/12/2026"
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"key expiry":            {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: expiring}}, ""},
+		"bad key expiry":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: badExpiry}}, "apiKeyExpiresAt"},
+		"bad logo":              {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{LogoURL: "logo.png"}}}, "logoUrl"},
+		"missing template":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{TemplateFile: "/nonexistent/email.html"}}}, "templateFile"},
+		"test key public https": {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: testKey}}, "test key"},
+		"test key http":         {GatewayConfig{Server: ServerConfig{URL: "http://192.168.1.35:18480"}, Billing: BillingConfig{Enabled: true, Stripe: testKey}}, ""},
+		"test key localhost":    {GatewayConfig{Server: ServerConfig{URL: "https://localhost:8443"}, Billing: BillingConfig{Enabled: true, Stripe: testKey}}, ""},
+		"disabled":              {GatewayConfig{Billing: BillingConfig{Stripe: StripeBillingConfig{}}}, ""},
+		"stripe only":           {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe}}, ""},
+		"with odoo":             {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo}}, ""},
+		"no server url":         {GatewayConfig{Billing: BillingConfig{Enabled: true, Stripe: stripe}}, "requires server.url"},
+		"no stripe keys":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true}}, "secretKey and billing.stripe.webhookSecret"},
+		"odoo incomplete":       {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://odoo.example.com", Database: "d", APIKey: "k"}}}, "companyId"},
+		"odoo bad url":          {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "odoo", Database: "d", APIKey: "k"}}}, "not a URL"},
+		"odoo no database":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://o.example"}}}, "database"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
