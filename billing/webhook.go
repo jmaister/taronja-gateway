@@ -105,6 +105,8 @@ func (s *Service) apply(tx *webhookTx, ev Event) error {
 			return s.onInvoiceFailed(tx, ev)
 		case ev.Refund != nil:
 			return s.onRefund(tx, ev)
+		case ev.Customer != nil:
+			return s.onCustomerUpdated(tx, ev)
 		}
 		return nil
 	}
@@ -242,7 +244,7 @@ func (s *Service) saveCustomerDetails(repo repositories.BillingRepository, subje
 	if cev.Email != "" {
 		c.Email = cev.Email
 	}
-	if cev.TaxID != "" {
+	if cev.TaxID != "" && c.TaxID == "" {
 		c.TaxID = cev.TaxID
 	}
 	if cev.BillingAddress != (Address{}) {
@@ -250,6 +252,44 @@ func (s *Service) saveCustomerDetails(repo repositories.BillingRepository, subje
 		c.AddressLine1, c.AddressLine2, c.PostalCode, c.City, c.State, c.Country = a.Line1, a.Line2, a.PostalCode, a.City, a.State, a.Country
 	}
 	return repo.SaveCustomer(c)
+}
+
+// onCustomerUpdated copies what the customer edited at Stripe (the Customer
+// Portal) into the details invoices are issued to; the next invoice sends
+// them to Odoo (ensurePartner). The tax id is kept once saved: changing it
+// takes a new account.
+func (s *Service) onCustomerUpdated(tx *webhookTx, ev Event) error {
+	cu := ev.Customer
+	c, err := tx.repo.GetCustomerByStripeID(cu.CustomerID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if c.StripeEventAt != nil && ev.Created.Before(*c.StripeEventAt) {
+		log.Printf("billing: %s %s is older than the customer's details, ignored", ev.Type, ev.ID)
+		return nil
+	}
+	c.StripeEventAt = &ev.Created
+	if cu.Name != "" {
+		c.Name = cu.Name
+	}
+	if cu.Email != "" {
+		c.Email = cu.Email
+	}
+	if cu.Address != (Address{}) {
+		a := cu.Address
+		c.AddressLine1, c.AddressLine2, c.PostalCode, c.City, c.State, c.Country = a.Line1, a.Line2, a.PostalCode, a.City, a.State, a.Country
+	}
+	switch {
+	case cu.TaxID == "" || cu.TaxID == c.TaxID:
+	case c.TaxID == "":
+		c.TaxID = cu.TaxID
+	default:
+		log.Printf("billing: customer %s has tax id %q at Stripe, keeping the saved one (event %s)", cu.CustomerID, cu.TaxID, ev.ID)
+	}
+	return tx.repo.SaveCustomer(c)
 }
 
 func markTrial(repo repositories.BillingRepository, subject, group string) error {

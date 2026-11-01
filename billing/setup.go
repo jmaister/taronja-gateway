@@ -17,6 +17,7 @@ const (
 var WebhookEvents = []string{
 	EventCheckoutCompleted, EventCheckoutExpired, EventSubscriptionCreated, EventSubscriptionUpdated,
 	EventSubscriptionDeleted, EventInvoicePaid, EventInvoicePaymentFailed, EventChargeRefunded,
+	EventCustomerUpdated,
 }
 
 // SetupChecks lists what the billing setup page shows: Stripe, the plans

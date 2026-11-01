@@ -263,12 +263,18 @@ func TestPortal(t *testing.T) {
 	assert.Equal(t, "prod_1", form.Get("features[subscription_update][products][0][product]"))
 	assert.Equal(t, "price_y", form.Get("features[subscription_update][products][0][prices][1]"))
 	assert.Equal(t, "https://gw/_/account", form.Get("default_return_url"))
+	assert.Equal(t, "true", form.Get("features[customer_update][enabled]"))
+	assert.Equal(t, "name", form.Get("features[customer_update][allowed_updates][0]"))
+	assert.Equal(t, "address", form.Get("features[customer_update][allowed_updates][1]"))
+	assert.Empty(t, form.Get("features[customer_update][allowed_updates][2]"), "neither tax id, email nor phone")
 
 	_, err = c.ConfigurePortal(context.Background(), billing.PortalParams{ReturnURL: "https://gw/_/account"})
 	require.NoError(t, err)
 	req := f.last(t)
 	assert.Equal(t, "/v1/billing_portal/configurations/bpc_1", req.Path)
 	assert.Equal(t, "false", req.Form.Get("features[subscription_update][enabled]"))
+	assert.Equal(t, "true", req.Form.Get("features[customer_update][enabled]"))
+	assert.Equal(t, "address", req.Form.Get("features[customer_update][allowed_updates][1]"))
 
 	u, err := c.PortalURL(context.Background(), "cus_1", "https://gw/_/account")
 	require.NoError(t, err)

@@ -145,3 +145,19 @@ func TestParseWebhook_BadSignature(t *testing.T) {
 	_, err = other.ParseWebhook(payload, sign(payload))
 	assert.True(t, errors.Is(err, billing.ErrBadSignature), err)
 }
+
+func TestParseWebhook_CustomerUpdated(t *testing.T) {
+	c := New("sk_test_123", "whsec_test")
+	ev := parse(t, c, event("evt_c", "customer.updated", `{"id":"cus_1","object":"customer","name":"Escuela Nueva SL","email":"e@x.es","phone":"+34600000000",
+		"address":{"line1":"C/ Paz 2","line2":null,"postal_code":"28001","city":"Madrid","state":"M","country":"ES"},
+		"tax_ids":{"object":"list","data":[{"id":"txi_1","object":"tax_id","type":"es_cif","value":"B12345674"}],"has_more":false}}`))
+	assert.Equal(t, billing.EventCustomerUpdated, ev.Type)
+	assert.Equal(t, &billing.CustomerEvent{
+		CustomerID: "cus_1", Name: "Escuela Nueva SL", Email: "e@x.es", TaxID: "B12345674",
+		Address: billing.Address{Line1: "C/ Paz 2", PostalCode: "28001", City: "Madrid", State: "M", Country: "ES"},
+	}, ev.Customer)
+	assert.Nil(t, ev.Checkout)
+
+	ev = parse(t, c, event("evt_c2", "customer.updated", `{"id":"cus_2","object":"customer","name":"Ana","email":null,"address":null}`))
+	assert.Equal(t, &billing.CustomerEvent{CustomerID: "cus_2", Name: "Ana"}, ev.Customer)
+}

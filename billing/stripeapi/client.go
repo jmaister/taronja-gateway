@@ -244,6 +244,10 @@ func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string, 
 	return mapSubscription(sub), nil
 }
 
+// portalCustomerUpdates is what a customer may edit in the portal: the
+// invoice name and address. Not the tax id (immutable once set) nor the email.
+var portalCustomerUpdates = []string{"name", "address"}
+
 func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -263,6 +267,10 @@ func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (s
 				Mode:    stripe.String("at_period_end"),
 			},
 			InvoiceHistory: &stripe.BillingPortalConfigurationCreateFeaturesInvoiceHistoryParams{Enabled: stripe.Bool(false)},
+			CustomerUpdate: &stripe.BillingPortalConfigurationCreateFeaturesCustomerUpdateParams{
+				Enabled:        stripe.Bool(true),
+				AllowedUpdates: stripe.StringSlice(portalCustomerUpdates),
+			},
 			SubscriptionUpdate: &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateParams{
 				Enabled: stripe.Bool(len(products) > 0),
 			},
@@ -295,7 +303,13 @@ func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (s
 		}
 	}
 	params := &stripe.BillingPortalConfigurationUpdateParams{
-		Features:         &stripe.BillingPortalConfigurationUpdateFeaturesParams{SubscriptionUpdate: update},
+		Features: &stripe.BillingPortalConfigurationUpdateFeaturesParams{
+			SubscriptionUpdate: update,
+			CustomerUpdate: &stripe.BillingPortalConfigurationUpdateFeaturesCustomerUpdateParams{
+				Enabled:        stripe.Bool(true),
+				AllowedUpdates: stripe.StringSlice(portalCustomerUpdates),
+			},
+		},
 		DefaultReturnURL: stripe.String(p.ReturnURL),
 	}
 	cfg, err := c.sc.V1BillingPortalConfigurations.Update(ctx, c.portalConfigID, params)

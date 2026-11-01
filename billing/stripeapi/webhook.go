@@ -50,6 +50,16 @@ func (c *Client) ParseWebhook(payload []byte, signature string) (billing.Event, 
 			return billing.Event{}, fmt.Errorf("stripe: decoding invoice: %w", err)
 		}
 		out.Invoice = mapInvoice(&inv, out.Type == billing.EventInvoicePaid)
+	case billing.EventCustomerUpdated:
+		var cu stripe.Customer
+		err := json.Unmarshal(raw, &cu)
+		if err != nil {
+			return billing.Event{}, fmt.Errorf("stripe: decoding customer: %w", err)
+		}
+		out.Customer = &billing.CustomerEvent{CustomerID: cu.ID, Name: cu.Name, Email: cu.Email, Address: mapAddress(cu.Address)}
+		if cu.TaxIDs != nil && len(cu.TaxIDs.Data) > 0 {
+			out.Customer.TaxID = cu.TaxIDs.Data[0].Value
+		}
 	case billing.EventChargeRefunded:
 		var ch stripe.Charge
 		err := json.Unmarshal(raw, &ch)

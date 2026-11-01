@@ -176,6 +176,7 @@ const (
 	EventInvoicePaid          = "invoice.paid"
 	EventInvoicePaymentFailed = "invoice.payment_failed"
 	EventChargeRefunded       = "charge.refunded"
+	EventCustomerUpdated      = "customer.updated"
 )
 
 // Event is a verified Stripe event; exactly one payload field is set for the
@@ -188,6 +189,7 @@ type Event struct {
 	Subscription *StripeSubscription
 	Invoice      *InvoiceEvent
 	Refund       *RefundEvent
+	Customer     *CustomerEvent
 }
 
 // CheckoutEvent is a completed or expired Checkout Session.
@@ -233,6 +235,15 @@ type InvoiceEvent struct {
 	PaidAt          time.Time
 	// AttemptCount is the payment attempt number (payment_failed).
 	AttemptCount int64
+}
+
+// CustomerEvent is a Stripe customer whose details changed. TaxID is only
+// set when the event carries the customer's tax ids.
+type CustomerEvent struct {
+	CustomerID  string
+	Name, Email string
+	TaxID       string
+	Address     Address
 }
 
 // RefundEvent is a refunded charge.

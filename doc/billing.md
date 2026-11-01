@@ -33,7 +33,7 @@ any application.
 | Stripe | `stripe-go/v87` (API version `2026-09-30.endive`), hosted Checkout and Customer Portal; card data never reaches the gateway. Stripe sends no invoices or receipts. |
 | Odoo | One instance, one company, for every app. **JSON-2 API** (`/json/2/<model>/<method>`, Odoo 19); `/jsonrpc` and `/xmlrpc` are deprecated in Odoo 19 and removed in Odoo 22. Odoo 20 is not supported yet (it has no OIDC login). No custom Odoo module. |
 | Invoice series | One sales journal for every app: one invoice series plus its own credit note series (*Dedicated Credit Note Sequence*). Products tell apps apart. See [Invoice series](#invoice-series). |
-| Customer NIF | Optional, collected by Stripe Checkout. With NIF: full invoice (Veri\*Factu F1). Without: simplified invoice (F2). |
+| Customer NIF | Optional, collected by Stripe Checkout. With NIF: full invoice (Veri\*Factu F1). Without: simplified invoice (F2). Once saved the NIF is never replaced (not by Checkout, not by Stripe): to invoice another NIF the customer needs another account. |
 | Grace | 7 days after a failed renewal by default, per plan. Features stay active during grace. |
 | Emails | The gateway emails each invoice and credit note with its PDF attached (through `notification.email`; the look is `billing.email`). Odoo sends nothing. The gateway's notifications send the rest (payment failed, trial ending, cancelled). |
 | Data | No production data yet: migrations may assume empty billing tables. |
@@ -203,6 +203,7 @@ outbox.
 | `customer.subscription.deleted` | `canceled`. |
 | `invoice.paid` (amount > 0) | Invoice document for it; `past_due` → `active`, `grace_until` cleared. A zero invoice (trial start) creates nothing. |
 | `invoice.payment_failed` | `past_due`, `grace_until` = first failure + `grace_days` (kept on later failures of the same period); notification to the payer. |
+| `customer.updated` | What the customer edited at Stripe (the portal lets them change the invoice **name and address**; Checkout updates them too) is copied to the billing customer: name, email, address; the NIF only when none is saved. Unknown customers are ignored; an event older than the last applied one is dropped (`billing_customers.stripe_event_at`). Nothing goes to Odoo from the webhook: the next invoice upserts the partner from these details (`ensurePartner`), so it also works when Odoo was down. Invoices already issued are not touched. |
 | `charge.refunded` | Credit note document for the newly refunded amount (refunded so far minus earlier credit notes); a fully refunded purchase becomes `refunded`; a fully refunded subscription period stops counting (the subscription is cancelled at the same time by the admin action that refunded it). |
 
 ### Activation (megabox)
@@ -323,7 +324,8 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   updates its name and address.
 - Customer Portal: a configuration the gateway creates or updates at startup
   and from the setup page: update payment method, cancel at period end,
-  switch between plans of the same group, no invoice history (invoices come
+  switch between plans of the same group, edit the invoice name and address
+  (not the NIF nor the email; `customer.updated` brings the edits back), no invoice history (invoices come
   from Odoo), return URL `/_/account`.
 - Stripe settings done by hand (the setup page reminds): *Email customers
   about successful payments* and *Email finalized invoices* off.
@@ -340,7 +342,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `organization_members` | `organization_id`, `user_id` (unique pair), `role` |
 | `billing_plans` | `key` (PK), `name`, `description`, `kind`, `interval`, `amount_cents`, `currency`, `subject`, `trial_days`, `grace_days`, `setup_fee_cents`, `setup_fee_name`, `starts`, `access_days`, `collect_shipping`, `group_key`, `active`, `stripe_product_id`, `stripe_price_id`, `stripe_first_period_price_id`, `stripe_setup_fee_price_id`, `odoo_product_id`, `odoo_setup_fee_product_id`, timestamps |
 | `billing_plan_features` | `plan_key`, `feature` |
-| `billing_customers` | `subject` (PK), `stripe_customer_id`, `odoo_partner_id`, `name`, `email`, `tax_id`, `address_*`, `trial_groups` (groups already trialed) |
+| `billing_customers` | `subject` (PK), `stripe_customer_id`, `odoo_partner_id`, `name`, `email`, `tax_id`, `address_*`, `trial_groups` (groups already trialed), `stripe_event_at` (last `customer.updated` applied) |
 | `billing_checkouts` | `id`, `subject`, `plan_key`, `user_id` (payer), `stripe_session_id`, `status` (`open`, `completed`, `expired`), `redirect` |
 | `billing_subscriptions` | `id`, `subject`, `plan_key`, `payer_user_id`, `status`, `stripe_subscription_id` (unique, null while awaiting activation), `stripe_payment_method_id`, `current_period_end`, `trial_end`, `cancel_at_period_end`, `grace_until`, `activated_at`, `canceled_at` |
 | `billing_purchases` | `id`, `subject`, `plan_key`, `payer_user_id`, `checkout_id`, `subscription_id` (for a first payment), `status` (`paid`, `refunded`), `amount_cents`, `refunded_cents`, `stripe_payment_intent_id` (unique), `paid_at`, `shipping_*` (name, phone, address) |

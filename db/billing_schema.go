@@ -137,9 +137,11 @@ type BillingCustomer struct {
 	Country          string `gorm:"type:varchar(2)"`
 	// TrialGroups lists the plan groups this subject has had a trial in,
 	// comma-separated, so a trial is given once per group.
-	TrialGroups string    `gorm:"type:text"`
-	CreatedAt   time.Time `gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+	TrialGroups string `gorm:"type:text"`
+	// StripeEventAt is the creation time of the last customer.updated applied.
+	StripeEventAt *time.Time
+	CreatedAt     time.Time `gorm:"autoCreateTime"`
+	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
 }
 
 // Checkout statuses.
@@ -207,6 +209,11 @@ func (s *BillingSubscription) BeforeCreate(tx *gorm.DB) error {
 	id, err := newCUID()
 	s.ID = id
 	return err
+}
+
+func (c *BillingCustomer) BeforeSave(tx *gorm.DB) error {
+	c.StripeEventAt = utcPtr(c.StripeEventAt)
+	return nil
 }
 
 func (s *BillingSubscription) BeforeSave(tx *gorm.DB) error {
