@@ -124,6 +124,11 @@ type OIDCProviderConfig struct {
 	// form (prompt=create). The provider must allow self-registration.
 	// Default: false.
 	Signup bool `yaml:"signup"`
+	// LogoutAtProvider makes /_/logout also end the session at the provider
+	// (its end_session_endpoint), so the next login asks for credentials.
+	// Register <server.url>/ (or the ?redirect= path) as a post-logout
+	// redirect URI at the provider. Default: false.
+	LogoutAtProvider bool `yaml:"logoutAtProvider"`
 }
 
 // DisplayLabel returns the login button label.

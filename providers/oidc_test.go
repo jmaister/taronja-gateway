@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -26,11 +27,12 @@ type fakeOIDCServer struct {
 	*httptest.Server
 	t *testing.T
 
-	mu         sync.Mutex
-	issuer     string // overrides the advertised issuer when set
-	down       bool
-	challenges map[string]string // code -> PKCE challenge
-	claims     map[string]any
+	mu           sync.Mutex
+	issuer       string // overrides the advertised issuer when set
+	down         bool
+	noEndSession bool
+	challenges   map[string]string // code -> PKCE challenge
+	claims       map[string]any
 	// lastTokenForm and lastBasicAuth record how the client authenticated.
 	lastTokenForm url.Values
 	lastBasicUser string
@@ -57,12 +59,16 @@ func (f *fakeOIDCServer) serve(w http.ResponseWriter, r *http.Request) {
 		if f.issuer != "" {
 			issuer = f.issuer
 		}
-		json.NewEncoder(w).Encode(map[string]string{
+		doc := map[string]string{
 			"issuer":                 issuer,
 			"authorization_endpoint": f.URL + "/authorize",
 			"token_endpoint":         f.URL + "/token",
 			"userinfo_endpoint":      f.URL + "/userinfo",
-		})
+		}
+		if !f.noEndSession {
+			doc["end_session_endpoint"] = f.URL + "/end_session"
+		}
+		json.NewEncoder(w).Encode(doc)
 	case "/token":
 		require.NoError(f.t, r.ParseForm())
 		f.lastTokenForm = r.PostForm
@@ -276,4 +282,48 @@ func TestOIDCLogin_SignupAsksForTheRegistrationForm(t *testing.T) {
 
 	disabled := newOIDCHarness(t, nil)
 	assert.Empty(t, authorize(disabled, "/_/auth/zid/login?signup=1").Get("prompt"))
+}
+
+func newLogoutFor(t *testing.T, server *fakeOIDCServer, enabled bool) *OIDCLogout {
+	gatewayConfig := &config.GatewayConfig{
+		Server: config.ServerConfig{URL: "http://gateway.test/"},
+		AuthenticationProviders: config.AuthenticationProviders{OIDC: []config.OIDCProviderConfig{
+			{Name: "zid", Issuer: server.URL, ClientId: "client-1", LogoutAtProvider: enabled},
+		}},
+	}
+	return NewOIDCLogout(gatewayConfig)
+}
+
+func TestOIDCLogout_BuildsTheEndSessionURL(t *testing.T) {
+	server := newFakeOIDCServer(t)
+	logout := newLogoutFor(t, server, true)
+
+	got, ok := logout.URL(context.Background(), "zid", "/bye")
+	require.True(t, ok)
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	assert.Equal(t, server.URL+"/end_session", u.Scheme+"://"+u.Host+u.Path)
+	assert.Equal(t, "client-1", u.Query().Get("client_id"))
+	assert.Equal(t, "http://gateway.test/bye", u.Query().Get("post_logout_redirect_uri"))
+}
+
+func TestOIDCLogout_OptionOffOrOtherProvider(t *testing.T) {
+	server := newFakeOIDCServer(t)
+	assert.Nil(t, newLogoutFor(t, server, false))
+
+	logout := newLogoutFor(t, server, true)
+	_, ok := logout.URL(context.Background(), "github", "/")
+	assert.False(t, ok)
+}
+
+func TestOIDCLogout_FallsBackWithoutEndpointOrProvider(t *testing.T) {
+	server := newFakeOIDCServer(t)
+	server.set(func(f *fakeOIDCServer) { f.noEndSession = true })
+	_, ok := newLogoutFor(t, server, true).URL(context.Background(), "zid", "/")
+	assert.False(t, ok, "no end_session_endpoint")
+
+	down := newFakeOIDCServer(t)
+	down.set(func(f *fakeOIDCServer) { f.down = true })
+	_, ok = newLogoutFor(t, down, true).URL(context.Background(), "zid", "/")
+	assert.False(t, ok, "discovery fails")
 }

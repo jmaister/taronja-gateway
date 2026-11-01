@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"github.com/jmaister/taronja-gateway/billing"
 	"time"
 
@@ -44,6 +45,9 @@ type StrictApiServer struct {
 	// billing backs every billing and entitlement endpoint; nil when billing
 	// is disabled (they answer 503).
 	billing *billing.Service
+	// providerLogout returns the URL that ends the session at the identity
+	// provider of the session being closed; nil or false means no such step.
+	providerLogout func(ctx context.Context, provider, redirectPath string) (string, bool)
 	// excludeStaticAssets mirrors the traffic_metrics middleware option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
@@ -87,4 +91,9 @@ func (s *StrictApiServer) SetOrganizations(orgs repositories.OrganizationReposit
 // SetBilling sets the billing service.
 func (s *StrictApiServer) SetBilling(svc *billing.Service) {
 	s.billing = svc
+}
+
+// SetProviderLogout sets the end-session URL builder used by /logout.
+func (s *StrictApiServer) SetProviderLogout(f func(ctx context.Context, provider, redirectPath string) (string, bool)) {
+	s.providerLogout = f
 }

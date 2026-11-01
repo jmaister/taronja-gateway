@@ -117,6 +117,9 @@ func (g *Gateway) registerOpenAPIRoutes(prefix string) {
 	metricsCfg, _ := builtin.GlobalOptions[builtin.TrafficMetricsConfig](g.MiddlewareChain, builtin.NameTrafficMetrics)
 	strictApiServer.SetExcludeStaticAssets(metricsCfg.ExcludeStaticAssets)
 	strictApiServer.SetFeatureFlags(g.Dependencies.FeatureFlags)
+	if oidcLogout := providers.NewOIDCLogout(g.GatewayConfig); oidcLogout != nil {
+		strictApiServer.SetProviderLogout(oidcLogout.URL)
+	}
 	strictApiServer.SetOrganizations(g.Dependencies.OrganizationRepo)
 	if g.Dependencies.Billing != nil {
 		strictApiServer.SetBilling(g.Dependencies.Billing)

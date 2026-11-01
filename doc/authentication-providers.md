@@ -63,6 +63,7 @@ authenticationProviders:
       # scopes: [openid, email, profile]       # the default
       # trustEmail: false                      # see below
       # signup: false                          # see "Self-registration"
+      # logoutAtProvider: false                # see "Already logged in"
 ```
 
 At the provider, create a web application with the authorization code flow
@@ -113,8 +114,16 @@ page. One gateway session covers every route and app behind the same host, and i
 renews itself while used: only `management.session.durationSeconds` of
 inactivity (15 days by default) logs the user out.
 The login page itself never redirects to an external provider on its own:
-users always choose how to log in. Logout ends the gateway session only; the
-session at the provider stays, as with any other app that uses it.
+users always choose how to log in. By default logout ends the gateway session
+only; the session at the provider stays, so the next login may not ask for a
+password. Set `logoutAtProvider: true` on an OIDC provider to also end the
+session there: `/_/logout` then redirects the browser to the provider's
+`end_session_endpoint` with `client_id` and `post_logout_redirect_uri`
+(`<server.url>` plus the `?redirect=` path, default `/`). Register that URI at the
+provider next to the callback URI (for Zitadel: `<server.url>/` under post
+logout redirect URIs). If the provider cannot be reached or has no
+`end_session_endpoint`, logout falls back to the normal redirect. The browser
+must navigate to `/_/logout` (not `fetch` it) for the redirect to work.
 
 Microsoft (Entra ID / Azure AD), Facebook, and Apple ("Sign in with
 Apple") setup instructions moved to the `wip/microsoft-apple-facebook-auth`
