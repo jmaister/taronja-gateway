@@ -35,6 +35,8 @@ type CheckoutRequest struct {
 	OrgID string
 	// Redirect is where /_/pay/done links to (a path on this site).
 	Redirect string
+	// Direct: /_/pay/done sends the user straight to Redirect, with the state in the query.
+	Direct bool
 }
 
 // SafeRedirect keeps redirect only when it is a path on this site.
@@ -159,6 +161,7 @@ func (s *Service) StartCheckout(ctx context.Context, req CheckoutRequest) (*db.B
 		Subject: string(subject), PlanKey: plan.Key, UserID: req.Payer.UserID,
 		Status: db.CheckoutStatusOpen, Redirect: SafeRedirect(req.Redirect),
 	}
+	checkout.Direct = req.Direct && checkout.Redirect != ""
 	err = s.repo.CreateCheckout(checkout)
 	if err != nil {
 		return nil, "", err

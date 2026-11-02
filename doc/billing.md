@@ -155,7 +155,7 @@ Authenticated with a session or the admin API token, like every gateway API.
 ### Subscribe (pay link)
 
 1. The app links to `/_/pay/<plan>` (optionally `?org=<id>` and
-   `?redirect=<path>`). Academia's "Subscribe" button is such a link.
+   `?redirect=<path>`, `?direct=1`). Academia's "Subscribe" button is such a link.
 2. Not logged in → the login page, back here after.
 3. The page shows the plan (name, price VAT included, interval, trial,
    features in words) and the subject: the user, or one of their
@@ -180,6 +180,11 @@ Authenticated with a session or the admin API token, like every gateway API.
 5. `/_/pay/done` shows the state read from the gateway (it never decides
    anything), polling until the webhook has arrived, then links to
    `redirect`.
+   With `?direct=1` on the pay link (kept with the checkout, only when
+   `redirect` is a valid path on this site) the app shows its own
+   confirmation: `/_/pay/done` answers 302 at once to `redirect` with
+   `checkout=<id>&status=<completed|pending|expired>` appended, without
+   waiting for the webhook (`pending` = still open).
 
 ### Webhook (Stripe → gateway)
 
@@ -343,7 +348,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_plans` | `key` (PK), `name`, `description`, `kind`, `interval`, `amount_cents`, `currency`, `subject`, `trial_days`, `grace_days`, `setup_fee_cents`, `setup_fee_name`, `starts`, `access_days`, `collect_shipping`, `group_key`, `active`, `stripe_product_id`, `stripe_price_id`, `stripe_first_period_price_id`, `stripe_setup_fee_price_id`, `odoo_product_id`, `odoo_setup_fee_product_id`, timestamps |
 | `billing_plan_features` | `plan_key`, `feature` |
 | `billing_customers` | `subject` (PK), `stripe_customer_id`, `odoo_partner_id`, `name`, `email`, `tax_id`, `address_*`, `trial_groups` (groups already trialed), `stripe_event_at` (last `customer.updated` applied) |
-| `billing_checkouts` | `id`, `subject`, `plan_key`, `user_id` (payer), `stripe_session_id`, `status` (`open`, `completed`, `expired`), `redirect` |
+| `billing_checkouts` | `id`, `subject`, `plan_key`, `user_id` (payer), `stripe_session_id`, `status` (`open`, `completed`, `expired`), `redirect`, `direct` |
 | `billing_subscriptions` | `id`, `subject`, `plan_key`, `payer_user_id`, `status`, `stripe_subscription_id` (unique, null while awaiting activation), `stripe_payment_method_id`, `current_period_end`, `trial_end`, `cancel_at_period_end`, `grace_until`, `activated_at`, `canceled_at` |
 | `billing_purchases` | `id`, `subject`, `plan_key`, `payer_user_id`, `checkout_id`, `subscription_id` (for a first payment), `status` (`paid`, `refunded`), `amount_cents`, `refunded_cents`, `stripe_payment_intent_id` (unique), `paid_at`, `shipping_*` (name, phone, address) |
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |

@@ -238,3 +238,48 @@ func TestFormatEUR(t *testing.T) {
 	assert.Equal(t, "0,05 €", FormatEUR(5))
 	assert.Equal(t, "-10,50 €", FormatEUR(-1050))
 }
+
+func TestPayDoneDirect(t *testing.T) {
+	bg := newBillingGateway(t)
+	bg.plan(t, db.PlanSubjectOrg)
+	csrf := accounts.CSRFToken(bg.token)
+
+	start := func(redirect, direct string) *db.BillingCheckout {
+		form := url.Values{"csrf": {csrf}, "org": {bg.orgID}, "redirect": {redirect}}
+		if direct != "" {
+			form.Set("direct", direct)
+		}
+		resp := bg.do(t, http.MethodPost, "/_/pay/academia-monthly", form, true)
+		require.Equal(t, http.StatusSeeOther, resp.StatusCode, readBody(t, resp))
+		id := bg.stripe.Sessions[len(bg.stripe.Sessions)-1].CheckoutID
+		c, err := bg.deps.BillingRepo.GetCheckout(id)
+		require.NoError(t, err)
+		return c
+	}
+
+	c := start("/academia/billing?tab=1", "1")
+	assert.True(t, c.Direct)
+	for status, want := range map[string]string{db.CheckoutStatusOpen: "pending", db.CheckoutStatusCompleted: "completed", db.CheckoutStatusExpired: "expired"} {
+		c.Status = status
+		require.NoError(t, bg.deps.BillingRepo.UpdateCheckout(c))
+		resp := bg.do(t, http.MethodGet, "/_/pay/done?checkout="+c.ID, nil, true)
+		require.Equal(t, http.StatusFound, resp.StatusCode)
+		loc, err := url.Parse(resp.Header.Get("Location"))
+		require.NoError(t, err)
+		assert.Equal(t, "/academia/billing", loc.Path)
+		assert.Equal(t, url.Values{"tab": {"1"}, "checkout": {c.ID}, "status": {want}}, loc.Query())
+	}
+
+	assert.False(t, start("https://evil.test/x", "1").Direct, "an invalid redirect ignores direct")
+	assert.False(t, start("//evil.test", "1").Direct)
+
+	plain := start("/academia/billing", "")
+	assert.False(t, plain.Direct)
+	resp := bg.do(t, http.MethodGet, "/_/pay/done?checkout="+plain.ID, nil, true)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "without direct the page is shown")
+
+	page := readBody(t, bg.do(t, http.MethodGet, "/_/pay/academia-monthly?org="+bg.orgID+"&redirect=/x&direct=1", nil, true))
+	assert.Contains(t, page, `name="direct" value="1"`)
+	page = readBody(t, bg.do(t, http.MethodGet, "/_/pay/academia-monthly?org="+bg.orgID+"&redirect=/x", nil, true))
+	assert.NotContains(t, page, `name="direct"`)
+}

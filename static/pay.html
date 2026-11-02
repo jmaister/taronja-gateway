@@ -34,6 +34,7 @@
             <input type="hidden" name="csrf" value="{{$.Pay.CSRF}}">
             <input type="hidden" name="org" value="{{.OrgID}}">
             <input type="hidden" name="redirect" value="{{$.Pay.Redirect}}">
+            {{if $.Pay.Direct}}<input type="hidden" name="direct" value="1">{{end}}
             <button type="submit"{{if .Selected}} autofocus{{end}} title="Pago seguro en Stripe">Pagar{{template "stripeicon"}}</button>
             <span class="cue">Pago seguro en Stripe</span>
         </form>

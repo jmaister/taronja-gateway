@@ -160,6 +160,7 @@ type BillingCheckout struct {
 	StripeSessionID string    `gorm:"type:varchar(255);index"`
 	Status          string    `gorm:"type:varchar(20);not null"`
 	Redirect        string    `gorm:"type:varchar(500)"`
+	Direct          bool      `gorm:"not null;default:false"`
 	CreatedAt       time.Time `gorm:"autoCreateTime"`
 	UpdatedAt       time.Time `gorm:"autoUpdateTime"`
 }

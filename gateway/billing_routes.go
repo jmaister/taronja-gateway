@@ -36,6 +36,7 @@ type payView struct {
 	Features    []string
 	CSRF        string
 	Redirect    string
+	Direct      bool
 	Options     []payOption
 	// NeedsOrg: the plan is for organizations and the user has none.
 	NeedsOrg bool
@@ -135,10 +136,10 @@ func (g *Gateway) handlePayPage(w http.ResponseWriter, r *http.Request) {
 		g.loginFor(w, r)
 		return
 	}
-	g.renderPayPage(w, r, http.StatusOK, acct, r.PathValue("plan"), r.URL.Query().Get("org"), r.URL.Query().Get("redirect"), "")
+	g.renderPayPage(w, r, http.StatusOK, acct, r.PathValue("plan"), r.URL.Query().Get("org"), r.URL.Query().Get("redirect"), r.URL.Query().Get("direct") == "1", "")
 }
 
-func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status int, acct *accountRequest, planKey, orgID, redirect, errorText string) {
+func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status int, acct *accountRequest, planKey, orgID, redirect string, direct bool, errorText string) {
 	svc := g.Dependencies.Billing
 	plan, err := svc.GetPlan(planKey)
 	if err != nil || !plan.Active {
@@ -147,7 +148,7 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 	}
 	view := &payView{
 		Plan: plan.Key, Name: plan.Name, Description: plan.Description, Features: displayFeatures(plan.Features),
-		CSRF: accounts.CSRFToken(acct.session.Token), Redirect: billing.SafeRedirect(redirect),
+		CSRF: accounts.CSRFToken(acct.session.Token), Redirect: billing.SafeRedirect(redirect), Direct: direct,
 		Price: FormatEUR(plan.AmountCents),
 	}
 	switch plan.Interval {
@@ -218,9 +219,9 @@ func (g *Gateway) handlePay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Prohibido: el formulario ha caducado, recarga la página e inténtalo de nuevo", http.StatusForbidden)
 		return
 	}
-	planKey, orgID, redirect := r.PathValue("plan"), r.FormValue("org"), r.FormValue("redirect")
+	planKey, orgID, redirect, direct := r.PathValue("plan"), r.FormValue("org"), r.FormValue("redirect"), r.FormValue("direct") == "1"
 	_, checkoutURL, err := g.Dependencies.Billing.StartCheckout(r.Context(), billing.CheckoutRequest{
-		PlanKey: planKey, OrgID: orgID, Redirect: redirect,
+		PlanKey: planKey, OrgID: orgID, Redirect: redirect, Direct: direct,
 		Payer: billing.Payer{UserID: acct.user.ID, Name: acct.user.Name, Email: acct.user.Email},
 	})
 	switch {
@@ -229,12 +230,12 @@ func (g *Gateway) handlePay(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, billing.ErrForbidden):
 		g.renderMessage(w, http.StatusForbidden, "Organización no permitida", "Solo puedes pagar por ti o por una organización de la que eres propietario.", "/", "Volver")
 	case errors.Is(err, billing.ErrAlreadySubscribed):
-		g.renderPayPage(w, r, http.StatusConflict, acct, planKey, orgID, redirect, "Ya hay una suscripción a este plan: gestiónala en su lugar.")
+		g.renderPayPage(w, r, http.StatusConflict, acct, planKey, orgID, redirect, direct, "Ya hay una suscripción a este plan: gestiónala en su lugar.")
 	case errors.Is(err, billing.ErrInvalid), errors.Is(err, billing.ErrNotFound):
-		g.renderPayPage(w, r, http.StatusBadRequest, acct, planKey, orgID, redirect, strings.TrimPrefix(err.Error(), billing.ErrInvalid.Error()+": "))
+		g.renderPayPage(w, r, http.StatusBadRequest, acct, planKey, orgID, redirect, direct, strings.TrimPrefix(err.Error(), billing.ErrInvalid.Error()+": "))
 	default:
 		log.Printf("Pay: checkout for %s by %s failed: %v", planKey, acct.user.ID, err)
-		g.renderPayPage(w, r, http.StatusBadGateway, acct, planKey, orgID, redirect, "No se ha podido abrir la página de pago. Inténtalo de nuevo en un momento.")
+		g.renderPayPage(w, r, http.StatusBadGateway, acct, planKey, orgID, redirect, direct, "No se ha podido abrir la página de pago. Inténtalo de nuevo en un momento.")
 	}
 }
 
@@ -251,6 +252,10 @@ func (g *Gateway) handlePayDone(w http.ResponseWriter, r *http.Request) {
 		g.renderMessage(w, http.StatusNotFound, "Pago no encontrado", "No hemos encontrado este pago.", "/", "Volver")
 		return
 	}
+	if checkout.Direct && checkout.Redirect != "" {
+		g.redirectDirect(w, r, checkout)
+		return
+	}
 	redirect := checkout.Redirect
 	if redirect == "" {
 		redirect = "/"
@@ -258,6 +263,23 @@ func (g *Gateway) handlePayDone(w http.ResponseWriter, r *http.Request) {
 	page := g.newAuthPage("Pago")
 	page.PayDone = &payDoneView{Status: checkout.Status, Redirect: redirect}
 	g.renderAuthPage(w, http.StatusOK, "pay_done.html", page)
+}
+
+// redirectDirect sends the user to the checkout's redirect path with its state.
+func (g *Gateway) redirectDirect(w http.ResponseWriter, r *http.Request, checkout *db.BillingCheckout) {
+	status := checkout.Status
+	if status == db.CheckoutStatusOpen {
+		status = "pending"
+	}
+	target, err := url.Parse(checkout.Redirect)
+	if err != nil {
+		target = &url.URL{Path: "/"}
+	}
+	q := target.Query()
+	q.Set("checkout", checkout.ID)
+	q.Set("status", status)
+	target.RawQuery = q.Encode()
+	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
 // handleStripeWebhook applies a Stripe event. 400 for a bad signature
