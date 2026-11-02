@@ -10,6 +10,16 @@ import (
 	"github.com/jmaister/taronja-gateway/config"
 )
 
+// Version is the build version shown in the page footer; the CLI sets it at startup.
+var Version = "Dev"
+
+func footerVersion() string {
+	if Version != "" && Version[0] >= '0' && Version[0] <= '9' {
+		return "v" + Version
+	}
+	return Version
+}
+
 // authPageNames are the server-rendered page templates, each rendered inside
 // auth_layout.html.
 var authPageNames = []string{
@@ -37,6 +47,7 @@ type authPage struct {
 	Message string
 	Error   string
 	Wide    bool
+	Version string
 
 	Token     string
 	Body      string
@@ -52,7 +63,7 @@ func (g *Gateway) newAuthPage(title string) authPage {
 	if brand == "" {
 		brand = g.GatewayConfig.Name
 	}
-	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl, Brand: brand}
+	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl, Brand: brand, Version: footerVersion()}
 }
 
 func (g *Gateway) renderAuthPage(w http.ResponseWriter, status int, name string, page authPage) {

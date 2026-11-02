@@ -47,6 +47,7 @@ func (a *app) runGateway(configFilePath string) {
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Printf("Starting Taronja Gateway v%s...", a.build.Version)
+	gateway.Version = a.build.Version
 
 	cfg, err := config.LoadConfig(configFilePath)
 	if err != nil {
