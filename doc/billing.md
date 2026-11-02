@@ -423,6 +423,11 @@ page's *Invoice emails* check turns red in the first case.
 `.Description`, `.Amount`, `.Period`) and `.Notes` (the subscription
 sentences). The plain-text part is always the built-in one.
 
+`.Greeting` is "Hola <name>,": the name of the user who paid; without one,
+the billing name Stripe collected unless it contains a digit (buyers
+sometimes type the NIF there); otherwise just "Hola,". The invoice itself
+keeps the billing name and tax id.
+
 ## Configuration
 
 ```yaml

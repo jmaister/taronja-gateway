@@ -109,7 +109,7 @@ func TestInvoiceEmail_EscapesAndCreditNote(t *testing.T) {
 	e.svc.mailer = mailer
 	_, err := e.svc.CreatePlan(context.Background(), monthlyInput())
 	require.NoError(t, err)
-	require.NoError(t, e.repo.SaveCustomer(&db.BillingCustomer{Subject: "org:o1", Name: "<script>alert(1)</script>", Email: "e@x.es", Country: "ES"}))
+	require.NoError(t, e.repo.SaveCustomer(&db.BillingCustomer{Subject: "org:o1", Name: "<script>alert</script>", Email: "e@x.es", Country: "ES"}))
 	inv := e.invoice(t, "org:o1", "in_1")
 	e.process(t)
 	credit := &db.BillingDocument{Subject: "org:o1", Kind: db.DocumentCreditNote, StripeRef: "re_1", InvoiceDocumentID: &inv.ID, AmountCents: 1000, PaidAt: e.clock}
@@ -133,4 +133,34 @@ func TestInvoiceEmail_WithoutMailerOrCustomerEmailStillIssues(t *testing.T) {
 	e.process(t)
 	assert.Equal(t, db.OdooStateDone, e.doc(t, d.ID).OdooState)
 	assert.Nil(t, e.doc(t, d.ID).EmailedAt)
+}
+
+func TestInvoiceEmail_Greeting(t *testing.T) {
+	e := newEnv(t)
+	e.svc.userName = func(id string) string { return map[string]string{"u1": " Jordi B ", "u2": ""}[id] }
+	_, err := e.svc.CreatePlan(context.Background(), monthlyInput())
+	require.NoError(t, err)
+
+	sub := func(payer string) *db.BillingDocument {
+		s := &db.BillingSubscription{Subject: "org:o1", PlanKey: "academia-monthly", Status: db.SubscriptionActive, PayerUserID: payer}
+		require.NoError(t, e.repo.CreateSubscription(s))
+		return &db.BillingDocument{Subject: "org:o1", SubscriptionID: &s.ID}
+	}
+	greeting := func(d *db.BillingDocument, name, taxID string) string {
+		d.Lines = "[]"
+		mail, err := e.svc.invoiceEmail(d, &db.BillingCustomer{Name: name, TaxID: taxID})
+		require.NoError(t, err)
+		return mail.Greeting
+	}
+
+	assert.Equal(t, "Hola Jordi B,", greeting(sub("u1"), "ESB86561412", "B86561412"), "the payer's name wins")
+	assert.Equal(t, "Hola Escuela SL,", greeting(sub("u2"), "Escuela SL", "B86561412"), "no payer name: the billing name")
+	assert.Equal(t, "Hola,", greeting(sub("u2"), "ESB86561412", "B86561412"), "a name with digits is not used")
+	assert.Equal(t, "Hola,", greeting(sub("u2"), "B-86561412", ""), "a NIF typed as the name")
+	assert.Equal(t, "Hola,", greeting(sub("u1x"), "", ""), "nothing to greet with")
+	assert.Equal(t, "Hola,", greeting(&db.BillingDocument{Subject: "org:o1"}, "123", ""), "no subscription or purchase")
+
+	p := &db.BillingPurchase{Subject: "org:o1", PlanKey: "academia-monthly", PayerUserID: "u1"}
+	require.NoError(t, e.repo.CreatePurchase(p))
+	assert.Equal(t, "Hola Jordi B,", greeting(&db.BillingDocument{Subject: "org:o1", PurchaseID: &p.ID}, "", ""), "one-time purchase payer")
 }

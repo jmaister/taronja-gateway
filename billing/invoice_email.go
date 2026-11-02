@@ -73,8 +73,8 @@ func (s *Service) invoiceEmail(d *db.BillingDocument, c *db.BillingCustomer) (In
 			e.Thanks = "Hemos registrado tu reembolso."
 		}
 	}
-	if c.Name != "" {
-		e.Greeting = "Hola " + c.Name + ","
+	if name := s.greetingName(d, c); name != "" {
+		e.Greeting = "Hola " + name + ","
 	}
 	issued := d.PaidAt
 	if d.IssuedAt != nil {
@@ -95,6 +95,32 @@ func (s *Service) invoiceEmail(d *db.BillingDocument, c *db.BillingCustomer) (In
 		}
 	}
 	return e, nil
+}
+
+// greetingName is the name of the user who paid; without one, the billing
+// name Stripe collected, unless it has a digit: buyers sometimes
+// type the NIF in the name field.
+func (s *Service) greetingName(d *db.BillingDocument, c *db.BillingCustomer) string {
+	payer := ""
+	if d.SubscriptionID != nil {
+		if sub, err := s.repo.GetSubscription(*d.SubscriptionID); err == nil {
+			payer = sub.PayerUserID
+		}
+	} else if d.PurchaseID != nil {
+		if p, err := s.repo.GetPurchase(*d.PurchaseID); err == nil {
+			payer = p.PayerUserID
+		}
+	}
+	if payer != "" && s.userName != nil {
+		if name := strings.TrimSpace(s.userName(payer)); name != "" {
+			return name
+		}
+	}
+	name := strings.TrimSpace(c.Name)
+	if strings.ContainsAny(name, "0123456789") {
+		return ""
+	}
+	return name
 }
 
 func (s *Service) subscriptionNotes(sub *db.BillingSubscription) []string {

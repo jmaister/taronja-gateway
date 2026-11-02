@@ -35,6 +35,13 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 	svcCfg := billing.Config{
 		Repo: d.BillingRepo, Orgs: d.OrganizationRepo, ServerURL: serverCfg.URL, StripeMode: mode,
 		Stripe: stripeapi.New(cfg.Stripe.SecretKey, cfg.Stripe.WebhookSecret, stripeOpts...),
+		UserName: func(id string) string {
+			u, err := d.UserRepo.FindUserByIdOrUsername(id, "", "")
+			if err != nil || u == nil {
+				return ""
+			}
+			return u.Name
+		},
 	}
 	if cfg.Odoo.IsConfigured() {
 		svcCfg.Odoo = odooapi.New(cfg.Odoo)

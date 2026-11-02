@@ -40,6 +40,8 @@ type Config struct {
 	EmailTemplate *template.Template
 	// OdooKeyExpiresAt is when the Odoo API key expires; zero when unknown.
 	OdooKeyExpiresAt time.Time
+	// UserName gives the name of a user (the email greeting); may be nil.
+	UserName func(id string) string
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -58,6 +60,7 @@ type Service struct {
 
 	notifications *notification.Service
 	mailer        Mailer
+	userName      func(id string) string
 	email         config.BillingEmailConfig
 	emailTemplate *template.Template
 
@@ -88,7 +91,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
 		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, odooKeyExp: cfg.OdooKeyExpiresAt, now: now,
-		mailer: cfg.Mailer, email: cfg.Email, emailTemplate: cfg.EmailTemplate,
+		mailer: cfg.Mailer, userName: cfg.UserName, email: cfg.Email, emailTemplate: cfg.EmailTemplate,
 		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
 }
