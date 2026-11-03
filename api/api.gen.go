@@ -19,6 +19,42 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for BillingCustomerDetailsKind.
+const (
+	BillingCustomerDetailsKindCompany    BillingCustomerDetailsKind = "company"
+	BillingCustomerDetailsKindIndividual BillingCustomerDetailsKind = "individual"
+)
+
+// Valid indicates whether the value is a known member of the BillingCustomerDetailsKind enum.
+func (e BillingCustomerDetailsKind) Valid() bool {
+	switch e {
+	case BillingCustomerDetailsKindCompany:
+		return true
+	case BillingCustomerDetailsKindIndividual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingCustomerRequestKind.
+const (
+	BillingCustomerRequestKindCompany    BillingCustomerRequestKind = "company"
+	BillingCustomerRequestKindIndividual BillingCustomerRequestKind = "individual"
+)
+
+// Valid indicates whether the value is a known member of the BillingCustomerRequestKind enum.
+func (e BillingCustomerRequestKind) Valid() bool {
+	switch e {
+	case BillingCustomerRequestKindCompany:
+		return true
+	case BillingCustomerRequestKindIndividual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BillingDocumentKind.
 const (
 	CreditNote BillingDocumentKind = "credit_note"
@@ -532,6 +568,46 @@ type BillingCancelRequest struct {
 	// AtPeriodEnd true: features last until the period end; false: cancel now
 	AtPeriodEnd bool `json:"atPeriodEnd"`
 }
+
+// BillingCustomerDetails defines model for BillingCustomerDetails.
+type BillingCustomerDetails struct {
+	AddressLine1 string                      `json:"addressLine1"`
+	AddressLine2 string                      `json:"addressLine2"`
+	City         string                      `json:"city"`
+	Country      string                      `json:"country"`
+	Kind         *BillingCustomerDetailsKind `json:"kind"`
+	Name         string                      `json:"name"`
+	Phone        string                      `json:"phone"`
+	PostalCode   string                      `json:"postalCode"`
+	State        string                      `json:"state"`
+	Subject      string                      `json:"subject"`
+	TaxId        string                      `json:"taxId"`
+}
+
+// BillingCustomerDetailsKind defines model for BillingCustomerDetails.Kind.
+type BillingCustomerDetailsKind string
+
+// BillingCustomerRequest defines model for BillingCustomerRequest.
+type BillingCustomerRequest struct {
+	AddressLine1 string  `json:"addressLine1"`
+	AddressLine2 *string `json:"addressLine2,omitempty"`
+	City         string  `json:"city"`
+
+	// Country ISO 3166-1 alpha-2
+	Country    string                     `json:"country"`
+	Kind       BillingCustomerRequestKind `json:"kind"`
+	Name       string                     `json:"name"`
+	Phone      *string                    `json:"phone,omitempty"`
+	PostalCode string                     `json:"postalCode"`
+	State      *string                    `json:"state,omitempty"`
+	Subject    string                     `json:"subject"`
+
+	// TaxId NIF/NIE for an individual (optional), CIF for a company (required). Once saved it cannot change.
+	TaxId *string `json:"taxId,omitempty"`
+}
+
+// BillingCustomerRequestKind defines model for BillingCustomerRequest.Kind.
+type BillingCustomerRequestKind string
 
 // BillingDocument defines model for BillingDocument.
 type BillingDocument struct {
@@ -1810,6 +1886,12 @@ type GetEntitlementsParams struct {
 	OrgId *string `form:"org_id,omitempty" json:"org_id,omitempty"`
 }
 
+// GetMyBillingCustomerParams defines parameters for GetMyBillingCustomer.
+type GetMyBillingCustomerParams struct {
+	// Subject user:<id> or org:<id>
+	Subject string `form:"subject" json:"subject"`
+}
+
 // ListNotificationsParams defines parameters for ListNotifications.
 type ListNotificationsParams struct {
 	UnreadOnly *bool `form:"unreadOnly,omitempty" json:"unreadOnly,omitempty"`
@@ -2000,6 +2082,9 @@ type CreateFeatureFlagJSONRequestBody = FeatureFlagCreateRequest
 // UpdateFeatureFlagJSONRequestBody defines body for UpdateFeatureFlag for application/json ContentType.
 type UpdateFeatureFlagJSONRequestBody = FeatureFlagUpdateRequest
 
+// SaveMyBillingCustomerJSONRequestBody defines body for SaveMyBillingCustomer for application/json ContentType.
+type SaveMyBillingCustomerJSONRequestBody = BillingCustomerRequest
+
 // CreateMyBillingPortalJSONRequestBody defines body for CreateMyBillingPortal for application/json ContentType.
 type CreateMyBillingPortalJSONRequestBody = BillingPortalRequest
 
@@ -2119,6 +2204,12 @@ type ServerInterface interface {
 	// GetMyBilling The current user's subscriptions and invoices, and those of organizations they own
 	// (GET /api/me/billing)
 	GetMyBilling(w http.ResponseWriter, r *http.Request)
+	// GetMyBillingCustomer The invoice details saved for a subject the user pays or owns
+	// (GET /api/me/billing/customer)
+	GetMyBillingCustomer(w http.ResponseWriter, r *http.Request, params GetMyBillingCustomerParams)
+	// SaveMyBillingCustomer Save the invoice details of a subject before paying
+	// (POST /api/me/billing/customer)
+	SaveMyBillingCustomer(w http.ResponseWriter, r *http.Request)
 	// CreateMyBillingPortal A Stripe Customer Portal URL for a subject the user pays or owns
 	// (POST /api/me/billing/portal)
 	CreateMyBillingPortal(w http.ResponseWriter, r *http.Request)
@@ -3177,6 +3268,53 @@ func (siw *ServerInterfaceWrapper) GetMyBilling(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMyBilling(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyBillingCustomer operation middleware
+func (siw *ServerInterfaceWrapper) GetMyBillingCustomer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyBillingCustomerParams
+
+	// ------------- Required query parameter "subject" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "subject", r.URL.Query(), &params.Subject, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subject"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subject", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyBillingCustomer(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SaveMyBillingCustomer operation middleware
+func (siw *ServerInterfaceWrapper) SaveMyBillingCustomer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveMyBillingCustomer(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5031,6 +5169,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/documents/{id}/retry", wrapper.RetryBillingDocument)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/documents/{id}/pdf", wrapper.GetBillingDocumentPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/me/billing", wrapper.GetMyBilling)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/me/billing/customer", wrapper.GetMyBillingCustomer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/me/billing/customer", wrapper.SaveMyBillingCustomer)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/me/billing/portal", wrapper.CreateMyBillingPortal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/billing/setup", wrapper.GetBillingSetup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/billing/setup/actions", wrapper.RunBillingSetupAction)
@@ -7445,6 +7585,204 @@ func (response GetMyBilling500JSONResponse) VisitGetMyBillingResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingCustomerRequestObject struct {
+	Params GetMyBillingCustomerParams
+}
+
+type GetMyBillingCustomerResponseObject interface {
+	VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error
+}
+
+type GetMyBillingCustomer200JSONResponse BillingCustomerDetails
+
+func (response GetMyBillingCustomer200JSONResponse) VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingCustomer400JSONResponse Error
+
+func (response GetMyBillingCustomer400JSONResponse) VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingCustomer401JSONResponse Error
+
+func (response GetMyBillingCustomer401JSONResponse) VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingCustomer403JSONResponse Error
+
+func (response GetMyBillingCustomer403JSONResponse) VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingCustomer500JSONResponse Error
+
+func (response GetMyBillingCustomer500JSONResponse) VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyBillingCustomer503JSONResponse Error
+
+func (response GetMyBillingCustomer503JSONResponse) VisitGetMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomerRequestObject struct {
+	Body *SaveMyBillingCustomerJSONRequestBody
+}
+
+type SaveMyBillingCustomerResponseObject interface {
+	VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error
+}
+
+type SaveMyBillingCustomer200JSONResponse BillingCustomerDetails
+
+func (response SaveMyBillingCustomer200JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomer400JSONResponse Error
+
+func (response SaveMyBillingCustomer400JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomer401JSONResponse Error
+
+func (response SaveMyBillingCustomer401JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomer403JSONResponse Error
+
+func (response SaveMyBillingCustomer403JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomer409JSONResponse Error
+
+func (response SaveMyBillingCustomer409JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomer500JSONResponse Error
+
+func (response SaveMyBillingCustomer500JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveMyBillingCustomer503JSONResponse Error
+
+func (response SaveMyBillingCustomer503JSONResponse) VisitSaveMyBillingCustomerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -10592,6 +10930,12 @@ type StrictServerInterface interface {
 	// GetMyBilling The current user's subscriptions and invoices, and those of organizations they own
 	// (GET /api/me/billing)
 	GetMyBilling(ctx context.Context, request GetMyBillingRequestObject) (GetMyBillingResponseObject, error)
+	// GetMyBillingCustomer The invoice details saved for a subject the user pays or owns
+	// (GET /api/me/billing/customer)
+	GetMyBillingCustomer(ctx context.Context, request GetMyBillingCustomerRequestObject) (GetMyBillingCustomerResponseObject, error)
+	// SaveMyBillingCustomer Save the invoice details of a subject before paying
+	// (POST /api/me/billing/customer)
+	SaveMyBillingCustomer(ctx context.Context, request SaveMyBillingCustomerRequestObject) (SaveMyBillingCustomerResponseObject, error)
 	// CreateMyBillingPortal A Stripe Customer Portal URL for a subject the user pays or owns
 	// (POST /api/me/billing/portal)
 	CreateMyBillingPortal(ctx context.Context, request CreateMyBillingPortalRequestObject) (CreateMyBillingPortalResponseObject, error)
@@ -11609,6 +11953,63 @@ func (sh *strictHandler) GetMyBilling(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMyBillingResponseObject); ok {
 		if err := validResponse.VisitGetMyBillingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyBillingCustomer operation middleware
+func (sh *strictHandler) GetMyBillingCustomer(w http.ResponseWriter, r *http.Request, params GetMyBillingCustomerParams) {
+	var request GetMyBillingCustomerRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyBillingCustomer(ctx, request.(GetMyBillingCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyBillingCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyBillingCustomerResponseObject); ok {
+		if err := validResponse.VisitGetMyBillingCustomerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SaveMyBillingCustomer operation middleware
+func (sh *strictHandler) SaveMyBillingCustomer(w http.ResponseWriter, r *http.Request) {
+	var request SaveMyBillingCustomerRequestObject
+
+	var body SaveMyBillingCustomerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveMyBillingCustomer(ctx, request.(SaveMyBillingCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveMyBillingCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveMyBillingCustomerResponseObject); ok {
+		if err := validResponse.VisitSaveMyBillingCustomerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

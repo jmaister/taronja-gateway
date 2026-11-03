@@ -91,6 +91,9 @@ type CheckoutParams struct {
 	// SaveCard, for Mode "payment": keep the card for a subscription created later.
 	SaveCard        bool
 	CollectShipping bool
+	// AskCustomerType makes Checkout ask whether the buyer is a person or a
+	// business, and its name (used when the customer has no saved details).
+	AskCustomerType bool
 	SuccessURL      string
 	CancelURL       string
 	// Metadata goes on the session and, in subscription mode, the subscription.
@@ -126,6 +129,14 @@ type StripeSubscription struct {
 	Metadata          map[string]string
 }
 
+// StripeCustomerUpdate is what a customer entered in their billing details.
+type StripeCustomerUpdate struct {
+	Name, Phone string
+	Address     Address
+	// TaxID is a Spanish NIF/CIF (Stripe type es_cif) to add; "" adds none.
+	TaxID string
+}
+
 // PortalParams configures the Customer Portal.
 type PortalParams struct {
 	ReturnURL string
@@ -147,6 +158,9 @@ type Stripe interface {
 	// EnsureCustomer creates the customer (existingID "") or updates name
 	// and email, and returns its id.
 	EnsureCustomer(ctx context.Context, existingID, subject, name, email string) (string, error)
+	// UpdateCustomer writes the invoice details the customer gave and, with
+	// u.TaxID set, adds that tax id to the customer.
+	UpdateCustomer(ctx context.Context, customerID string, u StripeCustomerUpdate) error
 	CreateCheckoutSession(ctx context.Context, p CheckoutParams) (CheckoutSession, error)
 	CreateSubscription(ctx context.Context, p SubscriptionParams) (StripeSubscription, error)
 	// GetSubscription reads a subscription (a webhook that arrives before the

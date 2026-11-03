@@ -27,9 +27,16 @@ type FakeStripe struct {
 	Canceled        []string
 	Refunds         []FakeRefund
 	Portal          *PortalParams
+	CustomerUpdates []FakeCustomerUpdate
 
 	// Err, when set, is returned by every call.
 	Err error
+}
+
+// FakeCustomerUpdate is one recorded UpdateCustomer.
+type FakeCustomerUpdate struct {
+	CustomerID string
+	StripeCustomerUpdate
 }
 
 // FakeRefund is one recorded refund.
@@ -103,6 +110,16 @@ func (f *FakeStripe) EnsureCustomer(ctx context.Context, existingID, subject, na
 	}
 	f.Customers[existingID] = subject
 	return existingID, nil
+}
+
+func (f *FakeStripe) UpdateCustomer(ctx context.Context, customerID string, u StripeCustomerUpdate) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return f.Err
+	}
+	f.CustomerUpdates = append(f.CustomerUpdates, FakeCustomerUpdate{CustomerID: customerID, StripeCustomerUpdate: u})
+	return nil
 }
 
 func (f *FakeStripe) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (CheckoutSession, error) {
@@ -233,7 +250,9 @@ type FakeOdoo struct {
 	// FailIssue, when set, is returned by IssueMove (then cleared if FailOnce).
 	FailIssue error
 	FailOnce  bool
-	Now       func() time.Time
+	// FailPartner, when set, is returned by UpsertPartner.
+	FailPartner error
+	Now         func() time.Time
 }
 
 // FakeMove is an issued move.
@@ -253,6 +272,9 @@ func NewFakeOdoo() *FakeOdoo {
 func (f *FakeOdoo) UpsertPartner(ctx context.Context, p OdooPartner) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.FailPartner != nil {
+		return 0, f.FailPartner
+	}
 	id, ok := f.PartnerIDs[p.Ref]
 	if !ok {
 		f.n++

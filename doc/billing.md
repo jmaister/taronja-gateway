@@ -376,6 +376,8 @@ session or admin API token.
 | `GET /billing/documents/{id}/pdf` | admin, payer, organization owners |
 | `GET /me/billing` | the user: subscriptions and documents of themselves and of organizations they own |
 | `POST /me/billing/portal` `{subject, returnUrl?}` | the payer or an owner: a Stripe portal URL; `returnUrl` is a path on this site where Stripe sends the user back (default `/_/account`; anything else is ignored) |
+| `GET /me/billing/customer?subject=` | same authorization as the portal: the saved invoice details (`kind` is `null` and the fields are empty when nothing is saved) |
+| `POST /me/billing/customer` `{subject, kind, name, taxId?, addressLine1, addressLine2?, postalCode, city, state?, country, phone?}` | same authorization: saves the details before `/_/pay`. `kind` is `individual` or `company`; `country` is ISO-2. 200 returns what `GET` returns; 400 invalid (a Spanish NIF/NIE/CIF is checked with its control character, a company needs a `taxId`, other countries only get a length/characters check); 403 not allowed; 409 the account already has another `taxId` |
 | `GET /billing/setup` , `POST /billing/setup/actions` | admin: configuration checks and fixes |
 
 Pages (server-rendered like the account pages): `/_/pay/{plan}` (GET page,
@@ -549,3 +551,22 @@ Odoo module go away.
   its payments and book the fees by hand. It could be automated by importing
   the payouts as bank statements (Stripe balance transactions) or with an
   Odoo connector.
+
+## Invoice details before paying
+
+`POST /me/billing/customer` lets the app collect the fiscal data in its own
+form. The details are saved in `billing_customers` (`kind`, `phone` and the
+name, address and NIF it already had) and sent to the Stripe customer (name,
+phone, address, and the NIF as an `es_cif` tax id for Spain) and to the Odoo
+partner (`is_company` from `kind`, `vat`). If Odoo is down the request still
+succeeds: the next invoice upserts the partner again. A saved tax id never
+changes: the same one is accepted, another is a 409, and omitting it keeps the
+saved one.
+
+`/_/pay/<plan>` Checkout then opens on that Stripe customer with the details
+prefilled and keeps `tax_id_collection`. Only when no details are saved
+(`kind` empty) does Checkout also ask whether the buyer is a person or a
+business, and its name (`name_collection`). Without a NIF the document stays a
+simplified invoice (F2), as before.
+
+Existing databases need: `ALTER TABLE billing_customers ADD COLUMN phone varchar(50); ALTER TABLE billing_customers ADD COLUMN kind varchar(20);`.

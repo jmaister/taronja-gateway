@@ -135,6 +135,9 @@ type BillingCustomer struct {
 	City             string `gorm:"type:varchar(100)"`
 	State            string `gorm:"type:varchar(100)"`
 	Country          string `gorm:"type:varchar(2)"`
+	Phone            string `gorm:"type:varchar(50)"`
+	// Kind is "individual" or "company" once the customer said so ("" before).
+	Kind string `gorm:"type:varchar(20)"`
 	// TrialGroups lists the plan groups this subject has had a trial in,
 	// comma-separated, so a trial is given once per group.
 	TrialGroups string `gorm:"type:text"`

@@ -213,8 +213,9 @@ func (s *Service) ensurePartner(ctx context.Context, subject string) (int64, err
 	}
 	vat := normalizeVAT(c.TaxID, c.Country)
 	id, err := s.odoo.UpsertPartner(ctx, OdooPartner{
-		Ref: "tg:" + subject, Name: c.Name, Email: c.Email, VAT: vat, IsCompany: isSpanishCompanyID(vat),
-		Address: Address{Line1: c.AddressLine1, Line2: c.AddressLine2, PostalCode: c.PostalCode, City: c.City, State: c.State, Country: c.Country},
+		Ref: "tg:" + subject, Name: c.Name, Email: c.Email, VAT: vat,
+		IsCompany: c.Kind == KindCompany || (c.Kind == "" && isSpanishCompanyID(vat)),
+		Address:   Address{Line1: c.AddressLine1, Line2: c.AddressLine2, PostalCode: c.PostalCode, City: c.City, State: c.State, Country: c.Country},
 	})
 	if err != nil {
 		return 0, err

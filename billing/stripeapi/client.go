@@ -129,6 +129,29 @@ func (c *Client) EnsureCustomer(ctx context.Context, existingID, subject, name, 
 	return customer.ID, nil
 }
 
+func (c *Client) UpdateCustomer(ctx context.Context, customerID string, u billing.StripeCustomerUpdate) error {
+	params := &stripe.CustomerUpdateParams{
+		Name: stripe.String(u.Name), Phone: stripe.String(u.Phone),
+		Address: &stripe.AddressParams{
+			Line1: stripe.String(u.Address.Line1), Line2: stripe.String(u.Address.Line2),
+			PostalCode: stripe.String(u.Address.PostalCode), City: stripe.String(u.Address.City),
+			State: stripe.String(u.Address.State), Country: stripe.String(u.Address.Country),
+		},
+	}
+	_, err := c.sc.V1Customers.Update(ctx, customerID, params)
+	if err != nil {
+		return wrap(err)
+	}
+	if u.TaxID == "" {
+		return nil
+	}
+	_, err = c.sc.V1TaxIDs.Create(ctx, &stripe.TaxIDCreateParams{Customer: stripe.String(customerID), Type: stripe.String("es_cif"), Value: stripe.String(u.TaxID)})
+	if err != nil {
+		return wrap(err)
+	}
+	return nil
+}
+
 func (c *Client) CreateCheckoutSession(ctx context.Context, p billing.CheckoutParams) (billing.CheckoutSession, error) {
 	params := &stripe.CheckoutSessionCreateParams{
 		Customer:                 stripe.String(p.CustomerID),
@@ -143,6 +166,12 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p billing.CheckoutPa
 			Address: stripe.String("auto"),
 		},
 		TaxIDCollection: &stripe.CheckoutSessionCreateTaxIDCollectionParams{Enabled: stripe.Bool(true)},
+	}
+	if p.AskCustomerType {
+		params.NameCollection = &stripe.CheckoutSessionCreateNameCollectionParams{
+			Business:   &stripe.CheckoutSessionCreateNameCollectionBusinessParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(false)},
+			Individual: &stripe.CheckoutSessionCreateNameCollectionIndividualParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(false)},
+		}
 	}
 	if p.CollectShipping {
 		params.CustomerUpdate.Shipping = stripe.String("auto")

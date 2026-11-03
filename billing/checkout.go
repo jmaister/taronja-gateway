@@ -172,7 +172,7 @@ func (s *Service) StartCheckout(ctx context.Context, req CheckoutRequest) (*db.B
 		cancel += "?org=" + url.QueryEscape(req.OrgID)
 	}
 	params := CheckoutParams{
-		CheckoutID: checkout.ID, CustomerID: customer.StripeCustomerID, CollectShipping: plan.CollectShipping,
+		CheckoutID: checkout.ID, CustomerID: customer.StripeCustomerID, CollectShipping: plan.CollectShipping, AskCustomerType: customer.Kind == "",
 		SuccessURL: s.serverURL + "/_/pay/done?checkout=" + url.QueryEscape(checkout.ID), CancelURL: cancel,
 		Metadata: map[string]string{"tg_checkout": checkout.ID, "tg_subject": string(subject), "tg_plan": plan.Key},
 	}
@@ -269,21 +269,9 @@ func (s *Service) PortalURL(ctx context.Context, subject, userID, returnPath str
 	if s.stripe == nil {
 		return "", ErrNotConfigured
 	}
-	kind, id, err := ParseSubject(subject)
+	err := s.authorizeSubject(subject, userID)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalid, err)
-	}
-	switch {
-	case kind == SubjectUser && id != userID:
-		return "", ErrForbidden
-	case kind == SubjectOrg:
-		if s.orgs == nil {
-			return "", ErrForbidden
-		}
-		m, err := s.orgs.Member(id, userID)
-		if err != nil || m.Role != db.OrganizationRoleOwner {
-			return "", ErrForbidden
-		}
+		return "", err
 	}
 	c, err := s.repo.GetCustomer(subject)
 	if err != nil || c.StripeCustomerID == "" {
@@ -293,4 +281,26 @@ func (s *Service) PortalURL(ctx context.Context, subject, userID, returnPath str
 		returnPath = "/_/account"
 	}
 	return s.stripe.PortalURL(ctx, c.StripeCustomerID, s.serverURL+returnPath)
+}
+
+// authorizeSubject checks that userID may manage subject's billing: the user
+// themselves, or an owner of the organization.
+func (s *Service) authorizeSubject(subject, userID string) error {
+	kind, id, err := ParseSubject(subject)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	switch {
+	case kind == SubjectUser && id != userID:
+		return ErrForbidden
+	case kind == SubjectOrg:
+		if s.orgs == nil {
+			return ErrForbidden
+		}
+		m, err := s.orgs.Member(id, userID)
+		if err != nil || m.Role != db.OrganizationRoleOwner {
+			return ErrForbidden
+		}
+	}
+	return nil
 }

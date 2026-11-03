@@ -135,3 +135,88 @@ func (s *StrictApiServer) CreateMyBillingPortal(ctx context.Context, request api
 
 	return api.CreateMyBillingPortal200JSONResponse(api.BillingPortalResponse{Url: url}), nil
 }
+
+func customerDetailsToAPI(c *db.BillingCustomer) api.BillingCustomerDetails {
+	d := api.BillingCustomerDetails{
+		Subject: c.Subject, Name: c.Name, TaxId: c.TaxID, Phone: c.Phone,
+		AddressLine1: c.AddressLine1, AddressLine2: c.AddressLine2, PostalCode: c.PostalCode,
+		City: c.City, State: c.State, Country: c.Country,
+	}
+	if c.Kind != "" {
+		kind := api.BillingCustomerDetailsKind(c.Kind)
+		d.Kind = &kind
+	}
+	return d
+}
+
+// GetMyBillingCustomer handles GET /me/billing/customer (authenticated): the saved invoice details.
+func (s *StrictApiServer) GetMyBillingCustomer(ctx context.Context, request api.GetMyBillingCustomerRequestObject) (api.GetMyBillingCustomerResponseObject, error) {
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || !sess.IsAuthenticated {
+		return api.GetMyBillingCustomer401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.billing == nil {
+		return api.GetMyBillingCustomer503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Billing is not configured"}, nil
+	}
+	c, err := s.billing.GetCustomerDetails(request.Params.Subject, sess.UserID)
+	switch {
+	case errors.Is(err, billing.ErrForbidden):
+		return api.GetMyBillingCustomer403JSONResponse{Code: http.StatusForbidden, Message: "You do not have access to this subject"}, nil
+	case errors.Is(err, billing.ErrInvalid):
+		return api.GetMyBillingCustomer400JSONResponse{Code: http.StatusBadRequest, Message: err.Error()}, nil
+	case err != nil:
+		log.Printf("Error reading billing details of %s: %v", request.Params.Subject, err)
+		return api.GetMyBillingCustomer500JSONResponse{Code: http.StatusInternalServerError, Message: "Failed to load billing details"}, nil
+	}
+	return api.GetMyBillingCustomer200JSONResponse(customerDetailsToAPI(c)), nil
+}
+
+// SaveMyBillingCustomer handles POST /me/billing/customer (authenticated): save the invoice details before paying.
+func (s *StrictApiServer) SaveMyBillingCustomer(ctx context.Context, request api.SaveMyBillingCustomerRequestObject) (api.SaveMyBillingCustomerResponseObject, error) {
+	sess, ok := ctx.Value(session.SessionKey).(*db.Session)
+	if !ok || !sess.IsAuthenticated {
+		return api.SaveMyBillingCustomer401JSONResponse{Code: http.StatusUnauthorized, Message: "Unauthorized"}, nil
+	}
+	if s.billing == nil {
+		return api.SaveMyBillingCustomer503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Billing is not configured"}, nil
+	}
+	if request.Body == nil {
+		return api.SaveMyBillingCustomer400JSONResponse{Code: http.StatusBadRequest, Message: "Request body is required"}, nil
+	}
+	b := request.Body
+	payer := billing.Payer{UserID: sess.UserID, Email: sess.Email}
+	user, err := s.userRepo.FindUserByIdOrUsername(sess.UserID, "", "")
+	if err == nil && user != nil {
+		payer.Name, payer.Email = user.Name, user.Email
+	}
+	d := billing.CustomerDetails{
+		Kind: string(b.Kind), Name: b.Name, Phone: deref(b.Phone),
+		TaxID: deref(b.TaxId),
+		Address: billing.Address{
+			Line1: b.AddressLine1, Line2: deref(b.AddressLine2), PostalCode: b.PostalCode,
+			City: b.City, State: deref(b.State), Country: b.Country,
+		},
+	}
+	c, err := s.billing.SaveCustomerDetails(ctx, b.Subject, payer, d)
+	switch {
+	case errors.Is(err, billing.ErrForbidden):
+		return api.SaveMyBillingCustomer403JSONResponse{Code: http.StatusForbidden, Message: "You do not have access to this subject"}, nil
+	case errors.Is(err, billing.ErrInvalid):
+		return api.SaveMyBillingCustomer400JSONResponse{Code: http.StatusBadRequest, Message: err.Error()}, nil
+	case errors.Is(err, billing.ErrConflict):
+		return api.SaveMyBillingCustomer409JSONResponse{Code: http.StatusConflict, Message: err.Error()}, nil
+	case errors.Is(err, billing.ErrNotConfigured):
+		return api.SaveMyBillingCustomer503JSONResponse{Code: http.StatusServiceUnavailable, Message: "Billing is not configured"}, nil
+	case err != nil:
+		log.Printf("Error saving billing details of %s: %v", b.Subject, err)
+		return api.SaveMyBillingCustomer500JSONResponse{Code: http.StatusInternalServerError, Message: "Failed to save billing details"}, nil
+	}
+	return api.SaveMyBillingCustomer200JSONResponse(customerDetailsToAPI(c)), nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

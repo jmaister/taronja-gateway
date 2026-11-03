@@ -349,3 +349,79 @@ func TestBillingSetup(t *testing.T) {
 	require.NoError(t, err)
 	assert.IsType(t, api.RunBillingSetupAction400JSONResponse{}, resp3)
 }
+
+func customerBody(subject string) *api.BillingCustomerRequest {
+	return &api.BillingCustomerRequest{
+		Subject: subject, Kind: api.BillingCustomerRequestKindCompany, Name: "Escuela SL", TaxId: ptr("B12345674"),
+		AddressLine1: "C/ Mayor 1", PostalCode: "46001", City: "Valencia", Country: "ES", Phone: ptr("+34600000000"),
+	}
+}
+
+func TestMyBillingCustomer(t *testing.T) {
+	f := newBillingFixture(t)
+	subject := string(billing.OrgSubject(f.orgID))
+	ctx := sessionContext(f.user.ID, false)
+	get := func(ctx context.Context, subject string) (api.GetMyBillingCustomerResponseObject, error) {
+		return f.s.GetMyBillingCustomer(ctx, api.GetMyBillingCustomerRequestObject{Params: api.GetMyBillingCustomerParams{Subject: subject}})
+	}
+
+	t.Run("anonymous", func(t *testing.T) {
+		r, err := get(context.Background(), subject)
+		require.NoError(t, err)
+		assert.IsType(t, api.GetMyBillingCustomer401JSONResponse{}, r)
+		r2, err := f.s.SaveMyBillingCustomer(context.Background(), api.SaveMyBillingCustomerRequestObject{Body: customerBody(subject)})
+		require.NoError(t, err)
+		assert.IsType(t, api.SaveMyBillingCustomer401JSONResponse{}, r2)
+	})
+	t.Run("not a member", func(t *testing.T) {
+		r, err := get(sessionContext(f.other.ID, false), subject)
+		require.NoError(t, err)
+		assert.IsType(t, api.GetMyBillingCustomer403JSONResponse{}, r)
+		r2, err := f.s.SaveMyBillingCustomer(sessionContext(f.other.ID, false), api.SaveMyBillingCustomerRequestObject{Body: customerBody(subject)})
+		require.NoError(t, err)
+		assert.IsType(t, api.SaveMyBillingCustomer403JSONResponse{}, r2)
+	})
+	t.Run("empty before saving", func(t *testing.T) {
+		r, err := get(ctx, subject)
+		require.NoError(t, err)
+		d, ok := r.(api.GetMyBillingCustomer200JSONResponse)
+		require.True(t, ok, "%T", r)
+		assert.Nil(t, d.Kind)
+		assert.Empty(t, d.Name)
+		assert.Equal(t, subject, d.Subject)
+	})
+	t.Run("invalid", func(t *testing.T) {
+		b := customerBody(subject)
+		b.TaxId = ptr("B12345675")
+		r, err := f.s.SaveMyBillingCustomer(ctx, api.SaveMyBillingCustomerRequestObject{Body: b})
+		require.NoError(t, err)
+		assert.IsType(t, api.SaveMyBillingCustomer400JSONResponse{}, r)
+		r, err = f.s.SaveMyBillingCustomer(ctx, api.SaveMyBillingCustomerRequestObject{})
+		require.NoError(t, err)
+		assert.IsType(t, api.SaveMyBillingCustomer400JSONResponse{}, r)
+	})
+	t.Run("save, read, and the tax id cannot change", func(t *testing.T) {
+		r, err := f.s.SaveMyBillingCustomer(ctx, api.SaveMyBillingCustomerRequestObject{Body: customerBody(subject)})
+		require.NoError(t, err)
+		saved, ok := r.(api.SaveMyBillingCustomer200JSONResponse)
+		require.True(t, ok, "%T", r)
+		require.NotNil(t, saved.Kind)
+		assert.Equal(t, api.BillingCustomerDetailsKind("company"), *saved.Kind)
+		assert.Equal(t, "B12345674", saved.TaxId)
+		assert.Len(t, f.stripe.CustomerUpdates, 1)
+
+		r2, err := get(ctx, subject)
+		require.NoError(t, err)
+		d, ok := r2.(api.GetMyBillingCustomer200JSONResponse)
+		require.True(t, ok, "%T", r2)
+		assert.Equal(t, "Escuela SL", d.Name)
+		assert.Equal(t, "+34600000000", d.Phone)
+		assert.Equal(t, "Valencia", d.City)
+
+		b := customerBody(subject)
+		b.TaxId = ptr("A58818501")
+		r3, err := f.s.SaveMyBillingCustomer(ctx, api.SaveMyBillingCustomerRequestObject{Body: b})
+		require.NoError(t, err)
+		assert.IsType(t, api.SaveMyBillingCustomer409JSONResponse{}, r3)
+	})
+}

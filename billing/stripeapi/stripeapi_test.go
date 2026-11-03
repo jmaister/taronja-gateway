@@ -302,3 +302,57 @@ func TestErrorsAreWrapped(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "stripe: "), err.Error())
 }
+
+func TestCreateCheckoutSession_AskCustomerType(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{"POST /v1/checkout/sessions": `{"id":"cs_1","object":"checkout.session","url":"https://checkout.stripe.com/c/cs_1"}`})
+	p := billing.CheckoutParams{
+		CheckoutID: "chk_1", CustomerID: "cus_1", Mode: "subscription",
+		Lines: []billing.CheckoutLine{{PriceID: "price_1", Quantity: 1}}, SuccessURL: "https://gw/ok", CancelURL: "https://gw/ko",
+	}
+	_, err := c.CreateCheckoutSession(context.Background(), p)
+	require.NoError(t, err)
+	form := f.last(t).Form
+	assert.Empty(t, form.Get("name_collection[business][enabled]"))
+	assert.Equal(t, "true", form.Get("tax_id_collection[enabled]"), "tax id collection stays")
+
+	p.CheckoutID, p.AskCustomerType = "chk_2", true
+	_, err = c.CreateCheckoutSession(context.Background(), p)
+	require.NoError(t, err)
+	form = f.last(t).Form
+	assert.Equal(t, "true", form.Get("name_collection[business][enabled]"))
+	assert.Equal(t, "true", form.Get("name_collection[individual][enabled]"))
+	assert.Equal(t, "true", form.Get("tax_id_collection[enabled]"))
+}
+
+func TestUpdateCustomer(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{
+		"POST /v1/customers/cus_1":         `{"id":"cus_1","object":"customer"}`,
+		"POST /v1/customers/cus_1/tax_ids": `{"id":"txi_1","object":"tax_id"}`,
+	})
+	err := c.UpdateCustomer(context.Background(), "cus_1", billing.StripeCustomerUpdate{
+		Name: "Escuela SL", Phone: "+34600000000", TaxID: "B12345674",
+		Address: billing.Address{Line1: "C/ Mayor 1", Line2: "2B", PostalCode: "46001", City: "Valencia", State: "Valencia", Country: "ES"},
+	})
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	require.Len(t, f.requests, 2)
+	cu := f.requests[0].Form
+	assert.Equal(t, "Escuela SL", cu.Get("name"))
+	assert.Equal(t, "+34600000000", cu.Get("phone"))
+	assert.Equal(t, "C/ Mayor 1", cu.Get("address[line1]"))
+	assert.Equal(t, "2B", cu.Get("address[line2]"))
+	assert.Equal(t, "46001", cu.Get("address[postal_code]"))
+	assert.Equal(t, "ES", cu.Get("address[country]"))
+	tax := f.requests[1].Form
+	assert.Equal(t, "es_cif", tax.Get("type"))
+	assert.Equal(t, "B12345674", tax.Get("value"))
+}
+
+func TestUpdateCustomer_WithoutTaxIDOnlyUpdatesCustomer(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{"POST /v1/customers/cus_1": `{"id":"cus_1","object":"customer"}`})
+	require.NoError(t, c.UpdateCustomer(context.Background(), "cus_1", billing.StripeCustomerUpdate{Name: "Ana"}))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	assert.Len(t, f.requests, 1)
+}
