@@ -203,7 +203,7 @@ func (g *Gateway) renderPayPage(w http.ResponseWriter, r *http.Request, status i
 			view.Options[0].Selected = true
 		}
 	}
-	page := g.newAuthPage(plan.Name)
+	page := brandAuthPage(g.newAuthPage(plan.Name), svc.BrandFor(plan.GroupKey))
 	page.Error = errorText
 	page.Pay = view
 	g.renderAuthPage(w, status, "pay.html", page)
@@ -260,7 +260,7 @@ func (g *Gateway) handlePayDone(w http.ResponseWriter, r *http.Request) {
 	if redirect == "" {
 		redirect = "/"
 	}
-	page := g.newAuthPage("Pago")
+	page := brandAuthPage(g.newAuthPage("Pago"), g.Dependencies.Billing.BrandOfPlan(checkout.PlanKey))
 	page.PayDone = &payDoneView{Status: checkout.Status, Redirect: redirect}
 	g.renderAuthPage(w, http.StatusOK, "pay_done.html", page)
 }

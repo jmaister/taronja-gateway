@@ -172,7 +172,7 @@ func (s *Service) StartCheckout(ctx context.Context, req CheckoutRequest) (*db.B
 		cancel += "?org=" + url.QueryEscape(req.OrgID)
 	}
 	params := CheckoutParams{
-		CheckoutID: checkout.ID, CustomerID: customer.StripeCustomerID, CollectShipping: plan.CollectShipping, AskCustomerType: customer.Kind == "",
+		CheckoutID: checkout.ID, CustomerID: customer.StripeCustomerID, CollectShipping: plan.CollectShipping, AskCustomerType: customer.Kind == "", Brand: s.BrandFor(plan.GroupKey),
 		SuccessURL: s.serverURL + "/_/pay/done?checkout=" + url.QueryEscape(checkout.ID), CancelURL: cancel,
 		Metadata: map[string]string{"tg_checkout": checkout.ID, "tg_subject": string(subject), "tg_plan": plan.Key},
 	}

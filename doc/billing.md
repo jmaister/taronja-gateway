@@ -430,6 +430,25 @@ the billing name Stripe collected unless it contains a digit (buyers
 sometimes type the NIF there); otherwise just "Hola,". The invoice itself
 keeps the billing name and tax id.
 
+## Brand per plan group
+
+`billing.brands.<group>` gives the plans of one `group` their own look; plans
+without a group, and fields left empty, fall back to `billing.email`
+(`brandName`, `logoUrl`) and then to the gateway (`name`, `branding.logoUrl`).
+It applies to:
+
+- Stripe Checkout (`branding_settings`: `display_name`, logo by URL, button and
+  background color), only the fields that are set; otherwise Stripe's account
+  branding is used.
+- `/_/pay/<plan>` and `/_/pay/done`: name, logo, button and background colors.
+- The invoice and credit-note emails, by the plan group of the document's
+  subscription or purchase: brand name, logo and subject. `emailSubject`
+  replaces "Factura <number> · <name>"; `{number}` is the document number and,
+  when absent, "· Factura <number>" is appended.
+
+`logoUrl` must be an absolute http(s) URL and colors `#rrggbb`; `tg validate`
+checks them.
+
 ## Configuration
 
 ```yaml
@@ -454,6 +473,13 @@ billing:
     thanks: Gracias por tu compra.
     footer: Academia SL · C/ Mayor 1, Valencia
     templateFile: ./invoice-email.html
+  brands:                           # optional: look per plan group (the plan's `group`)
+    academia:
+      name: Academia Taronja
+      logoUrl: https://academia.example.com/logo.png
+      buttonColor: "#1a73e8"
+      backgroundColor: "#f4f5f9"
+      emailSubject: "Tu factura {number} de Academia"
 ```
 
 `billing.enabled` requires `server.url` (Checkout return URLs) and the Stripe

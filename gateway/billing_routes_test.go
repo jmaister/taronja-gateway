@@ -32,7 +32,7 @@ type billingGateway struct {
 	received []http.Header
 }
 
-func newBillingGateway(t *testing.T) *billingGateway {
+func newBillingGateway(t *testing.T, brands ...map[string]config.BillingBrandConfig) *billingGateway {
 	t.Helper()
 	bg := &billingGateway{}
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +43,11 @@ func newBillingGateway(t *testing.T) *billingGateway {
 	d := deps.NewTestWithName(t.Name())
 	bg.deps = d
 	bg.stripe = billing.NewFakeStripe()
-	bg.svc = billing.NewService(billing.Config{Repo: d.BillingRepo, Orgs: d.OrganizationRepo, Stripe: bg.stripe, Odoo: billing.NewFakeOdoo(), ServerURL: "https://gw.test"})
+	svcCfg := billing.Config{Repo: d.BillingRepo, Orgs: d.OrganizationRepo, Stripe: bg.stripe, Odoo: billing.NewFakeOdoo(), ServerURL: "https://gw.test"}
+	if len(brands) > 0 {
+		svcCfg.Brands = brands[0]
+	}
+	bg.svc = billing.NewService(svcCfg)
 	d.Billing = bg.svc
 
 	bg.user = &db.User{Username: "ana", Email: "ana@example.com", Name: "Ana"}
@@ -282,4 +286,41 @@ func TestPayDoneDirect(t *testing.T) {
 	assert.Contains(t, page, `name="direct" value="1"`)
 	page = readBody(t, bg.do(t, http.MethodGet, "/_/pay/academia-monthly?org="+bg.orgID+"&redirect=/x", nil, true))
 	assert.NotContains(t, page, `name="direct"`)
+}
+
+func TestPayPagesUseTheBrandOfThePlanGroup(t *testing.T) {
+	bg := newBillingGateway(t, map[string]config.BillingBrandConfig{
+		"academia": {Name: "Academia Taronja", LogoURL: "https://academia.test/logo.png", ButtonColor: "#112233", BackgroundColor: "#fafafa"},
+	})
+	bg.plan(t, db.PlanSubjectOrg)
+	_, err := bg.svc.CreatePlan(context.Background(), billing.PlanInput{
+		Key: "otro", Name: "Otro plan", Kind: db.PlanKindSubscription, Interval: db.PlanIntervalMonth,
+		AmountCents: 1000, Features: []string{"otro.access"}, Subject: db.PlanSubjectOrg, GraceDays: 7, Group: "otro", Active: true,
+	})
+	require.NoError(t, err)
+
+	page := readBody(t, bg.do(t, http.MethodGet, "/_/pay/academia-monthly?org="+bg.orgID, nil, true))
+	assert.Contains(t, page, "Academia Taronja")
+	assert.Contains(t, page, "https://academia.test/logo.png")
+	assert.Contains(t, page, "--primary: #112233")
+	assert.Contains(t, page, "--on-primary: #fff")
+	assert.Contains(t, page, "--bg: #fafafa")
+
+	page = readBody(t, bg.do(t, http.MethodGet, "/_/pay/otro?org="+bg.orgID, nil, true))
+	assert.NotContains(t, page, "Academia Taronja")
+	assert.NotContains(t, page, "--primary: #112233")
+
+	resp := bg.do(t, http.MethodPost, "/_/pay/academia-monthly", url.Values{"csrf": {accounts.CSRFToken(bg.token)}, "org": {bg.orgID}}, true)
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	sess := bg.stripe.Sessions[len(bg.stripe.Sessions)-1]
+	assert.Equal(t, billing.Brand{Name: "Academia Taronja", LogoURL: "https://academia.test/logo.png", ButtonColor: "#112233", BackgroundColor: "#fafafa"}, sess.Brand)
+	done := readBody(t, bg.do(t, http.MethodGet, "/_/pay/done?checkout="+sess.CheckoutID, nil, true))
+	assert.Contains(t, done, "Academia Taronja")
+	assert.Contains(t, done, "--primary: #112233")
+}
+
+func TestTextColorOn(t *testing.T) {
+	assert.Equal(t, "#fff", textColorOn("#112233"))
+	assert.Equal(t, "#0b1020", textColorOn("#ffee00"))
+	assert.Equal(t, "#0b1020", textColorOn("nonsense"))
 }

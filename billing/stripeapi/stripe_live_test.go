@@ -69,6 +69,13 @@ func TestLive_StripeTestMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, session.URL, "checkout.stripe.com")
 
+	branded := sub
+	branded.CheckoutID, branded.AskCustomerType = run+"-branded", true
+	branded.Brand = billing.Brand{Name: "Academia e2e", LogoURL: "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png", ButtonColor: "#112233", BackgroundColor: "#fafafa"}
+	session, err = client.CreateCheckoutSession(ctx, branded)
+	require.NoError(t, err, "branding_settings and name_collection")
+	assert.Contains(t, session.URL, "checkout.stripe.com")
+
 	_, err = client.ConfigurePortal(ctx, billing.PortalParams{
 		ReturnURL: "https://example.com/account", SwitchProducts: map[string][]string{productID: {monthly}},
 	})

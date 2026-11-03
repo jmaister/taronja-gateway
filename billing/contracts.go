@@ -94,8 +94,10 @@ type CheckoutParams struct {
 	// AskCustomerType makes Checkout ask whether the buyer is a person or a
 	// business, and its name (used when the customer has no saved details).
 	AskCustomerType bool
-	SuccessURL      string
-	CancelURL       string
+	// Brand is the look of the Checkout page (empty fields: Stripe's own).
+	Brand      Brand
+	SuccessURL string
+	CancelURL  string
 	// Metadata goes on the session and, in subscription mode, the subscription.
 	Metadata map[string]string
 }

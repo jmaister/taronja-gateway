@@ -39,6 +39,8 @@ type InvoiceEmail struct {
 	Lines                                    []InvoiceEmailLine
 	// Notes say how long the subscription lasts: trial end, renewal or end.
 	Notes []string
+	// subject is the brand's emailSubject.
+	subject string
 }
 
 // InvoiceEmailLine is one line of the invoice email.
@@ -56,10 +58,11 @@ func (s *Service) invoiceEmail(d *db.BillingDocument, c *db.BillingCustomer) (In
 	if credit {
 		sign = -1
 	}
+	brand := s.brandOfDocument(d)
 	e := InvoiceEmail{
-		Brand: s.email.BrandName, LogoURL: s.email.LogoURL, Thanks: s.email.Thanks, Footer: s.email.Footer,
+		Brand: brand.Name, LogoURL: brand.LogoURL, Thanks: s.email.Thanks, Footer: s.email.Footer,
 		CreditNote: credit, Number: d.Number, Total: FormatEUR(sign * d.AmountCents), AccountURL: s.serverURL + "/_/account",
-		Greeting: "Hola,",
+		Greeting: "Hola,", subject: brand.EmailSubject,
 	}
 	if e.Brand == "" {
 		e.Brand = "Taronja"
@@ -207,7 +210,7 @@ func (s *Service) emailDocument(ctx context.Context, d *db.BillingDocument) erro
 		kind = "Abono"
 	}
 	err = s.mailer.SendMail(ctx, notification.Mail{
-		To: c.Email, Subject: kind + " " + e.Number + " · " + e.Brand, Text: e.text(), HTML: html.String(),
+		To: c.Email, Subject: Brand{EmailSubject: e.subject}.emailSubject(kind, e.Number, e.Brand), Text: e.text(), HTML: html.String(),
 		Attachments: []notification.Attachment{{Name: name, Data: pdf}},
 	})
 	if err != nil {

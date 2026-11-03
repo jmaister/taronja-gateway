@@ -38,6 +38,8 @@ type Config struct {
 	// Email customizes them; EmailTemplate replaces the built-in HTML.
 	Email         config.BillingEmailConfig
 	EmailTemplate *template.Template
+	// Brands is the look per plan group (billing.brands).
+	Brands map[string]config.BillingBrandConfig
 	// OdooKeyExpiresAt is when the Odoo API key expires; zero when unknown.
 	OdooKeyExpiresAt time.Time
 	// UserName gives the name of a user (the email greeting); may be nil.
@@ -63,6 +65,7 @@ type Service struct {
 	userName      func(id string) string
 	email         config.BillingEmailConfig
 	emailTemplate *template.Template
+	brands        map[string]config.BillingBrandConfig
 
 	// Entitlements and memberships are cached per process for
 	// EntitlementCacheTTL (a second gateway instance would not see this
@@ -91,7 +94,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
 		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, odooKeyExp: cfg.OdooKeyExpiresAt, now: now,
-		mailer: cfg.Mailer, userName: cfg.UserName, email: cfg.Email, emailTemplate: cfg.EmailTemplate,
+		mailer: cfg.Mailer, userName: cfg.UserName, email: cfg.Email, emailTemplate: cfg.EmailTemplate, brands: cfg.Brands,
 		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
 }

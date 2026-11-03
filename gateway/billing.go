@@ -53,6 +53,7 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 		log.Printf("Billing: Odoo is not configured; invoices wait in the outbox until it is")
 	}
 	svcCfg.Email = cfg.Email
+	svcCfg.Brands = cfg.Brands
 	if cfg.Email.TemplateFile != "" {
 		tmpl, err := billing.ParseEmailTemplate(cfg.Email.TemplateFile)
 		if err != nil {

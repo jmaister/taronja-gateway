@@ -315,10 +315,20 @@ type GatewayConfig struct {
 // plans sold at /_/pay/<plan> grant features that apps read from the
 // X-Entitlements header or GET /_/api/entitlements. See doc/billing.md.
 type BillingConfig struct {
-	Enabled bool                `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
-	Stripe  StripeBillingConfig `yaml:"stripe"`  // Stripe account. Required when enabled.
-	Odoo    OdooBillingConfig   `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
-	Email   BillingEmailConfig  `yaml:"email"`   // Look of the invoice emails. Optional. They are sent through notifications.email.
+	Enabled bool                          `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
+	Stripe  StripeBillingConfig           `yaml:"stripe"`  // Stripe account. Required when enabled.
+	Odoo    OdooBillingConfig             `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
+	Email   BillingEmailConfig            `yaml:"email"`   // Look of the invoice emails. Optional. They are sent through notifications.email.
+	Brands  map[string]BillingBrandConfig `yaml:"brands"`  // Look per plan group, keyed by the group name: Checkout, /_/pay pages and invoice emails of the plans in that group. Optional: unset fields fall back to billing.email and the gateway branding. Plans without a group use the fallback.
+}
+
+// BillingBrandConfig is how one plan group looks to its customers.
+type BillingBrandConfig struct {
+	Name            string `yaml:"name"`            // Name shown at the top of Checkout and the pay pages, and in the invoice emails. Default: billing.email.brandName, then the gateway name (the server.url host in emails).
+	LogoURL         string `yaml:"logoUrl"`         // Absolute URL of the logo (Checkout, pay pages, invoice emails). Default: billing.email.logoUrl, then branding.logoUrl.
+	ButtonColor     string `yaml:"buttonColor"`     // Hex color like "#1a73e8" of the buttons on Checkout and the pay pages. Default: Stripe's or the gateway's.
+	BackgroundColor string `yaml:"backgroundColor"` // Hex color like "#f4f5f9" of the page background on Checkout and the pay pages. Default: Stripe's or the gateway's.
+	EmailSubject    string `yaml:"emailSubject"`    // Subject of the invoice emails; "{number}" is replaced by the document number, which is appended when absent. Default: "Factura <number> · <name>".
 }
 
 // BillingEmailConfig customizes the email the gateway sends with each invoice
@@ -365,6 +375,23 @@ func isLocalHost(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1" || strings.HasSuffix(host, ".localhost")
 }
 
+var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+func (b BillingBrandConfig) validate(path string) error {
+	if b.LogoURL != "" {
+		u, err := url.ParseRequestURI(b.LogoURL)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+			return fmt.Errorf("%s.logoUrl must be an absolute http(s) URL: %q", path, b.LogoURL)
+		}
+	}
+	for field, v := range map[string]string{"buttonColor": b.ButtonColor, "backgroundColor": b.BackgroundColor} {
+		if v != "" && !hexColor.MatchString(v) {
+			return fmt.Errorf("%s.%s must be a hex color like #1a73e8: %q", path, field, v)
+		}
+	}
+	return nil
+}
+
 func (b BillingConfig) validate(serverURL string) error {
 	if !b.Enabled {
 		return nil
@@ -383,6 +410,12 @@ func (b BillingConfig) validate(serverURL string) error {
 	if b.Email.LogoURL != "" {
 		if _, err := url.ParseRequestURI(b.Email.LogoURL); err != nil {
 			return fmt.Errorf("billing.email.logoUrl is not a URL: %q", b.Email.LogoURL)
+		}
+	}
+	for group, br := range b.Brands {
+		err := br.validate("billing.brands." + group)
+		if err != nil {
+			return err
 		}
 	}
 	if b.Email.TemplateFile != "" {

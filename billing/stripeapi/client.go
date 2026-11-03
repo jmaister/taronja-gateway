@@ -173,6 +173,21 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p billing.CheckoutPa
 			Individual: &stripe.CheckoutSessionCreateNameCollectionIndividualParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(false)},
 		}
 	}
+	if b := p.Brand; b.Name != "" || b.LogoURL != "" || b.ButtonColor != "" || b.BackgroundColor != "" {
+		params.BrandingSettings = &stripe.CheckoutSessionCreateBrandingSettingsParams{}
+		if b.Name != "" {
+			params.BrandingSettings.DisplayName = stripe.String(b.Name)
+		}
+		if b.ButtonColor != "" {
+			params.BrandingSettings.ButtonColor = stripe.String(b.ButtonColor)
+		}
+		if b.BackgroundColor != "" {
+			params.BrandingSettings.BackgroundColor = stripe.String(b.BackgroundColor)
+		}
+		if b.LogoURL != "" {
+			params.BrandingSettings.Logo = &stripe.CheckoutSessionCreateBrandingSettingsLogoParams{Type: stripe.String("url"), URL: stripe.String(b.LogoURL)}
+		}
+	}
 	if p.CollectShipping {
 		params.CustomerUpdate.Shipping = stripe.String("auto")
 		params.ShippingAddressCollection = &stripe.CheckoutSessionCreateShippingAddressCollectionParams{

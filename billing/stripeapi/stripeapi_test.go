@@ -356,3 +356,27 @@ func TestUpdateCustomer_WithoutTaxIDOnlyUpdatesCustomer(t *testing.T) {
 	defer f.mu.Unlock()
 	assert.Len(t, f.requests, 1)
 }
+
+func TestCreateCheckoutSession_Branding(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{"POST /v1/checkout/sessions": `{"id":"cs_1","object":"checkout.session","url":"https://checkout.stripe.com/c/cs_1"}`})
+	p := billing.CheckoutParams{
+		CheckoutID: "chk_1", CustomerID: "cus_1", Mode: "subscription",
+		Lines: []billing.CheckoutLine{{PriceID: "price_1", Quantity: 1}}, SuccessURL: "https://gw/ok", CancelURL: "https://gw/ko",
+	}
+	_, err := c.CreateCheckoutSession(context.Background(), p)
+	require.NoError(t, err)
+	for k := range f.last(t).Form {
+		assert.False(t, strings.HasPrefix(k, "branding_settings"), k)
+	}
+
+	p.CheckoutID = "chk_2"
+	p.Brand = billing.Brand{Name: "Academia", LogoURL: "https://a.test/logo.png", ButtonColor: "#112233", BackgroundColor: "#fafafa"}
+	_, err = c.CreateCheckoutSession(context.Background(), p)
+	require.NoError(t, err)
+	form := f.last(t).Form
+	assert.Equal(t, "Academia", form.Get("branding_settings[display_name]"))
+	assert.Equal(t, "#112233", form.Get("branding_settings[button_color]"))
+	assert.Equal(t, "#fafafa", form.Get("branding_settings[background_color]"))
+	assert.Equal(t, "url", form.Get("branding_settings[logo][type]"))
+	assert.Equal(t, "https://a.test/logo.png", form.Get("branding_settings[logo][url]"))
+}

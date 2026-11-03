@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/jmaister/taronja-gateway/billing"
 	"github.com/jmaister/taronja-gateway/config"
 )
 
@@ -49,6 +50,9 @@ type authPage struct {
 	Wide    bool
 	Version string
 
+	// ButtonColor and BackgroundColor (hex) come from billing.brands.
+	ButtonColor, BackgroundColor, OnPrimary string
+
 	Token     string
 	Body      string
 	LinkURL   string
@@ -64,6 +68,32 @@ func (g *Gateway) newAuthPage(title string) authPage {
 		brand = g.GatewayConfig.Name
 	}
 	return authPage{Title: title, Prefix: config.ManagementPrefix, LogoURL: g.GatewayConfig.Branding.LogoUrl, Brand: brand, Version: footerVersion()}
+}
+
+// brandAuthPage applies the brand of a plan group to page: its name and logo,
+// and its colors, over the gateway's.
+func brandAuthPage(page authPage, b billing.Brand) authPage {
+	if b.Name != "" {
+		page.Brand = b.Name
+	}
+	if b.LogoURL != "" {
+		page.LogoURL = b.LogoURL
+	}
+	page.ButtonColor, page.BackgroundColor = b.ButtonColor, b.BackgroundColor
+	if b.ButtonColor != "" {
+		page.OnPrimary = textColorOn(b.ButtonColor)
+	}
+	return page
+}
+
+// textColorOn is white or near-black, whichever reads better on the hex color bg.
+func textColorOn(bg string) string {
+	var r, g, b int
+	_, err := fmt.Sscanf(bg, "#%02x%02x%02x", &r, &g, &b)
+	if err != nil || 299*r+587*g+114*b >= 150000 {
+		return "#0b1020"
+	}
+	return "#fff"
 }
 
 func (g *Gateway) renderAuthPage(w http.ResponseWriter, status int, name string, page authPage) {
