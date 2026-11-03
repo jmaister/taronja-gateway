@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jmaister/taronja-gateway/encryption"
 	yaml "gopkg.in/yaml.v3"
@@ -324,11 +326,12 @@ type BillingConfig struct {
 
 // BillingBrandConfig is how one plan group looks to its customers.
 type BillingBrandConfig struct {
-	Name            string `yaml:"name"`            // Name shown at the top of Checkout and the pay pages, and in the invoice emails. Default: billing.email.brandName, then the gateway name (the server.url host in emails).
-	LogoURL         string `yaml:"logoUrl"`         // Absolute URL of the logo (Checkout, pay pages, invoice emails). Default: billing.email.logoUrl, then branding.logoUrl.
-	ButtonColor     string `yaml:"buttonColor"`     // Hex color like "#1a73e8" of the buttons on Checkout and the pay pages. Default: Stripe's or the gateway's.
-	BackgroundColor string `yaml:"backgroundColor"` // Hex color like "#f4f5f9" of the page background on Checkout and the pay pages. Default: Stripe's or the gateway's.
-	EmailSubject    string `yaml:"emailSubject"`    // Subject of the invoice emails; "{number}" is replaced by the document number, which is appended when absent. Default: "Factura <number> · <name>".
+	Name                string `yaml:"name"`                // Name shown at the top of Checkout and the pay pages, and in the invoice emails. Default: billing.email.brandName, then the gateway name (the server.url host in emails).
+	LogoURL             string `yaml:"logoUrl"`             // Absolute URL of the logo (Checkout, pay pages, invoice emails). Default: billing.email.logoUrl, then branding.logoUrl.
+	ButtonColor         string `yaml:"buttonColor"`         // Hex color like "#1a73e8" of the buttons on Checkout and the pay pages. Default: Stripe's or the gateway's.
+	BackgroundColor     string `yaml:"backgroundColor"`     // Hex color like "#f4f5f9" of the page background on Checkout and the pay pages. Default: Stripe's or the gateway's.
+	StatementDescriptor string `yaml:"statementDescriptor"` // Text on the customer's card statement: up to 22 characters, with a letter and none of < > \ ' " *. Subscription plans of the group show it whole (Stripe product statement_descriptor, applied when plans are synced and at startup); one-time payments show it after the account's prefix (statement_descriptor_suffix). Default: the Stripe account's.
+	EmailSubject        string `yaml:"emailSubject"`        // Subject of the invoice emails; "{number}" is replaced by the document number, which is appended when absent. Default: "Factura <number> · <name>".
 }
 
 // BillingEmailConfig customizes the email the gateway sends with each invoice
@@ -377,11 +380,30 @@ func isLocalHost(host string) bool {
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
+// ValidateStatementDescriptor applies Stripe's rules for a card statement text.
+func ValidateStatementDescriptor(d string) error {
+	switch {
+	case utf8.RuneCountInString(d) > 22:
+		return fmt.Errorf("must have at most 22 characters: %q", d)
+	case strings.ContainsAny(d, "<>\\'\"*"):
+		return fmt.Errorf("cannot contain < > \\ ' \" *: %q", d)
+	case !strings.ContainsFunc(d, unicode.IsLetter):
+		return fmt.Errorf("must contain at least one letter: %q", d)
+	}
+	return nil
+}
+
 func (b BillingBrandConfig) validate(path string) error {
 	if b.LogoURL != "" {
 		u, err := url.ParseRequestURI(b.LogoURL)
 		if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 			return fmt.Errorf("%s.logoUrl must be an absolute http(s) URL: %q", path, b.LogoURL)
+		}
+	}
+	if b.StatementDescriptor != "" {
+		err := ValidateStatementDescriptor(b.StatementDescriptor)
+		if err != nil {
+			return fmt.Errorf("%s.statementDescriptor: %w", path, err)
 		}
 	}
 	for field, v := range map[string]string{"buttonColor": b.ButtonColor, "backgroundColor": b.BackgroundColor} {

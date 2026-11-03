@@ -85,6 +85,10 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 		if err != nil {
 			log.Printf("Billing: configuring the Stripe Customer Portal: %v", err)
 		}
+		err = svc.SyncStatementDescriptors(syncCtx)
+		if err != nil {
+			log.Printf("Billing: setting the Stripe statement descriptors: %v", err)
+		}
 	}()
 	go func() {
 		defer wg.Done()

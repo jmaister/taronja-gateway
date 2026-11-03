@@ -195,6 +195,9 @@ func (s *Service) StartCheckout(ctx context.Context, req CheckoutRequest) (*db.B
 		params.Mode = "payment"
 		params.Lines = []CheckoutLine{{PriceID: plan.StripePriceID, Quantity: 1}}
 	}
+	if params.Mode == "payment" {
+		params.StatementDescriptorSuffix = params.Brand.StatementDescriptor
+	}
 	session, err := s.stripe.CreateCheckoutSession(ctx, params)
 	if err != nil {
 		return nil, "", err

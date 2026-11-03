@@ -72,18 +72,21 @@ func TestEnsureProduct(t *testing.T) {
 		"POST /v1/products":          `{"id":"prod_1","object":"product"}`,
 		"POST /v1/products/prod_old": `{"id":"prod_old","object":"product"}`,
 	})
-	id, err := c.EnsureProduct(context.Background(), "", "Academia mensual", "academia-monthly")
+	id, err := c.EnsureProduct(context.Background(), "", "Academia mensual", "academia-monthly", "ACADEMIA TARONJA")
 	require.NoError(t, err)
 	assert.Equal(t, "prod_1", id)
 	req := f.last(t)
 	assert.Equal(t, "Academia mensual", req.Form.Get("name"))
 	assert.Equal(t, "academia-monthly", req.Form.Get("metadata[tg_plan]"))
 	assert.Equal(t, "2026-09-30.endive", req.Version)
+	assert.Equal(t, "ACADEMIA TARONJA", req.Form.Get("statement_descriptor"))
 
-	id, err = c.EnsureProduct(context.Background(), "prod_old", "Renamed", "academia-monthly")
+	id, err = c.EnsureProduct(context.Background(), "prod_old", "Renamed", "academia-monthly", "")
 	require.NoError(t, err)
 	assert.Equal(t, "prod_old", id)
 	assert.Equal(t, "Renamed", f.last(t).Form.Get("name"))
+	_, has := f.last(t).Form["statement_descriptor"]
+	assert.False(t, has, "an empty descriptor leaves the product's as it is")
 }
 
 func TestCreatePrice(t *testing.T) {
@@ -298,7 +301,7 @@ func TestRefund(t *testing.T) {
 
 func TestErrorsAreWrapped(t *testing.T) {
 	_, c := newFakeStripe(t, map[string]string{})
-	_, err := c.EnsureProduct(context.Background(), "", "x", "y")
+	_, err := c.EnsureProduct(context.Background(), "", "x", "y", "")
 	require.Error(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "stripe: "), err.Error())
 }
@@ -379,4 +382,15 @@ func TestCreateCheckoutSession_Branding(t *testing.T) {
 	assert.Equal(t, "#fafafa", form.Get("branding_settings[background_color]"))
 	assert.Equal(t, "url", form.Get("branding_settings[logo][type]"))
 	assert.Equal(t, "https://a.test/logo.png", form.Get("branding_settings[logo][url]"))
+}
+
+func TestCreateCheckoutSession_StatementDescriptorSuffix(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{"POST /v1/checkout/sessions": `{"id":"cs_1","object":"checkout.session","url":"https://checkout.stripe.com/c/cs_1"}`})
+	p := billing.CheckoutParams{
+		CheckoutID: "chk_1", CustomerID: "cus_1", Mode: "payment", StatementDescriptorSuffix: "ACADEMIA",
+		Lines: []billing.CheckoutLine{{PriceID: "price_1", Quantity: 1}}, SuccessURL: "https://gw/ok", CancelURL: "https://gw/ko",
+	}
+	_, err := c.CreateCheckoutSession(context.Background(), p)
+	require.NoError(t, err)
+	assert.Equal(t, "ACADEMIA", f.last(t).Form.Get("payment_intent_data[statement_descriptor_suffix]"))
 }

@@ -245,8 +245,8 @@ func applyInput(p *repositories.BillingPlanWithFeatures, in PlanInput) {
 // changed amount makes a new price, takes over the lookup key and archives
 // the old one.
 func (s *Service) syncStripe(ctx context.Context, plan, before *repositories.BillingPlanWithFeatures) error {
-	if before == nil || plan.Name != before.Name || plan.StripeProductID == "" {
-		id, err := s.stripe.EnsureProduct(ctx, plan.StripeProductID, plan.Name, plan.Key)
+	if before == nil || plan.Name != before.Name || plan.GroupKey != before.GroupKey || plan.StripeProductID == "" {
+		id, err := s.stripe.EnsureProduct(ctx, plan.StripeProductID, plan.Name, plan.Key, s.BrandFor(plan.GroupKey).StatementDescriptor)
 		if err != nil {
 			return err
 		}
@@ -344,6 +344,28 @@ func (s *Service) afterPlanChange(ctx context.Context) {
 	if err != nil {
 		log.Printf("billing: updating the Stripe portal configuration: %v", err)
 	}
+}
+
+// SyncStatementDescriptors gives each subscription plan's Stripe product the
+// statement descriptor of its group, so changing billing.brands takes effect
+// at the next startup or "Sync plans".
+func (s *Service) SyncStatementDescriptors(ctx context.Context) error {
+	list, err := s.repo.ListPlans(true)
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		p := &list[i]
+		d := s.BrandFor(p.GroupKey).StatementDescriptor
+		if d == "" || p.StripeProductID == "" || p.Kind != db.PlanKindSubscription {
+			continue
+		}
+		_, err = s.stripe.EnsureProduct(ctx, p.StripeProductID, p.Name, p.Key, d)
+		if err != nil {
+			return fmt.Errorf("plan %s: %w", p.Key, err)
+		}
+	}
+	return nil
 }
 
 // SyncPortal creates or updates the Stripe Customer Portal configuration:

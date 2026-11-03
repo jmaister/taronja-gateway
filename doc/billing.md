@@ -449,6 +449,16 @@ It applies to:
 `logoUrl` must be an absolute http(s) URL and colors `#rrggbb`; `tg validate`
 checks them.
 
+`statementDescriptor` is the text on the customer's card statement. Stripe
+takes it in two places, so the gateway uses each where it works:
+subscription plans get it on their Stripe product (`statement_descriptor`,
+the whole text), set when the plan is created or its group changes, at
+startup and by the setup page's *Sync plans*; one-time payments get it as
+`payment_intent_data.statement_descriptor_suffix`, after the account's
+prefix. Stripe rejects `payment_intent_data` in subscription Checkout, so there
+is no per-session descriptor for subscriptions. Up to 22 characters, with a
+letter and none of `< > \ ' " *`. Empty keeps the account's.
+
 ## Configuration
 
 ```yaml
@@ -480,6 +490,7 @@ billing:
       buttonColor: "#1a73e8"
       backgroundColor: "#f4f5f9"
       emailSubject: "Tu factura {number} de Academia"
+      statementDescriptor: ACADEMIA TARONJA   # text on the card statement
 ```
 
 `billing.enabled` requires `server.url` (Checkout return URLs) and the Stripe

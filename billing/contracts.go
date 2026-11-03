@@ -95,9 +95,12 @@ type CheckoutParams struct {
 	// business, and its name (used when the customer has no saved details).
 	AskCustomerType bool
 	// Brand is the look of the Checkout page (empty fields: Stripe's own).
-	Brand      Brand
-	SuccessURL string
-	CancelURL  string
+	Brand Brand
+	// StatementDescriptorSuffix, for Mode "payment": text after the account's
+	// statement prefix. Subscriptions take the product's descriptor instead.
+	StatementDescriptorSuffix string
+	SuccessURL                string
+	CancelURL                 string
 	// Metadata goes on the session and, in subscription mode, the subscription.
 	Metadata map[string]string
 }
@@ -151,8 +154,9 @@ type PortalParams struct {
 // version of the SDK they use (stripe-go/v87: 2026-09-30.endive).
 type Stripe interface {
 	// EnsureProduct creates the product (existingID "") or renames it, and
-	// returns its id.
-	EnsureProduct(ctx context.Context, existingID, name, planKey string) (string, error)
+	// returns its id. A statementDescriptor is the text its subscriptions
+	// show on card statements; "" leaves the product's as it is.
+	EnsureProduct(ctx context.Context, existingID, name, planKey, statementDescriptor string) (string, error)
 	// CreatePrice creates a price and moves its lookup key to it.
 	CreatePrice(ctx context.Context, p StripePriceParams) (string, error)
 	// ArchivePrice deactivates a price (existing subscriptions keep it).

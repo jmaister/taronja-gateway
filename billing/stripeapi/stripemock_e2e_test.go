@@ -24,7 +24,7 @@ func TestE2E_AllMethods(t *testing.T) {
 	ctx := context.Background()
 
 	// Test EnsureProduct
-	productID, err := client.EnsureProduct(ctx, "", "Test Product", "test-plan")
+	productID, err := client.EnsureProduct(ctx, "", "Test Product", "test-plan", "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, productID)
 
@@ -116,7 +116,7 @@ func TestE2E_Subscription(t *testing.T) {
 	ctx := context.Background()
 
 	// Create product and price
-	productID, err := client.EnsureProduct(ctx, "", "Test Product", "test-plan")
+	productID, err := client.EnsureProduct(ctx, "", "Test Product", "test-plan", "")
 	require.NoError(t, err)
 
 	priceID, err := client.CreatePrice(ctx, billing.StripePriceParams{

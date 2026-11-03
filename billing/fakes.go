@@ -15,19 +15,21 @@ type FakeStripe struct {
 	mu sync.Mutex
 	n  int
 
-	Products        map[string]string // id -> name
-	Prices          map[string]StripePriceParams
-	ArchivedPrice   map[string]bool
-	LookupKeys      map[string]string // lookup key -> price id
-	Customers       map[string]string // id -> subject
-	PortalReturnURL string
-	Sessions        []CheckoutParams
-	Subscriptions   map[string]*StripeSubscription
-	Created         []SubscriptionParams
-	Canceled        []string
-	Refunds         []FakeRefund
-	Portal          *PortalParams
-	CustomerUpdates []FakeCustomerUpdate
+	Products map[string]string // id -> name
+	// ProductDescriptors is the statement descriptor given to each product.
+	ProductDescriptors map[string]string
+	Prices             map[string]StripePriceParams
+	ArchivedPrice      map[string]bool
+	LookupKeys         map[string]string // lookup key -> price id
+	Customers          map[string]string // id -> subject
+	PortalReturnURL    string
+	Sessions           []CheckoutParams
+	Subscriptions      map[string]*StripeSubscription
+	Created            []SubscriptionParams
+	Canceled           []string
+	Refunds            []FakeRefund
+	Portal             *PortalParams
+	CustomerUpdates    []FakeCustomerUpdate
 
 	// Err, when set, is returned by every call.
 	Err error
@@ -52,7 +54,7 @@ const FakeWebhookSignature = "fake-signature"
 // NewFakeStripe returns an empty FakeStripe.
 func NewFakeStripe() *FakeStripe {
 	return &FakeStripe{
-		Products: map[string]string{}, Prices: map[string]StripePriceParams{}, ArchivedPrice: map[string]bool{},
+		Products: map[string]string{}, ProductDescriptors: map[string]string{}, Prices: map[string]StripePriceParams{}, ArchivedPrice: map[string]bool{},
 		LookupKeys: map[string]string{}, Customers: map[string]string{}, Subscriptions: map[string]*StripeSubscription{},
 	}
 }
@@ -62,7 +64,7 @@ func (f *FakeStripe) id(prefix string) string {
 	return fmt.Sprintf("%s_%d", prefix, f.n)
 }
 
-func (f *FakeStripe) EnsureProduct(ctx context.Context, existingID, name, planKey string) (string, error) {
+func (f *FakeStripe) EnsureProduct(ctx context.Context, existingID, name, planKey, statementDescriptor string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.Err != nil {
@@ -72,6 +74,9 @@ func (f *FakeStripe) EnsureProduct(ctx context.Context, existingID, name, planKe
 		existingID = f.id("prod")
 	}
 	f.Products[existingID] = name
+	if statementDescriptor != "" {
+		f.ProductDescriptors[existingID] = statementDescriptor
+	}
 	return existingID, nil
 }
 

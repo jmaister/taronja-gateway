@@ -11,6 +11,8 @@ import (
 // on pages, the server host in emails, Stripe's own look in Checkout).
 type Brand struct {
 	Name, LogoURL, ButtonColor, BackgroundColor, EmailSubject string
+	// StatementDescriptor is the text on card statements; "" keeps the account's.
+	StatementDescriptor string
 }
 
 // BrandFor returns the brand of a plan group; "" is a plan without group.
@@ -27,6 +29,7 @@ func (s *Service) BrandFor(group string) Brand {
 		b.LogoURL = c.LogoURL
 	}
 	b.ButtonColor, b.BackgroundColor, b.EmailSubject = c.ButtonColor, c.BackgroundColor, c.EmailSubject
+	b.StatementDescriptor = c.StatementDescriptor
 	return b
 }
 

@@ -26,10 +26,13 @@ func TestLive_StripeTestMode(t *testing.T) {
 	ctx := context.Background()
 	run := fmt.Sprintf("e2e-%d", time.Now().UnixNano())
 
-	productID, err := client.EnsureProduct(ctx, "", "Taronja e2e "+run, run)
+	productID, err := client.EnsureProduct(ctx, "", "Taronja e2e "+run, run, "TARONJA E2E")
 	require.NoError(t, err)
-	productID, err = client.EnsureProduct(ctx, productID, "Taronja e2e renamed "+run, run)
+	productID, err = client.EnsureProduct(ctx, productID, "Taronja e2e renamed "+run, run, "")
 	require.NoError(t, err)
+	product, err := client.sc.V1Products.Retrieve(ctx, productID, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "TARONJA E2E", product.StatementDescriptor, "kept when the rename gives none")
 
 	monthly, err := client.CreatePrice(ctx, billing.StripePriceParams{
 		ProductID: productID, AmountCents: 2900, Currency: "eur", Interval: "month", LookupKey: run + "-monthly",
@@ -56,6 +59,7 @@ func TestLive_StripeTestMode(t *testing.T) {
 	pay.CheckoutID, pay.Mode = run+"-pay", "payment"
 	pay.Lines = []billing.CheckoutLine{{PriceID: oneTime, Quantity: 1}}
 	pay.SaveCard, pay.CollectShipping = true, true
+	pay.StatementDescriptorSuffix = "TARONJA E2E"
 	session, err := client.CreateCheckoutSession(ctx, pay)
 	require.NoError(t, err)
 	assert.Contains(t, session.URL, "checkout.stripe.com")

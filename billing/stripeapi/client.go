@@ -62,9 +62,12 @@ func wrap(err error) error {
 	return fmt.Errorf("stripe: %w", err)
 }
 
-func (c *Client) EnsureProduct(ctx context.Context, existingID, name, planKey string) (string, error) {
+func (c *Client) EnsureProduct(ctx context.Context, existingID, name, planKey, statementDescriptor string) (string, error) {
 	if existingID == "" {
 		params := &stripe.ProductCreateParams{Name: stripe.String(name)}
+		if statementDescriptor != "" {
+			params.StatementDescriptor = stripe.String(statementDescriptor)
+		}
 		params.AddMetadata("tg_plan", planKey)
 		product, err := c.sc.V1Products.Create(ctx, params)
 		if err != nil {
@@ -72,7 +75,11 @@ func (c *Client) EnsureProduct(ctx context.Context, existingID, name, planKey st
 		}
 		return product.ID, nil
 	}
-	product, err := c.sc.V1Products.Update(ctx, existingID, &stripe.ProductUpdateParams{Name: stripe.String(name)})
+	update := &stripe.ProductUpdateParams{Name: stripe.String(name)}
+	if statementDescriptor != "" {
+		update.StatementDescriptor = stripe.String(statementDescriptor)
+	}
+	product, err := c.sc.V1Products.Update(ctx, existingID, update)
 	if err != nil {
 		return "", wrap(err)
 	}
@@ -213,6 +220,9 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p billing.CheckoutPa
 		}
 	case "payment":
 		params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{Metadata: metadata}
+		if p.StatementDescriptorSuffix != "" {
+			params.PaymentIntentData.StatementDescriptorSuffix = stripe.String(p.StatementDescriptorSuffix)
+		}
 		if p.SaveCard {
 			params.PaymentIntentData.SetupFutureUsage = stripe.String("off_session")
 		}

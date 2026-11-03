@@ -195,7 +195,7 @@ func (s *Service) RunSetupAction(ctx context.Context, action string) error {
 			}
 		}
 		s.InvalidateAll()
-		return nil
+		return s.SyncStatementDescriptors(ctx)
 	}
 	return fmt.Errorf("%w: unknown action %q", ErrInvalid, action)
 }
