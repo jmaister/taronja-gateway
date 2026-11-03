@@ -263,6 +263,9 @@ func TestPortal(t *testing.T) {
 	assert.Equal(t, "false", form.Get("features[invoice_history][enabled]"))
 	assert.Equal(t, "true", form.Get("features[subscription_update][enabled]"))
 	assert.Equal(t, "price", form.Get("features[subscription_update][default_allowed_updates][0]"))
+	assert.Equal(t, "always_invoice", form.Get("features[subscription_update][proration_behavior]"), "upgrades are charged at once")
+	assert.Equal(t, "decreasing_item_amount", form.Get("features[subscription_update][schedule_at_period_end][conditions][0][type]"), "downgrades wait for the period end")
+	assert.Equal(t, "shortening_interval", form.Get("features[subscription_update][schedule_at_period_end][conditions][1][type]"))
 	assert.Equal(t, "prod_1", form.Get("features[subscription_update][products][0][product]"))
 	assert.Equal(t, "price_y", form.Get("features[subscription_update][products][0][prices][1]"))
 	assert.Equal(t, "https://gw/_/account", form.Get("default_return_url"))
@@ -278,6 +281,15 @@ func TestPortal(t *testing.T) {
 	assert.Equal(t, "false", req.Form.Get("features[subscription_update][enabled]"))
 	assert.Equal(t, "true", req.Form.Get("features[customer_update][enabled]"))
 	assert.Equal(t, "address", req.Form.Get("features[customer_update][allowed_updates][1]"))
+
+	_, err = c.ConfigurePortal(context.Background(), billing.PortalParams{
+		ReturnURL: "https://gw/_/account", SwitchProducts: map[string][]string{"prod_1": {"price_m"}},
+	})
+	require.NoError(t, err)
+	req = f.last(t)
+	assert.Equal(t, "always_invoice", req.Form.Get("features[subscription_update][proration_behavior]"))
+	assert.Equal(t, "decreasing_item_amount", req.Form.Get("features[subscription_update][schedule_at_period_end][conditions][0][type]"))
+	assert.Equal(t, "shortening_interval", req.Form.Get("features[subscription_update][schedule_at_period_end][conditions][1][type]"))
 
 	u, err := c.PortalURL(context.Background(), "cus_1", "https://gw/_/account")
 	require.NoError(t, err)

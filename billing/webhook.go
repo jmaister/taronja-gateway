@@ -546,7 +546,7 @@ func (s *Service) invoiceLines(repo repositories.BillingRepository, sub *db.Bill
 		if l.AmountCents == 0 {
 			continue
 		}
-		line := DocumentLine{PlanKey: sub.PlanKey, AmountCents: l.AmountCents, PeriodStart: l.PeriodStart, PeriodEnd: l.PeriodEnd}
+		line := DocumentLine{PlanKey: sub.PlanKey, AmountCents: l.AmountCents, PeriodStart: l.PeriodStart, PeriodEnd: l.PeriodEnd, Proration: l.Proration}
 		name := ""
 		for _, p := range plans {
 			switch l.PriceID {
@@ -557,10 +557,10 @@ func (s *Service) invoiceLines(repo repositories.BillingRepository, sub *db.Bill
 				line.PlanKey, line.SetupFee, name = p.Key, true, p.SetupFeeName
 			}
 		}
-		if name == "" {
+		if name == "" || l.Proration {
 			name = l.Description
 		}
-		if !line.SetupFee && l.PeriodStart != nil && l.PeriodEnd != nil && l.PeriodEnd.After(*l.PeriodStart) {
+		if !line.SetupFee && !l.Proration && l.PeriodStart != nil && l.PeriodEnd != nil && l.PeriodEnd.After(*l.PeriodStart) {
 			name = fmt.Sprintf("%s %s–%s", name, spanishDate(*l.PeriodStart), spanishDate(l.PeriodEnd.AddDate(0, 0, -1)))
 		}
 		line.Description = name

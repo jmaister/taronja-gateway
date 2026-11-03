@@ -152,6 +152,9 @@ func mapInvoice(inv *stripe.Invoice, paid bool) *billing.InvoiceEvent {
 			if l.Pricing != nil && l.Pricing.PriceDetails != nil && l.Pricing.PriceDetails.Price != nil {
 				line.PriceID = l.Pricing.PriceDetails.Price.ID
 			}
+			if l.Parent != nil && l.Parent.SubscriptionItemDetails != nil {
+				line.Proration = l.Parent.SubscriptionItemDetails.Proration
+			}
 			if l.Period != nil {
 				start := time.Unix(l.Period.Start, 0).UTC()
 				end := time.Unix(l.Period.End, 0).UTC()

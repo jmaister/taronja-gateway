@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"math"
 	"net/http"
@@ -353,6 +354,9 @@ func (c *Client) createMove(ctx context.Context, m billing.OdooMove, moveType st
 		"invoice_date":     paidAt.Format(time.DateOnly),
 		"ref":              m.Ref,
 		"invoice_line_ids": lines,
+	}
+	if m.Note != "" {
+		vals["narration"] = html.EscapeString(m.Note)
 	}
 	if m.CreditNote && m.ReversedMoveID != 0 {
 		vals["reversed_entry_id"] = m.ReversedMoveID

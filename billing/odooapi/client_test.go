@@ -191,7 +191,7 @@ func TestIssueMove_NewInvoiceRunsEveryStep(t *testing.T) {
 
 	paidAt := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 	issued, err := c.IssueMove(context.Background(), billing.OdooMove{
-		Ref: "in_1", PartnerID: 55, PaidAt: paidAt,
+		Ref: "in_1", PartnerID: 55, PaidAt: paidAt, Note: "De A a B & C",
 		Lines: []billing.OdooLine{{ProductID: 3, Description: "Academia", AmountCents: 2900}},
 	})
 	require.NoError(t, err)
@@ -204,6 +204,7 @@ func TestIssueMove_NewInvoiceRunsEveryStep(t *testing.T) {
 	line := vals["invoice_line_ids"].([]any)[0].([]any)[2].(M)
 	assert.Equal(t, 29.0, line["price_unit"])
 	assert.NotContains(t, vals, "reversed_entry_id")
+	assert.Equal(t, "De A a B &amp; C", vals["narration"])
 
 	pay := f.call(t, "account.payment.register/create")
 	assert.Equal(t, M{"allowed_company_ids": []any{float64(1)}, "active_model": "account.move", "active_ids": []any{float64(100)}}, pay["context"])

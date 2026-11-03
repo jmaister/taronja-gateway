@@ -97,6 +97,21 @@ func TestParseWebhook_InvoicePaid(t *testing.T) {
 	}, ev.Invoice)
 }
 
+func TestParseWebhook_InvoicePaidProrations(t *testing.T) {
+	c := New("sk_test_123", "whsec_test")
+	ev := parse(t, c, event("evt_p", "invoice.paid", `{"id":"in_p","object":"invoice","customer":"cus_1","currency":"eur","amount_paid":2000,"created":1798700000,
+		"lines":{"object":"list","data":[
+			{"id":"il_1","object":"line_item","description":"Tiempo no utilizado en A","amount":-1333,"parent":{"type":"subscription_item_details","subscription_item_details":{"proration":true}}},
+			{"id":"il_2","object":"line_item","description":"Tiempo restante en B","amount":3333,"parent":{"type":"subscription_item_details","subscription_item_details":{"proration":true}}},
+			{"id":"il_3","object":"line_item","description":"1 × B","amount":0,"parent":{"type":"subscription_item_details","subscription_item_details":{"proration":false}}}]}}`))
+	require.NotNil(t, ev.Invoice)
+	require.Len(t, ev.Invoice.Lines, 3)
+	assert.True(t, ev.Invoice.Lines[0].Proration)
+	assert.True(t, ev.Invoice.Lines[1].Proration)
+	assert.False(t, ev.Invoice.Lines[2].Proration)
+	assert.EqualValues(t, -1333, ev.Invoice.Lines[0].AmountCents)
+}
+
 func TestParseWebhook_InvoicePaymentFailed(t *testing.T) {
 	c := New("sk_test_123", "whsec_test")
 	ev := parse(t, c, event("evt_f", "invoice.payment_failed", `{"id":"in_2","object":"invoice","customer":"cus_1","currency":"eur",

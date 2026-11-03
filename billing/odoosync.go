@@ -22,6 +22,7 @@ type DocumentLine struct {
 	AmountCents int64      `json:"amountCents"` // VAT included
 	PeriodStart *time.Time `json:"periodStart,omitempty"`
 	PeriodEnd   *time.Time `json:"periodEnd,omitempty"`
+	Proration   bool       `json:"proration,omitempty"`
 }
 
 // DocumentLines decodes d's lines.
@@ -201,7 +202,36 @@ func (s *Service) issue(ctx context.Context, d *db.BillingDocument) (OdooIssued,
 		}
 		move.Lines = append(move.Lines, OdooLine{ProductID: productID, Description: l.Description, AmountCents: l.AmountCents})
 	}
+	move.Note = s.prorationNote(lines)
 	return s.odoo.IssueMove(ctx, move)
+}
+
+// prorationNote explains a plan change on the invoice that charges it, from
+// the prorated lines Stripe adds: "" when there are none.
+func (s *Service) prorationNote(lines []DocumentLine) string {
+	var from, to *DocumentLine
+	for i := range lines {
+		l := &lines[i]
+		switch {
+		case !l.Proration:
+		case l.AmountCents < 0 && from == nil:
+			from = l
+		case l.AmountCents > 0 && to == nil:
+			to = l
+		}
+	}
+	if from == nil || to == nil || to.PeriodStart == nil {
+		return ""
+	}
+	name := func(key string) string {
+		p, err := s.repo.GetPlan(key)
+		if err != nil {
+			return key
+		}
+		return p.Name
+	}
+	return fmt.Sprintf("Cambio de plan de %s a %s el %s: se descuenta el tiempo no usado de %s y se cobra el tiempo restante de %s.",
+		name(from.PlanKey), name(to.PlanKey), spanishDate(*to.PeriodStart), name(from.PlanKey), name(to.PlanKey))
 }
 
 // ensurePartner creates or updates the subject's Odoo partner from its

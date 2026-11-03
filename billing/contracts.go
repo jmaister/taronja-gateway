@@ -241,6 +241,8 @@ type EventLine struct {
 	AmountCents int64 // VAT included
 	PeriodStart *time.Time
 	PeriodEnd   *time.Time
+	// Proration marks the lines Stripe adds when the plan changes mid-period.
+	Proration bool
 }
 
 // InvoiceEvent is a paid or failed Stripe invoice.
@@ -306,7 +308,9 @@ type OdooMove struct {
 	// ReversedMoveID is the invoice a credit note corrects.
 	ReversedMoveID int64
 	Lines          []OdooLine
-	PaidAt         time.Time
+	// Note is free text for the invoice (Odoo's notes field).
+	Note   string
+	PaidAt time.Time
 }
 
 // OdooIssued is what Odoo numbered.

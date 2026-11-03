@@ -302,6 +302,11 @@ func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string, 
 // invoice name and address. Not the tax id (immutable once set) nor the email.
 var portalCustomerUpdates = []string{"name", "address"}
 
+// portalProration invoices an upgrade at once (the prorated difference).
+// Downgrades never reach it: they are scheduled for the period end, so there
+// is no credit or refund and the new price starts with the next cycle.
+const portalProration = "always_invoice"
+
 func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -331,7 +336,12 @@ func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (s
 		}
 		if len(products) > 0 {
 			features.SubscriptionUpdate.DefaultAllowedUpdates = stripe.StringSlice([]string{"price"})
-			features.SubscriptionUpdate.ProrationBehavior = stripe.String("create_prorations")
+			features.SubscriptionUpdate.ProrationBehavior = stripe.String(portalProration)
+			features.SubscriptionUpdate.ScheduleAtPeriodEnd = &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateScheduleAtPeriodEndParams{
+				Conditions: []*stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateScheduleAtPeriodEndConditionParams{
+					{Type: stripe.String("decreasing_item_amount")}, {Type: stripe.String("shortening_interval")},
+				},
+			}
 			features.SubscriptionUpdate.Products = products
 		}
 		params := &stripe.BillingPortalConfigurationCreateParams{
@@ -349,7 +359,12 @@ func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (s
 	update := &stripe.BillingPortalConfigurationUpdateFeaturesSubscriptionUpdateParams{Enabled: stripe.Bool(len(products) > 0)}
 	if len(products) > 0 {
 		update.DefaultAllowedUpdates = stripe.StringSlice([]string{"price"})
-		update.ProrationBehavior = stripe.String("create_prorations")
+		update.ProrationBehavior = stripe.String(portalProration)
+		update.ScheduleAtPeriodEnd = &stripe.BillingPortalConfigurationUpdateFeaturesSubscriptionUpdateScheduleAtPeriodEndParams{
+			Conditions: []*stripe.BillingPortalConfigurationUpdateFeaturesSubscriptionUpdateScheduleAtPeriodEndConditionParams{
+				{Type: stripe.String("decreasing_item_amount")}, {Type: stripe.String("shortening_interval")},
+			},
+		}
 		for _, prod := range products {
 			update.Products = append(update.Products, &stripe.BillingPortalConfigurationUpdateFeaturesSubscriptionUpdateProductParams{
 				Product: prod.Product, Prices: prod.Prices,

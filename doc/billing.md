@@ -329,9 +329,18 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   updates its name and address.
 - Customer Portal: a configuration the gateway creates or updates at startup
   and from the setup page: update payment method, cancel at period end,
-  switch between plans of the same group, edit the invoice name and address
+  switch between plans of the same group (see *Plan changes*), edit the invoice name and address
   (not the NIF nor the email; `customer.updated` brings the edits back), no invoice history (invoices come
   from Odoo), return URL `/_/account`.
+- Plan changes: an upgrade is charged at once (`proration_behavior:
+  always_invoice`): one invoice with Stripe's lines *Tiempo no utilizado…*
+  (negative) and *Tiempo restante…*, the same billing period and the new
+  features immediately. A downgrade or a shorter interval is scheduled for
+  the period end: nothing is charged, credited or refunded, the new price
+  comes with the next renewal. Stripe's proration lines keep their
+  description on the Odoo invoice and the email, and the Odoo invoice gets a
+  Spanish note (`narration`): "Cambio de plan de A a B el …". No credit note
+  is issued for a plan change.
 - Stripe settings done by hand (the setup page reminds): *Email customers
   about successful payments* and *Email finalized invoices* off.
 - Idempotency keys on every create (`tg-<checkout id>`, `tg-activate-<id>`,
@@ -531,7 +540,7 @@ count with a *Retry* button; a credit note whose invoice is not issued yet
 | Stripe API shape | `stripe/stripe-mock` (Stripe's own mock, validates every request against Stripe's OpenAPI) in `e2e/docker-compose.yml`: every adapter call is made against it. |
 | Odoo, real | `odoo:19.0` with Postgres in `e2e/docker-compose.yml`, initialised by `e2e/odoo/init.sh` (Spanish company, `l10n_es`, journal with credit note sequence, Stripe journal, VAT-included tax, API user and key): partner, invoice, payment, credit note, PDF, simplified invoice. Veri\*Factu registration is tested with `E2E_ODOO_VERIFACTU=1` against AEAT pre-production. |
 | Whole flow | e2e test with a scripted Stripe (`httptest` server speaking the Stripe API for the calls the flow makes, signed webhooks from `webhook.GenerateTestSignedPayload`) and the real Odoo: pay link → checkout → webhook → entitlement in the header → Odoo invoice with PDF → refund → credit note; failed renewal → grace → expired; activation. |
-| Live, opt-in | With `STRIPE_TEST_SECRET_KEY` (test mode; refuses live keys): the real Stripe API creates a product, prices, a customer, Checkout sessions and a portal session. No `stripe listen` is needed: webhooks are not part of it. |
+| Live, opt-in | With `STRIPE_TEST_SECRET_KEY` (test mode; refuses live keys): the real Stripe API creates a product, prices, a customer, Checkout sessions and a portal session. No `stripe listen` is needed: webhooks are not part of it. `TestLive_PlanChange` runs an upgrade and a scheduled downgrade on a Stripe test clock and checks the amounts, the period dates and that no credit is left. |
 
 ## Applications
 
