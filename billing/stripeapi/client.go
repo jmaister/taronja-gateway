@@ -176,7 +176,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p billing.CheckoutPa
 	}
 	if p.AskCustomerType {
 		params.NameCollection = &stripe.CheckoutSessionCreateNameCollectionParams{
-			Business:   &stripe.CheckoutSessionCreateNameCollectionBusinessParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(false)},
+			Business:   &stripe.CheckoutSessionCreateNameCollectionBusinessParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(true)},
 			Individual: &stripe.CheckoutSessionCreateNameCollectionIndividualParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(false)},
 		}
 	}

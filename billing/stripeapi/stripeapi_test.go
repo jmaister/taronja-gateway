@@ -336,6 +336,8 @@ func TestCreateCheckoutSession_AskCustomerType(t *testing.T) {
 	form = f.last(t).Form
 	assert.Equal(t, "true", form.Get("name_collection[business][enabled]"))
 	assert.Equal(t, "true", form.Get("name_collection[individual][enabled]"))
+	assert.Equal(t, "true", form.Get("name_collection[business][optional]"))
+	assert.Equal(t, "false", form.Get("name_collection[individual][optional]"))
 	assert.Equal(t, "true", form.Get("tax_id_collection[enabled]"))
 }
 
