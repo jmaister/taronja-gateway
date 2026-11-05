@@ -132,3 +132,41 @@ func TestSetupChecks_OdooAPIKeyExpiry(t *testing.T) {
 	e.svc.odooKeyExp = day("2026-10-25")
 	assert.Contains(t, check().Detail, "expired on 2026-10-25")
 }
+
+func TestSetupChecks_PortalConfiguration(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.svc.stripeMode = "test"
+	check := func() SetupCheck { return e.svc.portalCheck(ctx) }
+
+	c := check()
+	assert.Equal(t, CheckWarn, c.Status, "nothing created yet")
+	assert.Equal(t, ActionSyncPortal, c.Action)
+
+	require.NoError(t, e.svc.SyncPortal(ctx))
+	id, err := e.repo.GetSetting(settingPortalConfig)
+	require.NoError(t, err)
+	assert.Equal(t, "bpc_1", id, "the id is stored")
+	c = check()
+	assert.Equal(t, CheckOK, c.Status)
+	assert.Contains(t, c.Detail, "bpc_1")
+	assert.Equal(t, "https://dashboard.stripe.com/test/settings/billing/portal", c.Link)
+
+	restarted := NewService(Config{Repo: e.repo, Orgs: e.orgs, Stripe: e.stripe, Odoo: e.odoo, ServerURL: "https://gw.example.com", Now: func() time.Time { return e.clock }})
+	require.NoError(t, restarted.SyncPortal(ctx))
+	assert.Len(t, e.stripe.PortalConfigs, 1, "a restart updates the saved configuration instead of creating another")
+
+	e.stripe.PortalConfigs["bpc_1"] = PortalConfig{ID: "bpc_1", Active: false, ReturnURL: "https://gw.example.com/_/account"}
+	assert.Equal(t, CheckWarn, check().Status, "inactive")
+	e.stripe.PortalConfigs["bpc_1"] = PortalConfig{ID: "bpc_1", Active: true, ReturnURL: "https://elsewhere/_/account"}
+	assert.Equal(t, CheckWarn, check().Status, "returns elsewhere")
+
+	delete(e.stripe.PortalConfigs, "bpc_1")
+	c = check()
+	assert.Equal(t, CheckWarn, c.Status)
+	assert.Contains(t, c.Detail, "no longer exists")
+	require.NoError(t, e.svc.RunSetupAction(ctx, ActionSyncPortal))
+	assert.Equal(t, CheckOK, check().Status, "syncing creates it again")
+	id, _ = e.repo.GetSetting(settingPortalConfig)
+	assert.Equal(t, "bpc_1", id)
+}

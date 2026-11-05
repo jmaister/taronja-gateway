@@ -523,6 +523,11 @@ func TestPortalURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://billing.stripe.test/p/cus_9", u)
 	assert.Equal(t, e.svc.serverURL+"/_/account", e.stripe.PortalReturnURL)
+	assert.Empty(t, e.stripe.PortalURLConfigID, "Stripe's default portal until the gateway has made one")
+	require.NoError(t, e.svc.SyncPortal(ctx))
+	_, err = e.svc.PortalURL(ctx, "org:"+orgID, "owner1", "")
+	require.NoError(t, err)
+	assert.Equal(t, "bpc_1", e.stripe.PortalURLConfigID, "the saved configuration is used")
 	for returnPath, want := range map[string]string{
 		"/org/1/settings":   "/org/1/settings",
 		"https://evil.test": "/_/account",

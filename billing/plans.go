@@ -394,6 +394,24 @@ func (s *Service) SyncPortal(ctx context.Context) error {
 			switchable[p.StripeProductID] = append(switchable[p.StripeProductID], p.StripePriceID)
 		}
 	}
-	_, err = s.stripe.ConfigurePortal(ctx, PortalParams{ReturnURL: s.serverURL + "/_/account", SwitchProducts: switchable})
-	return err
+	current, err := s.repo.GetSetting(settingPortalConfig)
+	if err != nil {
+		return err
+	}
+	id, err := s.stripe.ConfigurePortal(ctx, PortalParams{ReturnURL: s.portalReturnURL(), ConfigID: current, SwitchProducts: switchable})
+	if err != nil {
+		return err
+	}
+	if id != current {
+		return s.repo.SetSetting(settingPortalConfig, id)
+	}
+	return nil
+}
+
+// settingPortalConfig is the setting holding the id of the Stripe portal
+// configuration the gateway manages.
+const settingPortalConfig = "stripe_portal_config_id"
+
+func (s *Service) portalReturnURL() string {
+	return s.serverURL + "/_/account"
 }

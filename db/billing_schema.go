@@ -373,10 +373,18 @@ type StuckStripeEvent struct {
 	LastSeenAt     time.Time `gorm:"not null"`
 }
 
+// BillingSetting is a value the gateway remembers between restarts, like
+// the id of the Stripe portal configuration it created.
+type BillingSetting struct {
+	Key       string    `gorm:"primaryKey;column:key;type:varchar(100);not null"`
+	Value     string    `gorm:"type:text;not null"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+}
+
 // BillingModels are appended to Models.
 var BillingModels = []interface{}{
 	&Organization{}, &OrganizationMember{}, &BillingPlan{}, &BillingPlanFeature{}, &BillingCustomer{},
-	&BillingCheckout{}, &BillingSubscription{}, &BillingPurchase{}, &BillingGrant{}, &BillingDocument{}, &StripeEvent{}, &StuckStripeEvent{},
+	&BillingCheckout{}, &BillingSubscription{}, &BillingPurchase{}, &BillingGrant{}, &BillingDocument{}, &StripeEvent{}, &StuckStripeEvent{}, &BillingSetting{},
 }
 
 func init() {

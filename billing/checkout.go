@@ -283,7 +283,11 @@ func (s *Service) PortalURL(ctx context.Context, subject, userID, returnPath str
 	if returnPath = SafeRedirect(returnPath); returnPath == "" {
 		returnPath = "/_/account"
 	}
-	return s.stripe.PortalURL(ctx, c.StripeCustomerID, s.serverURL+returnPath)
+	configID, err := s.repo.GetSetting(settingPortalConfig)
+	if err != nil {
+		return "", err
+	}
+	return s.stripe.PortalURL(ctx, c.StripeCustomerID, s.serverURL+returnPath, configID)
 }
 
 // authorizeSubject checks that userID may manage subject's billing: the user

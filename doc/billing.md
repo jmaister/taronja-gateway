@@ -331,8 +331,11 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   inclusive`.
 - Customer per subject: name, payer's email, metadata `tg_subject`; Checkout
   updates its name and address.
-- Customer Portal: a configuration the gateway creates or updates at startup
-  and from the setup page: update payment method, cancel at period end,
+- Customer Portal: a configuration the gateway creates (its id is kept in
+  `billing_settings`, so a restart updates it instead of creating another) or
+  updates at startup and from the setup page; the setup check is green while
+  Stripe still has it active and returning to this gateway, and links to the
+  portal settings in the Stripe dashboard: update payment method, cancel at period end,
   switch between plans of the same group (see *Plan changes*), edit the invoice name and address
   (not the NIF nor the email; `customer.updated` brings the edits back), no invoice history (invoices come
   from Odoo), return URL `/_/account`.
@@ -367,6 +370,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |
 | `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at`, `emailed_at` |
 | `stripe_events` | `event_id` (PK), `type`, `received_at` |
+| `billing_settings` | `key` (PK), `value`, `updated_at` (`stripe_portal_config_id`) |
 | `stuck_stripe_events` | `event_id` (PK), `type`, `subscription_id`, `reason`, `attempts`, `first_seen_at`, `last_seen_at` (removed when the event is applied) |
 
 ## Gateway API

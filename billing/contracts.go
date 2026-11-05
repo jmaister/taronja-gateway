@@ -145,9 +145,19 @@ type StripeCustomerUpdate struct {
 // PortalParams configures the Customer Portal.
 type PortalParams struct {
 	ReturnURL string
+	// ConfigID is the configuration to update; empty, or one Stripe no
+	// longer has, creates a new one.
+	ConfigID string
 	// SwitchProducts lists, per Stripe product, the prices a customer may
 	// switch between (plans of one group).
 	SwitchProducts map[string][]string
+}
+
+// PortalConfig is what the setup page checks of a portal configuration.
+type PortalConfig struct {
+	ID        string
+	Active    bool
+	ReturnURL string
 }
 
 // Stripe is everything the gateway asks Stripe. Implementations pin the API
@@ -175,10 +185,15 @@ type Stripe interface {
 	// CancelSubscription cancels at once (atPeriodEnd false) or at the end
 	// of the current period.
 	CancelSubscription(ctx context.Context, subscriptionID string, atPeriodEnd bool) (StripeSubscription, error)
-	// ConfigurePortal creates or updates the portal configuration and
-	// returns its id.
+	// ConfigurePortal updates the portal configuration p.ConfigID (or
+	// creates one when it is empty or gone) and returns its id.
 	ConfigurePortal(ctx context.Context, p PortalParams) (string, error)
-	PortalURL(ctx context.Context, customerID, returnURL string) (string, error)
+	// GetPortalConfig reads a portal configuration (ErrNotFound when
+	// Stripe has no such one).
+	GetPortalConfig(ctx context.Context, id string) (PortalConfig, error)
+	// PortalURL opens a portal session with the configuration configID (""
+	// is Stripe's default one).
+	PortalURL(ctx context.Context, customerID, returnURL, configID string) (string, error)
 	// Refund refunds amountCents (0 = everything left) of a payment intent.
 	Refund(ctx context.Context, paymentIntentID string, amountCents int64, idempotencyKey string) error
 	// ParseWebhook verifies a webhook request (ErrBadSignature) and decodes it.

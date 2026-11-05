@@ -161,6 +161,11 @@ type BillingRepository interface {
 	// CreditedCents sums the credit notes of an invoice document.
 	CreditedCents(invoiceDocumentID string) (int64, error)
 
+	// GetSetting returns the value stored under key, "" when there is none.
+	GetSetting(key string) (string, error)
+	// SetSetting stores value under key.
+	SetSetting(key, value string) error
+
 	// RecordStripeEvent stores eventID and reports whether it was new; false
 	// means it was already processed.
 	RecordStripeEvent(eventID, eventType string) (bool, error)

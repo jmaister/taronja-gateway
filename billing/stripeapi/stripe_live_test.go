@@ -80,11 +80,11 @@ func TestLive_StripeTestMode(t *testing.T) {
 	require.NoError(t, err, "branding_settings and name_collection")
 	assert.Contains(t, session.URL, "checkout.stripe.com")
 
-	_, err = client.ConfigurePortal(ctx, billing.PortalParams{
+	portalID, err := client.ConfigurePortal(ctx, billing.PortalParams{
 		ReturnURL: "https://example.com/account", SwitchProducts: map[string][]string{productID: {monthly}},
 	})
 	require.NoError(t, err)
-	portal, err := client.PortalURL(ctx, customerID, "https://example.com/account")
+	portal, err := client.PortalURL(ctx, customerID, "https://example.com/account", portalID)
 	require.NoError(t, err)
 	assert.Contains(t, portal, "billing.stripe.com")
 }

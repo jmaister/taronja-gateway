@@ -458,6 +458,24 @@ func (r *BillingRepositoryDB) CreditedCents(invoiceDocumentID string) (int64, er
 	return sum, nil
 }
 
+// GetSetting returns a stored setting, "" when missing.
+func (r *BillingRepositoryDB) GetSetting(key string) (string, error) {
+	var st db.BillingSetting
+	err := r.db.First(&st, "`key` = ?", key).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return st.Value, err
+}
+
+// SetSetting stores a setting, replacing any previous value.
+func (r *BillingRepositoryDB) SetSetting(key, value string) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+	}).Create(&db.BillingSetting{Key: key, Value: value}).Error
+}
+
 // RecordStripeEvent stores a Stripe event and returns true if it was new,
 // false if it was already processed (idempotent).
 func (r *BillingRepositoryDB) RecordStripeEvent(eventID, eventType string) (bool, error) {

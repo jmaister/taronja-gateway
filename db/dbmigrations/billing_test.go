@@ -14,7 +14,7 @@ import (
 func TestBillingMigration_CreatesUsableTables(t *testing.T) {
 	db.SetupTestDB(t.Name())
 	gdb := db.GetConnection()
-	for _, table := range []string{"organizations", "organization_members", "billing_plans", "billing_plan_features", "billing_customers", "billing_checkouts", "billing_subscriptions", "billing_purchases", "billing_grants", "billing_documents", "stripe_events"} {
+	for _, table := range []string{"organizations", "organization_members", "billing_plans", "billing_plan_features", "billing_customers", "billing_checkouts", "billing_subscriptions", "billing_purchases", "billing_grants", "billing_documents", "stripe_events", "billing_settings"} {
 		require.NoError(t, gdb.Exec("DROP TABLE "+table).Error, table)
 	}
 	sqlText, err := fs.ReadFile(db.MigrationSchema().Migrations, "0005_billing.up.sql")
@@ -38,6 +38,7 @@ func TestBillingMigration_CreatesUsableTables(t *testing.T) {
 	require.NoError(t, gdb.Create(&db.BillingDocument{Subject: "org:" + org.ID, Kind: db.DocumentInvoice, StripeRef: "in_1", AmountCents: 1, Lines: "[]", PaidAt: time.Now(), OdooState: db.OdooStatePending, NextAttemptAt: time.Now()}).Error)
 	require.NoError(t, gdb.Create(&db.StripeEvent{EventID: "evt_1", Type: "invoice.paid"}).Error)
 	require.Error(t, gdb.Create(&db.StripeEvent{EventID: "evt_1", Type: "invoice.paid"}).Error, "event ids are unique")
+	require.NoError(t, gdb.Create(&db.BillingSetting{Key: "k", Value: "v"}).Error)
 }
 
 func TestBillingMigration_OneLiveSubscriptionPerSubjectAndGroup(t *testing.T) {

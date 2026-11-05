@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -79,6 +80,47 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 	}
 	checks = append(checks, s.odoo.Checks(ctx)...)
 	return append(checks, s.outboxCheck(), s.apiKeyCheck())
+}
+
+// portalCheck is green when the portal configuration the gateway saved is
+// still in Stripe, active and returning to this gateway.
+func (s *Service) portalCheck(ctx context.Context) SetupCheck {
+	c := SetupCheck{ID: "stripe-portal", Title: "Stripe Customer Portal configuration", Action: ActionSyncPortal, Link: stripeDashboard(s.stripeMode, "settings/billing/portal")}
+	id, err := s.repo.GetSetting(settingPortalConfig)
+	if err != nil {
+		c.Status, c.Detail = CheckMissing, err.Error()
+		return c
+	}
+	if id == "" {
+		c.Status, c.Detail = CheckWarn, "not created yet: Stripe's default portal is used until it is. Created or updated by the gateway at startup and when plans change"
+		return c
+	}
+	if s.stripe == nil {
+		c.Status, c.Detail = CheckMissing, "Stripe is not configured"
+		return c
+	}
+	cfg, err := s.stripe.GetPortalConfig(ctx, id)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		c.Status, c.Detail = CheckWarn, "configuration "+id+" no longer exists in Stripe: sync to create it again"
+	case err != nil:
+		c.Status, c.Detail = CheckWarn, "could not read configuration "+id+": "+err.Error()
+	case !cfg.Active:
+		c.Status, c.Detail = CheckWarn, "configuration "+id+" is not active in Stripe"
+	case cfg.ReturnURL != s.portalReturnURL():
+		c.Status, c.Detail = CheckWarn, fmt.Sprintf("configuration %s returns to %q, not %q: sync it", id, cfg.ReturnURL, s.portalReturnURL())
+	default:
+		c.Status, c.Detail = CheckOK, "configuration "+id+" is active"
+	}
+	return c
+}
+
+// stripeDashboard is a Stripe dashboard URL for the mode of the secret key.
+func stripeDashboard(mode, path string) string {
+	if mode == "test" {
+		return "https://dashboard.stripe.com/test/" + path
+	}
+	return "https://dashboard.stripe.com/" + path
 }
 
 func (s *Service) invoiceEmailCheck() SetupCheck {

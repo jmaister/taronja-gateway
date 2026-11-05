@@ -79,3 +79,18 @@ func TestBillingRepositoryDB_StuckEvents(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 }
+
+func TestBillingRepositoryDB_Settings(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := NewBillingRepositoryDB(db.GetConnection())
+
+	v, err := repo.GetSetting("k")
+	require.NoError(t, err)
+	assert.Equal(t, "", v, "missing is empty")
+
+	require.NoError(t, repo.SetSetting("k", "one"))
+	require.NoError(t, repo.SetSetting("k", "two"))
+	v, err = repo.GetSetting("k")
+	require.NoError(t, err)
+	assert.Equal(t, "two", v)
+}

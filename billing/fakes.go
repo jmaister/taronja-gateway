@@ -23,6 +23,8 @@ type FakeStripe struct {
 	LookupKeys         map[string]string // lookup key -> price id
 	Customers          map[string]string // id -> subject
 	PortalReturnURL    string
+	PortalURLConfigID  string
+	PortalConfigs      map[string]PortalConfig
 	Sessions           []CheckoutParams
 	Subscriptions      map[string]*StripeSubscription
 	Created            []SubscriptionParams
@@ -205,15 +207,38 @@ func (f *FakeStripe) ConfigurePortal(ctx context.Context, p PortalParams) (strin
 		return "", f.Err
 	}
 	f.Portal = &p
-	return "bpc_1", nil
+	if _, ok := f.PortalConfigs[p.ConfigID]; ok {
+		f.PortalConfigs[p.ConfigID] = PortalConfig{ID: p.ConfigID, Active: true, ReturnURL: p.ReturnURL}
+		return p.ConfigID, nil
+	}
+	if f.PortalConfigs == nil {
+		f.PortalConfigs = map[string]PortalConfig{}
+	}
+	id := fmt.Sprintf("bpc_%d", len(f.PortalConfigs)+1)
+	f.PortalConfigs[id] = PortalConfig{ID: id, Active: true, ReturnURL: p.ReturnURL}
+	return id, nil
 }
 
-func (f *FakeStripe) PortalURL(ctx context.Context, customerID, returnURL string) (string, error) {
+func (f *FakeStripe) GetPortalConfig(ctx context.Context, id string) (PortalConfig, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return PortalConfig{}, f.Err
+	}
+	cfg, ok := f.PortalConfigs[id]
+	if !ok {
+		return PortalConfig{}, fmt.Errorf("%w: portal configuration %s", ErrNotFound, id)
+	}
+	return cfg, nil
+}
+
+func (f *FakeStripe) PortalURL(ctx context.Context, customerID, returnURL, configID string) (string, error) {
 	if f.Err != nil {
 		return "", f.Err
 	}
 	f.mu.Lock()
 	f.PortalReturnURL = returnURL
+	f.PortalURLConfigID = configID
 	f.mu.Unlock()
 	return "https://billing.stripe.test/p/" + customerID, nil
 }

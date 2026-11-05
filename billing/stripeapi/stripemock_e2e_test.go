@@ -86,11 +86,11 @@ func TestE2E_AllMethods(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, portalConfigID)
-	_, err = client.ConfigurePortal(ctx, billing.PortalParams{ReturnURL: "https://example.com/account"})
+	_, err = client.ConfigurePortal(ctx, billing.PortalParams{ReturnURL: "https://example.com/account", ConfigID: portalConfigID})
 	require.NoError(t, err)
 
 	// Test PortalURL
-	portalURL, err := client.PortalURL(ctx, customerID, "https://example.com/account")
+	portalURL, err := client.PortalURL(ctx, customerID, "https://example.com/account", portalConfigID)
 	require.NoError(t, err)
 	assert.NotEmpty(t, portalURL)
 

@@ -53,6 +53,10 @@ func newFakeStripe(t *testing.T, responses map[string]string) (*fakeStripe, *Cli
 			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"no fake for ` + r.Method + " " + r.URL.Path + `"}}`))
 			return
 		}
+		if rest, found := strings.CutPrefix(resp, "404 "); found {
+			w.WriteHeader(http.StatusNotFound)
+			resp = rest
+		}
 		_, _ = w.Write([]byte(resp))
 	}))
 	t.Cleanup(srv.Close)
@@ -274,7 +278,7 @@ func TestPortal(t *testing.T) {
 	assert.Equal(t, "address", form.Get("features[customer_update][allowed_updates][1]"))
 	assert.Empty(t, form.Get("features[customer_update][allowed_updates][2]"), "neither tax id, email nor phone")
 
-	_, err = c.ConfigurePortal(context.Background(), billing.PortalParams{ReturnURL: "https://gw/_/account"})
+	_, err = c.ConfigurePortal(context.Background(), billing.PortalParams{ReturnURL: "https://gw/_/account", ConfigID: "bpc_1"})
 	require.NoError(t, err)
 	req := f.last(t)
 	assert.Equal(t, "/v1/billing_portal/configurations/bpc_1", req.Path)
@@ -283,7 +287,7 @@ func TestPortal(t *testing.T) {
 	assert.Equal(t, "address", req.Form.Get("features[customer_update][allowed_updates][1]"))
 
 	_, err = c.ConfigurePortal(context.Background(), billing.PortalParams{
-		ReturnURL: "https://gw/_/account", SwitchProducts: map[string][]string{"prod_1": {"price_m"}},
+		ReturnURL: "https://gw/_/account", ConfigID: "bpc_1", SwitchProducts: map[string][]string{"prod_1": {"price_m"}},
 	})
 	require.NoError(t, err)
 	req = f.last(t)
@@ -291,12 +295,36 @@ func TestPortal(t *testing.T) {
 	assert.Equal(t, "decreasing_item_amount", req.Form.Get("features[subscription_update][schedule_at_period_end][conditions][0][type]"))
 	assert.Equal(t, "shortening_interval", req.Form.Get("features[subscription_update][schedule_at_period_end][conditions][1][type]"))
 
-	u, err := c.PortalURL(context.Background(), "cus_1", "https://gw/_/account")
+	u, err := c.PortalURL(context.Background(), "cus_1", "https://gw/_/account", "bpc_1")
 	require.NoError(t, err)
 	assert.Equal(t, "https://billing.stripe.com/p/1", u)
 	form = f.last(t).Form
 	assert.Equal(t, "bpc_1", form.Get("configuration"))
 	assert.Equal(t, "cus_1", form.Get("customer"))
+}
+
+func TestPortal_MissingConfigurationIsCreatedAgain(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{
+		"POST /v1/billing_portal/configurations/bpc_gone": `404 {"error":{"type":"invalid_request_error","code":"resource_missing","message":"No such configuration: 'bpc_gone'"}}`,
+		"POST /v1/billing_portal/configurations":          `{"id":"bpc_new","object":"billing_portal.configuration"}`,
+	})
+	id, err := c.ConfigurePortal(context.Background(), billing.PortalParams{ReturnURL: "https://gw/_/account", ConfigID: "bpc_gone"})
+	require.NoError(t, err)
+	assert.Equal(t, "bpc_new", id)
+	assert.Equal(t, "/v1/billing_portal/configurations", f.last(t).Path)
+}
+
+func TestGetPortalConfig(t *testing.T) {
+	_, c := newFakeStripe(t, map[string]string{
+		"GET /v1/billing_portal/configurations/bpc_1":    `{"id":"bpc_1","object":"billing_portal.configuration","active":true,"default_return_url":"https://gw/_/account"}`,
+		"GET /v1/billing_portal/configurations/bpc_gone": `404 {"error":{"type":"invalid_request_error","code":"resource_missing","message":"No such configuration"}}`,
+	})
+	cfg, err := c.GetPortalConfig(context.Background(), "bpc_1")
+	require.NoError(t, err)
+	assert.Equal(t, billing.PortalConfig{ID: "bpc_1", Active: true, ReturnURL: "https://gw/_/account"}, cfg)
+
+	_, err = c.GetPortalConfig(context.Background(), "bpc_gone")
+	assert.ErrorIs(t, err, billing.ErrNotFound)
 }
 
 func TestRefund(t *testing.T) {

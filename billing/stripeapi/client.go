@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/billing"
@@ -18,10 +17,6 @@ import (
 type Client struct {
 	sc            *stripe.Client
 	webhookSecret string
-
-	mu sync.Mutex
-	// portalConfigID is the portal configuration ConfigurePortal created.
-	portalConfigID string
 }
 
 // Option configures a Client.
@@ -308,9 +303,6 @@ var portalCustomerUpdates = []string{"name", "address"}
 const portalProration = "always_invoice"
 
 func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	var products []*stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateProductParams
 	for product, prices := range p.SwitchProducts {
 		products = append(products, &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateProductParams{
@@ -318,44 +310,52 @@ func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (s
 			Prices:  stripe.StringSlice(prices),
 		})
 	}
-	if c.portalConfigID == "" {
-		features := &stripe.BillingPortalConfigurationCreateFeaturesParams{
-			PaymentMethodUpdate: &stripe.BillingPortalConfigurationCreateFeaturesPaymentMethodUpdateParams{Enabled: stripe.Bool(true)},
-			SubscriptionCancel: &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionCancelParams{
-				Enabled: stripe.Bool(true),
-				Mode:    stripe.String("at_period_end"),
-			},
-			InvoiceHistory: &stripe.BillingPortalConfigurationCreateFeaturesInvoiceHistoryParams{Enabled: stripe.Bool(false)},
-			CustomerUpdate: &stripe.BillingPortalConfigurationCreateFeaturesCustomerUpdateParams{
-				Enabled:        stripe.Bool(true),
-				AllowedUpdates: stripe.StringSlice(portalCustomerUpdates),
-			},
-			SubscriptionUpdate: &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateParams{
-				Enabled: stripe.Bool(len(products) > 0),
-			},
+	if p.ConfigID != "" {
+		cfg, err := c.updatePortal(ctx, p, products)
+		if err == nil {
+			return cfg, nil
 		}
-		if len(products) > 0 {
-			features.SubscriptionUpdate.DefaultAllowedUpdates = stripe.StringSlice([]string{"price"})
-			features.SubscriptionUpdate.ProrationBehavior = stripe.String(portalProration)
-			features.SubscriptionUpdate.ScheduleAtPeriodEnd = &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateScheduleAtPeriodEndParams{
-				Conditions: []*stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateScheduleAtPeriodEndConditionParams{
-					{Type: stripe.String("decreasing_item_amount")}, {Type: stripe.String("shortening_interval")},
-				},
-			}
-			features.SubscriptionUpdate.Products = products
-		}
-		params := &stripe.BillingPortalConfigurationCreateParams{
-			Features:         features,
-			DefaultReturnURL: stripe.String(p.ReturnURL),
-		}
-		cfg, err := c.sc.V1BillingPortalConfigurations.Create(ctx, params)
-		if err != nil {
+		if !isMissing(err) {
 			return "", wrap(err)
 		}
-		c.portalConfigID = cfg.ID
-		return cfg.ID, nil
 	}
+	features := &stripe.BillingPortalConfigurationCreateFeaturesParams{
+		PaymentMethodUpdate: &stripe.BillingPortalConfigurationCreateFeaturesPaymentMethodUpdateParams{Enabled: stripe.Bool(true)},
+		SubscriptionCancel: &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionCancelParams{
+			Enabled: stripe.Bool(true),
+			Mode:    stripe.String("at_period_end"),
+		},
+		InvoiceHistory: &stripe.BillingPortalConfigurationCreateFeaturesInvoiceHistoryParams{Enabled: stripe.Bool(false)},
+		CustomerUpdate: &stripe.BillingPortalConfigurationCreateFeaturesCustomerUpdateParams{
+			Enabled:        stripe.Bool(true),
+			AllowedUpdates: stripe.StringSlice(portalCustomerUpdates),
+		},
+		SubscriptionUpdate: &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateParams{
+			Enabled: stripe.Bool(len(products) > 0),
+		},
+	}
+	if len(products) > 0 {
+		features.SubscriptionUpdate.DefaultAllowedUpdates = stripe.StringSlice([]string{"price"})
+		features.SubscriptionUpdate.ProrationBehavior = stripe.String(portalProration)
+		features.SubscriptionUpdate.ScheduleAtPeriodEnd = &stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateScheduleAtPeriodEndParams{
+			Conditions: []*stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateScheduleAtPeriodEndConditionParams{
+				{Type: stripe.String("decreasing_item_amount")}, {Type: stripe.String("shortening_interval")},
+			},
+		}
+		features.SubscriptionUpdate.Products = products
+	}
+	params := &stripe.BillingPortalConfigurationCreateParams{
+		Features:         features,
+		DefaultReturnURL: stripe.String(p.ReturnURL),
+	}
+	cfg, err := c.sc.V1BillingPortalConfigurations.Create(ctx, params)
+	if err != nil {
+		return "", wrap(err)
+	}
+	return cfg.ID, nil
+}
 
+func (c *Client) updatePortal(ctx context.Context, p billing.PortalParams, products []*stripe.BillingPortalConfigurationCreateFeaturesSubscriptionUpdateProductParams) (string, error) {
 	update := &stripe.BillingPortalConfigurationUpdateFeaturesSubscriptionUpdateParams{Enabled: stripe.Bool(len(products) > 0)}
 	if len(products) > 0 {
 		update.DefaultAllowedUpdates = stripe.StringSlice([]string{"price"})
@@ -381,20 +381,36 @@ func (c *Client) ConfigurePortal(ctx context.Context, p billing.PortalParams) (s
 		},
 		DefaultReturnURL: stripe.String(p.ReturnURL),
 	}
-	cfg, err := c.sc.V1BillingPortalConfigurations.Update(ctx, c.portalConfigID, params)
+	cfg, err := c.sc.V1BillingPortalConfigurations.Update(ctx, p.ConfigID, params)
 	if err != nil {
-		return "", wrap(err)
+		return "", err
 	}
 	return cfg.ID, nil
 }
 
-func (c *Client) PortalURL(ctx context.Context, customerID, returnURL string) (string, error) {
-	params := &stripe.BillingPortalSessionCreateParams{Customer: stripe.String(customerID), ReturnURL: stripe.String(returnURL)}
-	c.mu.Lock()
-	if c.portalConfigID != "" {
-		params.Configuration = stripe.String(c.portalConfigID)
+// isMissing reports whether err is Stripe saying the resource does not
+// exist (a configuration of the other mode, or deleted).
+func isMissing(err error) bool {
+	var se *stripe.Error
+	return errors.As(err, &se) && se.Code == stripe.ErrorCodeResourceMissing
+}
+
+func (c *Client) GetPortalConfig(ctx context.Context, id string) (billing.PortalConfig, error) {
+	cfg, err := c.sc.V1BillingPortalConfigurations.Retrieve(ctx, id, nil)
+	if isMissing(err) {
+		return billing.PortalConfig{}, fmt.Errorf("stripe: %w: portal configuration %s", billing.ErrNotFound, id)
 	}
-	c.mu.Unlock()
+	if err != nil {
+		return billing.PortalConfig{}, wrap(err)
+	}
+	return billing.PortalConfig{ID: cfg.ID, Active: cfg.Active, ReturnURL: cfg.DefaultReturnURL}, nil
+}
+
+func (c *Client) PortalURL(ctx context.Context, customerID, returnURL, configID string) (string, error) {
+	params := &stripe.BillingPortalSessionCreateParams{Customer: stripe.String(customerID), ReturnURL: stripe.String(returnURL)}
+	if configID != "" {
+		params.Configuration = stripe.String(configID)
+	}
 	session, err := c.sc.V1BillingPortalSessions.Create(ctx, params)
 	if err != nil {
 		return "", wrap(err)
