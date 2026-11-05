@@ -67,7 +67,7 @@ func TestPlanChange_UpgradeThenScheduledDowngrade(t *testing.T) {
 	assert.Equal(t, "Tiempo restante en Academia Pro después del 11 nov 2026", move.Lines[1].Description)
 	assert.EqualValues(t, 3933, move.Lines[1].AmountCents)
 	assert.False(t, move.CreditNote, "the credit for the old plan is a line of the invoice, not a credit note")
-	assert.Equal(t, "Cambio de plan de Academia mensual a Academia Pro el "+spanishDate(change)+": se descuenta el tiempo no usado de Academia mensual y se cobra el tiempo restante de Academia Pro.", move.Note)
+	assert.Equal(t, "Cambio de plan de Academia mensual a Academia Pro el "+e.svc.day(change)+": se descuenta el tiempo no usado de Academia mensual y se cobra el tiempo restante de Academia Pro.", move.Note)
 	assert.Empty(t, e.odoo.Moves["in_1"].Note, "an ordinary invoice has no note")
 
 	require.Len(t, mailer.sent, 2)
@@ -106,7 +106,7 @@ func TestPlanChange_UpgradeThenScheduledDowngrade(t *testing.T) {
 	renewal := e.odoo.Moves["in_3"]
 	require.Len(t, renewal.Lines, 1)
 	assert.EqualValues(t, 2900, renewal.Lines[0].AmountCents)
-	assert.Equal(t, "Academia mensual "+spanishDate(end)+"–"+spanishDate(nextEnd.AddDate(0, 0, -1)), renewal.Lines[0].Description)
+	assert.Equal(t, "Academia mensual "+e.svc.day(end)+"–"+e.svc.day(nextEnd.AddDate(0, 0, -1)), renewal.Lines[0].Description)
 	assert.Empty(t, renewal.Note)
 
 	for ref, m := range e.odoo.Moves {

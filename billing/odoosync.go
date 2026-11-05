@@ -231,7 +231,7 @@ func (s *Service) prorationNote(lines []DocumentLine) string {
 		return p.Name
 	}
 	return fmt.Sprintf("Cambio de plan de %s a %s el %s: se descuenta el tiempo no usado de %s y se cobra el tiempo restante de %s.",
-		name(from.PlanKey), name(to.PlanKey), spanishDate(*to.PeriodStart), name(from.PlanKey), name(to.PlanKey))
+		name(from.PlanKey), name(to.PlanKey), s.day(*to.PeriodStart), name(from.PlanKey), name(to.PlanKey))
 }
 
 // ensurePartner creates or updates the subject's Odoo partner from its

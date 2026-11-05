@@ -25,6 +25,7 @@ import (
 // Client talks to one Odoo database as one API user.
 type Client struct {
 	cfg  config.OdooBillingConfig
+	loc  *time.Location
 	http *http.Client
 
 	mu     sync.Mutex
@@ -34,8 +35,12 @@ type Client struct {
 // New returns a client for cfg; with no URL every call returns
 // billing.ErrNotConfigured.
 func New(cfg config.OdooBillingConfig) *Client {
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 60 * time.Second}, fields: map[string]map[string]bool{}}
+	return &Client{cfg: cfg, loc: config.BillingLocation(""), http: &http.Client{Timeout: 60 * time.Second}, fields: map[string]map[string]bool{}}
 }
+
+// SetLocation sets the time zone of the invoice and payment dates
+// (billing.timezone); the default is Europe/Madrid.
+func (c *Client) SetLocation(loc *time.Location) { c.loc = loc }
 
 var _ billing.Odoo = (*Client)(nil)
 
@@ -327,7 +332,7 @@ func (c *Client) IssueMove(ctx context.Context, m billing.OdooMove) (billing.Odo
 		return billing.OdooIssued{}, err
 	}
 	issued := billing.OdooIssued{MoveID: moveID, Number: str(move["name"]), Simplified: boolean(move["l10n_es_is_simplified"])}
-	issuedAt, err := time.Parse(time.DateOnly, str(move["invoice_date"]))
+	issuedAt, err := time.ParseInLocation(time.DateOnly, str(move["invoice_date"]), c.loc)
 	if err == nil {
 		issued.IssuedAt = issuedAt
 	}
@@ -366,7 +371,7 @@ func (c *Client) createMove(ctx context.Context, m billing.OdooMove, moveType st
 		"partner_id":       m.PartnerID,
 		"journal_id":       c.cfg.SalesJournalID,
 		"company_id":       c.cfg.CompanyID,
-		"invoice_date":     paidAt.Format(time.DateOnly),
+		"invoice_date":     paidAt.In(c.loc).Format(time.DateOnly),
 		"ref":              m.Ref,
 		"invoice_line_ids": lines,
 	}
@@ -396,7 +401,7 @@ func (c *Client) registerPayment(ctx context.Context, moveID int64, m billing.Od
 	wizardCtx := M{"active_model": "account.move", "active_ids": []int64{moveID}}
 	wizardID, err := c.create(ctx, "account.payment.register", M{
 		"journal_id":    c.cfg.PaymentJournalID,
-		"payment_date":  paidAt.Format(time.DateOnly),
+		"payment_date":  paidAt.In(c.loc).Format(time.DateOnly),
 		"communication": m.Ref,
 	}, wizardCtx)
 	if err != nil {

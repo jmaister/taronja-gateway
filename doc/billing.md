@@ -477,6 +477,7 @@ letter and none of `< > \ ' " *`. Empty keeps the account's.
 ```yaml
 billing:
   enabled: true
+  timezone: Europe/Madrid   # optional (default): dates on invoices, emails and pages
   stripe:
     secretKey: ${STRIPE_SECRET_KEY}
     webhookSecret: ${STRIPE_WEBHOOK_SECRET}

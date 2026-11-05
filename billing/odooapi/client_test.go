@@ -224,7 +224,7 @@ func TestIssueMove_NewInvoiceRunsEveryStep(t *testing.T) {
 		Lines: []billing.OdooLine{{ProductID: 3, Description: "Academia", AmountCents: 2900}},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, billing.OdooIssued{MoveID: 100, Number: "INV/2026/00001", IssuedAt: time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC), Simplified: true}, issued)
+	assert.Equal(t, billing.OdooIssued{MoveID: 100, Number: "INV/2026/00001", IssuedAt: time.Date(2026, 10, 25, 0, 0, 0, 0, config.BillingLocation("")), Simplified: true}, issued)
 
 	vals := f.call(t, "account.move/create")["vals_list"].([]any)[0].(M)
 	assert.Equal(t, "out_invoice", vals["move_type"])
@@ -240,6 +240,41 @@ func TestIssueMove_NewInvoiceRunsEveryStep(t *testing.T) {
 	assert.Equal(t, float64(14), pay["vals_list"].([]any)[0].(M)["journal_id"])
 	send := f.call(t, "account.move.send.wizard/create")["vals_list"].([]any)[0].(M)
 	assert.Equal(t, []any{"manual"}, send["sending_methods"])
+}
+
+func TestIssueMove_DatesAreInTheBillingTimeZone(t *testing.T) {
+	// 22:30 UTC on 30 June is 00:30 on 1 July in Madrid.
+	paidAt := time.Date(2026, 6, 30, 22, 30, 0, 0, time.UTC)
+	issue := func(t *testing.T, setLoc func(*Client)) (invoiceDate, paymentDate any) {
+		f, c := newFake(t)
+		setLoc(c)
+		f.on("account.move/fields_get", moveFieldsGet)
+		f.on("account.move/search_read", func(body M) any {
+			if len(body["fields"].([]any)) == 1 {
+				return []any{}
+			}
+			return []M{{"id": 100, "state": "draft", "payment_state": "not_paid", "is_move_sent": true, "invoice_date": "2026-07-01"}}
+		})
+		f.on("account.move/create", func(M) any { return []int64{100} })
+		f.on("account.move/action_post", func(M) any { return true })
+		f.on("account.payment.register/create", func(M) any { return []int64{5} })
+		f.on("account.payment.register/action_create_payments", func(M) any { return M{} })
+		f.on("account.move/write", func(M) any { return true })
+		_, err := c.IssueMove(context.Background(), billing.OdooMove{Ref: "in_1", PartnerID: 55, PaidAt: paidAt, Lines: []billing.OdooLine{{ProductID: 3, Description: "A", AmountCents: 100}}})
+		require.NoError(t, err)
+		vals := f.call(t, "account.move/create")["vals_list"].([]any)[0].(M)
+		pay := f.call(t, "account.payment.register/create")["vals_list"].([]any)[0].(M)
+		return vals["invoice_date"], pay["payment_date"]
+	}
+	inv, pay := issue(t, func(*Client) {})
+	assert.Equal(t, "2026-07-01", inv, "Europe/Madrid by default")
+	assert.Equal(t, "2026-07-01", pay)
+
+	ny, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	inv, pay = issue(t, func(c *Client) { c.SetLocation(ny) })
+	assert.Equal(t, "2026-06-30", inv)
+	assert.Equal(t, "2026-06-30", pay)
 }
 
 func TestIssueMove_ExistingFinishedMoveMakesNoChanges(t *testing.T) {

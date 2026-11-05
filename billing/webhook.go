@@ -375,7 +375,7 @@ func (s *Service) recordPurchase(tx *webhookTx, checkout *db.BillingCheckout, pl
 	main := plan.AmountCents
 	description := plan.Name
 	if plan.Kind == db.PlanKindOneTime && plan.AccessDays > 0 {
-		description = fmt.Sprintf("%s %s–%s", plan.Name, spanishDate(paidAt), spanishDate(paidAt.AddDate(0, 0, plan.AccessDays)))
+		description = fmt.Sprintf("%s %s–%s", plan.Name, s.day(paidAt), s.day(paidAt.AddDate(0, 0, plan.AccessDays)))
 	}
 	lines = append(lines, DocumentLine{Description: description, PlanKey: plan.Key, AmountCents: main})
 	// Odoo's total must equal the charge: what Stripe charged wins.
@@ -397,10 +397,6 @@ func currency(c string) string {
 		return "eur"
 	}
 	return strings.ToLower(c)
-}
-
-func spanishDate(t time.Time) string {
-	return t.UTC().Format("02/01/2006")
 }
 
 func (s *Service) onCheckoutExpired(tx *webhookTx, cev *CheckoutEvent) error {
@@ -621,7 +617,7 @@ func (s *Service) invoiceLines(repo repositories.BillingRepository, sub *db.Bill
 			name = l.Description
 		}
 		if !line.SetupFee && !l.Proration && l.PeriodStart != nil && l.PeriodEnd != nil && l.PeriodEnd.After(*l.PeriodStart) {
-			name = fmt.Sprintf("%s %s–%s", name, spanishDate(*l.PeriodStart), spanishDate(l.PeriodEnd.AddDate(0, 0, -1)))
+			name = fmt.Sprintf("%s %s–%s", name, s.day(*l.PeriodStart), s.day(l.PeriodEnd.AddDate(0, 0, -1)))
 		}
 		line.Description = name
 		sum += l.AmountCents

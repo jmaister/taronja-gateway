@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/billing"
@@ -104,13 +103,6 @@ func displayFeatures(features []string) []string {
 
 // FormatEUR writes cents as Spanish euros: 2900 -> "29,00 €".
 func FormatEUR(cents int64) string { return billing.FormatEUR(cents) }
-
-func formatDay(t *time.Time) string {
-	if t == nil {
-		return ""
-	}
-	return t.Local().Format("02/01/2006")
-}
 
 // registerBillingRoutes adds the pay pages, the Stripe webhook and the
 // account page's portal button when billing is enabled.
@@ -352,13 +344,13 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			switch {
 			case s.Status == db.SubscriptionCanceled:
 			case s.Status == db.SubscriptionTrialing:
-				item.Next = "Prueba hasta el " + formatDay(s.TrialEnd)
+				item.Next = "Prueba hasta el " + svc.Day(s.TrialEnd)
 			case s.CancelAtPeriodEnd:
-				item.Next = "Termina el " + formatDay(s.CurrentPeriodEnd)
+				item.Next = "Termina el " + svc.Day(s.CurrentPeriodEnd)
 			case s.Status == db.SubscriptionPastDue:
-				item.Next = "Acceso hasta el " + formatDay(s.GraceUntil)
+				item.Next = "Acceso hasta el " + svc.Day(s.GraceUntil)
 			case s.CurrentPeriodEnd != nil:
-				item.Next = "Se renueva el " + formatDay(s.CurrentPeriodEnd)
+				item.Next = "Se renueva el " + svc.Day(s.CurrentPeriodEnd)
 			}
 			view.Subscriptions = append(view.Subscriptions, item)
 		}
@@ -367,7 +359,7 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			log.Printf("Account page: documents of %s: %v", o.subject, err)
 		}
 		for _, d := range docs {
-			item := accountDocument{Kind: "Factura", Number: d.Number, Date: formatDay(&d.PaidAt), Amount: FormatEUR(d.AmountCents), Owner: o.label}
+			item := accountDocument{Kind: "Factura", Number: d.Number, Date: svc.Day(&d.PaidAt), Amount: FormatEUR(d.AmountCents), Owner: o.label}
 			if d.Kind == db.DocumentCreditNote {
 				item.Kind, item.Amount = "Abono", FormatEUR(-d.AmountCents)
 			}

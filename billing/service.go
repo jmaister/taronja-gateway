@@ -44,6 +44,9 @@ type Config struct {
 	OdooKeyExpiresAt time.Time
 	// UserName gives the name of a user (the email greeting); may be nil.
 	UserName func(id string) string
+	// Location is the time zone of the dates shown on invoices, emails and
+	// pages (billing.timezone); default Europe/Madrid.
+	Location *time.Location
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -59,6 +62,7 @@ type Service struct {
 	stripeMode string
 	odooKeyExp time.Time
 	now        func() time.Time
+	loc        *time.Location
 
 	notifications *notification.Service
 	mailer        Mailer
@@ -94,12 +98,30 @@ func NewService(cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
+	loc := cfg.Location
+	if loc == nil {
+		loc = config.BillingLocation("")
+	}
 	return &Service{
+		loc:  loc,
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
 		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, odooKeyExp: cfg.OdooKeyExpiresAt, now: now,
 		mailer: cfg.Mailer, userName: cfg.UserName, email: cfg.Email, emailTemplate: cfg.EmailTemplate, brands: cfg.Brands,
 		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
+}
+
+// day writes t as a Spanish date in the billing time zone.
+func (s *Service) day(t time.Time) string {
+	return t.In(s.loc).Format("02/01/2006")
+}
+
+// Day is day for an optional time ("" when nil).
+func (s *Service) Day(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return s.day(*t)
 }
 
 // Repo is the service's repository (handlers read lists through it).

@@ -33,7 +33,8 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 		mode = "live"
 	}
 	svcCfg := billing.Config{
-		Repo: d.BillingRepo, Orgs: d.OrganizationRepo, ServerURL: serverCfg.URL, StripeMode: mode,
+		Location: config.BillingLocation(cfg.Timezone),
+		Repo:     d.BillingRepo, Orgs: d.OrganizationRepo, ServerURL: serverCfg.URL, StripeMode: mode,
 		Stripe: stripeapi.New(cfg.Stripe.SecretKey, cfg.Stripe.WebhookSecret, stripeOpts...),
 		UserName: func(id string) string {
 			u, err := d.UserRepo.FindUserByIdOrUsername(id, "", "")
@@ -44,7 +45,9 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 		},
 	}
 	if cfg.Odoo.IsConfigured() {
-		svcCfg.Odoo = odooapi.New(cfg.Odoo)
+		odoo := odooapi.New(cfg.Odoo)
+		odoo.SetLocation(svcCfg.Location)
+		svcCfg.Odoo = odoo
 		if cfg.Odoo.APIKeyExpiresAt != "" {
 			// validated when the config loads
 			svcCfg.OdooKeyExpiresAt, _ = time.Parse(time.DateOnly, cfg.Odoo.APIKeyExpiresAt)

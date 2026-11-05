@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	_ "time/tzdata"
 	"unicode"
 	"unicode/utf8"
 
@@ -317,11 +318,12 @@ type GatewayConfig struct {
 // plans sold at /_/pay/<plan> grant features that apps read from the
 // X-Entitlements header or GET /_/api/entitlements. See doc/billing.md.
 type BillingConfig struct {
-	Enabled bool                          `yaml:"enabled"` // Enable billing. Default: false. Requires server.url and the Stripe keys.
-	Stripe  StripeBillingConfig           `yaml:"stripe"`  // Stripe account. Required when enabled.
-	Odoo    OdooBillingConfig             `yaml:"odoo"`    // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
-	Email   BillingEmailConfig            `yaml:"email"`   // Look of the invoice emails. Optional. They are sent through notifications.email.
-	Brands  map[string]BillingBrandConfig `yaml:"brands"`  // Look per plan group, keyed by the group name: Checkout, /_/pay pages and invoice emails of the plans in that group. Optional: unset fields fall back to billing.email and the gateway branding. Plans without a group use the fallback.
+	Enabled  bool                          `yaml:"enabled"`  // Enable billing. Default: false. Requires server.url and the Stripe keys.
+	Stripe   StripeBillingConfig           `yaml:"stripe"`   // Stripe account. Required when enabled.
+	Odoo     OdooBillingConfig             `yaml:"odoo"`     // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
+	Email    BillingEmailConfig            `yaml:"email"`    // Look of the invoice emails. Optional. They are sent through notifications.email.
+	Timezone string                        `yaml:"timezone"` // IANA time zone (e.g. "Europe/Madrid") of the dates on invoices, emails and pages: the Odoo invoice date, plan-change notes. Default: Europe/Madrid.
+	Brands   map[string]BillingBrandConfig `yaml:"brands"`   // Look per plan group, keyed by the group name: Checkout, /_/pay pages and invoice emails of the plans in that group. Optional: unset fields fall back to billing.email and the gateway branding. Plans without a group use the fallback.
 }
 
 // BillingBrandConfig is how one plan group looks to its customers.
@@ -414,7 +416,28 @@ func (b BillingBrandConfig) validate(path string) error {
 	return nil
 }
 
+// DefaultBillingTimezone is billing.timezone when unset.
+const DefaultBillingTimezone = "Europe/Madrid"
+
+// BillingLocation returns the time zone named by billing.timezone (empty:
+// the default); an unknown name, which validation refuses at load, gives UTC.
+func BillingLocation(name string) *time.Location {
+	if name == "" {
+		name = DefaultBillingTimezone
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
 func (b BillingConfig) validate(serverURL string) error {
+	if b.Timezone != "" {
+		if _, err := time.LoadLocation(b.Timezone); err != nil {
+			return fmt.Errorf("billing.timezone must be an IANA time zone like Europe/Madrid: %q", b.Timezone)
+		}
+	}
 	if !b.Enabled {
 		return nil
 	}

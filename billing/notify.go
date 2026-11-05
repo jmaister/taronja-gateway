@@ -59,10 +59,6 @@ func (s *Service) recipients(sub *db.BillingSubscription) []string {
 	return out
 }
 
-func spanishDay(t time.Time) string {
-	return t.UTC().Format("02/01/2006")
-}
-
 // notifySubscription tells sub's payer and owners about it.
 func (s *Service) notifySubscription(sub *db.BillingSubscription, kind string) {
 	if s.notifications == nil {
@@ -84,14 +80,14 @@ func (s *Service) notifySubscription(sub *db.BillingSubscription, kind string) {
 		title = "No hemos podido cobrar " + planName
 		body = "El cobro de la renovación ha fallado. Actualiza tu tarjeta para no perder el acceso"
 		if sub.GraceUntil != nil {
-			body += " (se mantiene hasta el " + spanishDay(*sub.GraceUntil) + ")"
+			body += " (se mantiene hasta el " + s.day(*sub.GraceUntil) + ")"
 		}
 		body += "."
 	case NotifyTrialEnding:
 		title = "Tu prueba de " + planName + " termina pronto"
 		body = "La prueba gratuita termina"
 		if sub.TrialEnd != nil {
-			body += " el " + spanishDay(*sub.TrialEnd)
+			body += " el " + s.day(*sub.TrialEnd)
 		}
 		body += "; después se cobrará la suscripción."
 	case NotifyCanceled:

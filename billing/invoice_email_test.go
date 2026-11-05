@@ -50,7 +50,7 @@ func TestInvoiceEmail_SentOnceWithPDFAndSubscriptionDates(t *testing.T) {
 	require.Len(t, m.Attachments, 1)
 	assert.Equal(t, "F/2026/00001.pdf", m.Attachments[0].Name)
 	assert.Contains(t, string(m.Attachments[0].Data), "%PDF")
-	for _, want := range []string{"Plan: Academia mensual.", "29,00 €", "Periodo: " + spanishDay(start), "Tu prueba gratuita termina el " + spanishDay(trialEnd), "se renueva automáticamente el " + spanishDay(end), "https://gw.example.com/_/account", "Escuela SL · C/ Mayor 1", "Hola Escuela SL,"} {
+	for _, want := range []string{"Plan: Academia mensual.", "29,00 €", "Periodo: " + e.svc.day(start), "Tu prueba gratuita termina el " + e.svc.day(trialEnd), "se renueva automáticamente el " + e.svc.day(end), "https://gw.example.com/_/account", "Escuela SL · C/ Mayor 1", "Hola Escuela SL,"} {
 		assert.Contains(t, m.HTML, want)
 		assert.Contains(t, m.Text, want)
 	}

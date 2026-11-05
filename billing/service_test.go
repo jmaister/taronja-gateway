@@ -255,3 +255,16 @@ func TestSubjectEntitlements_InvalidationDuringComputeIsNotCachedOver(t *testing
 	require.NoError(t, err)
 	assert.Contains(t, second, "academia.access", "the stale result was not cached over the invalidation")
 }
+
+func TestDay_UsesTheBillingTimeZone(t *testing.T) {
+	e := newEnv(t)
+	at := time.Date(2026, 6, 30, 22, 30, 0, 0, time.UTC)
+	assert.Equal(t, "01/07/2026", e.svc.day(at), "00:30 in Madrid")
+	assert.Equal(t, "01/07/2026", e.svc.Day(&at))
+	assert.Equal(t, "", e.svc.Day(nil))
+
+	ny, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	svc := NewService(Config{Repo: e.repo, Location: ny})
+	assert.Equal(t, "30/06/2026", svc.day(at))
+}

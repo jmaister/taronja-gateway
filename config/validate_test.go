@@ -135,6 +135,8 @@ func TestValidate_Billing(t *testing.T) {
 		cfg     GatewayConfig
 		wantErr string
 	}{
+		"timezone ok":           {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Timezone: "America/New_York"}}, ""},
+		"bad timezone":          {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Timezone: "Madrid"}}, "billing.timezone"},
 		"key expiry":            {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: expiring}}, ""},
 		"bad key expiry":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: badExpiry}}, "apiKeyExpiresAt"},
 		"bad logo":              {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{LogoURL: "logo.png"}}}, "logoUrl"},
@@ -169,4 +171,10 @@ func TestValidate_Billing(t *testing.T) {
 			require.ErrorContains(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestBillingLocation(t *testing.T) {
+	assert.Equal(t, "Europe/Madrid", BillingLocation("").String())
+	assert.Equal(t, "America/New_York", BillingLocation("America/New_York").String())
+	assert.Equal(t, "UTC", BillingLocation("nowhere").String())
 }

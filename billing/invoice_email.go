@@ -83,11 +83,11 @@ func (s *Service) invoiceEmail(d *db.BillingDocument, c *db.BillingCustomer) (In
 	if d.IssuedAt != nil {
 		issued = *d.IssuedAt
 	}
-	e.Date = spanishDay(issued)
+	e.Date = s.day(issued)
 	for _, l := range lines {
 		line := InvoiceEmailLine{Description: l.Description, Amount: FormatEUR(sign * l.AmountCents)}
 		if l.PeriodStart != nil && l.PeriodEnd != nil {
-			line.Period = "Periodo: " + spanishDay(*l.PeriodStart) + " – " + spanishDay(*l.PeriodEnd)
+			line.Period = "Periodo: " + s.day(*l.PeriodStart) + " – " + s.day(*l.PeriodEnd)
 		}
 		e.Lines = append(e.Lines, line)
 	}
@@ -132,14 +132,14 @@ func (s *Service) subscriptionNotes(sub *db.BillingSubscription) []string {
 		notes = append(notes, "Plan: "+plan.Name+".")
 	}
 	if sub.TrialEnd != nil && sub.TrialEnd.After(s.now()) {
-		notes = append(notes, "Tu prueba gratuita termina el "+spanishDay(*sub.TrialEnd)+".")
+		notes = append(notes, "Tu prueba gratuita termina el "+s.day(*sub.TrialEnd)+".")
 	}
 	switch {
 	case sub.CurrentPeriodEnd == nil:
 	case sub.CancelAtPeriodEnd:
-		notes = append(notes, "La suscripción termina el "+spanishDay(*sub.CurrentPeriodEnd)+" y no se renovará.")
+		notes = append(notes, "La suscripción termina el "+s.day(*sub.CurrentPeriodEnd)+" y no se renovará.")
 	default:
-		notes = append(notes, "La suscripción se renueva automáticamente el "+spanishDay(*sub.CurrentPeriodEnd)+".")
+		notes = append(notes, "La suscripción se renueva automáticamente el "+s.day(*sub.CurrentPeriodEnd)+".")
 	}
 	return notes
 }
