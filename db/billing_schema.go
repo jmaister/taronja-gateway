@@ -247,6 +247,7 @@ type BillingPurchase struct {
 	Status                string    `gorm:"type:varchar(20);not null"`
 	AmountCents           int64     `gorm:"not null"`
 	RefundedCents         int64     `gorm:"not null;default:0"`
+	RefundAttempts        int       `gorm:"not null;default:0"` // refunds asked of Stripe; part of each one's idempotency key
 	Currency              string    `gorm:"type:varchar(3);not null;default:eur"`
 	StripePaymentIntentID string    `gorm:"type:varchar(255);uniqueIndex;not null"`
 	PaidAt                time.Time `gorm:"not null"`

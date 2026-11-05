@@ -435,7 +435,7 @@ func TestOnActivationPurchaseRefund(t *testing.T) {
 	// Partial refund, then the rest.
 	_, err = e.svc.RefundPurchase(ctx, purchase.ID, 1000, false)
 	require.NoError(t, err)
-	assert.Equal(t, FakeRefund{PaymentIntentID: "pi_1", AmountCents: 1000, IdempotencyKey: "tg-refund-" + purchase.ID + "-1000"}, e.stripe.Refunds[0])
+	assert.Equal(t, FakeRefund{PaymentIntentID: "pi_1", AmountCents: 1000, IdempotencyKey: "tg-refund-" + purchase.ID + "-1"}, e.stripe.Refunds[0])
 	e.event(t, Event{ID: "evt_r1", Type: EventChargeRefunded, Refund: &RefundEvent{ChargeID: "ch_1", PaymentIntentID: "pi_1", RefundedCents: 1000, RefundID: "re_1"}})
 	e.event(t, Event{ID: "evt_r1b", Type: EventChargeRefunded, Refund: &RefundEvent{ChargeID: "ch_1", PaymentIntentID: "pi_1", RefundedCents: 1000, RefundID: "re_1"}})
 	purchase, _ = e.repo.GetPurchaseByPaymentIntent("pi_1")
@@ -509,6 +509,28 @@ func TestNotifyDue(t *testing.T) {
 	require.NoError(t, e.svc.NotifyDue(e.clock.Add(time.Hour)), "the next hour sends nothing again")
 	assert.Equal(t, []string{NotifyTrialEnding}, e.notificationsOf(t, "u1"))
 	assert.Equal(t, []string{NotifyExpired}, e.notificationsOf(t, "u2"))
+}
+
+func TestRefundPurchase_TwoEqualPartialRefundsAreBothSent(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	p := &db.BillingPurchase{Subject: "user:u1", PlanKey: "x", Status: db.PurchaseStatusPaid, AmountCents: 3000, StripePaymentIntentID: "pi_two", PaidAt: e.clock}
+	require.NoError(t, e.repo.CreatePurchase(p))
+
+	_, err := e.svc.RefundPurchase(ctx, p.ID, 500, false)
+	require.NoError(t, err)
+	stale, err := e.repo.GetPurchase(p.ID)
+	require.NoError(t, err)
+	_, err = e.svc.RefundPurchase(ctx, p.ID, 500, false) // charge.refunded has not arrived yet
+	require.NoError(t, err)
+	require.Len(t, e.stripe.Refunds, 2, "the second refund is not taken for a retry of the first")
+	assert.NotEqual(t, e.stripe.Refunds[0].IdempotencyKey, e.stripe.Refunds[1].IdempotencyKey)
+
+	require.NoError(t, e.repo.UpdatePurchase(stale)) // a webhook saving what it read before
+	_, err = e.svc.RefundPurchase(ctx, p.ID, 500, false)
+	require.NoError(t, err)
+	require.Len(t, e.stripe.Refunds, 3)
+	assert.Equal(t, "tg-refund-"+p.ID+"-3", e.stripe.Refunds[2].IdempotencyKey, "saving an old copy does not reset the counter")
 }
 
 func TestPortalURL(t *testing.T) {

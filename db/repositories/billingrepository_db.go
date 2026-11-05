@@ -275,7 +275,25 @@ func (r *BillingRepositoryDB) GetPurchaseByPaymentIntent(paymentIntentID string)
 
 // UpdatePurchase updates an existing purchase.
 func (r *BillingRepositoryDB) UpdatePurchase(p *db.BillingPurchase) error {
-	return r.db.Save(p).Error
+	// refund_attempts only moves through NextRefundAttempt: saving a purchase
+	// read before a refund must not take the count back.
+	return r.db.Omit("refund_attempts").Save(p).Error
+}
+
+// NextRefundAttempt adds one to the purchase's refund counter and returns it.
+func (r *BillingRepositoryDB) NextRefundAttempt(id string) (int, error) {
+	var n int
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&db.BillingPurchase{}).Where("id = ?", id).UpdateColumn("refund_attempts", gorm.Expr("refund_attempts + 1"))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Model(&db.BillingPurchase{}).Where("id = ?", id).Select("refund_attempts").Scan(&n).Error
+	})
+	return n, err
 }
 
 // ListPurchases returns purchases matching the filter, newest paid first.

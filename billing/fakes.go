@@ -249,6 +249,11 @@ func (f *FakeStripe) Refund(ctx context.Context, paymentIntentID string, amountC
 	if f.Err != nil {
 		return f.Err
 	}
+	for _, r := range f.Refunds {
+		if idempotencyKey != "" && r.IdempotencyKey == idempotencyKey {
+			return nil // Stripe answers a repeated key with the first response
+		}
+	}
 	f.Refunds = append(f.Refunds, FakeRefund{PaymentIntentID: paymentIntentID, AmountCents: amountCents, IdempotencyKey: idempotencyKey})
 	return nil
 }
