@@ -729,3 +729,12 @@ func TestDuplicateLiveSubscription_SecondPaymentIsNotAnotherSubscription(t *test
 		assert.Len(t, subs, 1)
 	})
 }
+
+func TestSafeRedirect(t *testing.T) {
+	for _, ok := range []string{"/account", "/a/b?x=1#y"} {
+		assert.Equal(t, ok, SafeRedirect(ok))
+	}
+	for _, bad := range []string{"", "x", "//evil.example", "/\\evil.example", "/\t/evil.example", "/\n/evil.example", "/a\\b", "https://evil.example", "javascript:alert(1)"} {
+		assert.Empty(t, SafeRedirect(bad), "%q", bad)
+	}
+}

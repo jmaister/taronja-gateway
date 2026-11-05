@@ -11,21 +11,25 @@ import (
 // like a slash). This stops `?redirect=https://evil.example` open redirects after
 // login or logout.
 func SanitizeRedirectPath(raw string) string {
-	const fallback = "/"
-	if raw == "" {
-		return fallback
-	}
-	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.HasPrefix(raw, "/\\") {
-		return fallback
-	}
-	// Defense in depth beyond the prefix checks above: reject anything
-	// url.Parse itself resolves to an absolute URL (a scheme or host of its
-	// own) or can't parse at all — control characters, stray whitespace,
-	// and similar oddities a browser might interpret more liberally than
-	// this simple prefix check accounts for.
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
-		return fallback
+	if !IsSafeRedirectPath(raw) {
+		return "/"
 	}
 	return raw
+}
+
+// IsSafeRedirectPath reports whether raw is a same-origin path: one leading
+// "/", no backslash anywhere, no control characters (browsers drop tabs and
+// newlines, so "/\t/evil.example" would become "//evil.example"), and
+// nothing url.Parse reads as having a scheme or host.
+func IsSafeRedirectPath(raw string) bool {
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || len(raw) > 2048 {
+		return false
+	}
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7f || r == '\\' {
+			return false
+		}
+	}
+	parsed, err := url.Parse(raw)
+	return err == nil && parsed.Scheme == "" && parsed.Host == ""
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jmaister/taronja-gateway/db"
 	"github.com/jmaister/taronja-gateway/db/repositories"
+	"github.com/jmaister/taronja-gateway/session"
 	"gorm.io/gorm"
 )
 
@@ -41,7 +42,7 @@ type CheckoutRequest struct {
 
 // SafeRedirect keeps redirect only when it is a path on this site.
 func SafeRedirect(redirect string) string {
-	if !strings.HasPrefix(redirect, "/") || strings.HasPrefix(redirect, "//") || strings.ContainsAny(redirect, "\\\r\n") {
+	if !session.IsSafeRedirectPath(redirect) {
 		return ""
 	}
 	return redirect
