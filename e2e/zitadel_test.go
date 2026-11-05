@@ -220,11 +220,18 @@ func TestZitadel_LogoutAtProvider(t *testing.T) {
 	assert.Equal(t, browser.base+"/", endSession.Query().Get("post_logout_redirect_uri"))
 	assert.Nil(t, browser.me(), "the gateway session is over")
 
-	// Zitadel accepts the registered post-logout URI and sends the browser back.
+	// Zitadel accepts the registered post-logout URI and hands the browser to
+	// its login UI's logout page, which sends it back to the gateway. That UI is
+	// not part of this stack, so the test stops at the hand-over.
 	resp, err = noFollow.Get(endSession.String())
 	require.NoError(t, err)
 	resp.Body.Close()
-	assert.True(t, strings.HasPrefix(resp.Header.Get("Location"), browser.base+"/"), resp.Header.Get("Location"))
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	handOver, err := url.Parse(resp.Header.Get("Location"))
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(handOver.Path, "/ui/v2/login/logout"), "Zitadel's logout page: %s", handOver)
+	assert.NotEmpty(t, handOver.Query().Get("logout_token"))
+	assert.Equal(t, browser.base+"/", handOver.Query().Get("post_logout_redirect"))
 }
 
 func TestZitadel_UnverifiedEmailIsRefused(t *testing.T) {
