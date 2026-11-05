@@ -73,6 +73,9 @@ type Service struct {
 	mu          sync.RWMutex
 	cache       map[string]cachedEntitlements // subject -> entitlements
 	memberships map[string]cachedMemberships  // user id -> organization ids
+	// gen counts invalidations: a computation that started before one must
+	// not store its (possibly stale) result.
+	gen uint64
 }
 
 type cachedEntitlements struct {
@@ -115,6 +118,7 @@ func (s *Service) Orgs() repositories.OrganizationRepository { return s.orgs }
 func (s *Service) Invalidate(subject string) {
 	s.mu.Lock()
 	delete(s.cache, subject)
+	s.gen++
 	s.mu.Unlock()
 }
 
@@ -123,6 +127,7 @@ func (s *Service) InvalidateAll() {
 	s.mu.Lock()
 	s.cache = map[string]cachedEntitlements{}
 	s.memberships = map[string]cachedMemberships{}
+	s.gen++
 	s.mu.Unlock()
 }
 

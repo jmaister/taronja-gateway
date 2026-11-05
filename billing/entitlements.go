@@ -293,6 +293,7 @@ func (s *Service) SubjectEntitlements(subject string) (Entitlements, error) {
 
 // computeSubjects computes and caches the entitlements of subjects.
 func (s *Service) computeSubjects(subjects []string) (map[string]Entitlements, error) {
+	gen := s.generation()
 	plans, err := s.repo.ListPlans(false)
 	if err != nil {
 		return nil, fmt.Errorf("billing: listing plans: %w", err)
@@ -322,8 +323,10 @@ func (s *Service) computeSubjects(subjects []string) (map[string]Entitlements, e
 			filter(grants, func(x db.BillingGrant) bool { return x.Subject == subject }))
 	}
 	s.mu.Lock()
-	for subject, e := range out {
-		s.cache[subject] = cachedEntitlements{ent: e, at: now}
+	if s.gen == gen {
+		for subject, e := range out {
+			s.cache[subject] = cachedEntitlements{ent: e, at: now}
+		}
 	}
 	s.mu.Unlock()
 	return out, nil
@@ -351,6 +354,7 @@ func (s *Service) UserOrgIDs(userID string) ([]string, error) {
 	if s.orgs == nil {
 		return nil, nil
 	}
+	gen := s.generation()
 	memberships, err := s.orgs.OfUser(userID)
 	if err != nil {
 		return nil, fmt.Errorf("billing: organizations of %s: %w", userID, err)
@@ -360,7 +364,9 @@ func (s *Service) UserOrgIDs(userID string) ([]string, error) {
 		ids = append(ids, m.Organization.ID)
 	}
 	s.mu.Lock()
-	s.memberships[userID] = cachedMemberships{ids: ids, at: s.now()}
+	if s.gen == gen {
+		s.memberships[userID] = cachedMemberships{ids: ids, at: s.now()}
+	}
 	s.mu.Unlock()
 	return ids, nil
 }
@@ -407,7 +413,14 @@ func (s *Service) ForUser(userID string) (UserEntitlements, error) {
 func (s *Service) InvalidateUser(userID string) {
 	s.mu.Lock()
 	delete(s.memberships, userID)
+	s.gen++
 	s.mu.Unlock()
+}
+
+func (s *Service) generation() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.gen
 }
 
 // fresh reports whether something cached at at is still within the TTL.

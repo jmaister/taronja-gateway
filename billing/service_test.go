@@ -214,3 +214,44 @@ func TestEntitlementCache_InvalidatedByEveryChange(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, has(), "subscription canceled")
 }
+
+// racyRepo changes state right after the entitlements' last read, as a
+// webhook committing and invalidating while a computation is in flight.
+type racyRepo struct {
+	repositories.BillingRepository
+	afterRead func()
+}
+
+func (r racyRepo) ListGrantsBySubjects(subjects []string) ([]db.BillingGrant, error) {
+	grants, err := r.BillingRepository.ListGrantsBySubjects(subjects)
+	if r.afterRead != nil {
+		r.afterRead()
+	}
+	return grants, err
+}
+
+func TestSubjectEntitlements_InvalidationDuringComputeIsNotCachedOver(t *testing.T) {
+	e := newEnv(t)
+	_, err := e.svc.CreatePlan(context.Background(), monthlyInput())
+	require.NoError(t, err)
+	const subject = "org:race"
+	racy := &racyRepo{BillingRepository: e.repo}
+	svc := NewService(Config{Repo: racy, Orgs: e.orgs, Stripe: e.stripe, Odoo: e.odoo, Now: func() time.Time { return e.clock }})
+	fired := false
+	racy.afterRead = func() {
+		if fired {
+			return
+		}
+		fired = true
+		require.NoError(t, e.repo.CreateGrant(&db.BillingGrant{Subject: subject, Feature: "academia.access", CreatedBy: "admin"}))
+		svc.Invalidate(subject)
+	}
+
+	first, err := svc.SubjectEntitlements(subject)
+	require.NoError(t, err)
+	assert.Empty(t, first, "the computation read the state before the change")
+
+	second, err := svc.SubjectEntitlements(subject)
+	require.NoError(t, err)
+	assert.Contains(t, second, "academia.access", "the stale result was not cached over the invalidation")
+}
