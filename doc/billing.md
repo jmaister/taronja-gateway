@@ -209,7 +209,7 @@ outbox.
 | `invoice.paid` (amount > 0) | Invoice document for it; `past_due` → `active`, `grace_until` cleared. A zero invoice (trial start) creates nothing. |
 | `invoice.payment_failed` | `past_due`, `grace_until` = first failure + `grace_days` (kept on later failures of the same period); notification to the payer. |
 | `customer.updated` | What the customer edited at Stripe (the portal lets them change the invoice **name and address**; Checkout updates them too) is copied to the billing customer: name, email, address; the NIF only when none is saved. Unknown customers are ignored; an event older than the last applied one is dropped (`billing_customers.stripe_event_at`). Nothing goes to Odoo from the webhook: the next invoice upserts the partner from these details (`ensurePartner`), so it also works when Odoo was down. Invoices already issued are not touched. |
-| `charge.refunded` | Credit note document for the newly refunded amount (refunded so far minus earlier credit notes); a fully refunded purchase becomes `refunded`; a fully refunded subscription period stops counting (the subscription is cancelled at the same time by the admin action that refunded it). |
+| `charge.refunded` | Credit note document for the newly refunded amount (refunded so far minus earlier credit notes); a fully refunded purchase becomes `refunded`; a fully refunded subscription period stops counting (the subscription is cancelled at the same time by the admin action that refunded it); a fully refunded purchase, even from the Stripe dashboard, cancels its subscription while it is still `awaiting_activation`. |
 
 ### Activation (megabox)
 

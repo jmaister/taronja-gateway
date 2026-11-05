@@ -645,6 +645,20 @@ func (s *Service) onInvoiceFailed(tx *webhookTx, ev Event) error {
 	return nil
 }
 
+// cancelAwaiting cancels a subscription still awaiting activation whose
+// purchase was refunded, so it can no longer be activated or grant access.
+func cancelAwaiting(repo repositories.BillingRepository, id string, at time.Time) error {
+	sub, err := repo.GetSubscription(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && sub.Status != db.SubscriptionAwaitingActivation) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	sub.Status, sub.CanceledAt = db.SubscriptionCanceled, &at
+	return repo.UpdateSubscription(sub)
+}
+
 // onRefund queues a credit note for what was newly refunded and marks a
 // fully refunded purchase.
 // refundWaitsFor is how long a refund of an unknown charge is retried: its
@@ -680,6 +694,9 @@ func (s *Service) onRefund(tx *webhookTx, ev Event) error {
 				p.Status = db.PurchaseStatusRefunded
 			}
 			err = tx.repo.UpdatePurchase(p)
+			if err == nil && p.Status == db.PurchaseStatusRefunded && p.SubscriptionID != nil {
+				err = cancelAwaiting(tx.repo, *p.SubscriptionID, ev.Created)
+			}
 			tx.touched(p.Subject)
 		}
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {

@@ -604,3 +604,34 @@ func TestWebhook_LateAndSameSecondEventsDontResurrect(t *testing.T) {
 		assert.Equal(t, []string{NotifyCanceled}, e.notificationsOf(t, "u1"))
 	})
 }
+
+func TestRefundFromDashboardCancelsAwaitingActivation(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	plan, err := e.svc.CreatePlan(ctx, PlanInput{
+		Key: "megabox-familia", Name: "Megabox Familia", Kind: db.PlanKindSubscription, Interval: db.PlanIntervalMonth,
+		AmountCents: 990, Features: []string{"megabox.protection"}, Subject: db.PlanSubjectUser, Starts: db.PlanStartsOnActivation,
+		SetupFeeCents: 4900, SetupFeeName: "Caja Megabox", GraceDays: 7, Active: true,
+	})
+	require.NoError(t, err)
+	checkout, _, err := e.svc.StartCheckout(ctx, CheckoutRequest{PlanKey: plan.Key, Payer: payer})
+	require.NoError(t, err)
+	e.event(t, Event{ID: "evt_1", Type: EventCheckoutCompleted, Checkout: &CheckoutEvent{
+		CheckoutID: checkout.ID, Mode: "payment", Paid: true, CustomerID: "cus_1", PaymentIntentID: "pi_1", AmountCents: 5890, Currency: "eur",
+	}})
+	purchase, err := e.repo.GetPurchaseByPaymentIntent("pi_1")
+	require.NoError(t, err)
+	ent, _ := e.svc.ForUser("u1")
+	require.NotEmpty(t, ent.User)
+
+	e.event(t, Event{ID: "evt_r", Type: EventChargeRefunded, Refund: &RefundEvent{ChargeID: "ch_1", PaymentIntentID: "pi_1", RefundedCents: 5890, RefundID: "re_1"}})
+
+	sub, err := e.repo.GetSubscription(*purchase.SubscriptionID)
+	require.NoError(t, err)
+	assert.Equal(t, db.SubscriptionCanceled, sub.Status)
+	ent, _ = e.svc.ForUser("u1")
+	assert.Empty(t, ent.User)
+	_, err = e.svc.ActivateSubscription(ctx, sub.ID)
+	require.NoError(t, err)
+	assert.Empty(t, e.stripe.Created, "a refunded purchase is not activated")
+}
