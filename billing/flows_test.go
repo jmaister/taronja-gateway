@@ -540,3 +540,67 @@ func TestPortalURL(t *testing.T) {
 	_, err = e.svc.PortalURL(ctx, "user:u5", "u5", "")
 	assert.True(t, errors.Is(err, ErrNotFound), err)
 }
+
+func TestWebhook_LateAndSameSecondEventsDontResurrect(t *testing.T) {
+	setup := func(t *testing.T) (*testEnv, *db.BillingSubscription) {
+		e := newEnv(t)
+		e.withNotifications()
+		monthly, err := e.svc.CreatePlan(context.Background(), monthlyInput())
+		require.NoError(t, err)
+		e.org(t, "Escuela", "owner1")
+		e.event(t, Event{ID: "evt_c", Type: EventSubscriptionCreated, Subscription: &StripeSubscription{
+			ID: "sub_o", Status: "active", CurrentPeriodEnd: e.clock.AddDate(0, 1, 0), PriceID: monthly.StripePriceID,
+			Metadata: map[string]string{"tg_subject": "org:oo", "tg_plan": monthly.Key, "tg_checkout": e.checkout(t, "org:oo", monthly.Key)},
+		}})
+		sub, err := e.repo.GetSubscriptionByStripeID("sub_o")
+		require.NoError(t, err)
+		return e, sub
+	}
+	deleted := func(e *testEnv, id string, at time.Time) Event {
+		return Event{ID: id, Type: EventSubscriptionDeleted, Created: at, Subscription: &StripeSubscription{ID: "sub_o", Status: "canceled"}}
+	}
+	status := func(t *testing.T, e *testEnv) string {
+		sub, err := e.repo.GetSubscriptionByStripeID("sub_o")
+		require.NoError(t, err)
+		return sub.Status
+	}
+
+	t.Run("a payment failure after the cancellation stays canceled", func(t *testing.T) {
+		e, _ := setup(t)
+		at := e.clock.Add(time.Hour)
+		e.event(t, deleted(e, "evt_d", at))
+		e.event(t, Event{ID: "evt_f", Type: EventInvoicePaymentFailed, Created: at.Add(time.Minute), Invoice: &InvoiceEvent{InvoiceID: "in_l", SubscriptionID: "sub_o", AmountCents: 2900}})
+		assert.Equal(t, db.SubscriptionCanceled, status(t, e))
+	})
+	t.Run("a payment failure older than the subscription state is ignored", func(t *testing.T) {
+		e, _ := setup(t)
+		e.event(t, Event{ID: "evt_u", Type: EventSubscriptionUpdated, Created: e.clock.Add(time.Hour), Subscription: &StripeSubscription{ID: "sub_o", Status: "active"}})
+		e.event(t, Event{ID: "evt_f", Type: EventInvoicePaymentFailed, Created: e.clock.Add(time.Minute), Invoice: &InvoiceEvent{InvoiceID: "in_l", SubscriptionID: "sub_o", AmountCents: 2900}})
+		assert.Equal(t, db.SubscriptionActive, status(t, e))
+	})
+	t.Run("a late paid invoice is issued but doesn't reactivate a canceled subscription", func(t *testing.T) {
+		e, _ := setup(t)
+		at := e.clock.Add(time.Hour)
+		e.event(t, deleted(e, "evt_d", at))
+		e.event(t, Event{ID: "evt_p", Type: EventInvoicePaid, Created: at.Add(time.Minute), Invoice: &InvoiceEvent{InvoiceID: "in_p", SubscriptionID: "sub_o", AmountCents: 2900}})
+		assert.Equal(t, db.SubscriptionCanceled, status(t, e))
+		_, err := e.repo.GetDocumentByStripeRef("in_p")
+		require.NoError(t, err)
+	})
+	t.Run("canceled wins over another event of the same second", func(t *testing.T) {
+		e, _ := setup(t)
+		at := e.clock.Add(time.Hour)
+		e.event(t, deleted(e, "evt_d", at))
+		e.event(t, Event{ID: "evt_u", Type: EventSubscriptionUpdated, Created: at, Subscription: &StripeSubscription{ID: "sub_o", Status: "active"}})
+		assert.Equal(t, db.SubscriptionCanceled, status(t, e))
+	})
+	t.Run("canceled arriving after an update of the same second applies once", func(t *testing.T) {
+		e, _ := setup(t)
+		at := e.clock.Add(time.Hour)
+		e.event(t, Event{ID: "evt_u", Type: EventSubscriptionUpdated, Created: at, Subscription: &StripeSubscription{ID: "sub_o", Status: "active"}})
+		e.event(t, deleted(e, "evt_d", at))
+		e.event(t, deleted(e, "evt_d2", at))
+		assert.Equal(t, db.SubscriptionCanceled, status(t, e))
+		assert.Equal(t, []string{NotifyCanceled}, e.notificationsOf(t, "u1"))
+	})
+}

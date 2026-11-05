@@ -437,12 +437,16 @@ func (s *Service) onSubscription(tx *webhookTx, ev Event) error {
 		log.Printf("billing: %s %s is older than the subscription's state, ignored", ev.Type, ev.ID)
 		return nil
 	}
-	sub.StripeEventAt = &ev.Created
 	wasCanceled := sub.Status == db.SubscriptionCanceled
 	status := stripeStatus(ss.Status)
 	if ev.Type == EventSubscriptionDeleted {
 		status = db.SubscriptionCanceled
 	}
+	if wasCanceled && status != db.SubscriptionCanceled && sub.StripeEventAt != nil && !ev.Created.After(*sub.StripeEventAt) {
+		log.Printf("billing: %s %s doesn't outrank the cancellation, ignored", ev.Type, ev.ID)
+		return nil
+	}
+	sub.StripeEventAt = &ev.Created
 	sub.Status = status
 	if !ss.CurrentPeriodEnd.IsZero() {
 		end := ss.CurrentPeriodEnd
@@ -521,6 +525,12 @@ func (s *Service) subscriptionRow(repo repositories.BillingRepository, ss *Strip
 	return sub, err
 }
 
+// staleForSubscription reports an invoice event older than the last
+// subscription event applied: Stripe's later state already covers it.
+func staleForSubscription(sub *db.BillingSubscription, ev Event) bool {
+	return sub.StripeEventAt != nil && ev.Created.Before(*sub.StripeEventAt)
+}
+
 // onInvoicePaid queues the invoice of a subscription charge and ends a
 // past-due period.
 func (s *Service) onInvoicePaid(tx *webhookTx, ev Event) error {
@@ -532,7 +542,7 @@ func (s *Service) onInvoicePaid(tx *webhookTx, ev Event) error {
 	if err != nil || sub == nil {
 		return err
 	}
-	if sub.Status == db.SubscriptionPastDue {
+	if sub.Status == db.SubscriptionPastDue && !staleForSubscription(sub, ev) {
 		sub.Status, sub.GraceUntil = db.SubscriptionActive, nil
 		err = tx.repo.UpdateSubscription(sub)
 		if err != nil {
@@ -608,6 +618,10 @@ func (s *Service) onInvoiceFailed(tx *webhookTx, ev Event) error {
 	sub, err := s.invoiceSubscription(tx, ev)
 	if err != nil || sub == nil {
 		return err
+	}
+	if sub.Status == db.SubscriptionCanceled || staleForSubscription(sub, ev) {
+		log.Printf("billing: %s %s arrived after the subscription's state, ignored", ev.Type, ev.ID)
+		return nil
 	}
 	plan, err := tx.repo.GetPlan(sub.PlanKey)
 	if err != nil {
