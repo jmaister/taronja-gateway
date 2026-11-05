@@ -27,6 +27,11 @@ type fakeOdoo struct {
 	calls    []fakeCall
 }
 
+type fakeError struct {
+	Status        int
+	Name, Message string
+}
+
 type fakeCall struct {
 	Route string
 	Body  M
@@ -52,7 +57,12 @@ func newFake(t *testing.T) (*fakeOdoo, *Client) {
 			_ = json.NewEncoder(w).Encode(M{"name": "werkzeug.exceptions.NotFound", "message": "no fake for " + route})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(h(body))
+		res := h(body)
+		if e, ok := res.(fakeError); ok {
+			w.WriteHeader(e.Status)
+			res = M{"name": e.Name, "message": e.Message}
+		}
+		_ = json.NewEncoder(w).Encode(res)
 	}))
 	t.Cleanup(srv.Close)
 	return f, New(config.OdooBillingConfig{
@@ -124,6 +134,25 @@ func TestUpsertPartner_CreatesWithNamedArguments(t *testing.T) {
 	assert.Equal(t, float64(420), vals["state_id"])
 	assert.Equal(t, "es_ES", vals["lang"])
 	assert.Equal(t, true, vals["is_company"])
+}
+
+func TestUpsertPartner_RetriesWithoutVATWhenOdooRejectsIt(t *testing.T) {
+	f, c := newFake(t)
+	f.on("res.partner/search_read", none)
+	f.on("res.country/search_read", none)
+	f.on("res.lang/search_read", none)
+	creates := 0
+	f.on("res.partner/create", func(body M) any {
+		creates++
+		if _, ok := body["vals_list"].([]any)[0].(M)["vat"]; ok {
+			return fakeError{http.StatusUnprocessableEntity, "odoo.exceptions.ValidationError", "The VAT number is not valid"}
+		}
+		return []int64{56}
+	})
+	id, err := c.UpsertPartner(context.Background(), billing.OdooPartner{Ref: "tg:org:1", Name: "X", VAT: "ES12345678Z"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(56), id)
+	assert.Equal(t, 2, creates)
 }
 
 func TestUpsertPartner_UpdatesExistingWithoutClearingVAT(t *testing.T) {

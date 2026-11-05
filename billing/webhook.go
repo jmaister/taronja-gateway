@@ -244,14 +244,33 @@ func (s *Service) saveCustomerDetails(repo repositories.BillingRepository, subje
 	if cev.Email != "" {
 		c.Email = cev.Email
 	}
-	if cev.TaxID != "" && c.TaxID == "" {
-		c.TaxID = cev.TaxID
-	}
 	if cev.BillingAddress != (Address{}) {
 		a := cev.BillingAddress
 		c.AddressLine1, c.AddressLine2, c.PostalCode, c.City, c.State, c.Country = a.Line1, a.Line2, a.PostalCode, a.City, a.State, a.Country
 	}
+	if c.TaxID == "" {
+		c.TaxID = validTaxID(cev.TaxID, c.Country, subject)
+	}
 	return repo.SaveCustomer(c)
+}
+
+// validTaxID returns a tax id typed at Stripe in its saved form, or "" when it
+// is not valid: Odoo would reject the partner and the invoice would never be
+// issued. The customer can then give it again through the billing details.
+func validTaxID(raw, country, subject string) string {
+	if country == "" {
+		country = "ES"
+	}
+	id := NormalizeTaxID(raw, country)
+	if id == "" {
+		return ""
+	}
+	err := ValidateTaxID(id, "", country)
+	if err != nil {
+		log.Printf("billing: tax id %q of %s is not valid, not saved: %v", raw, subject, err)
+		return ""
+	}
+	return id
 }
 
 // onCustomerUpdated copies what the customer edited at Stripe (the Customer
@@ -282,10 +301,10 @@ func (s *Service) onCustomerUpdated(tx *webhookTx, ev Event) error {
 		a := cu.Address
 		c.AddressLine1, c.AddressLine2, c.PostalCode, c.City, c.State, c.Country = a.Line1, a.Line2, a.PostalCode, a.City, a.State, a.Country
 	}
-	switch {
-	case cu.TaxID == "" || cu.TaxID == c.TaxID:
+	switch taxID := NormalizeTaxID(cu.TaxID, c.Country); {
+	case taxID == "" || taxID == c.TaxID:
 	case c.TaxID == "":
-		c.TaxID = cu.TaxID
+		c.TaxID = validTaxID(cu.TaxID, c.Country, c.Subject)
 	default:
 		log.Printf("billing: customer %s has tax id %q at Stripe, keeping the saved one (event %s)", cu.CustomerID, cu.TaxID, ev.ID)
 	}

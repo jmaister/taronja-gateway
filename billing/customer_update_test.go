@@ -86,6 +86,29 @@ func TestCustomerUpdated_TaxID(t *testing.T) {
 	})
 }
 
+func TestStripeTaxID_InvalidIsNotSaved(t *testing.T) {
+	t.Run("from customer.updated", func(t *testing.T) {
+		e := customerEnv(t, "")
+		e.customerUpdated(t, "evt_1", e.clock.Add(time.Minute), CustomerEvent{Name: "Nuevo", TaxID: "B12345678"})
+		c := e.saved(t)
+		assert.Empty(t, c.TaxID)
+		assert.Equal(t, "Nuevo", c.Name)
+	})
+	t.Run("from checkout.session.completed", func(t *testing.T) {
+		e := customerEnv(t, "")
+		checkout := e.checkout(t, subjectCU, "academia-monthly")
+		e.event(t, Event{ID: "evt_done", Type: EventCheckoutCompleted, Checkout: &CheckoutEvent{
+			CheckoutID: checkout, Mode: "subscription", Paid: true, CustomerID: "cus_1", TaxID: "12345678Z1",
+		}})
+		assert.Empty(t, e.saved(t).TaxID)
+	})
+	t.Run("a valid one is saved normalized", func(t *testing.T) {
+		e := customerEnv(t, "")
+		e.customerUpdated(t, "evt_1", e.clock.Add(time.Minute), CustomerEvent{TaxID: " b-12345674 "})
+		assert.Equal(t, "B12345674", e.saved(t).TaxID)
+	})
+}
+
 func TestCustomerUpdated_UnknownCustomerIgnored(t *testing.T) {
 	e := customerEnv(t, "B12345674")
 	e.customerUpdated(t, "evt_1", e.clock.Add(time.Minute), CustomerEvent{CustomerID: "cus_other", Name: "Intruso"})

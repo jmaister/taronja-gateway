@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -196,7 +198,20 @@ func firstID(ctx context.Context, c *Client, model string, domain []any) (int64,
 	return id(records[0]["id"]), nil
 }
 
+// UpsertPartner retries once without the VAT when Odoo rejects it, so a bad
+// tax id doesn't keep the invoice from being issued (as a simplified one).
 func (c *Client) UpsertPartner(ctx context.Context, p billing.OdooPartner) (int64, error) {
+	id, err := c.upsertPartner(ctx, p)
+	var odooErr *Error
+	if err != nil && p.VAT != "" && errors.As(err, &odooErr) && strings.Contains(odooErr.Name, "ValidationError") {
+		log.Printf("billing: Odoo rejected the VAT of %s, saving the partner without it: %s", p.Ref, odooErr.Message)
+		p.VAT = ""
+		return c.upsertPartner(ctx, p)
+	}
+	return id, err
+}
+
+func (c *Client) upsertPartner(ctx context.Context, p billing.OdooPartner) (int64, error) {
 	partnerID, err := firstID(ctx, c, "res.partner", []any{[]any{"ref", "=", p.Ref}})
 	if err != nil {
 		return 0, err
