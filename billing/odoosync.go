@@ -120,6 +120,7 @@ func (s *Service) processDocument(ctx context.Context, d *db.BillingDocument) {
 		moveID := issued.MoveID
 		issuedAt := issued.IssuedAt
 		d.OdooMoveID, d.Number, d.IssuedAt = &moveID, issued.Number, &issuedAt
+		s.saveDocumentRetrying(d)
 	}
 	if d.EmailedAt == nil {
 		err := s.emailDocument(ctx, d)
@@ -127,6 +128,7 @@ func (s *Service) processDocument(ctx context.Context, d *db.BillingDocument) {
 			s.failAttempt(d, fmt.Errorf("emailing: %w", err))
 			return
 		}
+		s.saveDocumentRetrying(d)
 	}
 	d.OdooState, d.OdooError = db.OdooStateDone, ""
 	s.saveDocument(d)
@@ -165,6 +167,21 @@ func (s *Service) saveDocument(d *db.BillingDocument) {
 	if err != nil {
 		log.Printf("billing: saving document %s: %v", d.ID, err)
 	}
+}
+
+// saveDocumentRetrying saves d right after something that cannot be undone
+// (the invoice issued in Odoo, the email sent), trying a few times: losing
+// that save would repeat it on the next attempt.
+func (s *Service) saveDocumentRetrying(d *db.BillingDocument) {
+	var err error
+	for i := 0; i < 3; i++ {
+		err = s.repo.UpdateDocument(d)
+		if err == nil {
+			return
+		}
+		time.Sleep(time.Duration(i) * 50 * time.Millisecond)
+	}
+	log.Printf("billing: saving document %s: %v", d.ID, err)
 }
 
 var errInvoiceNotIssued = errors.New("waiting for its invoice to be issued in Odoo")

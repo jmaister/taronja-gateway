@@ -428,7 +428,8 @@ to the payer (and owners of the organization), type `billing.*`:
 
 Once a document is issued in Odoo, the gateway emails it to the customer's
 billing email (the one Stripe collected), with the PDF attached, exactly once
-(`billing_documents.emailed_at`). Invoices say the plan, the amount, the
+(`billing_documents.emailed_at`, saved right after sending and retried if
+that save fails, as is the Odoo issue before it). Invoices say the plan, the amount, the
 period of each line, the trial end and when the subscription renews or ends,
 and link to `/_/account`; credit notes show the refunded amount. A failed
 send retries with the document's backoff and ends up in the *Odoo invoice

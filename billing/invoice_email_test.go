@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 	"github.com/jmaister/taronja-gateway/notification"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,6 +88,42 @@ func TestInvoiceEmail_FailureRetriesWithoutReissuing(t *testing.T) {
 	assert.Empty(t, got.OdooError)
 	assert.Len(t, mailer.sent, 1)
 	assert.Len(t, e.odoo.Moves, 1)
+}
+
+type flakyDocuments struct {
+	repositories.BillingRepository
+	failNext int
+}
+
+func (r *flakyDocuments) UpdateDocument(d *db.BillingDocument) error {
+	if r.failNext > 0 {
+		r.failNext--
+		return errors.New("database is locked")
+	}
+	return r.BillingRepository.UpdateDocument(d)
+}
+
+func TestInvoiceEmail_ASaveThatFailsDoesNotSendAgain(t *testing.T) {
+	e := newEnv(t)
+	mailer := &fakeMailer{}
+	e.svc.mailer = mailer
+	_, err := e.svc.CreatePlan(context.Background(), monthlyInput())
+	require.NoError(t, err)
+	e.customer(t, "org:o1", "")
+	d := e.invoice(t, "org:o1", "in_1")
+	flaky := &flakyDocuments{BillingRepository: e.repo, failNext: 1}
+	e.svc.repo = flaky
+
+	e.process(t)
+	e.svc.repo = e.repo
+	e.clock = e.clock.Add(24 * time.Hour)
+	e.process(t)
+
+	assert.Len(t, mailer.sent, 1, "the first failed save was retried instead of losing the sent mark")
+	assert.Len(t, e.odoo.Moves, 1)
+	got := e.doc(t, d.ID)
+	assert.NotNil(t, got.EmailedAt)
+	assert.Equal(t, db.OdooStateDone, got.OdooState)
 }
 
 func TestInvoiceEmail_FailsAfterMaxAttempts(t *testing.T) {
