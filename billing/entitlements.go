@@ -31,7 +31,7 @@ const (
 // EntitlementCacheTTL is how long computed entitlements are reused. Every
 // billing change invalidates them sooner; the TTL only bounds a missed
 // invalidation, and grace periods are days long.
-const EntitlementCacheTTL = 24 * time.Hour
+const EntitlementCacheTTL = time.Hour
 
 // Feature is one entitlement: active while now < Until, or forever when
 // Until is nil. Until includes the grace period. Grace is true while the

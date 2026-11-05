@@ -117,12 +117,12 @@ it has none. Use it for "your trial ends on …". It is not in the
 `GET /_/api/billing/subscriptions` (and `/me/billing`) report the same
 `grace` and `graceUntil` for each subscription.
 
-Entitlements are cached per subject in memory for **24 hours** (grace
+Entitlements are cached per subject in memory for **1 hour** (grace
 periods are days long, so an old answer is never far off), and the cache is
 cleared on **any** billing change: a subscription, purchase, grant,
 membership or plan change, a Stripe webhook, activation, cancel or refund.
 The cache lives in the gateway process: one instance only. Run several and
-a change on one is not seen by the others until the 24 hours pass.
+a change on one is not seen by the others until the hour passes.
 
 ### X-Entitlements header
 
