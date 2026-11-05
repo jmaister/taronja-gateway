@@ -78,6 +78,15 @@ func (s *Service) SaveCustomerDetails(ctx context.Context, subject string, payer
 		if err != nil {
 			return nil, err
 		}
+		if newTaxID && s.taxChecker != nil && a.Country != "ES" {
+			valid, cerr := s.taxChecker.Check(ctx, a.Country, taxID)
+			switch {
+			case cerr != nil:
+				log.Printf("billing: tax id %s not verified, accepted: %v", taxID, cerr)
+			case !valid:
+				return nil, fmt.Errorf("%w: tax id %q is not registered as an EU VAT number", ErrInvalid, taxID)
+			}
+		}
 	}
 
 	update := StripeCustomerUpdate{Name: d.Name, Phone: d.Phone, Address: d.Address}

@@ -73,6 +73,7 @@ func InitBilling(ctx context.Context, cfg config.BillingConfig, serverCfg config
 	if svcCfg.Mailer == nil {
 		log.Printf("Billing: notifications.email is not configured; invoices are not emailed")
 	}
+	svcCfg.TaxChecker = billing.VIES{}
 	svc := billing.NewService(svcCfg)
 	svc.SetNotifications(d.NotificationService)
 	d.Billing = svc

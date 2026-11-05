@@ -35,6 +35,8 @@ type Config struct {
 	StripeMode string
 	// Mailer sends the invoice emails; nil sends none.
 	Mailer Mailer
+	// TaxChecker verifies foreign tax ids when a customer first gives one; nil skips it.
+	TaxChecker TaxIDChecker
 	// Email customizes them; EmailTemplate replaces the built-in HTML.
 	Email         config.BillingEmailConfig
 	EmailTemplate *template.Template
@@ -66,6 +68,7 @@ type Service struct {
 
 	notifications *notification.Service
 	mailer        Mailer
+	taxChecker    TaxIDChecker
 	userName      func(id string) string
 	email         config.BillingEmailConfig
 	emailTemplate *template.Template
@@ -107,7 +110,7 @@ func NewService(cfg Config) *Service {
 		loc:  loc,
 		repo: cfg.Repo, orgs: cfg.Orgs, stripe: cfg.Stripe, odoo: cfg.Odoo,
 		serverURL: strings.TrimSuffix(cfg.ServerURL, "/"), stripeMode: cfg.StripeMode, odooKeyExp: cfg.OdooKeyExpiresAt, now: now,
-		mailer: cfg.Mailer, userName: cfg.UserName, email: cfg.Email, emailTemplate: cfg.EmailTemplate, brands: cfg.Brands,
+		mailer: cfg.Mailer, taxChecker: cfg.TaxChecker, userName: cfg.UserName, email: cfg.Email, emailTemplate: cfg.EmailTemplate, brands: cfg.Brands,
 		cache: map[string]cachedEntitlements{}, memberships: map[string]cachedMemberships{},
 	}
 }

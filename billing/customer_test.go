@@ -164,3 +164,44 @@ func TestStartCheckout_UsesSavedCustomer(t *testing.T) {
 	assert.False(t, e.stripe.Sessions[1].AskCustomerType)
 	assert.Equal(t, saved.StripeCustomerID, e.stripe.Sessions[1].CustomerID)
 }
+
+type fakeTaxChecker struct {
+	valid bool
+	err   error
+	calls int
+}
+
+func (f *fakeTaxChecker) Check(context.Context, string, string) (bool, error) {
+	f.calls++
+	return f.valid, f.err
+}
+
+func TestSaveCustomerDetails_ForeignTaxIDIsChecked(t *testing.T) {
+	foreign := func(taxID string) CustomerDetails {
+		d := cuDetails(KindCompany, taxID)
+		d.Address.Country = "FR"
+		return d
+	}
+	ctx := context.Background()
+
+	e, subject, payer := saveEnv(t)
+	checker := &fakeTaxChecker{valid: false}
+	e.svc.taxChecker = checker
+	_, err := e.svc.SaveCustomerDetails(ctx, subject, payer, foreign("FR12345678901"))
+	assert.ErrorIs(t, err, ErrInvalid)
+	assert.Equal(t, 1, checker.calls)
+
+	// A checker that cannot tell never blocks a customer.
+	checker.err = errors.New("VIES down")
+	c, err := e.svc.SaveCustomerDetails(ctx, subject, payer, foreign("FR12345678901"))
+	require.NoError(t, err)
+	assert.Equal(t, "FR12345678901", c.TaxID)
+
+	// Spanish ids are checked offline, never asked to VIES.
+	e2, subject2, payer2 := saveEnv(t)
+	checker2 := &fakeTaxChecker{valid: false}
+	e2.svc.taxChecker = checker2
+	_, err = e2.svc.SaveCustomerDetails(ctx, subject2, payer2, cuDetails(KindCompany, "B12345674"))
+	require.NoError(t, err)
+	assert.Zero(t, checker2.calls)
+}
