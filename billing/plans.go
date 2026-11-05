@@ -264,7 +264,8 @@ func (s *Service) syncStripe(ctx context.Context, plan, before *repositories.Bil
 		if *current != "" {
 			err = s.stripe.ArchivePrice(ctx, *current)
 			if err != nil {
-				log.Printf("billing: archiving Stripe price %s: %v", *current, err)
+				log.Printf("billing: archiving Stripe price %s: %v (retried later)", *current, err)
+				s.queueArchive(*current)
 			}
 		}
 		*current = id
@@ -340,10 +341,72 @@ func (s *Service) syncOdooProducts(ctx context.Context, plan *repositories.Billi
 // plan's features may have changed) and the portal's switchable plans.
 func (s *Service) afterPlanChange(ctx context.Context) {
 	s.InvalidateAll()
-	err := s.SyncPortal(ctx)
+	err := s.ArchivePendingPrices(ctx)
+	if err != nil {
+		log.Printf("billing: archiving old Stripe prices: %v", err)
+	}
+	err = s.SyncPortal(ctx)
 	if err != nil {
 		log.Printf("billing: updating the Stripe portal configuration: %v", err)
 	}
+}
+
+// settingPricesToArchive holds the old Stripe prices (comma separated ids)
+// that replaced prices could not be archived yet.
+const settingPricesToArchive = "stripe_prices_to_archive"
+
+func (s *Service) pricesToArchive() ([]string, error) {
+	v, err := s.repo.GetSetting(settingPricesToArchive)
+	if err != nil || v == "" {
+		return nil, err
+	}
+	return strings.Split(v, ","), nil
+}
+
+func (s *Service) savePricesToArchive(ids []string) error {
+	return s.repo.SetSetting(settingPricesToArchive, strings.Join(ids, ","))
+}
+
+// queueArchive remembers a price Stripe would not archive, to try again at
+// the next plan change, startup or "Sync plans".
+func (s *Service) queueArchive(id string) {
+	s.archiveMu.Lock()
+	defer s.archiveMu.Unlock()
+	ids, err := s.pricesToArchive()
+	if err == nil && !slices.Contains(ids, id) {
+		err = s.savePricesToArchive(append(ids, id))
+	}
+	if err != nil {
+		log.Printf("billing: remembering price %s to archive: %v", id, err)
+	}
+}
+
+// ArchivePendingPrices archives the old prices an earlier attempt could not;
+// the ones that still fail stay queued.
+func (s *Service) ArchivePendingPrices(ctx context.Context) error {
+	if s.stripe == nil {
+		return nil
+	}
+	s.archiveMu.Lock()
+	defer s.archiveMu.Unlock()
+	ids, err := s.pricesToArchive()
+	if err != nil || len(ids) == 0 {
+		return err
+	}
+	var left []string
+	var failed error
+	for _, id := range ids {
+		err = s.stripe.ArchivePrice(ctx, id)
+		if err != nil {
+			left = append(left, id)
+			failed = err
+		}
+	}
+	err = s.savePricesToArchive(left)
+	if err != nil {
+		return err
+	}
+	return failed
 }
 
 // SyncStatementDescriptors gives each subscription plan's Stripe product the

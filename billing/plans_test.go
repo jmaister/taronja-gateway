@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jmaister/taronja-gateway/db"
@@ -54,6 +55,33 @@ func TestCreatePlan_OnActivationWithSetupFee(t *testing.T) {
 	assert.Equal(t, "Caja Megabox", fee.Nickname)
 	assert.Equal(t, "Caja Megabox", e.odoo.Products["TG-megabox-familia-setup"])
 	require.NotNil(t, plan.OdooSetupFeeProductID)
+}
+
+func TestUpdatePlan_OldPriceThatCannotBeArchivedIsRetried(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	plan, err := e.svc.CreatePlan(ctx, monthlyInput())
+	require.NoError(t, err)
+	oldPrice := plan.StripePriceID
+
+	e.stripe.ArchiveErr = errors.New("stripe: rate limited")
+	in := PlanInputFrom(*plan)
+	in.AmountCents = 3500
+	_, err = e.svc.UpdatePlan(ctx, plan.Key, in)
+	require.NoError(t, err, "the plan change itself works")
+	assert.False(t, e.stripe.ArchivedPrice[oldPrice])
+	check := e.svc.oldPricesCheck()
+	assert.Equal(t, CheckWarn, check.Status)
+	assert.Contains(t, check.Detail, oldPrice)
+	assert.Equal(t, ActionSyncPlans, check.Action)
+
+	require.Error(t, e.svc.ArchivePendingPrices(ctx), "still failing")
+	assert.Equal(t, CheckWarn, e.svc.oldPricesCheck().Status, "stays queued")
+
+	e.stripe.ArchiveErr = nil
+	require.NoError(t, e.svc.RunSetupAction(ctx, ActionSyncPlans))
+	assert.True(t, e.stripe.ArchivedPrice[oldPrice], "archived by the retry")
+	assert.Equal(t, CheckOK, e.svc.oldPricesCheck().Status)
 }
 
 func TestUpdatePlan_PriceChangeMakesNewPrice(t *testing.T) {

@@ -107,6 +107,9 @@ func (c *Client) CreatePrice(ctx context.Context, p billing.StripePriceParams) (
 
 func (c *Client) ArchivePrice(ctx context.Context, priceID string) error {
 	_, err := c.sc.V1Prices.Update(ctx, priceID, &stripe.PriceUpdateParams{Active: stripe.Bool(false)})
+	if isMissing(err) {
+		return nil
+	}
 	if err != nil {
 		return wrap(err)
 	}

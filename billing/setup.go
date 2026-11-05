@@ -72,7 +72,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			plans.Detail = fmt.Sprintf("%d active plans", len(list))
 		}
 	}
-	checks = append(checks, plans, s.stuckEventsCheck(), s.invoiceEmailCheck())
+	checks = append(checks, plans, s.oldPricesCheck(), s.stuckEventsCheck(), s.invoiceEmailCheck())
 
 	if s.odoo == nil {
 		return append(checks, SetupCheck{ID: "odoo-connection", Title: "Odoo", Status: CheckMissing,
@@ -121,6 +121,22 @@ func stripeDashboard(mode, path string) string {
 		return "https://dashboard.stripe.com/test/" + path
 	}
 	return "https://dashboard.stripe.com/" + path
+}
+
+// oldPricesCheck warns of replaced Stripe prices still active because
+// archiving them failed.
+func (s *Service) oldPricesCheck() SetupCheck {
+	c := SetupCheck{ID: "stripe-old-prices", Title: "Old Stripe prices archived", Status: CheckOK, Detail: "no replaced price is waiting to be archived"}
+	ids, err := s.pricesToArchive()
+	switch {
+	case err != nil:
+		c.Status, c.Detail = CheckMissing, err.Error()
+	case len(ids) > 0:
+		c.Status, c.Action = CheckWarn, ActionSyncPlans
+		c.Detail = fmt.Sprintf("%d replaced prices are still active in Stripe (%s): they are retried at every plan change and startup", len(ids), strings.Join(ids, ", "))
+		c.Link = stripeDashboard(s.stripeMode, "products")
+	}
+	return c
 }
 
 func (s *Service) invoiceEmailCheck() SetupCheck {
@@ -237,6 +253,10 @@ func (s *Service) RunSetupAction(ctx context.Context, action string) error {
 			}
 		}
 		s.InvalidateAll()
+		err = s.ArchivePendingPrices(ctx)
+		if err != nil {
+			return err
+		}
 		return s.SyncStatementDescriptors(ctx)
 	}
 	return fmt.Errorf("%w: unknown action %q", ErrInvalid, action)

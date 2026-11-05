@@ -74,6 +74,7 @@ type Service struct {
 	// Entitlements and memberships are cached per process for
 	// EntitlementCacheTTL (a second gateway instance would not see this
 	// one's invalidations).
+	archiveMu   sync.Mutex // the list of prices to archive (a setting) is read and written whole
 	mu          sync.RWMutex
 	cache       map[string]cachedEntitlements // subject -> entitlements
 	memberships map[string]cachedMemberships  // user id -> organization ids

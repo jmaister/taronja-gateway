@@ -33,6 +33,9 @@ type FakeStripe struct {
 	Portal             *PortalParams
 	CustomerUpdates    []FakeCustomerUpdate
 
+	// ArchiveErr, when set, is returned by ArchivePrice only.
+	ArchiveErr error
+
 	// Err, when set, is returned by every call.
 	Err error
 }
@@ -101,6 +104,9 @@ func (f *FakeStripe) ArchivePrice(ctx context.Context, priceID string) error {
 	defer f.mu.Unlock()
 	if f.Err != nil {
 		return f.Err
+	}
+	if f.ArchiveErr != nil {
+		return f.ArchiveErr
 	}
 	f.ArchivedPrice[priceID] = true
 	return nil

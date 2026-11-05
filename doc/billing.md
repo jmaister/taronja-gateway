@@ -328,7 +328,10 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   plan version (lookup key `tg_<plan>`, moved to the newest Price; recurring
   for subscriptions, one-time for one-time plans, the first period of an
   `on_activation` plan and setup fees). Amounts in cents, `tax_behavior:
-  inclusive`.
+  inclusive`. A replaced Price is archived (existing subscriptions keep it);
+  if Stripe refuses, its id is queued in `billing_settings`
+  (`stripe_prices_to_archive`) and retried at every plan change, startup and
+  "Sync plans", and the setup page warns while any is waiting.
 - Customer per subject: name, payer's email, metadata `tg_subject`; Checkout
   updates its name and address.
 - Customer Portal: a configuration the gateway creates (its id is kept in
@@ -372,7 +375,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |
 | `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at`, `emailed_at` |
 | `stripe_events` | `event_id` (PK), `type`, `received_at` |
-| `billing_settings` | `key` (PK), `value`, `updated_at` (`stripe_portal_config_id`) |
+| `billing_settings` | `key` (PK), `value`, `updated_at` (`stripe_portal_config_id`, `stripe_prices_to_archive`) |
 | `billing_notices` | `key` (PK: kind, subscription and date), `sent_at` |
 | `stuck_stripe_events` | `event_id` (PK), `type`, `subscription_id`, `reason`, `attempts`, `first_seen_at`, `last_seen_at` (removed when the event is applied) |
 
