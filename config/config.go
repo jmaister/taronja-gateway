@@ -322,7 +322,7 @@ type BillingConfig struct {
 	Stripe   StripeBillingConfig           `yaml:"stripe"`   // Stripe account. Required when enabled.
 	Odoo     OdooBillingConfig             `yaml:"odoo"`     // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
 	Email    BillingEmailConfig            `yaml:"email"`    // Look of the invoice emails. Optional. They are sent through notifications.email.
-	Timezone string                        `yaml:"timezone"` // IANA time zone (e.g. "Europe/Madrid") of the dates on invoices, emails and pages: the Odoo invoice date, plan-change notes. Default: Europe/Madrid.
+	Timezone string                        `yaml:"timezone"` // IANA time zone (e.g. "Europe/Madrid") of the dates on invoices, emails and pages: the Odoo invoice date, plan-change notes. Required when billing.odoo is configured; otherwise defaults to Europe/Madrid.
 	Brands   map[string]BillingBrandConfig `yaml:"brands"`   // Look per plan group, keyed by the group name: Checkout, /_/pay pages and invoice emails of the plans in that group. Optional: unset fields fall back to billing.email and the gateway branding. Plans without a group use the fallback.
 }
 
@@ -478,6 +478,9 @@ func (b BillingConfig) validate(serverURL string) error {
 		}
 		if o.CompanyID <= 0 || o.SalesJournalID <= 0 || o.PaymentJournalID <= 0 || o.TaxID <= 0 {
 			return fmt.Errorf("billing.odoo.companyId, salesJournalId, paymentJournalId and taxId are required with billing.odoo.url")
+		}
+		if b.Timezone == "" {
+			return fmt.Errorf("billing.timezone is required with billing.odoo (the invoice date is the day in that time zone), e.g. Europe/Madrid")
 		}
 		if o.APIKeyExpiresAt != "" {
 			if _, err := time.Parse(time.DateOnly, o.APIKeyExpiresAt); err != nil {

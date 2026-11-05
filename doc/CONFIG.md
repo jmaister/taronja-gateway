@@ -216,7 +216,7 @@ type BillingConfig struct {
     Stripe   StripeBillingConfig           `yaml:"stripe"`   // Stripe account. Required when enabled.
     Odoo     OdooBillingConfig             `yaml:"odoo"`     // Odoo instance for the legal invoices. Optional: without it invoices wait, pending.
     Email    BillingEmailConfig            `yaml:"email"`    // Look of the invoice emails. Optional. They are sent through notifications.email.
-    Timezone string                        `yaml:"timezone"` // IANA time zone (e.g. "Europe/Madrid") of the dates on invoices, emails and pages: the Odoo invoice date, plan-change notes. Default: Europe/Madrid.
+    Timezone string                        `yaml:"timezone"` // IANA time zone (e.g. "Europe/Madrid") of the dates on invoices, emails and pages: the Odoo invoice date, plan-change notes. Required when billing.odoo is configured; otherwise defaults to Europe/Madrid.
     Brands   map[string]BillingBrandConfig `yaml:"brands"`   // Look per plan group, keyed by the group name: Checkout, /_/pay pages and invoice emails of the plans in that group. Optional: unset fields fall back to billing.email and the gateway branding. Plans without a group use the fallback.
 }
 ```
@@ -295,7 +295,7 @@ type GatewayConfig struct {
 ```
 
 <a name="LoadConfig"></a>
-### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L492>)
+### func [LoadConfig](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L495>)
 
 ```go
 func LoadConfig(filename string) (*GatewayConfig, error)
@@ -304,7 +304,7 @@ func LoadConfig(filename string) (*GatewayConfig, error)
 LoadConfig reads, parses, and validates the YAML configuration file.
 
 <a name="GatewayConfig.HasAnyAuthentication"></a>
-### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L647>)
+### func \(\*GatewayConfig\) [HasAnyAuthentication](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L650>)
 
 ```go
 func (c *GatewayConfig) HasAnyAuthentication() bool
@@ -313,7 +313,7 @@ func (c *GatewayConfig) HasAnyAuthentication() bool
 HasAuthentication checks if any authentication is enabled in the config.
 
 <a name="GatewayConfig.Validate"></a>
-### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L594>)
+### func \(\*GatewayConfig\) [Validate](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L597>)
 
 ```go
 func (c *GatewayConfig) Validate() error
@@ -398,7 +398,7 @@ type NotificationConfig struct {
 ```
 
 <a name="OIDCLoginButton"></a>
-## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L676-L680>)
+## type [OIDCLoginButton](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L679-L683>)
 
 OIDCLoginButton is one OIDC provider's button on the login page.
 
@@ -525,7 +525,7 @@ type RouteConfig struct {
 ```
 
 <a name="RouteConfig.GetCacheControlHeader"></a>
-### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L719>)
+### func \(\*RouteConfig\) [GetCacheControlHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L722>)
 
 ```go
 func (route *RouteConfig) GetCacheControlHeader() string
@@ -534,7 +534,7 @@ func (route *RouteConfig) GetCacheControlHeader() string
 GetCacheControlHeader returns the appropriate Cache\-Control header value for this route.
 
 <a name="RouteConfig.IsStatic"></a>
-### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L620>)
+### func \(RouteConfig\) [IsStatic](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L623>)
 
 ```go
 func (r RouteConfig) IsStatic() bool
@@ -543,7 +543,7 @@ func (r RouteConfig) IsStatic() bool
 IsStatic reports whether the route serves files \(toFolder or toFile\) rather than proxying \(to\).
 
 <a name="RouteConfig.ShouldSetCacheHeader"></a>
-### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L727>)
+### func \(\*RouteConfig\) [ShouldSetCacheHeader](<https://github.com/jmaister/taronja-gateway/blob/main/config/config.go#L730>)
 
 ```go
 func (route *RouteConfig) ShouldSetCacheHeader() bool

@@ -151,6 +151,7 @@ notification:
 #   stripe:
 #     secretKey: ${STRIPE_SECRET_KEY}
 #     webhookSecret: ${STRIPE_WEBHOOK_SECRET}
+#   timezone: Europe/Madrid   # required with odoo
 #   odoo:
 #     url: https://odoo.example.com
 #     database: ${ODOO_DB}

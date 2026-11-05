@@ -65,6 +65,7 @@ billing:
     secretKey: sk_test_123
     webhookSecret: ` + webhookSecret + `
     apiUrl: ` + envOr("E2E_STRIPE_MOCK_URL", "http://localhost:12111") + `
+  timezone: Europe/Madrid
   odoo:
     url: ` + odoo["ODOO_URL"] + `
     database: ` + odoo["ODOO_DB"] + `
