@@ -39,3 +39,17 @@ func TestBillingMigration_CreatesUsableTables(t *testing.T) {
 	require.NoError(t, gdb.Create(&db.StripeEvent{EventID: "evt_1", Type: "invoice.paid"}).Error)
 	require.Error(t, gdb.Create(&db.StripeEvent{EventID: "evt_1", Type: "invoice.paid"}).Error, "event ids are unique")
 }
+
+func TestBillingMigration_OneLiveSubscriptionPerSubjectAndGroup(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	gdb := db.GetConnection()
+	sub := func(status string) *db.BillingSubscription {
+		return &db.BillingSubscription{Subject: "org:o1", PlanKey: "p", GroupKey: "g", Status: status}
+	}
+	require.NoError(t, gdb.Create(sub(db.SubscriptionActive)).Error)
+	require.Error(t, gdb.Create(sub(db.SubscriptionAwaitingActivation)).Error, "a second live one in the group")
+	require.NoError(t, gdb.Create(sub(db.SubscriptionCanceled)).Error, "canceled ones don't count")
+	other := sub(db.SubscriptionActive)
+	other.Subject = "org:o2"
+	require.NoError(t, gdb.Create(other).Error, "another subject")
+}

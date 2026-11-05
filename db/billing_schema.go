@@ -191,6 +191,7 @@ type BillingSubscription struct {
 	ID                    string  `gorm:"primaryKey;column:id;type:varchar(255);not null"`
 	Subject               string  `gorm:"type:varchar(300);not null;index"`
 	PlanKey               string  `gorm:"type:varchar(100);not null"`
+	GroupKey              string  `gorm:"type:varchar(100);not null;default:''"`
 	PayerUserID           string  `gorm:"type:varchar(255)"`
 	Status                string  `gorm:"type:varchar(30);not null"`
 	StripeSubscriptionID  *string `gorm:"type:varchar(255);uniqueIndex"`

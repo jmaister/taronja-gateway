@@ -635,3 +635,53 @@ func TestRefundFromDashboardCancelsAwaitingActivation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, e.stripe.Created, "a refunded purchase is not activated")
 }
+
+func TestDuplicateLiveSubscription_SecondPaymentIsNotAnotherSubscription(t *testing.T) {
+	t.Run("subscription checkout", func(t *testing.T) {
+		e := newEnv(t)
+		monthly, err := e.svc.CreatePlan(context.Background(), monthlyInput())
+		require.NoError(t, err)
+		created := func(evID, subID string) {
+			e.stripe.Subscriptions[subID] = &StripeSubscription{ID: subID, Status: "active"}
+			e.event(t, Event{ID: evID, Type: EventSubscriptionCreated, Subscription: &StripeSubscription{
+				ID: subID, Status: "active", CurrentPeriodEnd: e.clock.AddDate(0, 1, 0), PriceID: monthly.StripePriceID,
+				Metadata: map[string]string{"tg_subject": "org:od", "tg_plan": monthly.Key, "tg_checkout": e.checkout(t, "org:od", monthly.Key)},
+			}})
+		}
+		created("evt_1", "sub_1")
+		created("evt_2", "sub_2")
+		_, err = e.repo.GetSubscriptionByStripeID("sub_1")
+		require.NoError(t, err)
+		_, err = e.repo.GetSubscriptionByStripeID("sub_2")
+		assert.Error(t, err, "the second one is not recorded")
+		assert.Equal(t, []string{"sub_2"}, e.stripe.Canceled, "and its Stripe subscription is canceled")
+		stuck, _ := e.repo.StuckEvents()
+		assert.Empty(t, stuck)
+	})
+	t.Run("payment checkout", func(t *testing.T) {
+		e := newEnv(t)
+		plan, err := e.svc.CreatePlan(context.Background(), PlanInput{
+			Key: "megabox-familia", Name: "Megabox Familia", Kind: db.PlanKindSubscription, Interval: db.PlanIntervalMonth,
+			AmountCents: 990, Features: []string{"megabox.protection"}, Subject: db.PlanSubjectUser, Starts: db.PlanStartsOnActivation,
+			GraceDays: 7, Active: true,
+		})
+		require.NoError(t, err)
+		pay := func(evID, pi string) {
+			e.event(t, Event{ID: evID, Type: EventCheckoutCompleted, Checkout: &CheckoutEvent{
+				CheckoutID: e.checkout(t, "user:u1", plan.Key), Mode: "payment", Paid: true, CustomerID: "cus_1", PaymentIntentID: pi, AmountCents: 990, Currency: "eur",
+			}})
+		}
+		pay("evt_1", "pi_1")
+		pay("evt_2", "pi_2")
+		first, err := e.repo.GetPurchaseByPaymentIntent("pi_1")
+		require.NoError(t, err)
+		assert.NotNil(t, first.SubscriptionID)
+		second, err := e.repo.GetPurchaseByPaymentIntent("pi_2")
+		require.NoError(t, err)
+		assert.Nil(t, second.SubscriptionID, "recorded for the admin to refund")
+		_, err = e.repo.GetDocumentByStripeRef("pi_2")
+		assert.NoError(t, err, "and invoiced")
+		subs, _ := e.repo.ListSubscriptions(repositories.SubscriptionFilter{Subject: "user:u1"})
+		assert.Len(t, subs, 1)
+	})
+}

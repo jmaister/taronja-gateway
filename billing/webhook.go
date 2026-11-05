@@ -21,6 +21,10 @@ const MaxWebhookBody = 256 << 10
 // again later, and the setup page lists it until it is applied.
 var ErrRetryLater = errors.New("event arrived before what it refers to; retry later")
 
+// errDuplicateLive is a Stripe subscription for a subject that already has a
+// live one in the plan's group.
+var errDuplicateLive = errors.New("billing: duplicate live subscription")
+
 func retryLater(reason string) error { return fmt.Errorf("%w: %s", ErrRetryLater, reason) }
 
 // webhookTx is one event's state change: the repository bound to the
@@ -341,14 +345,20 @@ func (s *Service) recordPurchase(tx *webhookTx, checkout *db.BillingCheckout, pl
 	}
 	if plan.Kind == db.PlanKindSubscription {
 		sub := &db.BillingSubscription{
-			Subject: checkout.Subject, PlanKey: plan.Key, PayerUserID: checkout.UserID,
+			Subject: checkout.Subject, PlanKey: plan.Key, GroupKey: planGroup(&plan.BillingPlan), PayerUserID: checkout.UserID,
 			Status: db.SubscriptionAwaitingActivation, StripePaymentMethodID: cev.PaymentMethodID,
 		}
 		err := tx.repo.CreateSubscription(sub)
-		if err != nil {
+		switch {
+		case errors.Is(err, repositories.ErrDuplicate):
+			// Paid twice for the same group: the payment is recorded (and
+			// invoiced) without a subscription, for the admin to refund.
+			log.Printf("billing: %s already has a live subscription in %s: payment %s recorded without one, refund it", checkout.Subject, sub.GroupKey, cev.PaymentIntentID)
+		case err != nil:
 			return err
+		default:
+			p.SubscriptionID = &sub.ID
 		}
-		p.SubscriptionID = &sub.ID
 	}
 	err := tx.repo.CreatePurchase(p)
 	if errors.Is(err, repositories.ErrDuplicate) {
@@ -426,6 +436,18 @@ func stripeStatus(status string) string {
 func (s *Service) onSubscription(tx *webhookTx, ev Event) error {
 	ss := ev.Subscription
 	sub, err := s.subscriptionRow(tx.repo, ss)
+	if errors.Is(err, errDuplicateLive) {
+		if ss.Status != "canceled" && s.stripe != nil {
+			id := ss.ID
+			tx.after = append(tx.after, func() {
+				_, err := s.stripe.CancelSubscription(context.Background(), id, false)
+				if err != nil {
+					log.Printf("billing: canceling the duplicate Stripe subscription %s: %v", id, err)
+				}
+			})
+		}
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -517,10 +539,19 @@ func (s *Service) subscriptionRow(repo repositories.BillingRepository, ss *Strip
 		log.Printf("billing: subscription %s metadata doesn't match a checkout of this gateway, ignored", ss.ID)
 		return nil, nil
 	}
-	sub = &db.BillingSubscription{Subject: subject, PlanKey: planKey, PayerUserID: checkout.UserID, Status: stripeStatus(ss.Status), StripeSubscriptionID: &stripeID}
+	plan, err := repo.GetPlan(planKey)
+	if err != nil {
+		return nil, err
+	}
+	sub = &db.BillingSubscription{Subject: subject, PlanKey: planKey, GroupKey: planGroup(&plan.BillingPlan), PayerUserID: checkout.UserID, Status: stripeStatus(ss.Status), StripeSubscriptionID: &stripeID}
 	err = repo.CreateSubscription(sub)
 	if errors.Is(err, repositories.ErrDuplicate) {
-		return repo.GetSubscriptionByStripeID(ss.ID)
+		existing, err := repo.GetSubscriptionByStripeID(ss.ID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("billing: %s already has a live subscription in %s: Stripe subscription %s is not recorded, refund its payment", subject, sub.GroupKey, ss.ID)
+			return nil, errDuplicateLive
+		}
+		return existing, err
 	}
 	return sub, err
 }
