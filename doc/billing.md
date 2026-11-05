@@ -373,6 +373,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at`, `emailed_at` |
 | `stripe_events` | `event_id` (PK), `type`, `received_at` |
 | `billing_settings` | `key` (PK), `value`, `updated_at` (`stripe_portal_config_id`) |
+| `billing_notices` | `key` (PK: kind, subscription and date), `sent_at` |
 | `stuck_stripe_events` | `event_id` (PK), `type`, `subscription_id`, `reason`, `attempts`, `first_seen_at`, `last_seen_at` (removed when the event is applied) |
 
 ## Gateway API
@@ -422,7 +423,10 @@ Through the gateway's notification service (every channel the user prefers),
 to the payer (and owners of the organization), type `billing.*`:
 `billing.payment_failed` (portal link, the date features stop),
 `billing.trial_ending` (3 days before), `billing.canceled`,
-`billing.expired`.
+`billing.expired`. The two time-based ones (trial ending, grace ended) are
+checked every hour and sent once each (`billing_notices`, keyed by kind,
+subscription and date), also after a restart or some downtime: a notice is
+still sent up to 24 hours after its moment.
 
 ### Invoice emails
 

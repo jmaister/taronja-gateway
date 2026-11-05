@@ -94,3 +94,20 @@ func TestBillingRepositoryDB_Settings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "two", v)
 }
+
+func TestBillingRepositoryDB_Notices(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := NewBillingRepositoryDB(db.GetConnection())
+
+	isNew, err := repo.RecordNotice("n1", time.Now())
+	require.NoError(t, err)
+	assert.True(t, isNew)
+	isNew, err = repo.RecordNotice("n1", time.Now())
+	require.NoError(t, err)
+	assert.False(t, isNew, "already sent")
+
+	require.NoError(t, repo.ClearNotice("n1"))
+	isNew, err = repo.RecordNotice("n1", time.Now())
+	require.NoError(t, err)
+	assert.True(t, isNew, "forgotten, so it can be sent")
+}

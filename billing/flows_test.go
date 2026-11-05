@@ -511,6 +511,23 @@ func TestNotifyDue(t *testing.T) {
 	assert.Equal(t, []string{NotifyExpired}, e.notificationsOf(t, "u2"))
 }
 
+func TestNotifyDue_OncePerNoticeAndSurvivesDowntime(t *testing.T) {
+	e := newEnv(t)
+	e.withNotifications()
+	_, err := e.svc.CreatePlan(context.Background(), monthlyInput())
+	require.NoError(t, err)
+	trialEnd := e.clock.Add(TrialEndingNotice).Add(-5 * time.Hour) // its moment passed 5 hours ago: the gateway was down
+	require.NoError(t, e.repo.CreateSubscription(&db.BillingSubscription{Subject: "user:u1", PlanKey: "academia-monthly", PayerUserID: "u1", Status: db.SubscriptionTrialing, TrialEnd: &trialEnd}))
+	longAgo := e.clock.Add(-3 * 24 * time.Hour)
+	require.NoError(t, e.repo.CreateSubscription(&db.BillingSubscription{Subject: "user:u2", PlanKey: "academia-monthly", PayerUserID: "u2", Status: db.SubscriptionPastDue, GraceUntil: &longAgo}))
+
+	require.NoError(t, e.svc.NotifyDue(e.clock))
+	require.NoError(t, e.svc.NotifyDue(e.clock), "the same run again")
+	require.NoError(t, e.svc.NotifyDue(e.clock.Add(30*time.Minute)), "a restart in the middle of the hour")
+	assert.Equal(t, []string{NotifyTrialEnding}, e.notificationsOf(t, "u1"))
+	assert.Empty(t, e.notificationsOf(t, "u2"), "a grace period that ended days ago is not announced")
+}
+
 func TestRefundPurchase_TwoEqualPartialRefundsAreBothSent(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()

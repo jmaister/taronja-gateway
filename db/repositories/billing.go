@@ -169,6 +169,12 @@ type BillingRepository interface {
 	// SetSetting stores value under key.
 	SetSetting(key, value string) error
 
+	// RecordNotice stores that the notice key was sent and reports whether
+	// it was new; false means it was already sent.
+	RecordNotice(key string, now time.Time) (bool, error)
+	// ClearNotice forgets a notice (its sending failed).
+	ClearNotice(key string) error
+
 	// RecordStripeEvent stores eventID and reports whether it was new; false
 	// means it was already processed.
 	RecordStripeEvent(eventID, eventType string) (bool, error)

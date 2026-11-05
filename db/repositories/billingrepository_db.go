@@ -494,6 +494,23 @@ func (r *BillingRepositoryDB) SetSetting(key, value string) error {
 	}).Create(&db.BillingSetting{Key: key, Value: value}).Error
 }
 
+// RecordNotice stores a sent notice and returns true if it was new.
+func (r *BillingRepositoryDB) RecordNotice(key string, now time.Time) (bool, error) {
+	err := r.db.Create(&db.BillingNotice{Key: key, SentAt: now.UTC()}).Error
+	if err == nil {
+		return true, nil
+	}
+	if isDuplicateError(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// ClearNotice forgets a notice.
+func (r *BillingRepositoryDB) ClearNotice(key string) error {
+	return r.db.Delete(&db.BillingNotice{}, "`key` = ?", key).Error
+}
+
 // RecordStripeEvent stores a Stripe event and returns true if it was new,
 // false if it was already processed (idempotent).
 func (r *BillingRepositoryDB) RecordStripeEvent(eventID, eventType string) (bool, error) {

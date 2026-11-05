@@ -60,13 +60,13 @@ func (s *Service) recipients(sub *db.BillingSubscription) []string {
 }
 
 // notifySubscription tells sub's payer and owners about it.
-func (s *Service) notifySubscription(sub *db.BillingSubscription, kind string) {
+func (s *Service) notifySubscription(sub *db.BillingSubscription, kind string) error {
 	if s.notifications == nil {
-		return
+		return nil
 	}
 	to := s.recipients(sub)
 	if len(to) == 0 {
-		return
+		return nil
 	}
 	planName := sub.PlanKey
 	plan, err := s.repo.GetPlan(sub.PlanKey)
@@ -97,7 +97,7 @@ func (s *Service) notifySubscription(sub *db.BillingSubscription, kind string) {
 		title = "Se ha acabado el acceso a " + planName
 		body = "El periodo de gracia ha terminado sin cobro. Puedes suscribirte de nuevo cuando quieras."
 	default:
-		return
+		return nil
 	}
 	_, _, err = s.notifications.Create(context.Background(), notification.CreateInput{
 		UserIDs: to, Type: kind, Title: title, Body: body, URL: &account,
@@ -106,24 +106,51 @@ func (s *Service) notifySubscription(sub *db.BillingSubscription, kind string) {
 	if err != nil {
 		log.Printf("billing: notification %s for subscription %s: %v", kind, sub.ID, err)
 	}
+	return err
 }
 
-// NotifyDue sends the time-based notifications for the hour ending at now:
-// trials ending in TrialEndingNotice and grace periods that just ran out.
-// Run it every hour: each subscription falls in exactly one window.
+// noticeCatchUp is how long after its moment a time-based notice is still
+// sent: a gateway that was down for a few hours does not skip it.
+const noticeCatchUp = 24 * time.Hour
+
+// notifyOnce sends the notice kind for sub about the moment at, unless it
+// was sent already (billing_notices); a failed send is forgotten so the
+// next run tries again.
+func (s *Service) notifyOnce(sub *db.BillingSubscription, kind string, at time.Time, now time.Time) {
+	key := fmt.Sprintf("%s:%s:%d", kind, sub.ID, at.Unix())
+	isNew, err := s.repo.RecordNotice(key, now)
+	if err != nil {
+		log.Printf("billing: recording notice %s: %v", key, err)
+		return
+	}
+	if !isNew {
+		return
+	}
+	if s.notifySubscription(sub, kind) != nil {
+		_ = s.repo.ClearNotice(key)
+	}
+}
+
+// NotifyDue sends the time-based notifications due at now: trials ending in
+// TrialEndingNotice and grace periods that just ran out. Each one is sent
+// once (billing_notices), also if it runs twice or after some downtime, up
+// to noticeCatchUp after its moment.
 func (s *Service) NotifyDue(now time.Time) error {
 	if s.notifications == nil {
 		return nil
 	}
-	from := now.Add(-time.Hour)
 	trialing, err := s.repo.ListSubscriptions(repositories.SubscriptionFilter{Status: db.SubscriptionTrialing})
 	if err != nil {
 		return err
 	}
 	for i := range trialing {
 		end := trialing[i].TrialEnd
-		if end != nil && end.After(from.Add(TrialEndingNotice)) && !end.After(now.Add(TrialEndingNotice)) && !trialing[i].CancelAtPeriodEnd {
-			s.notifySubscription(&trialing[i], NotifyTrialEnding)
+		if end == nil || trialing[i].CancelAtPeriodEnd || !end.After(now) {
+			continue
+		}
+		moment := end.Add(-TrialEndingNotice)
+		if !moment.After(now) && moment.After(now.Add(-noticeCatchUp)) {
+			s.notifyOnce(&trialing[i], NotifyTrialEnding, *end, now)
 		}
 	}
 	pastDue, err := s.repo.ListSubscriptions(repositories.SubscriptionFilter{Status: db.SubscriptionPastDue})
@@ -132,8 +159,8 @@ func (s *Service) NotifyDue(now time.Time) error {
 	}
 	for i := range pastDue {
 		g := pastDue[i].GraceUntil
-		if g != nil && g.After(from) && !g.After(now) {
-			s.notifySubscription(&pastDue[i], NotifyExpired)
+		if g != nil && !g.After(now) && g.After(now.Add(-noticeCatchUp)) {
+			s.notifyOnce(&pastDue[i], NotifyExpired, *g, now)
 		}
 	}
 	return nil

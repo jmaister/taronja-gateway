@@ -374,6 +374,13 @@ type StuckStripeEvent struct {
 	LastSeenAt     time.Time `gorm:"not null"`
 }
 
+// BillingNotice records a time-based notification already sent, by key (the
+// kind, the subscription and the date it refers to), so it is sent once.
+type BillingNotice struct {
+	Key    string    `gorm:"primaryKey;column:key;type:varchar(255);not null"`
+	SentAt time.Time `gorm:"not null"`
+}
+
 // BillingSetting is a value the gateway remembers between restarts, like
 // the id of the Stripe portal configuration it created.
 type BillingSetting struct {
@@ -385,7 +392,7 @@ type BillingSetting struct {
 // BillingModels are appended to Models.
 var BillingModels = []interface{}{
 	&Organization{}, &OrganizationMember{}, &BillingPlan{}, &BillingPlanFeature{}, &BillingCustomer{},
-	&BillingCheckout{}, &BillingSubscription{}, &BillingPurchase{}, &BillingGrant{}, &BillingDocument{}, &StripeEvent{}, &StuckStripeEvent{}, &BillingSetting{},
+	&BillingCheckout{}, &BillingSubscription{}, &BillingPurchase{}, &BillingGrant{}, &BillingDocument{}, &StripeEvent{}, &StuckStripeEvent{}, &BillingSetting{}, &BillingNotice{},
 }
 
 func init() {
