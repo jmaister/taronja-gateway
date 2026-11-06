@@ -143,27 +143,67 @@ func TestStartNowRoute(t *testing.T) {
 
 func end() time.Time { return time.Now().AddDate(0, 0, 7) }
 
-func TestPaymentIssueNoticeRoute(t *testing.T) {
+func (bg *billingGateway) subscriptionEvent(t *testing.T, status string, trialEnd *time.Time) {
+	t.Helper()
+	ev := billing.Event{ID: "evt_" + status, Type: billing.EventSubscriptionUpdated, Created: time.Now().Add(time.Minute), Subscription: &billing.StripeSubscription{
+		ID: "sub_trial", CustomerID: "cus_me", Status: status, CurrentPeriodEnd: end(), TrialEnd: trialEnd,
+		Metadata: map[string]string{"tg_subject": "user:" + bg.user.ID, "tg_plan": "academia-personal"},
+	}}
+	require.NoError(t, bg.svc.HandleEvent(context.Background(), ev))
+}
+
+func TestAccountPaymentProblems(t *testing.T) {
+	const pastDue = "el cobro no se pudo completar. Revisa tu tarjeta con el botón Gestionar suscripción."
+	cases := []struct {
+		name      string
+		status    string
+		trialOver bool
+		want      []string
+		notWant   []string
+	}{
+		{name: "past due", status: "past_due", want: []string{"Academia personal: " + pastDue, "Pago fallido"}},
+		{name: "incomplete during the trial", status: "incomplete", want: []string{"pero tu prueba sigue hasta el", "Revisa tu tarjeta", "En prueba"}},
+		{name: "incomplete after the trial", status: "incomplete", trialOver: true, want: []string{"Suscripción no activa (incomplete)", "Stripe no ha podido confirmar el pago"}},
+		{name: "unpaid", status: "unpaid", want: []string{"Suscripción no activa (unpaid)", "Vuelve a suscribirte desde la página de pago del plan."}},
+		{name: "incomplete expired", status: "incomplete_expired", want: []string{"Suscripción no activa (incomplete_expired)"}},
+		{name: "paused", status: "paused", want: []string{"Suscripción no activa (paused)"}},
+		{name: "active", status: "active", want: []string{"Activa"}, notWant: []string{"Revisa tu tarjeta", "Suscripción no activa"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bg := newBillingGateway(t)
+			sub := bg.trialSubscription(t)
+			if tc.trialOver {
+				past := time.Now().AddDate(0, 0, -1)
+				sub.TrialUntil = &past
+				require.NoError(t, bg.deps.BillingRepo.UpdateSubscription(sub))
+			}
+			bg.subscriptionEvent(t, tc.status, nil)
+			page := readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
+			for _, w := range tc.want {
+				assert.True(t, strings.Contains(page, w), "account page lacks %q", w)
+			}
+			for _, w := range tc.notWant {
+				assert.False(t, strings.Contains(page, w), "account page has %q", w)
+			}
+		})
+	}
+}
+
+func TestAccountShowsCheckoutAwaitingPayment(t *testing.T) {
 	bg := newBillingGateway(t)
 	ctx := context.Background()
-	bg.trialSubscription(t)
-	const notice = "El cobro no se pudo completar. Revisa tu tarjeta con el botón Gestionar suscripción."
-	assert.NotContains(t, readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true)), notice, "no notice while trialing")
-
-	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_past_due", Type: billing.EventSubscriptionUpdated, Created: time.Now(), Subscription: &billing.StripeSubscription{
-		ID: "sub_trial", Status: "past_due", CurrentPeriodEnd: end(),
-		Metadata: map[string]string{"tg_subject": "user:" + bg.user.ID, "tg_plan": "academia-personal"},
+	_, err := bg.svc.CreatePlan(ctx, billing.PlanInput{
+		Key: "academia-sepa", Name: "Academia SEPA", Kind: db.PlanKindSubscription, Interval: db.PlanIntervalMonth,
+		AmountCents: 1000, Features: []string{"academia.access"}, Subject: db.PlanSubjectUser, GraceDays: 7,
+		Group: "academia-sepa", Starts: db.PlanStartsOnPayment, Active: true,
+	})
+	require.NoError(t, err)
+	checkout, _, err := bg.svc.StartCheckout(ctx, billing.CheckoutRequest{PlanKey: "academia-sepa", Payer: billing.Payer{UserID: bg.user.ID, Name: "Ana", Email: "ana@example.com"}})
+	require.NoError(t, err)
+	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_unpaid", Type: billing.EventCheckoutCompleted, Created: time.Now(), Checkout: &billing.CheckoutEvent{
+		CheckoutID: checkout.ID, Mode: "subscription", Paid: false, SubscriptionID: "sub_sepa",
 	}}))
 	page := readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
-	assert.Contains(t, page, notice)
-	assert.NotContains(t, page, "Tienes acceso hasta", "no grace date yet")
-
-	current, err := bg.deps.BillingRepo.GetSubscriptionByStripeID("sub_trial")
-	require.NoError(t, err)
-	grace := time.Now().AddDate(0, 0, 7)
-	current.GraceUntil = &grace
-	require.NoError(t, bg.deps.BillingRepo.UpdateSubscription(current))
-	page = readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
-	assert.Contains(t, page, notice)
-	assert.Contains(t, page, "Tienes acceso hasta el ")
+	assert.Contains(t, page, "Academia SEPA: tu pago está pendiente de confirmación")
 }

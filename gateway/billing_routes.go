@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jmaister/taronja-gateway/accounts"
 	"github.com/jmaister/taronja-gateway/billing"
@@ -59,6 +60,9 @@ type payDoneView struct {
 
 // billingView is the Billing section of the account page.
 type billingView struct {
+	// Problems are the messages above the billing sections: what went wrong
+	// and what the payer can do about it.
+	Problems      []string
 	Subscriptions []accountSubscription
 	Documents     []accountDocument
 	CSRF          string
@@ -80,8 +84,6 @@ type accountSubscription struct {
 	// StartNow is the price charged when the trial is ended now; empty when
 	// the subscription can't be started now.
 	StartNow string
-	// PaymentIssue asks the payer to check their card; empty when payment is fine.
-	PaymentIssue string
 }
 
 var subscriptionClasses = map[string]string{
@@ -100,8 +102,43 @@ var subscriptionLabels = map[string]string{
 	db.SubscriptionTrialing:           "En prueba",
 	db.SubscriptionActive:             "Activa",
 	db.SubscriptionPastDue:            "Pago fallido",
-	db.SubscriptionIncomplete:         "Pago pendiente",
 	db.SubscriptionCanceled:           "Cancelada",
+}
+
+// noAccessStripeStates are the Stripe statuses that end a subscription without
+// access and that the gateway keeps as canceled: the label shows Stripe's word.
+var noAccessStripeStates = map[string]bool{"unpaid": true, "paused": true, "incomplete_expired": true}
+
+// subscriptionLabel is the status shown for s at now.
+func subscriptionLabel(s db.BillingSubscription, now time.Time) string {
+	switch {
+	case s.Status == db.SubscriptionIncomplete && s.TrialUntil != nil && now.Before(*s.TrialUntil):
+		return "En prueba"
+	case s.Status == db.SubscriptionIncomplete:
+		return "Suscripción no activa (incomplete)"
+	case s.Status == db.SubscriptionCanceled && noAccessStripeStates[s.StripeStatus]:
+		return "Suscripción no activa (" + s.StripeStatus + ")"
+	}
+	return labelOr(subscriptionLabels, s.Status)
+}
+
+// paymentProblem is what to tell the payer about s, "" when nothing is wrong.
+func paymentProblem(svc *billing.Service, s db.BillingSubscription, plan string, now time.Time) string {
+	switch {
+	case s.Status == db.SubscriptionPastDue:
+		text := plan + ": el cobro no se pudo completar. Revisa tu tarjeta con el botón Gestionar suscripción."
+		if s.GraceUntil != nil {
+			text += " Tienes acceso hasta el " + svc.Day(s.GraceUntil) + "."
+		}
+		return text
+	case s.Status == db.SubscriptionIncomplete && s.TrialUntil != nil && now.Before(*s.TrialUntil):
+		return plan + ": el cobro no se pudo completar, pero tu prueba sigue hasta el " + svc.Day(s.TrialUntil) + ". Revisa tu tarjeta con el botón Gestionar suscripción."
+	case s.Status == db.SubscriptionIncomplete:
+		return plan + ": Suscripción no activa (incomplete). Stripe no ha podido confirmar el pago. Revisa tu tarjeta con el botón Gestionar suscripción."
+	case s.Status == db.SubscriptionCanceled && noAccessStripeStates[s.StripeStatus]:
+		return plan + ": Suscripción no activa (" + s.StripeStatus + "). Vuelve a suscribirte desde la página de pago del plan."
+	}
+	return ""
 }
 
 // displayFeatures drops the catch-all "all" feature, which says nothing to a buyer.
@@ -363,13 +400,10 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 					startNow = FormatEUR(plan.AmountCents)
 				}
 			}
-			item := accountSubscription{ID: s.ID, Plan: name, Owner: o.label, Status: labelOr(subscriptionLabels, s.Status), StatusClass: subscriptionClasses[s.Status], Subject: o.subject,
+			item := accountSubscription{ID: s.ID, Plan: name, Owner: o.label, Status: subscriptionLabel(s, time.Now()), StatusClass: subscriptionClasses[s.Status], Subject: o.subject,
 				Manage: s.StripeSubscriptionID != nil && s.Status != db.SubscriptionCanceled, StartNow: startNow}
-			if s.Status == db.SubscriptionPastDue {
-				item.PaymentIssue = "El cobro no se pudo completar. Revisa tu tarjeta con el botón Gestionar suscripción."
-				if s.GraceUntil != nil {
-					item.PaymentIssue += " Tienes acceso hasta el " + svc.Day(s.GraceUntil) + "."
-				}
+			if problem := paymentProblem(svc, s, name, time.Now()); problem != "" {
+				view.Problems = append(view.Problems, problem)
 			}
 			switch {
 			case s.Status == db.SubscriptionCanceled:
@@ -385,6 +419,17 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 				item.Next = "Se renueva el " + svc.Day(s.CurrentPeriodEnd)
 			}
 			view.Subscriptions = append(view.Subscriptions, item)
+		}
+		checkouts, err := svc.Repo().ListCheckoutsByStatus(o.subject, db.CheckoutStatusAwaitingPayment)
+		if err != nil {
+			log.Printf("Account page: checkouts of %s: %v", o.subject, err)
+		}
+		for _, c := range checkouts {
+			name := c.PlanKey
+			if plan, err := svc.GetPlan(c.PlanKey); err == nil {
+				name = plan.Name
+			}
+			view.Problems = append(view.Problems, name+": tu pago está pendiente de confirmación por el banco o el método de pago. Te avisaremos cuando se complete.")
 		}
 		docs, err := svc.Repo().ListDocuments(repositories.DocumentFilter{Subject: o.subject})
 		if err != nil {
