@@ -125,6 +125,10 @@ type BillingRepository interface {
 	GetSubscription(id string) (*db.BillingSubscription, error)
 	GetSubscriptionByStripeID(stripeSubscriptionID string) (*db.BillingSubscription, error)
 	UpdateSubscription(s *db.BillingSubscription) error
+	// CancelUnactivated cancels a subscription that has no Stripe
+	// subscription yet and reports whether it did: false when activation got
+	// there first.
+	CancelUnactivated(id string, at time.Time) (bool, error)
 	// ListSubscriptions returns the newest first.
 	ListSubscriptions(filter SubscriptionFilter) ([]db.BillingSubscription, error)
 	ListSubscriptionsBySubjects(subjects []string) ([]db.BillingSubscription, error)

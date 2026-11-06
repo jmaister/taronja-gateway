@@ -229,6 +229,15 @@ func (r *BillingRepositoryDB) UpdateSubscription(s *db.BillingSubscription) erro
 	return r.db.Save(s).Error
 }
 
+// CancelUnactivated cancels a subscription that has no Stripe subscription
+// yet, in one statement so a concurrent activation is never overwritten.
+func (r *BillingRepositoryDB) CancelUnactivated(id string, at time.Time) (bool, error) {
+	res := r.db.Model(&db.BillingSubscription{}).
+		Where("id = ? AND stripe_subscription_id IS NULL AND status != ?", id, db.SubscriptionCanceled).
+		Updates(map[string]any{"status": db.SubscriptionCanceled, "canceled_at": at.UTC()})
+	return res.RowsAffected > 0, res.Error
+}
+
 // ListSubscriptions returns subscriptions matching the filter, newest first.
 func (r *BillingRepositoryDB) ListSubscriptions(filter SubscriptionFilter) ([]db.BillingSubscription, error) {
 	query := r.db

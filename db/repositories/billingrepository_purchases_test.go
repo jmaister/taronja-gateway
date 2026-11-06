@@ -252,3 +252,28 @@ func TestBillingRepositoryDB_SetCustomerOdooPartner(t *testing.T) {
 	assert.Equal(t, "Ana B", c.Name)
 	assert.ErrorIs(t, repo.SetCustomerOdooPartner("missing", 1), gorm.ErrRecordNotFound)
 }
+
+func TestBillingRepositoryDB_CancelUnactivated(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := NewBillingRepositoryDB(db.GetConnection())
+	waiting := &db.BillingSubscription{Subject: "user:u1", PlanKey: "x", PayerUserID: "u1", Status: db.SubscriptionAwaitingActivation}
+	require.NoError(t, repo.CreateSubscription(waiting))
+	stripeID := "sub_1"
+	started := &db.BillingSubscription{Subject: "user:u2", PlanKey: "x", PayerUserID: "u2", Status: db.SubscriptionTrialing, StripeSubscriptionID: &stripeID}
+	require.NoError(t, repo.CreateSubscription(started))
+
+	ok, err := repo.CancelUnactivated(started.ID, time.Now())
+	require.NoError(t, err)
+	assert.False(t, ok, "activation got there first: its Stripe subscription is not canceled here")
+	got, _ := repo.GetSubscription(started.ID)
+	assert.Equal(t, db.SubscriptionTrialing, got.Status)
+
+	ok, err = repo.CancelUnactivated(waiting.ID, time.Now())
+	require.NoError(t, err)
+	assert.True(t, ok)
+	got, _ = repo.GetSubscription(waiting.ID)
+	assert.Equal(t, db.SubscriptionCanceled, got.Status)
+	require.NotNil(t, got.CanceledAt)
+	ok, _ = repo.CancelUnactivated(waiting.ID, time.Now())
+	assert.False(t, ok, "already canceled")
+}

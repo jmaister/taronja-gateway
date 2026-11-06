@@ -90,19 +90,27 @@ func (s *Service) CancelSubscription(ctx context.Context, id string, atPeriodEnd
 	}
 	now := s.now()
 	if sub.StripeSubscriptionID == nil {
-		sub.Status, sub.CanceledAt = db.SubscriptionCanceled, &now
-	} else {
-		if s.stripe == nil {
-			return nil, ErrNotConfigured
-		}
-		ss, err := s.stripe.CancelSubscription(ctx, *sub.StripeSubscriptionID, atPeriodEnd)
+		canceled, err := s.repo.CancelUnactivated(id, now)
 		if err != nil {
 			return nil, err
 		}
-		sub.CancelAtPeriodEnd = ss.CancelAtPeriodEnd
-		if !atPeriodEnd || ss.Status == "canceled" {
-			sub.Status, sub.CanceledAt = db.SubscriptionCanceled, &now
+		if !canceled {
+			// Activation saved its Stripe subscription since we read the row.
+			return s.CancelSubscription(ctx, id, atPeriodEnd)
 		}
+		s.Invalidate(sub.Subject)
+		return s.repo.GetSubscription(id)
+	}
+	if s.stripe == nil {
+		return nil, ErrNotConfigured
+	}
+	ss, err := s.stripe.CancelSubscription(ctx, *sub.StripeSubscriptionID, atPeriodEnd)
+	if err != nil {
+		return nil, err
+	}
+	sub.CancelAtPeriodEnd = ss.CancelAtPeriodEnd
+	if !atPeriodEnd || ss.Status == "canceled" {
+		sub.Status, sub.CanceledAt = db.SubscriptionCanceled, &now
 	}
 	err = s.repo.UpdateSubscription(sub)
 	if err != nil {
