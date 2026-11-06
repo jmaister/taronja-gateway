@@ -29,6 +29,7 @@
         </tr>
         {{end}}
     </table></div>
+    {{range .Subscriptions}}{{if .PaymentIssue}}<p class="error" role="alert"><strong>{{.Plan}}:</strong> {{.PaymentIssue}}</p>{{end}}{{end}}
     {{else}}
     <p class="empty">Todavía no tienes suscripciones.</p>
     {{end}}

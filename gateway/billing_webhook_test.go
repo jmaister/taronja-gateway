@@ -84,8 +84,8 @@ func TestPortalRoute(t *testing.T) {
 	}
 }
 
-func TestStartNowRoute(t *testing.T) {
-	bg := newBillingGateway(t)
+func (bg *billingGateway) trialSubscription(t *testing.T) *db.BillingSubscription {
+	t.Helper()
 	ctx := context.Background()
 	_, err := bg.svc.CreatePlan(ctx, billing.PlanInput{
 		Key: "academia-personal", Name: "Academia personal", Kind: db.PlanKindSubscription, Interval: db.PlanIntervalMonth,
@@ -107,6 +107,13 @@ func TestStartNowRoute(t *testing.T) {
 	}}))
 	sub, err := bg.deps.BillingRepo.GetSubscriptionByStripeID("sub_trial")
 	require.NoError(t, err)
+	return sub
+}
+
+func TestStartNowRoute(t *testing.T) {
+	bg := newBillingGateway(t)
+	ctx := context.Background()
+	sub := bg.trialSubscription(t)
 	csrf := accounts.CSRFToken(bg.token)
 	start := func(token string) *http.Response {
 		return bg.do(t, http.MethodPost, "/_/account/billing/start", url.Values{"csrf": {token}, "subscription": {sub.ID}}, true)
@@ -126,10 +133,37 @@ func TestStartNowRoute(t *testing.T) {
 	assert.Equal(t, "tg-start-"+sub.ID, bg.stripe.Trials[0].IdempotencyKey)
 
 	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_active", Type: billing.EventSubscriptionUpdated, Created: time.Now(), Subscription: &billing.StripeSubscription{
-		ID: "sub_trial", Status: "active", CurrentPeriodEnd: end,
+		ID: "sub_trial", Status: "active", CurrentPeriodEnd: end(),
 		Metadata: map[string]string{"tg_subject": "user:" + bg.user.ID, "tg_plan": "academia-personal"},
 	}}))
 	assert.Equal(t, http.StatusBadRequest, start(csrf).StatusCode, "already active")
 	assert.Len(t, bg.stripe.Trials, 1)
 	assert.NotContains(t, readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true)), "Empezar ya")
+}
+
+func end() time.Time { return time.Now().AddDate(0, 0, 7) }
+
+func TestPaymentIssueNoticeRoute(t *testing.T) {
+	bg := newBillingGateway(t)
+	ctx := context.Background()
+	bg.trialSubscription(t)
+	const notice = "El cobro no se pudo completar. Revisa tu tarjeta con el botón Gestionar suscripción."
+	assert.NotContains(t, readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true)), notice, "no notice while trialing")
+
+	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_past_due", Type: billing.EventSubscriptionUpdated, Created: time.Now(), Subscription: &billing.StripeSubscription{
+		ID: "sub_trial", Status: "past_due", CurrentPeriodEnd: end(),
+		Metadata: map[string]string{"tg_subject": "user:" + bg.user.ID, "tg_plan": "academia-personal"},
+	}}))
+	page := readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
+	assert.Contains(t, page, notice)
+	assert.NotContains(t, page, "Tienes acceso hasta", "no grace date yet")
+
+	current, err := bg.deps.BillingRepo.GetSubscriptionByStripeID("sub_trial")
+	require.NoError(t, err)
+	grace := time.Now().AddDate(0, 0, 7)
+	current.GraceUntil = &grace
+	require.NoError(t, bg.deps.BillingRepo.UpdateSubscription(current))
+	page = readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
+	assert.Contains(t, page, notice)
+	assert.Contains(t, page, "Tienes acceso hasta el ")
 }

@@ -80,6 +80,8 @@ type accountSubscription struct {
 	// StartNow is the price charged when the trial is ended now; empty when
 	// the subscription can't be started now.
 	StartNow string
+	// PaymentIssue asks the payer to check their card; empty when payment is fine.
+	PaymentIssue string
 }
 
 var subscriptionClasses = map[string]string{
@@ -363,6 +365,12 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			}
 			item := accountSubscription{ID: s.ID, Plan: name, Owner: o.label, Status: labelOr(subscriptionLabels, s.Status), StatusClass: subscriptionClasses[s.Status], Subject: o.subject,
 				Manage: s.StripeSubscriptionID != nil && s.Status != db.SubscriptionCanceled, StartNow: startNow}
+			if s.Status == db.SubscriptionPastDue {
+				item.PaymentIssue = "El cobro no se pudo completar. Revisa tu tarjeta con el botón Gestionar suscripción."
+				if s.GraceUntil != nil {
+					item.PaymentIssue += " Tienes acceso hasta el " + svc.Day(s.GraceUntil) + "."
+				}
+			}
 			switch {
 			case s.Status == db.SubscriptionCanceled:
 			case s.Status == db.SubscriptionTrialing:
