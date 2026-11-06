@@ -102,3 +102,31 @@ func TestStartNow_StripeFailureKeepsTheTrial(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, db.SubscriptionTrialing, got.Status)
 }
+
+func TestStartNow_FailedChargeKeepsAccessUntilTheTrialEnd(t *testing.T) {
+	e := newEnv(t)
+	sub := e.trialing(t)
+	require.NoError(t, e.svc.StartNow(context.Background(), sub.ID, "u1"))
+
+	end := e.clock.AddDate(0, 0, 3)
+	e.event(t, Event{ID: "evt_incomplete", Type: EventSubscriptionUpdated, Subscription: &StripeSubscription{
+		ID: "sub_trial", Status: "incomplete", CurrentPeriodEnd: end, TrialEnd: &end,
+		Metadata: map[string]string{"tg_subject": "user:u1", "tg_plan": "personal-monthly"},
+	}})
+	got, err := e.repo.GetSubscription(sub.ID)
+	require.NoError(t, err)
+	assert.Equal(t, db.SubscriptionIncomplete, got.Status)
+
+	ent, err := e.svc.ForUser("u1")
+	require.NoError(t, err)
+	feature := ent.User["academia.access"]
+	assert.Equal(t, StatusIncomplete, feature.Status)
+	require.NotNil(t, feature.Until)
+	assert.True(t, feature.Until.Equal(end), "until the trial end, no extra grace")
+}
+
+func TestStripeStatus_IncompleteKeepsItsTrial(t *testing.T) {
+	assert.Equal(t, db.SubscriptionIncomplete, stripeStatus("incomplete"))
+	assert.Equal(t, db.SubscriptionCanceled, stripeStatus("incomplete_expired"))
+	assert.Equal(t, db.SubscriptionCanceled, stripeStatus("unpaid"))
+}

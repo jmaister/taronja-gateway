@@ -20,6 +20,7 @@ const (
 	StatusActive             = "active"
 	StatusCanceling          = "canceling"
 	StatusPastDue            = "past_due"
+	StatusIncomplete         = "incomplete"
 	StatusAwaitingActivation = "awaiting_activation"
 	StatusGranted            = "granted"
 
@@ -175,6 +176,12 @@ func subscriptionFeature(graceDays int, s db.BillingSubscription) (Feature, bool
 			until := addDays(*s.CurrentPeriodEnd, graceDays)
 			f = Feature{Until: &until, EndsAt: s.CurrentPeriodEnd, Status: StatusActive, graceFrom: s.CurrentPeriodEnd}
 		}
+	case db.SubscriptionIncomplete:
+		// The first charge failed: access lasts until the trial's end, with no grace.
+		if s.TrialEnd == nil {
+			return f, false
+		}
+		f = Feature{Until: s.TrialEnd, EndsAt: s.TrialEnd, Status: StatusIncomplete}
 	case db.SubscriptionPastDue:
 		until := s.GraceUntil
 		if until == nil && s.CurrentPeriodEnd != nil {

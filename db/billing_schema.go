@@ -183,6 +183,7 @@ const (
 	SubscriptionTrialing           = "trialing"
 	SubscriptionActive             = "active"
 	SubscriptionPastDue            = "past_due"
+	SubscriptionIncomplete         = "incomplete"
 	SubscriptionCanceled           = "canceled"
 )
 

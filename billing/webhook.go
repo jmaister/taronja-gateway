@@ -416,8 +416,8 @@ func (s *Service) onCheckoutExpired(tx *webhookTx, cev *CheckoutEvent) error {
 }
 
 // stripeStatus maps Stripe's subscription status to the gateway's. Statuses
-// without access (incomplete, unpaid, paused, incomplete_expired) count as
-// canceled until Stripe says otherwise.
+// without access (unpaid, paused, incomplete_expired) count as canceled until
+// Stripe says otherwise.
 func stripeStatus(status string) string {
 	switch status {
 	case "trialing":
@@ -426,6 +426,8 @@ func stripeStatus(status string) string {
 		return db.SubscriptionActive
 	case "past_due":
 		return db.SubscriptionPastDue
+	case "incomplete":
+		return db.SubscriptionIncomplete
 	default:
 		return db.SubscriptionCanceled
 	}

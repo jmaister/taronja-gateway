@@ -231,6 +231,7 @@ const (
 	BillingSubscriptionStatusActive             BillingSubscriptionStatus = "active"
 	BillingSubscriptionStatusAwaitingActivation BillingSubscriptionStatus = "awaiting_activation"
 	BillingSubscriptionStatusCanceled           BillingSubscriptionStatus = "canceled"
+	BillingSubscriptionStatusIncomplete         BillingSubscriptionStatus = "incomplete"
 	BillingSubscriptionStatusPastDue            BillingSubscriptionStatus = "past_due"
 	BillingSubscriptionStatusTrialing           BillingSubscriptionStatus = "trialing"
 )
@@ -243,6 +244,8 @@ func (e BillingSubscriptionStatus) Valid() bool {
 	case BillingSubscriptionStatusAwaitingActivation:
 		return true
 	case BillingSubscriptionStatusCanceled:
+		return true
+	case BillingSubscriptionStatusIncomplete:
 		return true
 	case BillingSubscriptionStatusPastDue:
 		return true
@@ -301,6 +304,7 @@ const (
 	EntitlementStatusAwaitingActivation EntitlementStatus = "awaiting_activation"
 	EntitlementStatusCanceling          EntitlementStatus = "canceling"
 	EntitlementStatusGranted            EntitlementStatus = "granted"
+	EntitlementStatusIncomplete         EntitlementStatus = "incomplete"
 	EntitlementStatusPastDue            EntitlementStatus = "past_due"
 	EntitlementStatusTrial              EntitlementStatus = "trial"
 )
@@ -315,6 +319,8 @@ func (e EntitlementStatus) Valid() bool {
 	case EntitlementStatusCanceling:
 		return true
 	case EntitlementStatusGranted:
+		return true
+	case EntitlementStatusIncomplete:
 		return true
 	case EntitlementStatusPastDue:
 		return true

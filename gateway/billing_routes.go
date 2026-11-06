@@ -83,9 +83,10 @@ type accountSubscription struct {
 }
 
 var subscriptionClasses = map[string]string{
-	db.SubscriptionTrialing: "warn",
-	db.SubscriptionActive:   "ok",
-	db.SubscriptionPastDue:  "bad",
+	db.SubscriptionTrialing:   "warn",
+	db.SubscriptionActive:     "ok",
+	db.SubscriptionPastDue:    "bad",
+	db.SubscriptionIncomplete: "bad",
 }
 
 type accountDocument struct {
@@ -97,6 +98,7 @@ var subscriptionLabels = map[string]string{
 	db.SubscriptionTrialing:           "En prueba",
 	db.SubscriptionActive:             "Activa",
 	db.SubscriptionPastDue:            "Pago fallido",
+	db.SubscriptionIncomplete:         "Pago pendiente",
 	db.SubscriptionCanceled:           "Cancelada",
 }
 
@@ -369,6 +371,8 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 				item.Next = "Termina el " + svc.Day(s.CurrentPeriodEnd)
 			case s.Status == db.SubscriptionPastDue:
 				item.Next = "Acceso hasta el " + svc.Day(s.GraceUntil)
+			case s.Status == db.SubscriptionIncomplete:
+				item.Next = "Acceso hasta el " + svc.Day(s.TrialEnd)
 			case s.CurrentPeriodEnd != nil:
 				item.Next = "Se renueva el " + svc.Day(s.CurrentPeriodEnd)
 			}

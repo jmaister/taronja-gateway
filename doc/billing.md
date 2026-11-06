@@ -69,7 +69,7 @@ any application.
   | `group` | Plans of a group can be switched in the portal (monthly ↔ yearly) and share the trial |
   | `active` | Archived plans can't be bought; their subscriptions go on |
 - **Subscription** — a subject's recurring plan, mirroring Stripe's: status
-  `awaiting_activation`, `trialing`, `active`, `past_due`, `canceled`.
+  `awaiting_activation`, `trialing`, `active`, `past_due`, `incomplete`, `canceled`.
 - **Purchase** — one paid Checkout: the one-time plan, or a subscription's
   first payment when it has a setup fee or starts on activation. Holds the
   shipping address for fulfillment.
@@ -90,6 +90,7 @@ grant it, and is active while `now < until` (or `until` is empty).
 | Subscription `active` | `current_period_end + grace_days` (renewal pending) | `active` | `current_period_end` |
 | Subscription `active` with `cancel_at_period_end` | `current_period_end` | `canceling` | never |
 | Subscription `past_due` | `grace_until` (first failed charge + `grace_days`) | `past_due` | the failed charge |
+| Subscription `incomplete` (a charge failed, e.g. "Empezar ya") | `trial_end`, no extra grace; empty without a `trial_end` (no access) | `incomplete` | never |
 | Subscription `awaiting_activation` | empty (no expiry until activated) | `awaiting_activation` | never |
 | Subscription `canceled` | — (not granted) | — | — |
 | Purchase, one-time, `paid` | `paid_at + access_days`, or empty when 0 | `active` | never |
@@ -225,6 +226,11 @@ charge fails, Stripe reports `past_due` (grace applies) or `unpaid`/`incomplete`
 which the gateway counts as canceled until Stripe says otherwise. Starting from
 a subscription that is not trialing, or one that starts on activation, is a
 conflict.
+
+If that first charge fails, Stripe leaves the subscription `incomplete`: the
+customer keeps access until `trial_end` (the moment the trial was ended), with no
+extra grace, and loses it after that. Stripe reports `incomplete_expired` later
+when it gives up, which counts as canceled.
 
 ### Activation (megabox)
 

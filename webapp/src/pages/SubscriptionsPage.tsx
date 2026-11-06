@@ -72,6 +72,7 @@ export function SubscriptionsPage() {
                             >
                                 <option value="">All statuses</option>
                                 <option value="awaiting_activation">Awaiting Activation</option>
+                                <option value="incomplete">Incomplete</option>
                                 <option value="trialing">Trialing</option>
                                 <option value="active">Active</option>
                                 <option value="past_due">Past Due</option>
