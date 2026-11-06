@@ -4353,6 +4353,16 @@ components:
         action: {type: string}
         link: {type: string}
       required: [id, section, title, status, detail]
+    PaymentMethods:
+      type: object
+      properties:
+        immediate:
+          type: array
+          items: {type: string}
+        deferred:
+          type: array
+          items: {type: string}
+      required: [immediate, deferred]
     BillingSetup:
       type: object
       properties:
@@ -4360,6 +4370,7 @@ components:
           type: array
           items: {$ref: '#/components/schemas/SetupCheck'}
         message: {type: string}
+        paymentMethods: {$ref: '#/components/schemas/PaymentMethods'}
       required: [checks]
     BillingSetupActionRequest:
       type: object

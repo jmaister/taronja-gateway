@@ -800,8 +800,9 @@ type BillingRefundRequest struct {
 
 // BillingSetup defines model for BillingSetup.
 type BillingSetup struct {
-	Checks  []SetupCheck `json:"checks"`
-	Message *string      `json:"message,omitempty"`
+	Checks         []SetupCheck    `json:"checks"`
+	Message        *string         `json:"message,omitempty"`
+	PaymentMethods *PaymentMethods `json:"paymentMethods,omitempty"`
 }
 
 // BillingSetupActionRequest defines model for BillingSetupActionRequest.
@@ -1424,6 +1425,12 @@ type OrganizationMemberRequestRole string
 // OrganizationUpdateRequest defines model for OrganizationUpdateRequest.
 type OrganizationUpdateRequest struct {
 	Name string `json:"name"`
+}
+
+// PaymentMethods defines model for PaymentMethods.
+type PaymentMethods struct {
+	Deferred  []string `json:"deferred"`
+	Immediate []string `json:"immediate"`
 }
 
 // RateLimiterConfigResponse defines model for RateLimiterConfigResponse.

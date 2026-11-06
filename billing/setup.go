@@ -118,26 +118,38 @@ func (s *Service) portalCheck(ctx context.Context) SetupCheck {
 // is confirmed days later.
 var DelayedPaymentMethods = []string{"acss_debit", "bancontact", "boleto", "customer_balance", "eps", "giropay", "ideal", "konbini", "oxxo", "p24", "sepa_debit", "sofort", "us_bank_account"}
 
-// paymentMethodsCheck lists the methods Checkout offers and warns while a
-// delayed one is on.
-func (s *Service) paymentMethodsCheck(ctx context.Context) SetupCheck {
-	c := SetupCheck{ID: "stripe-payment-methods", Title: "Payment methods offered at Checkout", Link: stripeDashboard(s.stripeMode, "settings/payment-methods")}
+// PaymentMethods splits the methods Checkout offers into immediate and delayed.
+func (s *Service) PaymentMethods(ctx context.Context) (immediate, delayed []string, err error) {
 	if s.stripe == nil {
-		c.Status, c.Detail = CheckMissing, "Stripe is not configured"
-		return c
+		return nil, nil, ErrNotConfigured
 	}
 	types, err := s.stripe.PaymentMethodTypes(ctx)
 	if err != nil {
-		c.Status, c.Detail = CheckMissing, err.Error()
-		return c
+		return nil, nil, err
 	}
-	var immediate, delayed []string
+	immediate, delayed = []string{}, []string{}
 	for _, t := range types {
 		if slices.Contains(DelayedPaymentMethods, t) {
 			delayed = append(delayed, t)
 		} else {
 			immediate = append(immediate, t)
 		}
+	}
+	return immediate, delayed, nil
+}
+
+// paymentMethodsCheck lists the methods Checkout offers and warns while a
+// delayed one is on.
+func (s *Service) paymentMethodsCheck(ctx context.Context) SetupCheck {
+	c := SetupCheck{ID: "stripe-payment-methods", Title: "Payment methods offered at Checkout", Link: stripeDashboard(s.stripeMode, "settings/payment-methods")}
+	immediate, delayed, err := s.PaymentMethods(ctx)
+	if errors.Is(err, ErrNotConfigured) {
+		c.Status, c.Detail = CheckMissing, "Stripe is not configured"
+		return c
+	}
+	if err != nil {
+		c.Status, c.Detail = CheckMissing, err.Error()
+		return c
 	}
 	c.Status = CheckOK
 	c.Detail = "immediate: " + listOrNone(immediate) + "; delayed: " + listOrNone(delayed)

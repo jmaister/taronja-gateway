@@ -210,3 +210,25 @@ func TestSetupChecks_PaymentMethods(t *testing.T) {
 	e.svc.stripe = nil
 	assert.Equal(t, CheckMissing, check().Status)
 }
+
+func TestPaymentMethodsSplitsImmediateAndDelayed(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+
+	e.stripe.PaymentMethods = []string{"card", "sepa_debit", "link"}
+	immediate, delayed, err := e.svc.PaymentMethods(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"card", "link"}, immediate)
+	assert.Equal(t, []string{"sepa_debit"}, delayed)
+
+	e.stripe.PaymentMethods = []string{"card"}
+	immediate, delayed, err = e.svc.PaymentMethods(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"card"}, immediate)
+	assert.Empty(t, delayed)
+	assert.NotNil(t, delayed)
+
+	e.svc.stripe = nil
+	_, _, err = e.svc.PaymentMethods(ctx)
+	assert.ErrorIs(t, err, ErrNotConfigured)
+}
