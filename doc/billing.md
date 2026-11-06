@@ -614,6 +614,17 @@ Odoo module go away.
   `E2E_ODOO_VERIFACTU=1`, using Odoo's demo certificate; a real certificate
   is not.
 - The entitlement cache is per process (one gateway instance).
+- Several gateway instances: the outbox does not reserve a document before
+  working on it (the Odoo invoice is idempotent by `ref`, but the email could
+  go twice) and saves whole rows. Fine with SQLite, one process.
+- A document whose customer has no email, or with no email provider, ends
+  `done` with an empty `emailed_at`.
+- Complete tax ids are written to the log when Stripe's is rejected.
+- `SaveCustomerDetails` saves the whole customer after the Stripe call; a
+  `customer.updated` applied in between would be overwritten (the Odoo partner
+  id is already saved on its own).
+- Changing a plan's group with live subscriptions leaves their `group_key`
+  as it was.
 - No dashboard form for grants: they are created through the API.
 - Bank reconciliation of Stripe payouts is manual. The gateway records each
   payment in the Stripe journal (`paymentJournalId`), but Stripe pays out
