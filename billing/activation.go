@@ -60,6 +60,7 @@ func (s *Service) ActivateSubscription(ctx context.Context, id string) (*db.Bill
 	}
 	stripeID := ss.ID
 	current.StripeSubscriptionID = &stripeID
+	current.StripeStatus, current.StripeCustomerID = ss.Status, ss.CustomerID
 	if current.Status == db.SubscriptionAwaitingActivation {
 		current.Status = db.SubscriptionTrialing
 		end := ss.CurrentPeriodEnd

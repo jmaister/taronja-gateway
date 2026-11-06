@@ -152,6 +152,9 @@ const (
 	CheckoutStatusOpen      = "open"
 	CheckoutStatusCompleted = "completed"
 	CheckoutStatusExpired   = "expired"
+	// CheckoutStatusAwaitingPayment: Stripe completed the session without the
+	// money (a delayed payment method); it completes or expires later.
+	CheckoutStatusAwaitingPayment = "awaiting_payment"
 )
 
 // BillingCheckout is one Stripe Checkout Session the gateway started.
@@ -195,6 +198,8 @@ type BillingSubscription struct {
 	GroupKey              string  `gorm:"type:varchar(100);not null;default:''"`
 	PayerUserID           string  `gorm:"type:varchar(255)"`
 	Status                string  `gorm:"type:varchar(30);not null"`
+	StripeStatus          string  `gorm:"type:varchar(30)"`
+	StripeCustomerID      string  `gorm:"type:varchar(255)"`
 	StripeSubscriptionID  *string `gorm:"type:varchar(255);uniqueIndex"`
 	StripePaymentMethodID string  `gorm:"type:varchar(255)"`
 	CurrentPeriodEnd      *time.Time

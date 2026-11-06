@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/jmaister/taronja-gateway/db"
+	"github.com/jmaister/taronja-gateway/db/repositories"
 )
 
 // Setup actions the setup page can run.
@@ -71,7 +74,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			plans.Detail = fmt.Sprintf("%d active plans", len(list))
 		}
 	}
-	checks = append(checks, plans, s.oldPricesCheck(), s.stuckEventsCheck(), s.invoiceEmailCheck())
+	checks = append(checks, plans, s.oldPricesCheck(), s.stuckEventsCheck(), s.customerChangedCheck(), s.invoiceEmailCheck())
 
 	if s.odoo == nil {
 		return append(checks, SetupCheck{ID: "odoo-connection", Title: "Odoo", Status: CheckMissing,
@@ -187,6 +190,35 @@ func (s *Service) oldPricesCheck() SetupCheck {
 		c.Status, c.Action = CheckWarn, ActionSyncPlans
 		c.Detail = fmt.Sprintf("%d replaced prices are still active in Stripe (%s): they are retried at every plan change and startup", len(ids), strings.Join(ids, ", "))
 		c.Link = stripeDashboard(s.stripeMode, "products")
+	}
+	return c
+}
+
+// customerChangedCheck warns when a subscription was created for another
+// Stripe customer than the one now saved for its payer.
+func (s *Service) customerChangedCheck() SetupCheck {
+	c := SetupCheck{ID: "stripe-customer-changed", Title: "Stripe customers of subscriptions", Status: CheckOK,
+		Detail: "every subscription belongs to its payer's Stripe customer", Link: stripeDashboard(s.stripeMode, "customers")}
+	subs, err := s.repo.ListSubscriptions(repositories.SubscriptionFilter{})
+	if err != nil {
+		c.Status, c.Detail = CheckMissing, err.Error()
+		return c
+	}
+	var changed []string
+	for _, sub := range subs {
+		if sub.StripeCustomerID == "" || sub.Status == db.SubscriptionCanceled {
+			continue
+		}
+		customer, err := s.repo.GetCustomer(sub.Subject)
+		if err != nil || customer.StripeCustomerID == "" || customer.StripeCustomerID == sub.StripeCustomerID {
+			continue
+		}
+		changed = append(changed, sub.ID+" ("+sub.StripeCustomerID+" ≠ "+customer.StripeCustomerID+")")
+	}
+	if len(changed) > 0 {
+		c.Status = CheckWarn
+		c.Detail = fmt.Sprintf("%d subscriptions belong to a Stripe customer other than their payer's saved one: %s. Check the customers in Stripe; if a customer was replaced, resend the events it missed from Stripe Developers → Events",
+			len(changed), strings.Join(changed, "; "))
 	}
 	return c
 }

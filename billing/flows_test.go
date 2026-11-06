@@ -506,7 +506,7 @@ func TestCheckoutCompletedUnpaidChangesNothing(t *testing.T) {
 
 	got, err := e.repo.GetCheckout(checkout.ID)
 	require.NoError(t, err)
-	assert.Equal(t, db.CheckoutStatusOpen, got.Status, "still waiting for the money")
+	assert.Equal(t, db.CheckoutStatusAwaitingPayment, got.Status, "waiting for the money")
 	_, err = e.repo.GetPurchaseByPaymentIntent("pi_u")
 	assert.Error(t, err)
 	ent, err := e.svc.ForUser("u1")

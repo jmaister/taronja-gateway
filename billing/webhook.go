@@ -186,6 +186,10 @@ func (s *Service) onCheckoutCompleted(tx *webhookTx, ev Event) error {
 	}
 	if !cev.Paid {
 		log.Printf("billing: checkout %s completed but not paid (session %s): nothing is activated until it is", checkout.ID, cev.SessionID)
+		if checkout.Status == db.CheckoutStatusOpen {
+			checkout.Status = db.CheckoutStatusAwaitingPayment
+			return tx.repo.UpdateCheckout(checkout)
+		}
 		return nil
 	}
 	plan, err := tx.repo.GetPlan(checkout.PlanKey)
@@ -408,7 +412,7 @@ func (s *Service) onCheckoutExpired(tx *webhookTx, cev *CheckoutEvent) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
-	if err != nil || checkout.Status != db.CheckoutStatusOpen {
+	if err != nil || (checkout.Status != db.CheckoutStatusOpen && checkout.Status != db.CheckoutStatusAwaitingPayment) {
 		return err
 	}
 	checkout.Status = db.CheckoutStatusExpired
@@ -472,6 +476,7 @@ func (s *Service) onSubscription(tx *webhookTx, ev Event) error {
 	}
 	sub.StripeEventAt = &ev.Created
 	sub.Status = status
+	sub.StripeStatus, sub.StripeCustomerID = ss.Status, ss.CustomerID
 	if !ss.CurrentPeriodEnd.IsZero() {
 		end := ss.CurrentPeriodEnd
 		sub.CurrentPeriodEnd = &end

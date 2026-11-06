@@ -118,6 +118,8 @@ type BillingRepository interface {
 	GetCheckout(id string) (*db.BillingCheckout, error)
 	GetCheckoutByStripeSession(sessionID string) (*db.BillingCheckout, error)
 	UpdateCheckout(c *db.BillingCheckout) error
+	// ListCheckoutsByStatus lists a subject's checkouts in one status.
+	ListCheckoutsByStatus(subject, status string) ([]db.BillingCheckout, error)
 
 	// Subscriptions. CreateSubscription returns ErrDuplicate for a second row
 	// with the same Stripe subscription id.

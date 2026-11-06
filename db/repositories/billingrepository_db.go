@@ -192,6 +192,12 @@ func (r *BillingRepositoryDB) UpdateCheckout(c *db.BillingCheckout) error {
 	return r.db.Save(c).Error
 }
 
+func (r *BillingRepositoryDB) ListCheckoutsByStatus(subject, status string) ([]db.BillingCheckout, error) {
+	var checkouts []db.BillingCheckout
+	err := r.db.Where("subject = ? AND status = ?", subject, status).Order("created_at DESC, id DESC").Find(&checkouts).Error
+	return checkouts, err
+}
+
 // CreateSubscription creates a new subscription, returning ErrDuplicate
 // if a subscription with the same StripeSubscriptionID already exists.
 func (r *BillingRepositoryDB) CreateSubscription(s *db.BillingSubscription) error {
