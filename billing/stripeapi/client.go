@@ -4,9 +4,11 @@ package stripeapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/billing"
@@ -407,6 +409,47 @@ func (c *Client) GetPortalConfig(ctx context.Context, id string) (billing.Portal
 		return billing.PortalConfig{}, wrap(err)
 	}
 	return billing.PortalConfig{ID: cfg.ID, Active: cfg.Active, ReturnURL: cfg.DefaultReturnURL}, nil
+}
+
+// PaymentMethodTypes reads the default payment method configuration: the
+// methods whose value is on, as Checkout offers them.
+func (c *Client) PaymentMethodTypes(ctx context.Context) ([]string, error) {
+	params := &stripe.PaymentMethodConfigurationListParams{Active: stripe.Bool(true)}
+	for pmc, err := range c.sc.V1PaymentMethodConfigurations.List(ctx, params).All(ctx) {
+		if err != nil {
+			return nil, wrap(err)
+		}
+		if pmc.IsDefault {
+			return enabledPaymentMethods(pmc)
+		}
+	}
+	return nil, fmt.Errorf("stripe: no default payment method configuration")
+}
+
+func enabledPaymentMethods(pmc *stripe.PaymentMethodConfiguration) ([]string, error) {
+	raw, err := json.Marshal(pmc)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	var types []string
+	for name, value := range fields {
+		var method struct {
+			Available         bool `json:"available"`
+			DisplayPreference struct {
+				Value string `json:"value"`
+			} `json:"display_preference"`
+		}
+		if json.Unmarshal(value, &method) != nil || !method.Available || method.DisplayPreference.Value != "on" {
+			continue
+		}
+		types = append(types, name)
+	}
+	sort.Strings(types)
+	return types, nil
 }
 
 func (c *Client) PortalURL(ctx context.Context, customerID, returnURL, configID string) (string, error) {

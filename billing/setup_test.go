@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -180,4 +181,32 @@ func TestSetupChecks_PortalConfiguration(t *testing.T) {
 	assert.Equal(t, CheckOK, inList().Status, "the setup page shows the same result")
 	id, _ = e.repo.GetSetting(settingPortalConfig)
 	assert.Equal(t, "bpc_1", id)
+}
+
+func TestSetupChecks_PaymentMethods(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.svc.stripeMode = "test"
+	check := func() SetupCheck { return e.svc.paymentMethodsCheck(ctx) }
+
+	e.stripe.PaymentMethods = []string{"card", "link", "paypal"}
+	c := check()
+	assert.Equal(t, CheckOK, c.Status)
+	assert.Equal(t, "immediate: card, link, paypal; delayed: none", c.Detail)
+	assert.Equal(t, "https://dashboard.stripe.com/test/settings/payment-methods", c.Link)
+
+	e.stripe.PaymentMethods = []string{"card", "sepa_debit", "ideal"}
+	c = check()
+	assert.Equal(t, CheckWarn, c.Status)
+	assert.Contains(t, c.Detail, "immediate: card; delayed: sepa_debit, ideal")
+	assert.Contains(t, c.Detail, "Turn off the delayed methods")
+
+	e.stripe.Err = errors.New("stripe down")
+	c = check()
+	assert.Equal(t, CheckMissing, c.Status)
+	assert.Contains(t, c.Detail, "stripe down")
+	e.stripe.Err = nil
+
+	e.svc.stripe = nil
+	assert.Equal(t, CheckMissing, check().Status)
 }

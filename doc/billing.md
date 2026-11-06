@@ -344,6 +344,7 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   switch between plans of the same group (see *Plan changes*), edit the invoice name and address
   (not the NIF nor the email; `customer.updated` brings the edits back), no invoice history (invoices come
   from Odoo), return URL `/_/account`.
+- Payment methods: the setup page lists the enabled methods of Stripe's default payment method configuration, immediate and delayed. It warns while a delayed one (SEPA, iDEAL, Bancontact…) is on: turn it off in the Stripe dashboard, because a delayed payment confirms days later.
 - Plan changes: an upgrade is charged at once (`proration_behavior:
   always_invoice`): one invoice with Stripe's lines *Tiempo no utilizado…*
   (negative) and *Tiempo restante…*, the same billing period and the new

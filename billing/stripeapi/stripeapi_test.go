@@ -448,3 +448,20 @@ func TestCreateCheckoutSession_StatementDescriptorSuffix(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ACADEMIA", f.last(t).Form.Get("payment_intent_data[statement_descriptor_suffix]"))
 }
+
+func TestPaymentMethodTypes(t *testing.T) {
+	_, c := newFakeStripe(t, map[string]string{
+		"GET /v1/payment_method_configurations": `{"object":"list","data":[` +
+			`{"id":"pmc_other","object":"payment_method_configuration","active":true,"is_default":false,` +
+			`"card":{"available":true,"display_preference":{"overridable":null,"preference":"on","value":"on"}}},` +
+			`{"id":"pmc_default","object":"payment_method_configuration","active":true,"is_default":true,` +
+			`"card":{"available":true,"display_preference":{"overridable":null,"preference":"on","value":"on"}},` +
+			`"link":{"available":true,"display_preference":{"overridable":false,"preference":"none","value":"off"}},` +
+			`"ideal":{"available":false,"display_preference":{"overridable":null,"preference":"on","value":"off"}},` +
+			`"sepa_debit":{"available":true,"display_preference":{"overridable":null,"preference":"on","value":"on"}},` +
+			`"name":"Default"}],"has_more":false}`,
+	})
+	types, err := c.PaymentMethodTypes(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"card", "sepa_debit"}, types)
+}

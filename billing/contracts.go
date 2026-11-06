@@ -191,6 +191,9 @@ type Stripe interface {
 	// GetPortalConfig reads a portal configuration (ErrNotFound when
 	// Stripe has no such one).
 	GetPortalConfig(ctx context.Context, id string) (PortalConfig, error)
+	// PaymentMethodTypes lists the payment methods Checkout offers in this
+	// account: the enabled ones of its default payment method configuration.
+	PaymentMethodTypes(ctx context.Context) ([]string, error)
 	// PortalURL opens a portal session with the configuration configID (""
 	// is Stripe's default one).
 	PortalURL(ctx context.Context, customerID, returnURL, configID string) (string, error)

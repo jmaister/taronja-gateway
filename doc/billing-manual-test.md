@@ -43,7 +43,9 @@ catcher. Reference: [billing.md](billing.md). Automated tests: [e2e.md](e2e.md).
    (`user@example.test`) and log in as admin.
 5. Open `/_/admin` → **Billing → Setup**. Expect: Stripe key warning "test
    mode", Odoo checks green. Click the fix button on each warning that has one
-   (portal, plans). Stripe webhook and emails rows are manual checks.
+   (portal, plans). Stripe webhook and emails rows are manual checks. The
+   payment methods row lists the methods Checkout offers and warns while a
+   delayed one (SEPA, iDEAL…) is on: turn it off in the Stripe dashboard.
 6. **Billing → Plans → New**: key `test-monthly`, 1000 cents/month (VAT
    included), one feature. Save. Setup shows "Plans synced" green. Make a
    second plan `test-pro`, 2000 cents/month, same group, for the plan change.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -47,6 +48,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			Link:   "https://dashboard.stripe.com/settings/emails",
 		},
 		s.portalCheck(ctx),
+		s.paymentMethodsCheck(ctx),
 	)
 
 	plans := SetupCheck{ID: "plans", Title: "Plans synced to Stripe and Odoo", Status: CheckOK}
@@ -110,6 +112,47 @@ func (s *Service) portalCheck(ctx context.Context) SetupCheck {
 		c.Status, c.Detail = CheckOK, "configuration "+id+" is active"
 	}
 	return c
+}
+
+// DelayedPaymentMethods complete a Checkout session unpaid, so the payment
+// is confirmed days later.
+var DelayedPaymentMethods = []string{"acss_debit", "bancontact", "boleto", "customer_balance", "eps", "giropay", "ideal", "konbini", "oxxo", "p24", "sepa_debit", "sofort", "us_bank_account"}
+
+// paymentMethodsCheck lists the methods Checkout offers and warns while a
+// delayed one is on.
+func (s *Service) paymentMethodsCheck(ctx context.Context) SetupCheck {
+	c := SetupCheck{ID: "stripe-payment-methods", Title: "Payment methods offered at Checkout", Link: stripeDashboard(s.stripeMode, "settings/payment-methods")}
+	if s.stripe == nil {
+		c.Status, c.Detail = CheckMissing, "Stripe is not configured"
+		return c
+	}
+	types, err := s.stripe.PaymentMethodTypes(ctx)
+	if err != nil {
+		c.Status, c.Detail = CheckMissing, err.Error()
+		return c
+	}
+	var immediate, delayed []string
+	for _, t := range types {
+		if slices.Contains(DelayedPaymentMethods, t) {
+			delayed = append(delayed, t)
+		} else {
+			immediate = append(immediate, t)
+		}
+	}
+	c.Status = CheckOK
+	c.Detail = "immediate: " + listOrNone(immediate) + "; delayed: " + listOrNone(delayed)
+	if len(delayed) > 0 {
+		c.Status = CheckWarn
+		c.Detail += ". Turn off the delayed methods in the Stripe dashboard (Settings → Payment methods)"
+	}
+	return c
+}
+
+func listOrNone(xs []string) string {
+	if len(xs) == 0 {
+		return "none"
+	}
+	return strings.Join(xs, ", ")
 }
 
 // stripeDashboard is a Stripe dashboard URL for the mode of the secret key.

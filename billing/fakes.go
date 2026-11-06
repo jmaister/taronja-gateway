@@ -26,6 +26,7 @@ type FakeStripe struct {
 	PortalURLConfigID  string
 	PortalCustomers    []string
 	PortalConfigs      map[string]PortalConfig
+	PaymentMethods     []string
 	Sessions           []CheckoutParams
 	Subscriptions      map[string]*StripeSubscription
 	Created            []SubscriptionParams
@@ -232,6 +233,15 @@ func (f *FakeStripe) ConfigurePortal(ctx context.Context, p PortalParams) (strin
 	id := fmt.Sprintf("bpc_%d", len(f.PortalConfigs)+1)
 	f.PortalConfigs[id] = PortalConfig{ID: id, Active: true, ReturnURL: p.ReturnURL}
 	return id, nil
+}
+
+func (f *FakeStripe) PaymentMethodTypes(ctx context.Context) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return f.PaymentMethods, nil
 }
 
 func (f *FakeStripe) GetPortalConfig(ctx context.Context, id string) (PortalConfig, error) {
