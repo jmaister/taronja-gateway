@@ -354,9 +354,10 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
 - Stripe settings done by hand (the setup page reminds): *Email customers
   about successful payments* and *Email finalized invoices* off.
 - Idempotency keys on every create (`tg-<checkout id>`, `tg-activate-<id>`,
-  `tg-refund-<purchase id>-<n>`, where `n` is `billing_purchases.refund_attempts`,
-  counted before each refund is sent: two equal partial refunds made before
-  `charge.refunded` arrives are two refunds, not a retry of the first).
+  `tg-refund-<purchase id>-<refunded cents>-<amount>`: a double click, or a
+  retry after a lost response, repeats the key and Stripe returns the same
+  refund; once `charge.refunded` has raised `refunded_cents`, the next
+  refund gets a new key).
 
 ## Data model
 
@@ -371,7 +372,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_customers` | `subject` (PK), `stripe_customer_id`, `odoo_partner_id`, `name`, `email`, `tax_id`, `address_*`, `trial_groups` (groups already trialed), `stripe_event_at` (last `customer.updated` applied) |
 | `billing_checkouts` | `id`, `subject`, `plan_key`, `user_id` (payer), `stripe_session_id`, `status` (`open`, `completed`, `expired`), `redirect`, `direct` |
 | `billing_subscriptions` | `id`, `subject`, `plan_key`, `group_key` (the plan's group when created; a partial unique index allows one non-canceled subscription per subject and group), `payer_user_id`, `status`, `stripe_subscription_id` (unique, null while awaiting activation), `stripe_payment_method_id`, `current_period_end`, `trial_end`, `cancel_at_period_end`, `grace_until`, `activated_at`, `canceled_at` |
-| `billing_purchases` | `id`, `subject`, `plan_key`, `payer_user_id`, `checkout_id`, `subscription_id` (for a first payment), `status` (`paid`, `refunded`), `amount_cents`, `refunded_cents`, `refund_attempts`, `stripe_payment_intent_id` (unique), `paid_at`, `shipping_*` (name, phone, address) |
+| `billing_purchases` | `id`, `subject`, `plan_key`, `payer_user_id`, `checkout_id`, `subscription_id` (for a first payment), `status` (`paid`, `refunded`), `amount_cents`, `refunded_cents`, `stripe_payment_intent_id` (unique), `paid_at`, `shipping_*` (name, phone, address) |
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |
 | `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at`, `emailed_at` |
 | `stripe_events` | `event_id` (PK), `type`, `received_at` |

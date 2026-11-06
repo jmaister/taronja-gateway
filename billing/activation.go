@@ -122,11 +122,7 @@ func (s *Service) RefundPurchase(ctx context.Context, id string, amountCents int
 	if s.stripe == nil {
 		return nil, ErrNotConfigured
 	}
-	attempt, err := s.repo.NextRefundAttempt(p.ID)
-	if err != nil {
-		return nil, err
-	}
-	key := fmt.Sprintf("tg-refund-%s-%d", p.ID, attempt)
+	key := fmt.Sprintf("tg-refund-%s-%d-%d", p.ID, p.RefundedCents, amountCents)
 	err = s.stripe.Refund(ctx, p.StripePaymentIntentID, amountCents, key)
 	if err != nil {
 		return nil, err

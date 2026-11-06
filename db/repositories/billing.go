@@ -133,9 +133,6 @@ type BillingRepository interface {
 	GetPurchase(id string) (*db.BillingPurchase, error)
 	GetPurchaseByPaymentIntent(paymentIntentID string) (*db.BillingPurchase, error)
 	UpdatePurchase(p *db.BillingPurchase) error
-	// NextRefundAttempt counts one more refund asked of Stripe for the
-	// purchase and returns the new count.
-	NextRefundAttempt(id string) (int, error)
 	// ListPurchases returns the newest paid first.
 	ListPurchases(filter PurchaseFilter) ([]db.BillingPurchase, error)
 	ListPurchasesBySubjects(subjects []string) ([]db.BillingPurchase, error)

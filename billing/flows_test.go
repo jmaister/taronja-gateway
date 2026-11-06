@@ -435,7 +435,7 @@ func TestOnActivationPurchaseRefund(t *testing.T) {
 	// Partial refund, then the rest.
 	_, err = e.svc.RefundPurchase(ctx, purchase.ID, 1000, false)
 	require.NoError(t, err)
-	assert.Equal(t, FakeRefund{PaymentIntentID: "pi_1", AmountCents: 1000, IdempotencyKey: "tg-refund-" + purchase.ID + "-1"}, e.stripe.Refunds[0])
+	assert.Equal(t, FakeRefund{PaymentIntentID: "pi_1", AmountCents: 1000, IdempotencyKey: "tg-refund-" + purchase.ID + "-0-1000"}, e.stripe.Refunds[0])
 	e.event(t, Event{ID: "evt_r1", Type: EventChargeRefunded, Refund: &RefundEvent{ChargeID: "ch_1", PaymentIntentID: "pi_1", RefundedCents: 1000, RefundID: "re_1"}})
 	e.event(t, Event{ID: "evt_r1b", Type: EventChargeRefunded, Refund: &RefundEvent{ChargeID: "ch_1", PaymentIntentID: "pi_1", RefundedCents: 1000, RefundID: "re_1"}})
 	purchase, _ = e.repo.GetPurchaseByPaymentIntent("pi_1")
@@ -528,7 +528,7 @@ func TestNotifyDue_OncePerNoticeAndSurvivesDowntime(t *testing.T) {
 	assert.Empty(t, e.notificationsOf(t, "u2"), "a grace period that ended days ago is not announced")
 }
 
-func TestRefundPurchase_TwoEqualPartialRefundsAreBothSent(t *testing.T) {
+func TestRefundPurchase_IdempotencyKey(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	p := &db.BillingPurchase{Subject: "user:u1", PlanKey: "x", Status: db.PurchaseStatusPaid, AmountCents: 3000, StripePaymentIntentID: "pi_two", PaidAt: e.clock}
@@ -536,18 +536,19 @@ func TestRefundPurchase_TwoEqualPartialRefundsAreBothSent(t *testing.T) {
 
 	_, err := e.svc.RefundPurchase(ctx, p.ID, 500, false)
 	require.NoError(t, err)
-	stale, err := e.repo.GetPurchase(p.ID)
+	_, err = e.svc.RefundPurchase(ctx, p.ID, 500, false) // double click: charge.refunded has not arrived yet
 	require.NoError(t, err)
-	_, err = e.svc.RefundPurchase(ctx, p.ID, 500, false) // charge.refunded has not arrived yet
-	require.NoError(t, err)
-	require.Len(t, e.stripe.Refunds, 2, "the second refund is not taken for a retry of the first")
-	assert.NotEqual(t, e.stripe.Refunds[0].IdempotencyKey, e.stripe.Refunds[1].IdempotencyKey)
+	require.Len(t, e.stripe.Refunds, 1, "the fake, like Stripe, takes the repeated key for a retry")
 
-	require.NoError(t, e.repo.UpdatePurchase(stale)) // a webhook saving what it read before
+	_, err = e.svc.RefundPurchase(ctx, p.ID, 700, false)
+	require.NoError(t, err)
+	require.Len(t, e.stripe.Refunds, 2, "another amount is another refund")
+
+	p.RefundedCents = 500 // what charge.refunded records
+	require.NoError(t, e.repo.UpdatePurchase(p))
 	_, err = e.svc.RefundPurchase(ctx, p.ID, 500, false)
 	require.NoError(t, err)
-	require.Len(t, e.stripe.Refunds, 3)
-	assert.Equal(t, "tg-refund-"+p.ID+"-3", e.stripe.Refunds[2].IdempotencyKey, "saving an old copy does not reset the counter")
+	assert.Equal(t, "tg-refund-"+p.ID+"-500-500", e.stripe.Refunds[2].IdempotencyKey, "once the first refund is known the same amount is a new refund")
 }
 
 func TestPortalURL(t *testing.T) {

@@ -233,21 +233,3 @@ func TestBillingRepositoryDB_ListPurchasesBySubjects(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, purchases, 2)
 }
-
-func TestBillingRepositoryDB_NextRefundAttempt(t *testing.T) {
-	db.SetupTestDB(t.Name())
-	repo := NewBillingRepositoryDB(db.GetConnection())
-	p := &db.BillingPurchase{Subject: "user:u1", PlanKey: "x", Status: db.PurchaseStatusPaid, AmountCents: 100, StripePaymentIntentID: "pi_1", PaidAt: time.Now()}
-	require.NoError(t, repo.CreatePurchase(p))
-
-	n, err := repo.NextRefundAttempt(p.ID)
-	require.NoError(t, err)
-	assert.Equal(t, 1, n)
-	require.NoError(t, repo.UpdatePurchase(p))
-	n, err = repo.NextRefundAttempt(p.ID)
-	require.NoError(t, err)
-	assert.Equal(t, 2, n, "UpdatePurchase does not overwrite the counter")
-
-	_, err = repo.NextRefundAttempt("missing")
-	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
-}
