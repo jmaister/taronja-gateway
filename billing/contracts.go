@@ -205,6 +205,8 @@ type Stripe interface {
 const (
 	EventCheckoutCompleted    = "checkout.session.completed"
 	EventCheckoutExpired      = "checkout.session.expired"
+	EventCheckoutAsyncPaid    = "checkout.session.async_payment_succeeded"
+	EventCheckoutAsyncFailed  = "checkout.session.async_payment_failed"
 	EventSubscriptionCreated  = "customer.subscription.created"
 	EventSubscriptionUpdated  = "customer.subscription.updated"
 	EventSubscriptionDeleted  = "customer.subscription.deleted"

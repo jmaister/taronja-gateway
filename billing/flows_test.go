@@ -759,3 +759,46 @@ func TestSafeRedirect(t *testing.T) {
 		assert.Empty(t, SafeRedirect(bad), "%q", bad)
 	}
 }
+
+func TestCheckoutAsyncPayment(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	plan, err := e.svc.CreatePlan(ctx, PlanInput{Key: "curso", Name: "Curso", Kind: db.PlanKindOneTime, AmountCents: 4900, Features: []string{"academia.summer"}, AccessDays: 60, Active: true})
+	require.NoError(t, err)
+	start := func() string {
+		c, _, err := e.svc.StartCheckout(ctx, CheckoutRequest{PlanKey: plan.Key, Payer: payer})
+		require.NoError(t, err)
+		return c.ID
+	}
+
+	paid := start()
+	e.event(t, Event{ID: "evt_a1", Type: EventCheckoutCompleted, Checkout: &CheckoutEvent{CheckoutID: paid, Mode: "payment", Paid: false, PaymentIntentID: "pi_a", AmountCents: 4900}})
+	ent, err := e.svc.ForUser("u1")
+	require.NoError(t, err)
+	assert.Empty(t, ent.User)
+
+	succeeded := Event{ID: "evt_a2", Type: EventCheckoutAsyncPaid, Checkout: &CheckoutEvent{CheckoutID: paid, Mode: "payment", Paid: true, PaymentIntentID: "pi_a", AmountCents: 4900}}
+	e.event(t, succeeded)
+	e.event(t, succeeded)
+	ent, err = e.svc.ForUser("u1")
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, ent.User["academia.summer"].Status)
+	_, err = e.repo.GetDocumentByStripeRef("pi_a")
+	require.NoError(t, err)
+
+	e.event(t, Event{ID: "evt_a3", Type: EventCheckoutAsyncFailed, Checkout: &CheckoutEvent{CheckoutID: paid}})
+	got, err := e.repo.GetCheckout(paid)
+	require.NoError(t, err)
+	assert.Equal(t, db.CheckoutStatusCompleted, got.Status, "a late failure doesn't undo a paid checkout")
+
+	failed := start()
+	e.event(t, Event{ID: "evt_b1", Type: EventCheckoutCompleted, Checkout: &CheckoutEvent{CheckoutID: failed, Mode: "payment", Paid: false, PaymentIntentID: "pi_b", AmountCents: 4900}})
+	e.event(t, Event{ID: "evt_b2", Type: EventCheckoutAsyncFailed, Checkout: &CheckoutEvent{CheckoutID: failed}})
+	got, err = e.repo.GetCheckout(failed)
+	require.NoError(t, err)
+	assert.Equal(t, db.CheckoutStatusExpired, got.Status)
+	_, err = e.repo.GetPurchaseByPaymentIntent("pi_b")
+	assert.Error(t, err)
+	_, err = e.repo.GetDocumentByStripeRef("pi_b")
+	assert.Error(t, err)
+}

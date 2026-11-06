@@ -204,6 +204,8 @@ outbox.
 |---|---|
 | `checkout.session.completed` (paid) | Customer details (name, address, NIF) saved on the subject's billing customer. `mode: subscription`: the subscription row is created from the session's subscription. `mode: payment`: a purchase (`paid`, shipping address, payment intent, saved payment method) and, for `starts: on_activation`, a subscription `awaiting_activation`. An invoice document for the payment. |
 | `checkout.session.expired` | The checkout is closed. |
+| `checkout.session.async_payment_succeeded` | Same as `completed` when the payment (SEPA, iDEAL…) finally arrives. |
+| `checkout.session.async_payment_failed` | The checkout is closed; nothing was paid. |
 | `customer.subscription.created` / `updated` | Status, `current_period_end`, `trial_end`, `cancel_at_period_end` copied. |
 | `customer.subscription.deleted` | `canceled`. |
 | `invoice.paid` (amount > 0) | Invoice document for it; `past_due` → `active`, `grace_until` cleared. A zero invoice (trial start) creates nothing. |
@@ -351,10 +353,12 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   description on the Odoo invoice and the email, and the Odoo invoice gets a
   Spanish note (`narration`): "Cambio de plan de A a B el …". No credit note
   is issued for a plan change.
-- Checkout accepts cards only (`payment_method_types: card`). Delayed methods
-  (SEPA debit, iDEAL…) complete the session with `payment_status: unpaid` and
-  the money arrives in a later event the gateway doesn't handle; such a
-  completion is logged and changes nothing.
+- Delayed payment methods (SEPA debit, iDEAL…) complete the session with
+  `payment_status: unpaid`; that completion is logged and changes nothing.
+  `checkout.session.async_payment_succeeded` is handled like a paid
+  completion (activation, purchase, invoice) and
+  `checkout.session.async_payment_failed` expires the checkout. Both are in
+  the webhook events the setup page lists.
 - Stripe settings done by hand (the setup page reminds): *Email customers
   about successful payments* and *Email finalized invoices* off.
 - Idempotency keys on every create (`tg-<checkout id>`, `tg-activate-<id>`,

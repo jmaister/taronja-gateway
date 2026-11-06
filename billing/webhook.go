@@ -97,9 +97,9 @@ func (s *Service) HandleEvent(ctx context.Context, ev Event) error {
 func (s *Service) apply(tx *webhookTx, ev Event) error {
 	{
 		switch {
-		case ev.Checkout != nil && ev.Type == EventCheckoutCompleted:
+		case ev.Checkout != nil && (ev.Type == EventCheckoutCompleted || ev.Type == EventCheckoutAsyncPaid):
 			return s.onCheckoutCompleted(tx, ev)
-		case ev.Checkout != nil && ev.Type == EventCheckoutExpired:
+		case ev.Checkout != nil && (ev.Type == EventCheckoutExpired || ev.Type == EventCheckoutAsyncFailed):
 			return s.onCheckoutExpired(tx, ev.Checkout)
 		case ev.Subscription != nil:
 			return s.onSubscription(tx, ev)

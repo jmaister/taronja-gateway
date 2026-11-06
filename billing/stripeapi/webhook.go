@@ -28,7 +28,7 @@ func (c *Client) ParseWebhook(payload []byte, signature string) (billing.Event, 
 	raw := event.Data.Raw
 
 	switch out.Type {
-	case billing.EventCheckoutCompleted, billing.EventCheckoutExpired:
+	case billing.EventCheckoutCompleted, billing.EventCheckoutExpired, billing.EventCheckoutAsyncPaid, billing.EventCheckoutAsyncFailed:
 		var s stripe.CheckoutSession
 		err := json.Unmarshal(raw, &s)
 		if err != nil {

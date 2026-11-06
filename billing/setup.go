@@ -16,7 +16,7 @@ const (
 
 // WebhookEvents are the events the Stripe webhook endpoint must send.
 var WebhookEvents = []string{
-	EventCheckoutCompleted, EventCheckoutExpired, EventSubscriptionCreated, EventSubscriptionUpdated,
+	EventCheckoutCompleted, EventCheckoutExpired, EventCheckoutAsyncPaid, EventCheckoutAsyncFailed, EventSubscriptionCreated, EventSubscriptionUpdated,
 	EventSubscriptionDeleted, EventInvoicePaid, EventInvoicePaymentFailed, EventChargeRefunded,
 	EventCustomerUpdated,
 }
