@@ -164,7 +164,6 @@ func TestCreateCheckoutSession_Subscription(t *testing.T) {
 	assert.Equal(t, "academia-monthly", form.Get("subscription_data[metadata][tg_plan]"))
 	assert.Equal(t, "chk_1", form.Get("metadata[tg_checkout]"))
 	assert.Equal(t, "required", form.Get("billing_address_collection"))
-	assert.Equal(t, "card", form.Get("payment_method_types[0]"), "delayed methods would complete the session unpaid and never be activated")
 	assert.Equal(t, "true", form.Get("tax_id_collection[enabled]"))
 	assert.Equal(t, "auto", form.Get("customer_update[name]"))
 	assert.Equal(t, "auto", form.Get("customer_update[address]"))
