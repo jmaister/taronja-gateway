@@ -304,7 +304,6 @@ const (
 	EntitlementStatusAwaitingActivation EntitlementStatus = "awaiting_activation"
 	EntitlementStatusCanceling          EntitlementStatus = "canceling"
 	EntitlementStatusGranted            EntitlementStatus = "granted"
-	EntitlementStatusIncomplete         EntitlementStatus = "incomplete"
 	EntitlementStatusPastDue            EntitlementStatus = "past_due"
 	EntitlementStatusTrial              EntitlementStatus = "trial"
 )
@@ -319,8 +318,6 @@ func (e EntitlementStatus) Valid() bool {
 	case EntitlementStatusCanceling:
 		return true
 	case EntitlementStatusGranted:
-		return true
-	case EntitlementStatusIncomplete:
 		return true
 	case EntitlementStatusPastDue:
 		return true
