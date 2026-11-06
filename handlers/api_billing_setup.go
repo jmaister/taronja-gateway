@@ -40,6 +40,10 @@ func (s *StrictApiServer) GetBillingSetup(ctx context.Context, request api.GetBi
 		})
 	}
 
+	if immediate, delayed, err := s.billing.PaymentMethods(ctx); err == nil {
+		resp.PaymentMethods = &api.PaymentMethods{Immediate: immediate, Deferred: delayed}
+	}
+
 	return api.GetBillingSetup200JSONResponse(resp), nil
 }
 

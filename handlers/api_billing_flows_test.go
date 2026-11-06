@@ -322,6 +322,17 @@ func TestBillingSetup(t *testing.T) {
 	setup, ok := resp.(api.GetBillingSetup200JSONResponse)
 	require.True(t, ok, "%T", resp)
 	assert.True(t, len(setup.Checks) >= 6, "should have at least stripe-key, stripe-webhook, stripe-emails, stripe-portal, plans, and odoo checks")
+	require.NotNil(t, setup.PaymentMethods)
+	assert.Empty(t, setup.PaymentMethods.Immediate)
+	assert.Empty(t, setup.PaymentMethods.Deferred)
+	f.stripe.PaymentMethods = []string{"card", "sepa_debit"}
+	resp, err = f.s.GetBillingSetup(admin, api.GetBillingSetupRequestObject{})
+	require.NoError(t, err)
+	setup, ok = resp.(api.GetBillingSetup200JSONResponse)
+	require.True(t, ok, "%T", resp)
+	require.NotNil(t, setup.PaymentMethods)
+	assert.Equal(t, []string{"card"}, setup.PaymentMethods.Immediate)
+	assert.Equal(t, []string{"sepa_debit"}, setup.PaymentMethods.Deferred)
 
 	// Check that "stripe-key" is in the checks
 	var stripeKeyCheck *api.SetupCheck
