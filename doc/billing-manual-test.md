@@ -118,7 +118,8 @@ catcher. Reference: [billing.md](billing.md). Automated tests: [e2e.md](e2e.md).
 2. Partial refund 1000 cents. Expect `charge.refunded` in the CLI, a credit
    note of 10,00 € in Odoo, an email with its PDF, the purchase "partially
    refunded". Clicking Refund twice quickly must refund once.
-3. Refund the rest (2000): credit note 20,00 €, purchase "refunded".
+3. Refund the rest (2000): credit note 20,00 €, purchase "refunded". A second
+   click while the first refund is still in progress answers 409, not a second refund.
 4. Refund of a subscription's first payment with "cancel subscription":
    the subscription ends at once.
 
@@ -126,6 +127,9 @@ catcher. Reference: [billing.md](billing.md). Automated tests: [e2e.md](e2e.md).
 
 1. Plan with `starts: on_activation`; buy it. The subscription is
    `awaiting_activation`, the first period is paid.
+   Note: a one-time plan's Checkout offers every payment method enabled in the
+   Stripe account (Apple Pay, Link, PayPal, iDEAL…), not only cards: choose
+   "Tarjeta" to type `4242…`.
 2. `POST /_/api/billing/subscriptions/{id}/activate` with the admin token
    (id from `GET /_/api/billing/subscriptions?subject=…`). Expect 200 and an
    active Stripe subscription. Call it again: same result, no second
@@ -168,7 +172,7 @@ Gateway log: `tg.log`. Never copy keys or full tax ids from it into reports.
 | Pay | Subscription active | `/_/account`, `GET /_/api/entitlements` |
 | Pay | Invoice posted and paid | Odoo, **Billing → Invoices** |
 | Pay | Email with PDF | Mailpit |
-| Refund | Credit note, same number series | Odoo |
+| Refund | Credit note in the `RINV/…` series | Odoo |
 | Failed renewal | `past_due`, still entitled | `/_/api/billing/subscriptions` |
 | Grace over | Not entitled | `/_/api/entitlements` |
 | Cancel | `cancel_at_period_end` | Stripe, portal |
