@@ -57,3 +57,27 @@ func TestActivateSubscription_CanceledWhileStripeCreatesIt(t *testing.T) {
 		assert.Equal(t, "canceled", s.Status)
 	}
 }
+
+func TestOnRefund_LateEventDoesNotLowerRefundedCents(t *testing.T) {
+	e := newEnv(t)
+	_, purchase := e.awaitingActivation(t)
+	refund := func(id string, cents int64) {
+		e.event(t, Event{ID: id, Type: EventChargeRefunded, Refund: &RefundEvent{ChargeID: "ch_1", PaymentIntentID: "pi_1", RefundedCents: cents, RefundID: "re_" + id}})
+	}
+	refunded := func() *db.BillingPurchase {
+		p, err := e.repo.GetPurchase(purchase.ID)
+		require.NoError(t, err)
+		return p
+	}
+
+	refund("a", 1000)
+	refund("b", 2500)
+	refund("a_late", 1000) // Stripe retries an old event after a newer one
+	assert.Equal(t, int64(2500), refunded().RefundedCents)
+	assert.Equal(t, db.PurchaseStatusPaid, refunded().Status)
+
+	refund("c", 5890)
+	refund("b_late", 2500)
+	assert.Equal(t, int64(5890), refunded().RefundedCents)
+	assert.Equal(t, db.PurchaseStatusRefunded, refunded().Status)
+}

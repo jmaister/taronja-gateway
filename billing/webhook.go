@@ -720,7 +720,7 @@ func (s *Service) onRefund(tx *webhookTx, ev Event) error {
 	if r.PaymentIntentID != "" {
 		p, err := tx.repo.GetPurchaseByPaymentIntent(r.PaymentIntentID)
 		if err == nil {
-			p.RefundedCents = r.RefundedCents
+			p.RefundedCents = max(p.RefundedCents, r.RefundedCents)
 			if p.RefundedCents >= p.AmountCents {
 				p.Status = db.PurchaseStatusRefunded
 			}
