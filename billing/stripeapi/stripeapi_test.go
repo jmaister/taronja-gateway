@@ -339,6 +339,18 @@ func TestRefund(t *testing.T) {
 	assert.Empty(t, f.last(t).Form.Get("amount"))
 }
 
+func TestRefundInProgressIsConflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":{"type":"idempotency_error","code":"idempotency_key_in_use","message":"in progress"}}`))
+	}))
+	defer srv.Close()
+	c := New("sk_test_x", "whsec_x", WithAPIURL(srv.URL))
+	err := c.Refund(context.Background(), "pi_1", 1000, "tg-refund-1")
+	assert.ErrorIs(t, err, billing.ErrConflict)
+}
+
 func TestErrorsAreWrapped(t *testing.T) {
 	_, c := newFakeStripe(t, map[string]string{})
 	_, err := c.EnsureProduct(context.Background(), "", "x", "y", "")

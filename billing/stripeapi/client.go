@@ -430,6 +430,10 @@ func (c *Client) Refund(ctx context.Context, paymentIntentID string, amountCents
 		params.SetIdempotencyKey(idempotencyKey)
 	}
 	_, err := c.sc.V1Refunds.Create(ctx, params)
+	var se *stripe.Error
+	if errors.As(err, &se) && se.Code == stripe.ErrorCodeIdempotencyKeyInUse {
+		return fmt.Errorf("%w: a refund of this payment is already in progress", billing.ErrConflict)
+	}
 	if err != nil {
 		return wrap(err)
 	}
