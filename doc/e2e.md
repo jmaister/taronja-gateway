@@ -63,3 +63,5 @@ Another Odoo: with `E2E_ODOO_URL` set, the billing tests use that Odoo instead o
 Veri*Factu: `E2E_ODOO_VERIFACTU=1 make e2e` installs `l10n_es_edi_verifactu` in Odoo, loads Odoo's demo certificate on the company and registers invoices and credit notes against AEAT's pre-production service (needs internet); verified on Odoo 19.
 
 Real Stripe: `STRIPE_TEST_SECRET_KEY=sk_test_… go test -tags e2e -run TestLive ./billing/stripeapi/` creates a product, prices, a customer, Checkout sessions and a portal session in Stripe's test mode (refuses a live key; skipped when the variable is unset).
+
+Step-by-step manual run of the payment workflow (Stripe test mode, Odoo, Mailpit), usable by a person or a browser agent: [billing-manual-test.md](billing-manual-test.md).

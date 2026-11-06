@@ -558,6 +558,8 @@ count with a *Retry* button; a credit note whose invoice is not issued yet
 
 ## Testing
 
+By hand, or with a browser agent: [billing-manual-test.md](billing-manual-test.md).
+
 | Level | What |
 |---|---|
 | Unit | Each package against `httptest` fakes: Stripe adapter, Odoo JSON-2 client, entitlement rules (table tests over every status), webhook state machine (same event twice, out of order), outbox retries. |
