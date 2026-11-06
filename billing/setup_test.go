@@ -138,6 +138,16 @@ func TestSetupChecks_PortalConfiguration(t *testing.T) {
 	ctx := context.Background()
 	e.svc.stripeMode = "test"
 	check := func() SetupCheck { return e.svc.portalCheck(ctx) }
+	inList := func() SetupCheck {
+		for _, c := range e.svc.SetupChecks(ctx) {
+			if c.ID == "stripe-portal" {
+				return c
+			}
+		}
+		t.Fatal("SetupChecks has no stripe-portal check")
+		return SetupCheck{}
+	}
+	assert.Equal(t, CheckWarn, inList().Status, "not created yet")
 
 	c := check()
 	assert.Equal(t, CheckWarn, c.Status, "nothing created yet")
@@ -167,6 +177,7 @@ func TestSetupChecks_PortalConfiguration(t *testing.T) {
 	assert.Contains(t, c.Detail, "no longer exists")
 	require.NoError(t, e.svc.RunSetupAction(ctx, ActionSyncPortal))
 	assert.Equal(t, CheckOK, check().Status, "syncing creates it again")
+	assert.Equal(t, CheckOK, inList().Status, "the setup page shows the same result")
 	id, _ = e.repo.GetSetting(settingPortalConfig)
 	assert.Equal(t, "bpc_1", id)
 }

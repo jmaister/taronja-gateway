@@ -46,10 +46,7 @@ func (s *Service) SetupChecks(ctx context.Context) []SetupCheck {
 			Detail: "Turn off \"Successful payments\" and \"Finalized invoices\" emails: the gateway emails the invoices",
 			Link:   "https://dashboard.stripe.com/settings/emails",
 		},
-		SetupCheck{
-			ID: "stripe-portal", Title: "Stripe Customer Portal configuration", Status: CheckWarn,
-			Detail: "Created or updated by the gateway at startup and when plans change", Action: ActionSyncPortal,
-		},
+		s.portalCheck(ctx),
 	)
 
 	plans := SetupCheck{ID: "plans", Title: "Plans synced to Stripe and Odoo", Status: CheckOK}
