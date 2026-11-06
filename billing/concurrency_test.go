@@ -125,3 +125,32 @@ func TestRunNotifierStopsWithItsContext(t *testing.T) {
 		t.Fatal("RunNotifier did not stop with its context")
 	}
 }
+
+func TestAuthorizeSubject(t *testing.T) {
+	e := newEnv(t)
+	orgID := e.org(t, "Escuela")
+	require.NoError(t, e.orgs.SetMember(orgID, "owner1", "owner"))
+	require.NoError(t, e.orgs.SetMember(orgID, "member1", "member"))
+
+	for _, tc := range []struct {
+		subject, user string
+		want          error
+	}{
+		{"user:u1", "u1", nil},
+		{"user:u1", "u2", ErrForbidden},
+		{"org:" + orgID, "owner1", nil},
+		{"org:" + orgID, "member1", ErrForbidden},
+		{"org:" + orgID, "stranger", ErrForbidden},
+		{"org:missing", "owner1", ErrForbidden},
+		{"nonsense", "u1", ErrInvalid},
+		{"", "u1", ErrInvalid},
+		{"team:x", "u1", ErrInvalid},
+	} {
+		err := e.svc.authorizeSubject(tc.subject, tc.user)
+		if tc.want == nil {
+			assert.NoError(t, err, "%s by %s", tc.subject, tc.user)
+		} else {
+			assert.ErrorIs(t, err, tc.want, "%s by %s", tc.subject, tc.user)
+		}
+	}
+}
