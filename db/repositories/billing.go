@@ -108,6 +108,8 @@ type BillingRepository interface {
 
 	// Customers (one per subject). SaveCustomer creates or updates.
 	SaveCustomer(c *db.BillingCustomer) error
+	// SetCustomerOdooPartner saves the Odoo partner id and nothing else.
+	SetCustomerOdooPartner(subject string, partnerID int64) error
 	GetCustomer(subject string) (*db.BillingCustomer, error)
 	GetCustomerByStripeID(stripeCustomerID string) (*db.BillingCustomer, error)
 

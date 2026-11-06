@@ -129,6 +129,19 @@ func (r *BillingRepositoryDB) SaveCustomer(c *db.BillingCustomer) error {
 	return r.db.Save(c).Error
 }
 
+// SetCustomerOdooPartner saves the Odoo partner id and nothing else, so a
+// customer changed meanwhile keeps its changes.
+func (r *BillingRepositoryDB) SetCustomerOdooPartner(subject string, partnerID int64) error {
+	res := r.db.Model(&db.BillingCustomer{}).Where("subject = ?", subject).UpdateColumn("odoo_partner_id", partnerID)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // GetCustomer retrieves a customer by subject.
 func (r *BillingRepositoryDB) GetCustomer(subject string) (*db.BillingCustomer, error) {
 	var c db.BillingCustomer

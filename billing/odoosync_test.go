@@ -236,3 +236,23 @@ func TestBlockedReason(t *testing.T) {
 	require.NoError(t, e.repo.UpdateDocument(inv))
 	assert.Empty(t, e.svc.BlockedReason(credit), "its invoice is issued")
 }
+
+func TestEnsurePartner_KeepsAChangeMadeDuringTheOdooCall(t *testing.T) {
+	e := newEnv(t)
+	e.customer(t, "org:o1", "B12345674")
+	e.odoo.OnUpsertPartner = func() {
+		c, err := e.repo.GetCustomer("org:o1")
+		require.NoError(t, err)
+		c.Name = "Escuela Nueva SL"
+		require.NoError(t, e.repo.SaveCustomer(c))
+	}
+
+	id, err := e.svc.ensurePartner(context.Background(), "org:o1")
+	require.NoError(t, err)
+
+	c, err := e.repo.GetCustomer("org:o1")
+	require.NoError(t, err)
+	require.NotNil(t, c.OdooPartnerID)
+	assert.Equal(t, id, *c.OdooPartnerID)
+	assert.Equal(t, "Escuela Nueva SL", c.Name, "customer.updated applied during the call is not overwritten")
+}

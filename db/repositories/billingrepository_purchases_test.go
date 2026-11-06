@@ -233,3 +233,22 @@ func TestBillingRepositoryDB_ListPurchasesBySubjects(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, purchases, 2)
 }
+
+func TestBillingRepositoryDB_SetCustomerOdooPartner(t *testing.T) {
+	db.SetupTestDB(t.Name())
+	repo := NewBillingRepositoryDB(db.GetConnection())
+	require.NoError(t, repo.SaveCustomer(&db.BillingCustomer{Subject: "user:u1", Name: "Ana"}))
+	stale, err := repo.GetCustomer("user:u1")
+	require.NoError(t, err)
+	stale.Name = "Ana B"
+	require.NoError(t, repo.SaveCustomer(stale))
+
+	require.NoError(t, repo.SetCustomerOdooPartner("user:u1", 42))
+
+	c, err := repo.GetCustomer("user:u1")
+	require.NoError(t, err)
+	require.NotNil(t, c.OdooPartnerID)
+	assert.Equal(t, int64(42), *c.OdooPartnerID)
+	assert.Equal(t, "Ana B", c.Name)
+	assert.ErrorIs(t, repo.SetCustomerOdooPartner("missing", 1), gorm.ErrRecordNotFound)
+}

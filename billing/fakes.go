@@ -301,7 +301,10 @@ type FakeOdoo struct {
 	FailOnce  bool
 	// FailPartner, when set, is returned by UpsertPartner.
 	FailPartner error
-	Now         func() time.Time
+	// OnUpsertPartner runs inside UpsertPartner, to change the gateway's state
+	// during the call. It must not call the fake.
+	OnUpsertPartner func()
+	Now             func() time.Time
 }
 
 // FakeMove is an issued move.
@@ -331,6 +334,9 @@ func (f *FakeOdoo) UpsertPartner(ctx context.Context, p OdooPartner) (int64, err
 		f.PartnerIDs[p.Ref] = id
 	}
 	f.Partners[p.Ref] = p
+	if f.OnUpsertPartner != nil {
+		f.OnUpsertPartner()
+	}
 	return id, nil
 }
 

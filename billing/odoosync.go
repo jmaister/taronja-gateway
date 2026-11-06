@@ -268,8 +268,7 @@ func (s *Service) ensurePartner(ctx context.Context, subject string) (int64, err
 		return 0, err
 	}
 	if c.OdooPartnerID == nil || *c.OdooPartnerID != id {
-		c.OdooPartnerID = &id
-		err = s.repo.SaveCustomer(c)
+		err = s.repo.SetCustomerOdooPartner(subject, id)
 		if err != nil {
 			return 0, err
 		}
