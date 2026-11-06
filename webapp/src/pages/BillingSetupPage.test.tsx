@@ -54,7 +54,17 @@ vi.mock('../services/billing', () => ({
                     link: null,
                     action: null,
                 },
+                {
+                    id: 'stripe-payment-methods',
+                    title: 'Payment methods offered at Checkout',
+                    section: 'stripe',
+                    detail: 'immediate: card; delayed: ideal',
+                    status: 'check',
+                    link: 'https://dashboard.stripe.com/test/settings/payment-methods',
+                    action: null,
+                },
             ],
+            paymentMethods: { immediate: ['card', 'link'], deferred: ['ideal'] },
         },
         isLoading: false,
         error: null,
@@ -132,6 +142,16 @@ describe('BillingSetupPage', () => {
     it('shows action button when available', () => {
         const html = render();
         expect(html).toContain('Test Connection');
+    });
+
+    it('splits payment methods into immediate and deferred groups', () => {
+        const html = render();
+        expect(html).toContain('Immediate');
+        expect(html).toContain('Deferred');
+        expect(html).toContain('Card');
+        expect(html).toContain('iDEAL');
+        expect(html).toContain('Disable these in the Stripe dashboard');
+        expect(html.indexOf('Immediate')).toBeLessThan(html.indexOf('Deferred'));
     });
 
     it('links in-app paths through the router and not as external links', () => {

@@ -10,6 +10,62 @@ import {
 
 const isStripeLink = (url: string) => url.includes('stripe.com');
 
+const paymentMethodNames: Record<string, string> = {
+    acss_debit: 'Pre-authorized debit (ACSS)',
+    alipay: 'Alipay',
+    apple_pay: 'Apple Pay',
+    bancontact: 'Bancontact',
+    blik: 'BLIK',
+    boleto: 'Boleto',
+    card: 'Card',
+    customer_balance: 'Bank transfer',
+    eps: 'EPS',
+    giropay: 'Giropay',
+    google_pay: 'Google Pay',
+    ideal: 'iDEAL',
+    konbini: 'Konbini',
+    link: 'Link',
+    oxxo: 'OXXO',
+    p24: 'Przelewy24',
+    paypal: 'PayPal',
+    sepa_debit: 'SEPA Direct Debit',
+    sofort: 'Sofort',
+    us_bank_account: 'US bank account',
+    wechat_pay: 'WeChat Pay',
+};
+
+function PaymentMethodGroup({ title, types, tone }: { title: string; types: string[]; tone: 'success' | 'warning' }) {
+    const color = tone === 'success' ? 'text-success' : 'text-warning';
+    const bg = tone === 'success' ? 'bg-success/10' : 'bg-warning/10';
+    return (
+        <div className={`rounded-lg p-3 ${bg}`}>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${color}`}>{title}</p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+                {types.length === 0 && <li className="text-sm text-muted-fg">None</li>}
+                {types.map(type => (
+                    <li key={type} className="text-sm rounded px-2 py-1 bg-surface">
+                        {paymentMethodNames[type] ?? type}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function PaymentMethodGroups({ immediate, deferred }: { immediate: string[]; deferred: string[] }) {
+    return (
+        <div className="space-y-3">
+            <PaymentMethodGroup title="Immediate" types={immediate} tone="success" />
+            <div className="space-y-2">
+                <PaymentMethodGroup title="Deferred" types={deferred} tone="warning" />
+                <p className="text-xs text-muted-fg">
+                    Disable these in the Stripe dashboard (Settings → Payment methods) if you don't want them at checkout.
+                </p>
+            </div>
+        </div>
+    );
+}
+
 function StatusBadge({ status }: { status: string }) {
     const badges: Record<string, { bg: string; color: string; label: string }> = {
         ok: { bg: 'bg-success/10', color: 'text-success', label: 'OK' },
@@ -85,6 +141,12 @@ export function BillingSetupPage() {
                                         )}
                                         {runAction.error && (
                                             <p className="text-sm text-danger">{runAction.error.message}</p>
+                                        )}
+                                        {check.id === 'stripe-payment-methods' && setup.data.paymentMethods && (
+                                            <PaymentMethodGroups
+                                                immediate={setup.data.paymentMethods.immediate}
+                                                deferred={setup.data.paymentMethods.deferred}
+                                            />
                                         )}
                                     </div>
                                 </CardContent>
