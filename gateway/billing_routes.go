@@ -23,6 +23,7 @@ const (
 	payDonePath = config.ManagementPrefix + "/pay/done"
 	webhookPath = config.ManagementPrefix + "/billing/stripe/webhook"
 	portalPath  = providers.AccountPath + "/billing/portal"
+	startPath   = providers.AccountPath + "/billing/start"
 )
 
 // payView is the pay page of a plan.
@@ -74,8 +75,11 @@ func (b *billingView) HasManage() bool {
 }
 
 type accountSubscription struct {
-	Plan, Owner, Status, StatusClass, Next, Subject string
-	Manage                                          bool
+	ID, Plan, Owner, Status, StatusClass, Next, Subject string
+	Manage                                              bool
+	// StartNow is the price charged when the trial is ended now; empty when
+	// the subscription can't be started now.
+	StartNow string
 }
 
 var subscriptionClasses = map[string]string{
@@ -115,6 +119,7 @@ func (g *Gateway) registerBillingRoutes() {
 	g.Mux.HandleFunc("POST "+payPath+"{plan}", g.handlePay)
 	g.Mux.HandleFunc("POST "+webhookPath, g.handleStripeWebhook)
 	g.Mux.HandleFunc("POST "+portalPath, g.withAccount(g.handlePortal))
+	g.Mux.HandleFunc("POST "+startPath, g.withAccount(g.handleStartNow))
 	log.Printf("Registered billing routes (%s{plan}, %s)", payPath, webhookPath)
 }
 
@@ -297,6 +302,17 @@ func (g *Gateway) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (g *Gateway) handleStartNow(w http.ResponseWriter, r *http.Request, acct *accountRequest) {
+	id := r.FormValue("subscription")
+	err := g.Dependencies.Billing.StartNow(r.Context(), id, acct.user.ID)
+	if err != nil {
+		log.Printf("Account: start now %s by %s: %v", id, acct.user.ID, err)
+		g.renderAccountPage(w, http.StatusBadRequest, acct, "", "La prueba no se puede terminar ahora mismo.")
+		return
+	}
+	g.renderAccountPage(w, http.StatusOK, acct, "Cobramos la primera factura con tu tarjeta guardada. La suscripción se activará cuando Stripe confirme el pago.", "")
+}
+
 func (g *Gateway) handlePortal(w http.ResponseWriter, r *http.Request, acct *accountRequest) {
 	portalURL, err := g.Dependencies.Billing.PortalURL(r.Context(), r.FormValue("subject"), acct.user.ID, "")
 	if err != nil {
@@ -336,11 +352,15 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 		for _, s := range subs {
 			name := s.PlanKey
 			plan, err := svc.GetPlan(s.PlanKey)
+			var startNow string
 			if err == nil {
 				name = plan.Name
+				if s.Status == db.SubscriptionTrialing && s.StripeSubscriptionID != nil && plan.Kind == db.PlanKindSubscription && plan.Starts == db.PlanStartsOnPayment {
+					startNow = FormatEUR(plan.AmountCents)
+				}
 			}
-			item := accountSubscription{Plan: name, Owner: o.label, Status: labelOr(subscriptionLabels, s.Status), StatusClass: subscriptionClasses[s.Status], Subject: o.subject,
-				Manage: s.StripeSubscriptionID != nil && s.Status != db.SubscriptionCanceled}
+			item := accountSubscription{ID: s.ID, Plan: name, Owner: o.label, Status: labelOr(subscriptionLabels, s.Status), StatusClass: subscriptionClasses[s.Status], Subject: o.subject,
+				Manage: s.StripeSubscriptionID != nil && s.Status != db.SubscriptionCanceled, StartNow: startNow}
 			switch {
 			case s.Status == db.SubscriptionCanceled:
 			case s.Status == db.SubscriptionTrialing:

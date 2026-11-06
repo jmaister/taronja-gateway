@@ -298,6 +298,16 @@ func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string, 
 	return mapSubscription(sub), nil
 }
 
+func (c *Client) EndTrial(ctx context.Context, subscriptionID, idempotencyKey string) (billing.StripeSubscription, error) {
+	params := &stripe.SubscriptionUpdateParams{TrialEndNow: stripe.Bool(true)}
+	params.SetIdempotencyKey(idempotencyKey)
+	sub, err := c.sc.V1Subscriptions.Update(ctx, subscriptionID, params)
+	if err != nil {
+		return billing.StripeSubscription{}, wrap(err)
+	}
+	return mapSubscription(sub), nil
+}
+
 // portalCustomerUpdates is what a customer may edit in the portal: the
 // invoice name and address. Not the tax id (immutable once set) nor the email.
 var portalCustomerUpdates = []string{"name", "address"}

@@ -213,6 +213,19 @@ outbox.
 | `customer.updated` | What the customer edited at Stripe (the portal lets them change the invoice **name and address**; Checkout updates them too) is copied to the billing customer: name, email, address; the NIF only when none is saved. Unknown customers are ignored; an event older than the last applied one is dropped (`billing_customers.stripe_event_at`). Nothing goes to Odoo from the webhook: the next invoice upserts the partner from these details (`ensurePartner`), so it also works when Odoo was down. Invoices already issued are not touched. |
 | `charge.refunded` | Credit note document for the newly refunded amount (refunded so far minus earlier credit notes); a fully refunded purchase becomes `refunded`; a fully refunded subscription period stops counting (the subscription is cancelled at the same time by the admin action that refunded it); a fully refunded purchase, even from the Stripe dashboard, cancels its subscription while it is still `awaiting_activation`. |
 
+### Start now (ending a trial early)
+
+A subscription that starts on payment and is `trialing` shows "Empezar ya" on
+the account page, with the price charged today. `POST /_/account/billing/start`
+(csrf, `subscription`, the payer or an owner of the organization) asks Stripe
+to end the trial now (`trial_end=now`, idempotency key `tg-start-<id>`): Stripe
+charges the first period with the saved card. The gateway does not change the
+status itself: `customer.subscription.updated` makes it `active`, or, if the
+charge fails, Stripe reports `past_due` (grace applies) or `unpaid`/`incomplete`,
+which the gateway counts as canceled until Stripe says otherwise. Starting from
+a subscription that is not trialing, or one that starts on activation, is a
+conflict.
+
 ### Activation (megabox)
 
 `POST /_/api/billing/subscriptions/{id}/activate` (admin token): for an

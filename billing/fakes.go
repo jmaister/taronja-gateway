@@ -31,9 +31,11 @@ type FakeStripe struct {
 	Subscriptions      map[string]*StripeSubscription
 	Created            []SubscriptionParams
 	Canceled           []string
-	Refunds            []FakeRefund
-	Portal             *PortalParams
-	CustomerUpdates    []FakeCustomerUpdate
+	// Trials are the trial endings asked of Stripe.
+	Trials          []FakeTrial
+	Refunds         []FakeRefund
+	Portal          *PortalParams
+	CustomerUpdates []FakeCustomerUpdate
 
 	// ArchiveErr, when set, is returned by ArchivePrice only.
 	ArchiveErr error
@@ -213,6 +215,29 @@ func (f *FakeStripe) CancelSubscription(ctx context.Context, subscriptionID stri
 	} else {
 		sub.Status = "canceled"
 	}
+	return *sub, nil
+}
+
+// FakeTrial is one EndTrial call: the trial ended at TrialEnd.
+type FakeTrial struct {
+	SubscriptionID string
+	IdempotencyKey string
+	TrialEnd       time.Time
+}
+
+func (f *FakeStripe) EndTrial(ctx context.Context, subscriptionID, idempotencyKey string) (StripeSubscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Err != nil {
+		return StripeSubscription{}, f.Err
+	}
+	sub, ok := f.Subscriptions[subscriptionID]
+	if !ok {
+		return StripeSubscription{}, fmt.Errorf("no such subscription: %s", subscriptionID)
+	}
+	end := time.Now().UTC()
+	f.Trials = append(f.Trials, FakeTrial{SubscriptionID: subscriptionID, IdempotencyKey: idempotencyKey, TrialEnd: end})
+	sub.Status, sub.TrialEnd = "active", &end
 	return *sub, nil
 }
 

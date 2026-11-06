@@ -185,6 +185,9 @@ type Stripe interface {
 	// CancelSubscription cancels at once (atPeriodEnd false) or at the end
 	// of the current period.
 	CancelSubscription(ctx context.Context, subscriptionID string, atPeriodEnd bool) (StripeSubscription, error)
+	// EndTrial ends a subscription's trial now: Stripe charges its first
+	// period with the saved card.
+	EndTrial(ctx context.Context, subscriptionID, idempotencyKey string) (StripeSubscription, error)
 	// ConfigurePortal updates the portal configuration p.ConfigID (or
 	// creates one when it is empty or gone) and returns its id.
 	ConfigurePortal(ctx context.Context, p PortalParams) (string, error)

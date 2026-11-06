@@ -465,3 +465,13 @@ func TestPaymentMethodTypes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"card", "sepa_debit"}, types)
 }
+
+func TestEndTrial(t *testing.T) {
+	f, c := newFakeStripe(t, map[string]string{"POST /v1/subscriptions/sub_1": subscriptionJSON})
+	_, err := c.EndTrial(context.Background(), "sub_1", "tg-start-sub_1")
+	require.NoError(t, err)
+	req := f.last(t)
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "now", req.Form.Get("trial_end"))
+	assert.Equal(t, "tg-start-sub_1", req.IdempotencyKey)
+}

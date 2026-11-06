@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -81,4 +82,54 @@ func TestPortalRoute(t *testing.T) {
 	for _, p := range bg.stripe.PortalCustomers {
 		assert.Contains(t, []string{"cus_me", "cus_org"}, p, "Stripe was never asked for a portal of somebody else")
 	}
+}
+
+func TestStartNowRoute(t *testing.T) {
+	bg := newBillingGateway(t)
+	ctx := context.Background()
+	_, err := bg.svc.CreatePlan(ctx, billing.PlanInput{
+		Key: "academia-personal", Name: "Academia personal", Kind: db.PlanKindSubscription, Interval: db.PlanIntervalMonth,
+		AmountCents: 1000, Features: []string{"academia.access"}, Subject: db.PlanSubjectUser, TrialDays: 7, GraceDays: 7,
+		Group: "academia-personal", Starts: db.PlanStartsOnPayment, Active: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, bg.deps.BillingRepo.SaveCustomer(&db.BillingCustomer{Subject: "user:" + bg.user.ID, StripeCustomerID: "cus_me"}))
+	checkout, _, err := bg.svc.StartCheckout(ctx, billing.CheckoutRequest{PlanKey: "academia-personal", Payer: billing.Payer{UserID: bg.user.ID, Name: "Ana", Email: "ana@example.com"}})
+	require.NoError(t, err)
+	end := time.Now().AddDate(0, 0, 7)
+	bg.stripe.Subscriptions["sub_trial"] = &billing.StripeSubscription{ID: "sub_trial", Status: "trialing", CurrentPeriodEnd: end, TrialEnd: &end}
+	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_trial", Type: billing.EventSubscriptionCreated, Created: time.Now(), Subscription: &billing.StripeSubscription{
+		ID: "sub_trial", Status: "trialing", CurrentPeriodEnd: end, TrialEnd: &end,
+		Metadata: map[string]string{"tg_subject": "user:" + bg.user.ID, "tg_plan": "academia-personal", "tg_checkout": checkout.ID},
+	}}))
+	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_checkout", Type: billing.EventCheckoutCompleted, Created: time.Now(), Checkout: &billing.CheckoutEvent{
+		CheckoutID: checkout.ID, Mode: "subscription", Paid: true, SubscriptionID: "sub_trial", CustomerID: "cus_me",
+	}}))
+	sub, err := bg.deps.BillingRepo.GetSubscriptionByStripeID("sub_trial")
+	require.NoError(t, err)
+	csrf := accounts.CSRFToken(bg.token)
+	start := func(token string) *http.Response {
+		return bg.do(t, http.MethodPost, "/_/account/billing/start", url.Values{"csrf": {token}, "subscription": {sub.ID}}, true)
+	}
+
+	page := readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true))
+	assert.Contains(t, page, "Empezar ya")
+	assert.Contains(t, page, "Se cobra hoy 10,00 € con la tarjeta guardada y termina la prueba.")
+
+	assert.Equal(t, http.StatusForbidden, start("").StatusCode, "no CSRF token")
+	assert.Empty(t, bg.stripe.Trials)
+
+	resp := start(csrf)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, readBody(t, resp), "Cobramos la primera factura")
+	require.Len(t, bg.stripe.Trials, 1)
+	assert.Equal(t, "tg-start-"+sub.ID, bg.stripe.Trials[0].IdempotencyKey)
+
+	require.NoError(t, bg.svc.HandleEvent(ctx, billing.Event{ID: "evt_active", Type: billing.EventSubscriptionUpdated, Created: time.Now(), Subscription: &billing.StripeSubscription{
+		ID: "sub_trial", Status: "active", CurrentPeriodEnd: end,
+		Metadata: map[string]string{"tg_subject": "user:" + bg.user.ID, "tg_plan": "academia-personal"},
+	}}))
+	assert.Equal(t, http.StatusBadRequest, start(csrf).StatusCode, "already active")
+	assert.Len(t, bg.stripe.Trials, 1)
+	assert.NotContains(t, readBody(t, bg.do(t, http.MethodGet, "/_/account", nil, true)), "Empezar ya")
 }

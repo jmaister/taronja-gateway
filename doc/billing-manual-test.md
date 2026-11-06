@@ -138,6 +138,22 @@ catcher. Reference: [billing.md](billing.md). Automated tests: [e2e.md](e2e.md).
    subscription in Stripe.
 3. Cancel an unactivated one: it ends, nothing is created in Stripe.
 
+## 8b. Start now (trial ended early)
+
+1. Plan `test-monthly` with `trialDays: 7` and `starts: on_payment` (the
+   default). Subscribe (section 1). Expect the account page to show
+   "En prueba" and "Prueba hasta el …".
+2. On `/_/account`, expect a card "Empezar ya · <plan>" with "Se cobra hoy
+   10,00 € con la tarjeta guardada y termina la prueba.".
+3. Click **Empezar ya** and confirm the dialog. Expect the page to say the
+   first invoice is being charged.
+4. Wait for the webhook (or send `customer.subscription.updated` with
+   `status: active`). Expect "Activa" and no "Empezar ya" card.
+5. Click it again by replaying the form: expect 400 and no second Stripe call
+   (Stripe's `tg-start-<id>` key answers the same charge if a double click
+   arrives before the webhook).
+6. Check: Odoo has one new paid invoice for 10,00 €; Mailpit has its PDF.
+
 ## 9. Setup screen states
 
 Stop things on purpose and reload **Billing → Setup**, then restore them:

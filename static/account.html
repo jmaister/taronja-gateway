@@ -34,6 +34,18 @@
     {{end}}
 </section>
 
+{{range .Subscriptions}}{{if .StartNow}}
+<section class="card">
+    <h2>Empezar ya · {{.Plan}}</h2>
+    <p class="hint muted">Se cobra hoy {{.StartNow}} con la tarjeta guardada y termina la prueba.</p>
+    <form method="POST" action="{{$.Prefix}}/account/billing/start" onsubmit="return confirm('¿Empezar ya? Se cobra hoy la primera factura y termina la prueba.')">
+        <input type="hidden" name="csrf" value="{{$.Account.Billing.CSRF}}">
+        <input type="hidden" name="subscription" value="{{.ID}}">
+        <button type="submit" class="small">Empezar ya</button>
+    </form>
+</section>
+{{end}}{{end}}
+
 {{if .HasManage}}
 <section class="card">
     <h2>Gestionar suscripción</h2>
