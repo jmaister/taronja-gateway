@@ -24,6 +24,7 @@ type FakeStripe struct {
 	Customers          map[string]string // id -> subject
 	PortalReturnURL    string
 	PortalURLConfigID  string
+	PortalCustomers    []string
 	PortalConfigs      map[string]PortalConfig
 	Sessions           []CheckoutParams
 	Subscriptions      map[string]*StripeSubscription
@@ -253,6 +254,7 @@ func (f *FakeStripe) PortalURL(ctx context.Context, customerID, returnURL, confi
 	f.mu.Lock()
 	f.PortalReturnURL = returnURL
 	f.PortalURLConfigID = configID
+	f.PortalCustomers = append(f.PortalCustomers, customerID)
 	f.mu.Unlock()
 	return "https://billing.stripe.test/p/" + customerID, nil
 }
