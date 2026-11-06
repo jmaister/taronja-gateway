@@ -93,7 +93,11 @@ func (s *orderScenario) assertActive(t *testing.T, msg string) {
 
 	ent, err := e.svc.ForUser("u1")
 	require.NoError(t, err, msg)
-	assert.Equal(t, StatusActive, ent.Orgs[s.orgID]["academia.access"].Status, msg)
+	// Our trial lasts until trial_end whatever Stripe reports meanwhile.
+	feature := ent.Orgs[s.orgID]["academia.access"]
+	assert.Equal(t, StatusTrial, feature.Status, msg)
+	require.NotNil(t, feature.Until, msg)
+	assert.True(t, feature.Until.Equal(s.trialEnd), msg)
 
 	stuck, err := e.repo.StuckEvents()
 	require.NoError(t, err, msg)

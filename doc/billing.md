@@ -86,11 +86,12 @@ grant it, and is active while `now < until` (or `until` is empty).
 
 | Source | `until` | `status` | Grace starts |
 |---|---|---|---|
+| Subscription not `canceled` with `trial_until` in the future (our trial end, see below; any payment state) | `trial_until`, no grace | `trial` | never |
 | Subscription `trialing` | `trial_end + grace_days` | `trial` | `trial_end` |
 | Subscription `active` | `current_period_end + grace_days` (renewal pending) | `active` | `current_period_end` |
 | Subscription `active` with `cancel_at_period_end` | `current_period_end` | `canceling` | never |
 | Subscription `past_due` | `grace_until` (first failed charge + `grace_days`) | `past_due` | the failed charge |
-| Subscription `incomplete` (a charge failed, e.g. "Empezar ya") | `trial_end`, no extra grace; empty without a `trial_end` (no access) | `incomplete` | never |
+| Subscription `incomplete` or `unpaid` after `trial_until` | — (not granted; Stripe's state decides) | — | — |
 | Subscription `awaiting_activation` | empty (no expiry until activated) | `awaiting_activation` | never |
 | Subscription `canceled` | — (not granted) | — | — |
 | Purchase, one-time, `paid` | `paid_at + access_days`, or empty when 0 | `active` | never |
@@ -207,7 +208,7 @@ outbox.
 | `checkout.session.expired` | The checkout is closed. |
 | `checkout.session.async_payment_succeeded` | Same as `completed` when the payment (SEPA, iDEAL…) finally arrives. |
 | `checkout.session.async_payment_failed` | The checkout is closed; nothing was paid. |
-| `customer.subscription.created` / `updated` | Status, `current_period_end`, `trial_end`, `cancel_at_period_end` copied. |
+| `customer.subscription.created` / `updated` | Status, `current_period_end`, `trial_end`, `trial_until` (our trial end, fixed when the trial starts), `cancel_at_period_end` copied. `trial_until` is set from the first `trial_end` seen and never changes after. |
 | `customer.subscription.deleted` | `canceled`. |
 | `invoice.paid` (amount > 0) | Invoice document for it; `past_due` → `active`, `grace_until` cleared. A zero invoice (trial start) creates nothing. |
 | `invoice.payment_failed` | `past_due`, `grace_until` = first failure + `grace_days` (kept on later failures of the same period); notification to the payer. |
@@ -227,10 +228,16 @@ which the gateway counts as canceled until Stripe says otherwise. Starting from
 a subscription that is not trialing, or one that starts on activation, is a
 conflict.
 
-If that first charge fails, Stripe leaves the subscription `incomplete`: the
-customer keeps access until `trial_end` (the moment the trial was ended), with no
-extra grace, and loses it after that. Stripe reports `incomplete_expired` later
-when it gives up, which counts as canceled.
+**Our trial end (`trial_until`)** is a column of its own, fixed once when the
+trial starts (Stripe's `trial_end` at creation, or the activation trial of
+`starts: on_activation`) and never changed after: not by "Empezar ya", not by
+webhooks. Stripe's `trial_end` moves to "now" when a trial is ended early, so
+it is not used for access. While `trial_until` is in the future and the
+subscription is not canceled, the subscription grants access with status
+`trial` whatever Stripe says about the payment (so a failed first charge keeps
+access until `trial_until`). After it, Stripe's state decides: `active`, or
+`past_due` with its grace. Stripe reports `incomplete_expired` when it gives up,
+which counts as canceled.
 
 ### Activation (megabox)
 
@@ -399,7 +406,7 @@ Migration `0005_billing` (and the same models in `db.Models`):
 | `billing_plan_features` | `plan_key`, `feature` |
 | `billing_customers` | `subject` (PK), `stripe_customer_id`, `odoo_partner_id`, `name`, `email`, `tax_id`, `address_*`, `trial_groups` (groups already trialed), `stripe_event_at` (last `customer.updated` applied) |
 | `billing_checkouts` | `id`, `subject`, `plan_key`, `user_id` (payer), `stripe_session_id`, `status` (`open`, `completed`, `expired`), `redirect`, `direct` |
-| `billing_subscriptions` | `id`, `subject`, `plan_key`, `group_key` (the plan's group when created; a partial unique index allows one non-canceled subscription per subject and group), `payer_user_id`, `status`, `stripe_subscription_id` (unique, null while awaiting activation), `stripe_payment_method_id`, `current_period_end`, `trial_end`, `cancel_at_period_end`, `grace_until`, `activated_at`, `canceled_at` |
+| `billing_subscriptions` | `id`, `subject`, `plan_key`, `group_key` (the plan's group when created; a partial unique index allows one non-canceled subscription per subject and group), `payer_user_id`, `status`, `stripe_subscription_id` (unique, null while awaiting activation), `stripe_payment_method_id`, `current_period_end`, `trial_end`, `trial_until` (our trial end, fixed at the trial's start), `cancel_at_period_end`, `grace_until`, `activated_at`, `canceled_at` |
 | `billing_purchases` | `id`, `subject`, `plan_key`, `payer_user_id`, `checkout_id`, `subscription_id` (for a first payment), `status` (`paid`, `refunded`), `amount_cents`, `refunded_cents`, `stripe_payment_intent_id` (unique), `paid_at`, `shipping_*` (name, phone, address) |
 | `billing_grants` | `id`, `subject`, `feature`, `until`, `note`, `created_by` |
 | `billing_documents` | `id`, `subject`, `kind` (`invoice`, `credit_note`), `stripe_ref` (unique), `invoice_document_id`, `subscription_id`, `purchase_id`, `amount_cents`, `currency`, `lines` (JSON: description, plan, amount, period), `paid_at`, `odoo_move_id`, `odoo_state` (`pending`, `done`, `failed`), `odoo_error`, `attempts`, `next_attempt_at`, `number`, `issued_at`, `emailed_at` |

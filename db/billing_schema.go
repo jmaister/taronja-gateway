@@ -199,6 +199,7 @@ type BillingSubscription struct {
 	StripePaymentMethodID string  `gorm:"type:varchar(255)"`
 	CurrentPeriodEnd      *time.Time
 	TrialEnd              *time.Time
+	TrialUntil            *time.Time
 	CancelAtPeriodEnd     bool `gorm:"not null;default:false"`
 	GraceUntil            *time.Time
 	ActivatedAt           *time.Time
@@ -223,7 +224,7 @@ func (c *BillingCustomer) BeforeSave(tx *gorm.DB) error {
 }
 
 func (s *BillingSubscription) BeforeSave(tx *gorm.DB) error {
-	s.CurrentPeriodEnd, s.TrialEnd, s.GraceUntil = utcPtr(s.CurrentPeriodEnd), utcPtr(s.TrialEnd), utcPtr(s.GraceUntil)
+	s.CurrentPeriodEnd, s.TrialEnd, s.TrialUntil, s.GraceUntil = utcPtr(s.CurrentPeriodEnd), utcPtr(s.TrialEnd), utcPtr(s.TrialUntil), utcPtr(s.GraceUntil)
 	s.ActivatedAt, s.CanceledAt = utcPtr(s.ActivatedAt), utcPtr(s.CanceledAt)
 	s.StripeEventAt = utcPtr(s.StripeEventAt)
 	return nil

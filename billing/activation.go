@@ -67,6 +67,7 @@ func (s *Service) ActivateSubscription(ctx context.Context, id string) (*db.Bill
 			end = trialEnd
 		}
 		current.TrialEnd, current.CurrentPeriodEnd = &end, &end
+		current.TrialUntil = &end
 	}
 	current.ActivatedAt = &now
 	err = s.repo.UpdateSubscription(current)

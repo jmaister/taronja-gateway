@@ -68,10 +68,6 @@ func TestCompute_Subscriptions(t *testing.T) {
 		{"past due without grace_until: period end plus grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, CurrentPeriodEnd: at(-2)},
 			graceFeature(Feature{Until: at(5), EndsAt: at(5), Status: StatusPastDue}, at(5))},
 		{"past due after grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, GraceUntil: at(-1)}, nil},
-		{"incomplete: access until the trial end, no grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionIncomplete, TrialEnd: at(10)},
-			&Feature{Until: at(10), EndsAt: at(10), Status: StatusIncomplete}},
-		{"incomplete after the trial end grants nothing", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionIncomplete, TrialEnd: at(-1)}, nil},
-		{"incomplete without a trial end grants nothing", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionIncomplete}, nil},
 		{"awaiting activation never expires", db.BillingSubscription{PlanKey: "box", Status: db.SubscriptionAwaitingActivation},
 			&Feature{Status: StatusAwaitingActivation}},
 		{"canceled grants nothing", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionCanceled, CurrentPeriodEnd: at(5)}, nil},
@@ -249,13 +245,46 @@ func TestSubscriptionGrace(t *testing.T) {
 		{"past due", db.BillingSubscription{Status: db.SubscriptionPastDue, GraceUntil: at(4)}, true, at(4)},
 		{"canceling", db.BillingSubscription{Status: db.SubscriptionActive, CurrentPeriodEnd: at(3), CancelAtPeriodEnd: true}, false, nil},
 		{"canceled", db.BillingSubscription{Status: db.SubscriptionCanceled, CurrentPeriodEnd: at(-1)}, false, nil},
-		{"incomplete within the trial", db.BillingSubscription{Status: db.SubscriptionIncomplete, TrialEnd: at(3)}, false, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			grace, until := SubscriptionGrace(now, 7, tt.sub)
 			assert.Equal(t, tt.grace, grace)
 			assert.Equal(t, tt.until, until)
+		})
+	}
+}
+
+func TestCompute_TrialUntil(t *testing.T) {
+	future, past := at(5), at(-1)
+	inTrial := &Feature{Until: future, EndsAt: future, Status: StatusTrial}
+	tests := []struct {
+		name string
+		sub  db.BillingSubscription
+		want *Feature
+	}{
+		{"trialing, our trial not over", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionTrialing, TrialEnd: at(5), TrialUntil: future}, inTrial},
+		{"incomplete, our trial not over", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionIncomplete, TrialEnd: past, TrialUntil: future}, inTrial},
+		{"past due, our trial not over", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, GraceUntil: at(2), TrialUntil: future}, inTrial},
+		{"active after Empezar ya, our trial not over", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionActive, CurrentPeriodEnd: at(30), TrialUntil: future}, inTrial},
+		{"canceled, our trial not over: nothing", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionCanceled, CurrentPeriodEnd: at(30), TrialUntil: future}, nil},
+		{"incomplete, our trial over: nothing", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionIncomplete, TrialEnd: past, TrialUntil: past}, nil},
+		{"past due, our trial over: Stripe's grace", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionPastDue, GraceUntil: at(2), TrialUntil: past},
+			graceFeature(Feature{Until: at(2), EndsAt: at(2), Status: StatusPastDue}, at(2))},
+		{"active, our trial over: the normal rule", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionActive, CurrentPeriodEnd: at(10), TrialUntil: past},
+			&Feature{Until: at(17), EndsAt: at(10), Status: StatusActive}},
+		{"incomplete without trial_until: nothing", db.BillingSubscription{PlanKey: "monthly", Status: db.SubscriptionIncomplete, TrialEnd: at(5)}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := active(Compute(now, testPlans(), []db.BillingSubscription{tt.sub}, nil, nil))
+			if tt.want == nil {
+				assert.Empty(t, got)
+				return
+			}
+			want := *tt.want
+			want.Source = SourceSubscription
+			assert.Equal(t, want, got["app.access"])
 		})
 	}
 }

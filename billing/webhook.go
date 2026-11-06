@@ -477,6 +477,9 @@ func (s *Service) onSubscription(tx *webhookTx, ev Event) error {
 		sub.CurrentPeriodEnd = &end
 	}
 	sub.TrialEnd = ss.TrialEnd
+	if sub.TrialUntil == nil {
+		sub.TrialUntil = ss.TrialEnd
+	}
 	sub.CancelAtPeriodEnd = ss.CancelAtPeriodEnd
 	if status != db.SubscriptionPastDue {
 		sub.GraceUntil = nil

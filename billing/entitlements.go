@@ -20,7 +20,6 @@ const (
 	StatusActive             = "active"
 	StatusCanceling          = "canceling"
 	StatusPastDue            = "past_due"
-	StatusIncomplete         = "incomplete"
 	StatusAwaitingActivation = "awaiting_activation"
 	StatusGranted            = "granted"
 
@@ -155,48 +154,48 @@ func addDays(t time.Time, days int) time.Time {
 	return t.AddDate(0, 0, days)
 }
 
-// subscriptionFeature is what subscription s gives (before the expiry check):
-// false when it gives nothing.
-func subscriptionFeature(graceDays int, s db.BillingSubscription) (Feature, bool) {
+// subscriptionFeature is what subscription s gives at now (before the expiry
+// check): false when it gives nothing. Within its trial_until (our own trial end,
+// fixed when the trial starts) a subscription that isn't canceled gives access
+// whatever the state of its payment; after it, the state Stripe reports decides.
+func subscriptionFeature(now time.Time, graceDays int, s db.BillingSubscription) (Feature, bool) {
 	var f Feature
-	switch s.Status {
-	case db.SubscriptionTrialing:
-		if s.TrialEnd == nil {
+	if s.Status != db.SubscriptionCanceled && s.TrialUntil != nil && now.Before(*s.TrialUntil) {
+		f = Feature{Until: s.TrialUntil, EndsAt: s.TrialUntil, Status: StatusTrial}
+	} else {
+		switch s.Status {
+		case db.SubscriptionTrialing:
+			if s.TrialEnd == nil {
+				return f, false
+			}
+			until := addDays(*s.TrialEnd, graceDays)
+			f = Feature{Until: &until, EndsAt: s.TrialEnd, Status: StatusTrial, graceFrom: s.TrialEnd}
+		case db.SubscriptionActive:
+			if s.CurrentPeriodEnd == nil {
+				return f, false
+			}
+			if s.CancelAtPeriodEnd {
+				f = Feature{Until: s.CurrentPeriodEnd, EndsAt: s.CurrentPeriodEnd, Status: StatusCanceling}
+			} else {
+				until := addDays(*s.CurrentPeriodEnd, graceDays)
+				f = Feature{Until: &until, EndsAt: s.CurrentPeriodEnd, Status: StatusActive, graceFrom: s.CurrentPeriodEnd}
+			}
+		case db.SubscriptionPastDue:
+			until := s.GraceUntil
+			if until == nil && s.CurrentPeriodEnd != nil {
+				u := addDays(*s.CurrentPeriodEnd, graceDays)
+				until = &u
+			}
+			if until == nil {
+				return f, false
+			}
+			// Past due is a grace period from the start.
+			f = Feature{Until: until, EndsAt: until, Status: StatusPastDue, graceFrom: &time.Time{}}
+		case db.SubscriptionAwaitingActivation:
+			f = Feature{Status: StatusAwaitingActivation}
+		default:
 			return f, false
 		}
-		until := addDays(*s.TrialEnd, graceDays)
-		f = Feature{Until: &until, EndsAt: s.TrialEnd, Status: StatusTrial, graceFrom: s.TrialEnd}
-	case db.SubscriptionActive:
-		if s.CurrentPeriodEnd == nil {
-			return f, false
-		}
-		if s.CancelAtPeriodEnd {
-			f = Feature{Until: s.CurrentPeriodEnd, EndsAt: s.CurrentPeriodEnd, Status: StatusCanceling}
-		} else {
-			until := addDays(*s.CurrentPeriodEnd, graceDays)
-			f = Feature{Until: &until, EndsAt: s.CurrentPeriodEnd, Status: StatusActive, graceFrom: s.CurrentPeriodEnd}
-		}
-	case db.SubscriptionIncomplete:
-		// The first charge failed: access lasts until the trial's end, with no grace.
-		if s.TrialEnd == nil {
-			return f, false
-		}
-		f = Feature{Until: s.TrialEnd, EndsAt: s.TrialEnd, Status: StatusIncomplete}
-	case db.SubscriptionPastDue:
-		until := s.GraceUntil
-		if until == nil && s.CurrentPeriodEnd != nil {
-			u := addDays(*s.CurrentPeriodEnd, graceDays)
-			until = &u
-		}
-		if until == nil {
-			return f, false
-		}
-		// Past due is a grace period from the start.
-		f = Feature{Until: until, EndsAt: until, Status: StatusPastDue, graceFrom: &time.Time{}}
-	case db.SubscriptionAwaitingActivation:
-		f = Feature{Status: StatusAwaitingActivation}
-	default:
-		return f, false
 	}
 	f.Source = SourceSubscription
 	return f, true
@@ -205,7 +204,7 @@ func subscriptionFeature(graceDays int, s db.BillingSubscription) (Feature, bool
 // SubscriptionGrace reports whether s, on a plan with graceDays of grace,
 // is in its grace period at now and when access then ends.
 func SubscriptionGrace(now time.Time, graceDays int, s db.BillingSubscription) (bool, *time.Time) {
-	f, ok := subscriptionFeature(graceDays, s)
+	f, ok := subscriptionFeature(now, graceDays, s)
 	if !ok || (f.Until != nil && !now.Before(*f.Until)) {
 		return false, nil
 	}
@@ -245,7 +244,7 @@ func Compute(now time.Time, plans map[string]repositories.BillingPlanWithFeature
 		if !ok {
 			continue
 		}
-		f, ok := subscriptionFeature(plan.GraceDays, s)
+		f, ok := subscriptionFeature(now, plan.GraceDays, s)
 		if !ok {
 			continue
 		}

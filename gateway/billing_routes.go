@@ -366,13 +366,13 @@ func (g *Gateway) accountBilling(acct *accountRequest) *billingView {
 			switch {
 			case s.Status == db.SubscriptionCanceled:
 			case s.Status == db.SubscriptionTrialing:
-				item.Next = "Prueba hasta el " + svc.Day(s.TrialEnd)
+				item.Next = "Prueba hasta el " + svc.Day(s.TrialUntil)
 			case s.CancelAtPeriodEnd:
 				item.Next = "Termina el " + svc.Day(s.CurrentPeriodEnd)
 			case s.Status == db.SubscriptionPastDue:
 				item.Next = "Acceso hasta el " + svc.Day(s.GraceUntil)
 			case s.Status == db.SubscriptionIncomplete:
-				item.Next = "Acceso hasta el " + svc.Day(s.TrialEnd)
+				item.Next = "Acceso hasta el " + svc.Day(s.TrialUntil)
 			case s.CurrentPeriodEnd != nil:
 				item.Next = "Se renueva el " + svc.Day(s.CurrentPeriodEnd)
 			}
