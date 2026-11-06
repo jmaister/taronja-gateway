@@ -494,6 +494,26 @@ func TestOneTimePurchase(t *testing.T) {
 	assert.Equal(t, db.CheckoutStatusExpired, got.Status)
 }
 
+func TestCheckoutCompletedUnpaidChangesNothing(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	plan, err := e.svc.CreatePlan(ctx, PlanInput{Key: "curso", Name: "Curso", Kind: db.PlanKindOneTime, AmountCents: 4900, Features: []string{"academia.summer"}, AccessDays: 60, Active: true})
+	require.NoError(t, err)
+	checkout, _, err := e.svc.StartCheckout(ctx, CheckoutRequest{PlanKey: plan.Key, Payer: payer})
+	require.NoError(t, err)
+
+	e.event(t, Event{ID: "evt_unpaid", Type: EventCheckoutCompleted, Checkout: &CheckoutEvent{CheckoutID: checkout.ID, Mode: "payment", Paid: false, PaymentIntentID: "pi_u", AmountCents: 4900}})
+
+	got, err := e.repo.GetCheckout(checkout.ID)
+	require.NoError(t, err)
+	assert.Equal(t, db.CheckoutStatusOpen, got.Status, "still waiting for the money")
+	_, err = e.repo.GetPurchaseByPaymentIntent("pi_u")
+	assert.Error(t, err)
+	ent, err := e.svc.ForUser("u1")
+	require.NoError(t, err)
+	assert.Empty(t, ent.User)
+}
+
 func TestNotifyDue(t *testing.T) {
 	e := newEnv(t)
 	e.withNotifications()

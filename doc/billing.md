@@ -351,6 +351,10 @@ before the first real invoice: numbers sent to Veri\*Factu can't change.
   description on the Odoo invoice and the email, and the Odoo invoice gets a
   Spanish note (`narration`): "Cambio de plan de A a B el …". No credit note
   is issued for a plan change.
+- Checkout accepts cards only (`payment_method_types: card`). Delayed methods
+  (SEPA debit, iDEAL…) complete the session with `payment_status: unpaid` and
+  the money arrives in a later event the gateway doesn't handle; such a
+  completion is logged and changes nothing.
 - Stripe settings done by hand (the setup page reminds): *Email customers
   about successful payments* and *Email finalized invoices* off.
 - Idempotency keys on every create (`tg-<checkout id>`, `tg-activate-<id>`,

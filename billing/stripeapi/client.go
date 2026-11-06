@@ -172,6 +172,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p billing.CheckoutPa
 		},
 		TaxIDCollection: &stripe.CheckoutSessionCreateTaxIDCollectionParams{Enabled: stripe.Bool(true)},
 	}
+	params.AddExtra("payment_method_types[0]", "card")
 	if p.AskCustomerType {
 		params.NameCollection = &stripe.CheckoutSessionCreateNameCollectionParams{
 			Business:   &stripe.CheckoutSessionCreateNameCollectionBusinessParams{Enabled: stripe.Bool(true), Optional: stripe.Bool(true)},

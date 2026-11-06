@@ -181,7 +181,11 @@ func (s *Service) onCheckoutCompleted(tx *webhookTx, ev Event) error {
 	if err != nil {
 		return err
 	}
-	if checkout.Status == db.CheckoutStatusCompleted || !cev.Paid {
+	if checkout.Status == db.CheckoutStatusCompleted {
+		return nil
+	}
+	if !cev.Paid {
+		log.Printf("billing: checkout %s completed but not paid (session %s): nothing is activated until it is", checkout.ID, cev.SessionID)
 		return nil
 	}
 	plan, err := tx.repo.GetPlan(checkout.PlanKey)
