@@ -50,6 +50,14 @@ func (s *Service) ActivateSubscription(ctx context.Context, id string) (*db.Bill
 	if err != nil {
 		return nil, err
 	}
+	if current.Status == db.SubscriptionCanceled {
+		// A refund canceled it while Stripe was creating the subscription.
+		_, err = s.stripe.CancelSubscription(ctx, ss.ID, false)
+		if err != nil {
+			return nil, fmt.Errorf("canceled during activation, and canceling Stripe's subscription %s failed: %w", ss.ID, err)
+		}
+		return nil, fmt.Errorf("%w: %s was canceled during its activation", ErrConflict, id)
+	}
 	stripeID := ss.ID
 	current.StripeSubscriptionID = &stripeID
 	if current.Status == db.SubscriptionAwaitingActivation {

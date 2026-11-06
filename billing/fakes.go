@@ -36,6 +36,11 @@ type FakeStripe struct {
 	// ArchiveErr, when set, is returned by ArchivePrice only.
 	ArchiveErr error
 
+	// OnCreateSubscription runs inside CreateSubscription once Stripe has the
+	// subscription, to change the gateway's state meanwhile. It must not call
+	// the fake.
+	OnCreateSubscription func()
+
 	// Err, when set, is returned by every call.
 	Err error
 }
@@ -171,6 +176,9 @@ func (f *FakeStripe) CreateSubscription(ctx context.Context, p SubscriptionParam
 		sub.Metadata[k] = v
 	}
 	f.Subscriptions[sub.ID] = sub
+	if f.OnCreateSubscription != nil {
+		f.OnCreateSubscription()
+	}
 	return *sub, nil
 }
 
