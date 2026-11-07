@@ -240,11 +240,11 @@ func TestBilling_WholeFlow(t *testing.T) {
 	resp, _ = stranger.do(http.MethodGet, "/_/api/billing/documents/"+invoice["id"].(string)+"/pdf", nil)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
-	// A failed renewal: past due, still active during the grace.
+	// A failed charge inside the trial: access stays until the trial's end.
 	require.Equal(t, http.StatusOK, sendEvent(t, gw.URL, "evt_e2e_5", "invoice.payment_failed", `{"id":"in_e2e_2","object":"invoice","customer":"cus_e2e",
 		"currency":"eur","amount_paid":0,"amount_due":2900,"attempt_count":1,"created":1,"parent":{"type":"subscription_details","subscription_details":{"subscription":"sub_e2e"}}}`))
 	ent = payer.getJSON("/_/api/entitlements?org_id="+orgID, http.StatusOK)
-	assert.Equal(t, "past_due", ent["features"].(map[string]any)["academia.access"].(map[string]any)["status"])
+	assert.Equal(t, "trial", ent["features"].(map[string]any)["academia.access"].(map[string]any)["status"])
 
 	// One-time purchase, refunded in two steps: two credit notes.
 	admin.sendJSON(http.MethodPost, "/_/api/billing/plans", map[string]any{
