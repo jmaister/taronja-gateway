@@ -358,6 +358,29 @@ notification:
     botToken: ${TELEGRAM_BOT_TOKEN}   # from @BotFather
 ```
 
+### Billing
+
+The gateway can sell plans and tell the apps behind it what each user or organization has paid for: Stripe Checkout and Customer Portal for payments, Odoo (JSON-2 API, Odoo 19) for the legal invoices and credit notes, and **entitlements** (features active until a date) that apps read from the `X-Entitlements` header, `GET /_/api/entitlements` or `/_/me`. Apps never handle money or webhooks. Plans are EUR only (Spain). Access lasts `grace_days` after an unpaid period and the entitlements say when a feature is in that grace (`grace`, `graceUntil`). Entitlements are cached per process for 24 hours and cleared on any billing change, so run a single gateway instance. Optional organizations let one member pay for everyone. See [doc/billing.md](doc/billing.md).
+
+```yaml
+billing:
+  enabled: true
+  stripe:
+    secretKey: ${STRIPE_SECRET_KEY}
+    webhookSecret: ${STRIPE_WEBHOOK_SECRET}   # endpoint: <server.url>/_/billing/stripe/webhook
+  odoo:                                       # optional: invoices wait until it is set
+    url: https://odoo.example.com
+    database: ${ODOO_DB}
+    apiKey: ${ODOO_API_KEY}                   # user with Billing, Contact creation, Products/Create; scope rpc
+    companyId: 1
+    salesJournalId: 1                         # with "Dedicated Credit Note Sequence"
+    paymentJournalId: 7                       # bank journal "Stripe"
+    taxId: 12                                 # IVA 21 %, included in price
+    apiKeyExpiresAt: 2026-12-31               # optional: Billing → Setup warns 30 days before
+```
+
+Plans are created in the dashboard (**Billing → Plans**); each has a pay link `/_/pay/<plan>`. **Billing → Setup** checks the Stripe and Odoo configuration.
+
 ## Environment Variables
 
 Use environment variables to keep sensitive data out of your config file:

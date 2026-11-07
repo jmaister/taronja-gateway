@@ -282,3 +282,45 @@ func TestLogoutUser(t *testing.T) {
 		assert.Equal(t, "/", *logoutResp.Headers.Location, "an absolute-URL redirect target must be rejected, not forwarded to the client")
 	})
 }
+
+func TestLogoutUser_EndsTheSessionAtTheProvider(t *testing.T) {
+	defer db.ResetConnection()
+	s, sessionRepo := setupLogoutTestServer()
+	var gotProvider, gotRedirect string
+	s.SetProviderLogout(func(_ context.Context, provider, redirectPath string) (string, bool) {
+		gotProvider, gotRedirect = provider, redirectPath
+		if provider != "zitadel" {
+			return "", false
+		}
+		return "https://idp.test/end_session?post=" + redirectPath, true
+	})
+
+	logout := func(token, provider, redirect string) *api.LogoutUser302Response {
+		require.NoError(t, sessionRepo.CreateSession(token, &db.Session{
+			UserID: "u-" + token, Username: "u", Provider: provider, IsAuthenticated: true, ValidUntil: time.Now().Add(time.Hour),
+		}))
+		params := api.LogoutUserParams{TgSessionToken: &token}
+		if redirect != "" {
+			params.Redirect = &redirect
+		}
+		resp, err := s.LogoutUser(context.Background(), api.LogoutUserRequestObject{Params: params})
+		require.NoError(t, err)
+		out := resp.(api.LogoutUser302Response)
+		_, err = sessionRepo.FindSessionByToken(token)
+		assert.Error(t, err, "session ended")
+		assert.Contains(t, *out.Headers.SetCookie, "Max-Age=0", "cookie cleared")
+		return &out
+	}
+
+	out := logout("tok-zitadel", "zitadel", "/bye")
+	assert.Equal(t, "zitadel", gotProvider)
+	assert.Equal(t, "/bye", gotRedirect)
+	assert.Equal(t, "https://idp.test/end_session?post=/bye", *out.Headers.Location)
+
+	out = logout("tok-zitadel-evil", "zitadel", "https://evil.example")
+	assert.Equal(t, "/", gotRedirect, "redirect sanitized before it reaches the provider")
+	assert.Equal(t, "https://idp.test/end_session?post=/", *out.Headers.Location)
+
+	out = logout("tok-other", "github", "/bye")
+	assert.Equal(t, "/bye", *out.Headers.Location, "provider without the option logs out as before")
+}

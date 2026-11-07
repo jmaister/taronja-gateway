@@ -559,3 +559,46 @@ routes:
     from: /
     to: http://localhost:9999
 `
+
+func TestMigrateConfigContent_ManagementFlagsBecomeMiddleware(t *testing.T) {
+	raw := `name: Test Gateway
+server:
+  host: 127.0.0.1
+  port: 8080
+management:
+  logging: true
+  analytics: true
+  rateLimiter:
+    requestsPerMinute: 100
+    maxErrors: 20
+    vulnerabilityScan:
+      urls: ["/.env"]
+      max404: 3
+routes:
+  - name: root
+    from: /
+    to: http://localhost:9999
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+
+	content, _, err := MigrateConfigContent(path)
+	require.NoError(t, err)
+
+	out := string(content)
+	assert.NotContains(t, out, "rateLimiter")
+	assert.NotContains(t, out, "analytics:")
+	assert.Contains(t, out, "name: rate_limiter")
+	assert.Contains(t, out, "requestsPerMinute: 100")
+	assert.Contains(t, out, "name: traffic_metrics")
+	assert.Contains(t, out, "name: logging")
+
+	require.NoError(t, os.WriteFile(path, content, 0o644))
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	var names []string
+	for _, m := range cfg.Middleware {
+		names = append(names, m.Name)
+	}
+	assert.Contains(t, names, "rate_limiter")
+}

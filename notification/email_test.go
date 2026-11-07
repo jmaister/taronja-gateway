@@ -3,8 +3,13 @@ package notification
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net"
+	"net/mail"
 	"strings"
 	"testing"
 	"time"
@@ -265,4 +270,54 @@ func TestEmailProvider(t *testing.T) {
 		assert.Error(t, err, "an unresponsive relay must eventually fail the send, not hang forever")
 		assert.Less(t, elapsed, 5*time.Second, "Send took far longer than the (shrunk, for this test) smtpTimeout should ever allow")
 	})
+}
+
+func TestEmailProvider_SendMailWithAttachment(t *testing.T) {
+	server := newFakeSMTPServer(t)
+	defer server.close()
+	host, port := server.addr()
+	provider := NewEmailProvider(config.EmailNotificationConfig{Enabled: true, Host: host, Port: port, From: "gateway@example.com"})
+
+	pdf := []byte("%PDF-1.4 " + strings.Repeat("x", 300))
+	err := provider.SendMail(context.Background(), Mail{
+		To: "ana@example.com", Subject: "Factura F/1 · Academia ñ", Text: "hola ñ", HTML: "<p>hola ñ</p>",
+		Attachments: []Attachment{{Name: "F_1.pdf", Data: pdf}},
+	})
+	require.NoError(t, err)
+	time.Sleep(20 * time.Millisecond)
+
+	msg, err := mail.ReadMessage(strings.NewReader(server.data))
+	require.NoError(t, err)
+	subject, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	require.NoError(t, err)
+	assert.Equal(t, "Factura F/1 · Academia ñ", subject)
+
+	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	assert.Equal(t, "multipart/mixed", mediaType)
+	mixed := multipart.NewReader(msg.Body, params["boundary"])
+
+	alt, err := mixed.NextPart()
+	require.NoError(t, err)
+	_, altParams, err := mime.ParseMediaType(alt.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	var bodies []string
+	altReader := multipart.NewReader(alt, altParams["boundary"])
+	for {
+		p, err := altReader.NextPart()
+		if err != nil {
+			break
+		}
+		raw, _ := io.ReadAll(base64.NewDecoder(base64.StdEncoding, p))
+		bodies = append(bodies, string(raw))
+	}
+	assert.Equal(t, []string{"hola ñ", "<p>hola ñ</p>"}, bodies)
+
+	att, err := mixed.NextPart()
+	require.NoError(t, err)
+	assert.Equal(t, "F_1.pdf", att.FileName())
+	assert.Equal(t, "application/pdf", att.Header.Get("Content-Type"))
+	raw, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, att))
+	require.NoError(t, err)
+	assert.Equal(t, pdf, raw)
 }

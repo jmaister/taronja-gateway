@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"github.com/jmaister/taronja-gateway/billing"
 	"time"
 
 	"github.com/jmaister/taronja-gateway/api"
@@ -37,6 +39,15 @@ type StrictApiServer struct {
 	// featureFlags backs /flags and /api/feature-flags*. Set with
 	// SetFeatureFlags; nil in tests that don't call those endpoints.
 	featureFlags *featureflag.Service
+	// organizations backs /api/organizations* and the organizations in
+	// /me; nil when not set (those endpoints answer 503).
+	organizations repositories.OrganizationRepository
+	// billing backs every billing and entitlement endpoint; nil when billing
+	// is disabled (they answer 503).
+	billing *billing.Service
+	// providerLogout returns the URL that ends the session at the identity
+	// provider of the session being closed; nil or false means no such step.
+	providerLogout func(ctx context.Context, provider, redirectPath string) (string, bool)
 	// excludeStaticAssets mirrors the traffic_metrics middleware option so the
 	// summary can tell the UI that static-asset requests are not recorded.
 	excludeStaticAssets bool
@@ -70,4 +81,19 @@ func (s *StrictApiServer) SetExcludeStaticAssets(exclude bool) {
 // SetFeatureFlags sets the feature flag service for the feature flag endpoints.
 func (s *StrictApiServer) SetFeatureFlags(featureFlags *featureflag.Service) {
 	s.featureFlags = featureFlags
+}
+
+// SetOrganizations sets the organization store.
+func (s *StrictApiServer) SetOrganizations(orgs repositories.OrganizationRepository) {
+	s.organizations = orgs
+}
+
+// SetBilling sets the billing service.
+func (s *StrictApiServer) SetBilling(svc *billing.Service) {
+	s.billing = svc
+}
+
+// SetProviderLogout sets the end-session URL builder used by /logout.
+func (s *StrictApiServer) SetProviderLogout(f func(ctx context.Context, provider, redirectPath string) (string, bool)) {
+	s.providerLogout = f
 }

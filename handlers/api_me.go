@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -65,6 +66,40 @@ func (s *StrictApiServer) GetCurrentUser(ctx context.Context, request api.GetCur
 		IsAdmin:       &isAdmin,
 		Timestamp:     &timestamp,
 	}
+
+	if s.organizations != nil {
+		orgs, err := s.myOrganizations(sessionObject.UserID)
+		if err != nil {
+			log.Printf("Error listing organizations of %s: %v", sessionObject.UserID, err)
+		} else {
+			response.Organizations = &orgs
+		}
+	}
+
+	// Add entitlements if billing is configured
+	if s.billing != nil {
+		userEntitlements, err := s.billing.ForUser(sessionObject.UserID)
+		if err != nil {
+			log.Printf("Error getting entitlements for %s: %v", sessionObject.UserID, err)
+		} else {
+			header := userEntitlements.Header(time.Now())
+			response.Entitlements = &api.EntitlementHeader{
+				User: header.User,
+				Orgs: header.Orgs,
+			}
+			if header.Grace != nil {
+				grace := &api.EntitlementHeaderGrace{}
+				if len(header.Grace.User) > 0 {
+					grace.User = &header.Grace.User
+				}
+				if len(header.Grace.Orgs) > 0 {
+					grace.Orgs = &header.Grace.Orgs
+				}
+				response.Entitlements.Grace = grace
+			}
+		}
+	}
+
 	return response, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,7 @@ type oidcMetadata struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	UserinfoEndpoint      string `json:"userinfo_endpoint"`
+	EndSessionEndpoint    string `json:"end_session_endpoint"`
 }
 
 // oidcDiscovery loads the discovery document on first use rather than at
@@ -212,4 +214,61 @@ func RegisterOIDCAuth(mux *http.ServeMux, sessionStore session.SessionStore, gat
 	for _, cfg := range gatewayConfig.AuthenticationProviders.OIDC {
 		NewOIDCAuthenticationProvider(cfg, sessionStore, gatewayConfig, userRepo, accountsService).RegisterEndpoints(mux)
 	}
+}
+
+// OIDCLogout builds the provider's end-session URL for the OIDC providers
+// that set logoutAtProvider.
+type OIDCLogout struct {
+	serverURL string
+	providers map[string]oidcLogoutProvider
+}
+
+type oidcLogoutProvider struct {
+	clientID  string
+	discovery *oidcDiscovery
+}
+
+// NewOIDCLogout returns nil when no provider has logoutAtProvider set.
+func NewOIDCLogout(gatewayConfig *config.GatewayConfig) *OIDCLogout {
+	l := &OIDCLogout{serverURL: gatewayConfig.Server.URL, providers: map[string]oidcLogoutProvider{}}
+	for _, cfg := range gatewayConfig.AuthenticationProviders.OIDC {
+		if cfg.LogoutAtProvider {
+			l.providers[cfg.Name] = oidcLogoutProvider{
+				clientID:  cfg.ClientId,
+				discovery: &oidcDiscovery{issuer: cfg.Issuer, client: &http.Client{Timeout: oidcHTTPTimeout}},
+			}
+		}
+	}
+	if len(l.providers) == 0 {
+		return nil
+	}
+	return l
+}
+
+// URL returns where to send the browser to end the session at provider, or
+// false when the provider doesn't use logoutAtProvider or can't be reached.
+func (l *OIDCLogout) URL(ctx context.Context, provider, redirectPath string) (string, bool) {
+	p, ok := l.providers[provider]
+	if !ok {
+		return "", false
+	}
+	metadata, err := p.discovery.load(ctx)
+	if err != nil {
+		log.Printf("OIDC logout at %s skipped: %v", provider, err)
+		return "", false
+	}
+	if metadata.EndSessionEndpoint == "" {
+		log.Printf("OIDC logout at %s skipped: the provider has no end_session_endpoint", provider)
+		return "", false
+	}
+	u, err := url.Parse(metadata.EndSessionEndpoint)
+	if err != nil {
+		log.Printf("OIDC logout at %s skipped: %v", provider, err)
+		return "", false
+	}
+	q := u.Query()
+	q.Set("client_id", p.clientID)
+	q.Set("post_logout_redirect_uri", strings.TrimSuffix(l.serverURL, "/")+redirectPath)
+	u.RawQuery = q.Encode()
+	return u.String(), true
 }

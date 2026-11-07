@@ -121,3 +121,62 @@ func TestValidate_OIDCProviders(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_Billing(t *testing.T) {
+	stripe := StripeBillingConfig{SecretKey: "sk_live_x", WebhookSecret: "whsec_x"}
+	testKey := StripeBillingConfig{SecretKey: "sk_test_x", WebhookSecret: "whsec_x"}
+	odoo := OdooBillingConfig{URL: "https://odoo.example.com", Database: "prod", APIKey: "k", CompanyID: 1, SalesJournalID: 2, PaymentJournalID: 3, TaxID: 4}
+	server := ServerConfig{URL: "https://example.com"}
+	madrid := "Europe/Madrid"
+	expiring := odoo
+	expiring.APIKeyExpiresAt = "2026-12-31"
+	badExpiry := odoo
+	badExpiry.APIKeyExpiresAt = "31/12/2026"
+	cases := map[string]struct {
+		cfg     GatewayConfig
+		wantErr string
+	}{
+		"timezone ok":           {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Timezone: "America/New_York"}}, ""},
+		"bad timezone":          {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Timezone: "Madrid"}}, "billing.timezone"},
+		"key expiry":            {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: expiring, Timezone: madrid}}, ""},
+		"bad key expiry":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: badExpiry, Timezone: madrid}}, "apiKeyExpiresAt"},
+		"bad logo":              {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{LogoURL: "logo.png"}}}, "logoUrl"},
+		"brands ok":             {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {Name: "Academia", LogoURL: "https://a.es/logo.png", ButtonColor: "#1a73E8", BackgroundColor: "#ffffff"}}}}, ""},
+		"brand bad logo":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {LogoURL: "/logo.png"}}}}, "billing.brands.academia.logoUrl"},
+		"brand bad button":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {ButtonColor: "blue"}}}}, "billing.brands.academia.buttonColor"},
+		"brand short color":     {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {BackgroundColor: "#fff"}}}}, "billing.brands.academia.backgroundColor"},
+		"descriptor ok":         {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {StatementDescriptor: "ACADEMIA TARONJA"}}}}, ""},
+		"descriptor too long":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {StatementDescriptor: "ACADEMIA TARONJA SL 2026"}}}}, "billing.brands.academia.statementDescriptor"},
+		"descriptor bad char":   {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {StatementDescriptor: "ACADEMIA*"}}}}, "statementDescriptor"},
+		"descriptor no letter":  {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Brands: map[string]BillingBrandConfig{"academia": {StatementDescriptor: "12345"}}}}, "statementDescriptor"},
+		"missing template":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Email: BillingEmailConfig{TemplateFile: "/nonexistent/email.html"}}}, "templateFile"},
+		"test key public https": {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: testKey}}, "test key"},
+		"test key http":         {GatewayConfig{Server: ServerConfig{URL: "http://192.168.1.35:18480"}, Billing: BillingConfig{Enabled: true, Stripe: testKey}}, ""},
+		"test key localhost":    {GatewayConfig{Server: ServerConfig{URL: "https://localhost:8443"}, Billing: BillingConfig{Enabled: true, Stripe: testKey}}, ""},
+		"disabled":              {GatewayConfig{Billing: BillingConfig{Stripe: StripeBillingConfig{}}}, ""},
+		"stripe only":           {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe}}, ""},
+		"with odoo":             {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo, Timezone: madrid}}, ""},
+		"no server url":         {GatewayConfig{Billing: BillingConfig{Enabled: true, Stripe: stripe}}, "requires server.url"},
+		"no stripe keys":        {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true}}, "secretKey and billing.stripe.webhookSecret"},
+		"odoo no timezone":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: odoo}}, "billing.timezone is required"},
+		"odoo incomplete":       {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://odoo.example.com", Database: "d", APIKey: "k"}}}, "companyId"},
+		"odoo bad url":          {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "odoo", Database: "d", APIKey: "k"}}}, "not a URL"},
+		"odoo no database":      {GatewayConfig{Server: server, Billing: BillingConfig{Enabled: true, Stripe: stripe, Odoo: OdooBillingConfig{URL: "https://o.example"}}}, "database"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestBillingLocation(t *testing.T) {
+	assert.Equal(t, "Europe/Madrid", BillingLocation("").String())
+	assert.Equal(t, "America/New_York", BillingLocation("America/New_York").String())
+	assert.Equal(t, "UTC", BillingLocation("nowhere").String())
+}

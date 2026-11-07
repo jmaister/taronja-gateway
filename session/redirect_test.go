@@ -1,6 +1,9 @@
 package session
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSanitizeRedirectPath(t *testing.T) {
 	tests := []struct {
@@ -18,6 +21,11 @@ func TestSanitizeRedirectPath(t *testing.T) {
 		{"no leading slash at all is rejected", "dashboard", "/"},
 		{"javascript scheme is rejected", "javascript:alert(1)", "/"},
 		{"bare double-slash is rejected", "//", "/"},
+		{"tab between slashes is rejected", "/\t/evil.example", "/"},
+		{"newline between slashes is rejected", "/\n/evil.example", "/"},
+		{"backslash later in the path is rejected", "/a\\b", "/"},
+		{"DEL is rejected", "/a\x7fb", "/"},
+		{"absurdly long value is rejected", "/" + strings.Repeat("a", 3000), "/"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

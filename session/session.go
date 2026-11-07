@@ -30,6 +30,7 @@ type SessionStore interface {
 	ValidateTokenAuth(r *http.Request, tokenService TokenService) (*db.Session, bool)
 	NewSession(r *http.Request, user *db.User, provider string, validityDuration time.Duration) (*db.Session, error)
 	EndSession(token string) error
+	FindSession(token string) (*db.Session, error)
 	FindSessionsByUserID(userID string) ([]db.Session, error)
 }
 
@@ -183,6 +184,10 @@ func (s *SessionStoreDB) NewSession(req *http.Request, user *db.User, provider s
 	}
 	newSession.Token = token
 	return newSession, nil
+}
+
+func (s *SessionStoreDB) FindSession(token string) (*db.Session, error) {
+	return s.Repo.FindSessionByToken(token)
 }
 
 func (s *SessionStoreDB) EndSession(token string) error {

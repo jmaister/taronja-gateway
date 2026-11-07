@@ -13,7 +13,13 @@ import (
 func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUserRequestObject) (api.LogoutUserResponseObject, error) {
 
 	sessionToken := request.Params.TgSessionToken
+	provider := ""
 	if sessionToken != nil && *sessionToken != "" {
+		if s.providerLogout != nil {
+			if sess, err := s.sessionStore.FindSession(*sessionToken); err == nil && sess != nil {
+				provider = sess.Provider
+			}
+		}
 		err := s.sessionStore.EndSession(*sessionToken)
 		if err != nil {
 			log.Printf("Error deleting session from store: %v. Proceeding with cookie expiration.", err)
@@ -29,6 +35,12 @@ func (s *StrictApiServer) LogoutUser(ctx context.Context, request api.LogoutUser
 		*redirectURL = session.SanitizeRedirectPath(*request.Params.Redirect)
 	} else {
 		*redirectURL = session.SanitizeRedirectPath("")
+	}
+
+	if provider != "" {
+		if providerURL, ok := s.providerLogout(ctx, provider, *redirectURL); ok {
+			redirectURL = &providerURL
+		}
 	}
 
 	// Create the Set-Cookie header value for clearing the session

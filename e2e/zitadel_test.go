@@ -73,13 +73,14 @@ func zitadelApp(t *testing.T, gatewayURL string) (clientID, clientSecret string)
 	admin := zitadelAccount(t, "admin")
 	project := admin.post("/management/v1/projects", map[string]any{"name": fmt.Sprintf("taronja-e2e-%d", time.Now().UnixNano())})
 	app := admin.post("/management/v1/projects/"+project["id"].(string)+"/apps/oidc", map[string]any{
-		"name":           "gateway",
-		"redirectUris":   []string{gatewayURL + "/_/auth/zitadel/callback"},
-		"responseTypes":  []string{"OIDC_RESPONSE_TYPE_CODE"},
-		"grantTypes":     []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
-		"appType":        "OIDC_APP_TYPE_WEB",
-		"authMethodType": "OIDC_AUTH_METHOD_TYPE_BASIC",
-		"devMode":        true, // allows the http:// redirect URI
+		"name":                   "gateway",
+		"redirectUris":           []string{gatewayURL + "/_/auth/zitadel/callback"},
+		"postLogoutRedirectUris": []string{gatewayURL + "/"},
+		"responseTypes":          []string{"OIDC_RESPONSE_TYPE_CODE"},
+		"grantTypes":             []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+		"appType":                "OIDC_APP_TYPE_WEB",
+		"authMethodType":         "OIDC_AUTH_METHOD_TYPE_BASIC",
+		"devMode":                true, // allows the http:// redirect URI
 	})
 	return app["clientId"].(string), app["clientSecret"].(string)
 }
@@ -193,6 +194,44 @@ func TestZitadel_LoginCreatesAndReusesUser(t *testing.T) {
 	again.zitadelLoginFromLoginPage(user)
 	require.NotNil(t, again.me())
 	assert.Equal(t, firstID, mustUserID(t, gw, user.email))
+}
+
+func TestZitadel_LogoutAtProvider(t *testing.T) {
+	requireZitadel(t)
+	listener, gatewayURL := listenGateway(t)
+	clientID, secret := zitadelApp(t, gatewayURL)
+	cfg := strings.Replace(zitadelConfig(clientID, secret), "      label: Zitadel\n", "      label: Zitadel\n      logoutAtProvider: true\n", 1)
+	gw := startGatewayOn(t, listener, cfg)
+
+	browser := newClient(t, gw.URL)
+	browser.zitadelLoginFromLoginPage(newZitadelUser(t, "dave", true))
+	require.NotNil(t, browser.me())
+
+	noFollow := *browser.http
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := noFollow.Get(browser.base + "/_/logout")
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	endSession, err := url.Parse(resp.Header.Get("Location"))
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(endSession.String(), zitadelURL), "logout goes to Zitadel: %s", endSession)
+	assert.Equal(t, clientID, endSession.Query().Get("client_id"))
+	assert.Equal(t, browser.base+"/", endSession.Query().Get("post_logout_redirect_uri"))
+	assert.Nil(t, browser.me(), "the gateway session is over")
+
+	// Zitadel accepts the registered post-logout URI and hands the browser to
+	// its login UI's logout page, which sends it back to the gateway. That UI is
+	// not part of this stack, so the test stops at the hand-over.
+	resp, err = noFollow.Get(endSession.String())
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	handOver, err := url.Parse(resp.Header.Get("Location"))
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(handOver.Path, "/ui/v2/login/logout"), "Zitadel's logout page: %s", handOver)
+	assert.NotEmpty(t, handOver.Query().Get("logout_token"))
+	assert.Equal(t, browser.base+"/", handOver.Query().Get("post_logout_redirect"))
 }
 
 func TestZitadel_UnverifiedEmailIsRefused(t *testing.T) {

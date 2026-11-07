@@ -137,6 +137,12 @@ func NewService(cfg config.NotificationConfig, repo repositories.NotificationRep
 	}
 }
 
+// EmailProvider is the configured email provider, or nil.
+func (s *Service) EmailProvider() *EmailProvider {
+	p, _ := s.providers["email"].(*EmailProvider)
+	return p
+}
+
 // TelegramPoller returns a poller for this Service's Telegram provider, or
 // nil if Telegram isn't configured — see TelegramPoller.Run.
 func (s *Service) TelegramPoller() *TelegramPoller {

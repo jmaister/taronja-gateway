@@ -1,0 +1,17 @@
+{{define "content"}}
+{{with .PayDone}}
+<section class="card">
+{{if eq .Status "completed"}}
+<p>¡Gracias! Tu pago está confirmado.</p>
+<a class="button" href="{{.Redirect}}">Continuar</a>
+{{else if eq .Status "expired"}}
+<p>El pago no se ha completado.</p>
+<a class="button" href="{{.Redirect}}">Volver</a>
+{{else}}
+<meta http-equiv="refresh" content="2">
+<p>Confirmando tu pago…</p>
+<p class="muted">Esta página se actualiza sola.</p>
+{{end}}
+</section>
+{{end}}
+{{end}}
