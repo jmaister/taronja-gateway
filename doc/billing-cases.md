@@ -8,7 +8,7 @@ Los tests están en `billing/` y `gateway/`; "vivo" = prueba con Stripe de prueb
 | Checkout completado, pagado | Crea compra o suscripción y factura | — | — | ✅ TestPayFlow, vivo |
 | Checkout completado, no pagado | Queda `awaiting_payment`; aviso en la cuenta | — | — | ✅ TestCheckoutCompletedUnpaid_IsAwaitingPaymentUntilAsyncPaid, TestAccountShowsCheckoutAwaitingPayment (vivo no: ver pago pendiente) |
 | Async pagado | Igual que completado | — | — | ✅ TestCheckoutAsyncPayment |
-| Pago pendiente (SEPA, Bancontact) en vivo | Aviso "pendiente de confirmación" | En modo test, el checkout de la cuenta solo ofrece tarjeta, iDEAL, Link y PayPal (SEPA está en otra configuración de métodos); el formulario SEPA no se pudo enviar desde el navegador automático | Probar a mano con SEPA en test | ⚠️ solo test unitario |
+| Pago pendiente (SEPA, Bancontact) en vivo | Aviso "pendiente de confirmación" | Sesión de Checkout con `payment_method_types=sepa_debit` creada por API; el navegador automático no consigue enviar el formulario SEPA, así que no hay `completed` con `unpaid` real | Pagar a mano con IBAN de prueba y reenviar los eventos desde `GET /v1/events` | ⚠️ solo test unitario |
 | Async fallido | Checkout expirado | Sin aviso al cliente | B: email de fallo | ⚠️ sin email |
 | Checkout expirado | Cierra el checkout | — | — | ✅ TestParseWebhook_CheckoutExpiredUnpaid |
 | Trial, Empezar ya, pago OK | `active`, `trial_until` fijo | — | — | ✅ TestStartNow_*, vivo |
@@ -23,9 +23,9 @@ Los tests están en `billing/` y `gateway/`; "vivo" = prueba con Stripe de prueb
 | Renovación fallida y gracia | `past_due` + aviso | — | — | ✅ TestSubscriptionLifecycle, vivo |
 | Fin de gracia | Sin acceso | — | — | ✅ TestCompute_Subscriptions |
 | `past_due` | Acceso en gracia; aviso con fecha | — | — | ✅ TestAccountPaymentProblems, vivo |
-| `incomplete` con prueba | Acceso hasta `trial_until`; aviso | — | — | ✅ TestAccountPaymentProblems, TestStartNow_FailedChargeKeepsAccessUntilOurTrialEnd |
+| `incomplete` con prueba | Acceso hasta `trial_until`; aviso | Vivo: con prueba de 7 días Stripe deja la suscripción en `trialing` aunque el método falle (no hay `incomplete`); con la prueba el fallo aparece al terminarla | — | ⚠️ vivo: trialing, "En prueba" y `trial_until`; acceso con incomplete, solo test unitario (TestStartNow_FailedChargeKeepsAccessUntilOurTrialEnd) |
 | `incomplete` sin prueba | Sin acceso; aviso "Suscripción no activa (incomplete)" | — | — | ✅ TestAccountPaymentProblems |
-| `unpaid` | Cancelada local; etiqueta de Stripe; aviso | En esta cuenta Stripe nunca llega a `unpaid`: tras los reintentos pasa a `canceled` (vivo) | Activar en Stripe "marcar como unpaid" si se quiere | ⚠️ aviso: solo test unitario |
+| `unpaid` | Cancelada local; etiqueta de Stripe; aviso | Vivo: con `send_invoice` vencido Stripe deja `past_due` (3, 10 y 45 días); con tarjeta rechazada, tras los reintentos, `canceled`. Nunca `unpaid`: ese estado depende de un ajuste de reintentos de la cuenta, que no tocamos | Activar "marcar como unpaid" en Stripe si se quiere ese estado | ⚠️ vivo: no alcanzable; aviso probado con test unitario |
 | `incomplete_expired` | Cancelada local; etiqueta de Stripe; aviso | — | — | ✅ vivo (test clock), TestAccountPaymentProblems |
 | `paused` | Cancelada local; etiqueta de Stripe; aviso | — | — | ✅ vivo (prueba que termina sin método de pago), TestAccountPaymentProblems |
 | `past_due` tras reintentos | Stripe la cancela (vivo: `canceled`) | El cliente pierde acceso al agotarse los reintentos | — | ✅ vivo (test clock) |
